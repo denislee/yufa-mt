@@ -8,6 +8,7 @@ import (
 	"html/template"
 	"log"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 	"time"
@@ -19,7 +20,6 @@ import (
 
 var db *sql.DB
 
-// Item struct remains the same
 type Item struct {
 	ID             int
 	Name           string
@@ -34,7 +34,13 @@ type Item struct {
 	IsAvailable    bool
 }
 
-// CHANGED: Added LastScrapeTime and ShowAll to the PageData struct.
+// Column struct to define toggleable columns
+type Column struct {
+	ID          string
+	DisplayName string
+}
+
+// PageData struct updated with column visibility info
 type PageData struct {
 	Items          []Item
 	SearchQuery    string
@@ -42,9 +48,11 @@ type PageData struct {
 	Order          string
 	ShowAll        bool
 	LastScrapeTime string
+	VisibleColumns map[string]bool
+	AllColumns     []Column
+	ColumnParams   template.URL
 }
 
-// ... (PricePointDetails and HistoryPageData structs remain the same) ...
 type PricePointDetails struct {
 	Timestamp     string `json:"Timestamp"`
 	MinPrice      int    `json:"MinPrice"`
@@ -66,7 +74,6 @@ type HistoryPageData struct {
 	PriceDataJSON template.JS
 }
 
-// ... (main function remains the same) ...
 func main() {
 	var err error
 	db, err = initDB("./market_data.db")
@@ -87,7 +94,6 @@ func main() {
 	}
 }
 
-// ... (historyHandler remains the same) ...
 func historyHandler(w http.ResponseWriter, r *http.Request) {
 	itemName := r.FormValue("name")
 	if itemName == "" {
@@ -95,8 +101,6 @@ func historyHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// 1. Get full details for the items with the min and max price for each recorded timestamp.
-	// This query uses window functions to rank items by price for each timestamp and then joins the best (min) and worst (max) priced items.
 	priceChangeQuery := `
 		WITH RankedItems AS (
 			SELECT
@@ -114,20 +118,8 @@ func historyHandler(w http.ResponseWriter, r *http.Request) {
 		)
 		SELECT
 			t_min.date_and_time_retrieved,
-			-- Min price details
-			t_min.price_int,
-			t_min.quantity,
-			t_min.store_name,
-			t_min.seller_name,
-			t_min.map_name,
-			t_min.map_coordinates,
-			-- Max price details
-			t_max.price_int,
-			t_max.quantity,
-			t_max.store_name,
-			t_max.seller_name,
-			t_max.map_name,
-			t_max.map_coordinates
+			t_min.price_int, t_min.quantity, t_min.store_name, t_min.seller_name, t_min.map_name, t_min.map_coordinates,
+			t_max.price_int, t_max.quantity, t_max.store_name, t_max.seller_name, t_max.map_name, t_max.map_coordinates
 		FROM
 			(SELECT * FROM RankedItems WHERE rn_asc = 1) AS t_min
 		JOIN
@@ -161,7 +153,6 @@ func historyHandler(w http.ResponseWriter, r *http.Request) {
 		priceEvents[timestampStr] = p
 	}
 
-	// 2. Get all timestamps when any scrape was performed
 	scrapeHistoryRows, err := db.Query("SELECT timestamp FROM scrape_history ORDER BY timestamp ASC;")
 	if err != nil {
 		http.Error(w, "Database query for scrape history failed", http.StatusInternalServerError)
@@ -178,31 +169,24 @@ func historyHandler(w http.ResponseWriter, r *http.Request) {
 		allScrapeTimes = append(allScrapeTimes, ts)
 	}
 
-	// 3. Forward-fill the price data to reconstruct the full history
 	var fullPriceHistory []PricePointDetails
 	var lastKnownDetails PricePointDetails
 	var detailsInitialized bool
 
 	for _, scrapeTimeStr := range allScrapeTimes {
-		// If a price change happened at this exact time, update our last known details
 		if event, ok := priceEvents[scrapeTimeStr]; ok {
 			lastKnownDetails = event
 			detailsInitialized = true
 		}
 
-		// Only start adding points after we've seen the first price event
 		if detailsInitialized {
 			t, _ := time.Parse(time.RFC3339, scrapeTimeStr)
-
-			// Create a new point for this timestamp using the last known details
 			currentPoint := lastKnownDetails
 			currentPoint.Timestamp = t.Format("2006-01-02 15:04")
-
 			fullPriceHistory = append(fullPriceHistory, currentPoint)
 		}
 	}
 
-	// 4. Filter the reconstructed history to only show points where the price changed
 	var finalPriceHistory []PricePointDetails
 	if len(fullPriceHistory) > 0 {
 		finalPriceHistory = append(finalPriceHistory, fullPriceHistory[0])
@@ -234,12 +218,44 @@ func historyHandler(w http.ResponseWriter, r *http.Request) {
 	tmpl.Execute(w, data)
 }
 
-// CHANGED: The view handler now fetches the last scrape time.
+// viewHandler now manages column visibility
 func viewHandler(w http.ResponseWriter, r *http.Request) {
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "Failed to parse form", http.StatusBadRequest)
+		return
+	}
+
 	searchQuery := r.FormValue("query")
 	sortBy := r.FormValue("sort_by")
 	order := r.FormValue("order")
 	showAll := r.FormValue("show_all") == "true"
+	selectedCols := r.Form["cols"]
+
+	// Define all toggleable columns
+	allCols := []Column{
+		{ID: "item_id", DisplayName: "Item ID"},
+		{ID: "quantity", DisplayName: "Quantity"},
+		{ID: "store_name", DisplayName: "Store Name"},
+		{ID: "seller_name", DisplayName: "Seller Name"},
+		{ID: "map_name", DisplayName: "Map Name"},
+		{ID: "map_coordinates", DisplayName: "Map Coords"},
+		{ID: "retrieved", DisplayName: "Date Retrieved"},
+	}
+	visibleColumns := make(map[string]bool)
+	columnParams := url.Values{}
+
+	// If user submitted a preference, use it. Otherwise, use defaults.
+	if len(selectedCols) > 0 {
+		for _, col := range selectedCols {
+			visibleColumns[col] = true
+			columnParams.Add("cols", col)
+		}
+	} else {
+		// Default columns
+		visibleColumns["quantity"] = true
+		visibleColumns["store_name"] = true
+		visibleColumns["map_coordinates"] = true
+	}
 
 	// Get the last scrape time
 	var lastScrapeTimestamp sql.NullString
@@ -258,13 +274,16 @@ func viewHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	allowedSorts := map[string]string{
-		"name":      "name_of_the_item",
-		"item_id":   "item_id",
-		"quantity":  "quantity",
-		"price":     "CAST(REPLACE(price, ',', '') AS INTEGER)",
-		"store":     "store_name",
-		"seller":    "seller_name",
-		"retrieved": "date_and_time_retrieved",
+		"name":            "name_of_the_item",
+		"item_id":         "item_id",
+		"quantity":        "quantity",
+		"price":           "CAST(REPLACE(price, ',', '') AS INTEGER)",
+		"store":           "store_name",
+		"seller":          "seller_name",
+		"retrieved":       "date_and_time_retrieved",
+		"store_name":      "store_name",
+		"map_name":        "map_name",
+		"map_coordinates": "map_coordinates",
 	}
 
 	orderByClause, ok := allowedSorts[sortBy]
@@ -275,7 +294,6 @@ func viewHandler(w http.ResponseWriter, r *http.Request) {
 		order = "ASC"
 	}
 
-	// Dynamically build the WHERE clause based on the "show_all" checkbox
 	whereClause := "WHERE name_of_the_item LIKE ?"
 	if !showAll {
 		whereClause += " AND is_available = 1"
@@ -319,24 +337,31 @@ func viewHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	data := PageData{Items: items, SearchQuery: searchQuery, SortBy: sortBy, Order: order, ShowAll: showAll, LastScrapeTime: formattedLastScrapeTime}
+	data := PageData{
+		Items:          items,
+		SearchQuery:    searchQuery,
+		SortBy:         sortBy,
+		Order:          order,
+		ShowAll:        showAll,
+		LastScrapeTime: formattedLastScrapeTime,
+		VisibleColumns: visibleColumns,
+		AllColumns:     allCols,
+		ColumnParams:   template.URL(columnParams.Encode()),
+	}
 	tmpl.Execute(w, data)
 }
 
-// ... (startBackgroundScraper, scrapeData, and initDB functions remain the same) ...
 func startBackgroundScraper() {
 	ticker := time.NewTicker(1 * time.Hour)
 	defer ticker.Stop()
-
-	// Perform an initial scrape on startup
 	go scrapeData()
-
 	for {
 		log.Printf("🕒 Waiting for the next hourly schedule...")
 		<-ticker.C
 		scrapeData()
 	}
 }
+
 func scrapeData() {
 	log.Println("🚀 Starting scrape...")
 	allocOpts := append(chromedp.DefaultExecAllocatorOptions[:],
@@ -375,22 +400,17 @@ func scrapeData() {
 		log.Printf("❌ Failed to begin transaction: %v", err)
 		return
 	}
-	defer tx.Rollback() // Rollback on error
+	defer tx.Rollback()
 
-	// 1. Mark all previously available items as unavailable.
 	if _, err := tx.Exec("UPDATE items SET is_available = 0 WHERE is_available = 1"); err != nil {
 		log.Printf("❌ Failed to mark old items as unavailable: %v", err)
 		return
 	}
-
-	// 2. Log that a scrape occurred
 	_, err = tx.Exec("INSERT OR IGNORE INTO scrape_history (timestamp) VALUES (?)", retrievalTime)
 	if err != nil {
 		log.Printf("❌ Failed to log scrape history: %v", err)
 		return
 	}
-
-	// 3. Prepare insert statement for new items/changes
 	insertSQL := `INSERT INTO items(name_of_the_item, item_id, quantity, price, store_name, seller_name, date_and_time_retrieved, map_name, map_coordinates, is_available) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1)`
 	stmt, err := tx.Prepare(insertSQL)
 	if err != nil {
@@ -418,10 +438,9 @@ func scrapeData() {
 			itemID, _ := strconv.Atoi(idStr)
 
 			if itemName == "" || priceStr == "" || shopName == "" {
-				return // Skip invalid entries
+				return
 			}
 
-			// 4. Check if an identical, but now unavailable, item already exists.
 			var existingID int
 			findQuery := `
 				SELECT id FROM items WHERE
@@ -431,21 +450,18 @@ func scrapeData() {
 			err := tx.QueryRow(findQuery, itemName, itemID, quantity, priceStr, shopName, sellerName, mapName, mapCoordinates).Scan(&existingID)
 
 			if err == nil {
-				// 5a. Identical item found. Mark it as available again. This avoids creating a duplicate history entry.
 				if _, err := tx.Exec("UPDATE items SET is_available = 1 WHERE id = ?", existingID); err != nil {
 					log.Printf("⚠️ Could not update item %s as available: %v", itemName, err)
 				} else {
 					itemsUpdated++
 				}
 			} else if err == sql.ErrNoRows {
-				// 5b. Item is new or has changed. Insert a new record for the history.
 				if _, err := stmt.Exec(itemName, itemID, quantity, priceStr, shopName, sellerName, retrievalTime, mapName, mapCoordinates); err != nil {
 					log.Printf("⚠️ Could not execute insert for %s: %v", itemName, err)
 				} else {
 					itemsSaved++
 				}
 			} else {
-				// A real database error occurred during the check
 				log.Printf("❌ Error checking for existing item %s: %v", itemName, err)
 			}
 		})
@@ -457,12 +473,12 @@ func scrapeData() {
 	}
 	log.Printf("✅ Scrape complete. Checked %d items. Saved %d new/changed items. Marked %d unchanged items as available.", itemsChecked, itemsSaved, itemsUpdated)
 }
+
 func initDB(filepath string) (*sql.DB, error) {
 	db, err := sql.Open("sqlite3", filepath)
 	if err != nil {
 		return nil, err
 	}
-
 	createItemsTableSQL := `
 	CREATE TABLE IF NOT EXISTS items (
 		"id" INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
@@ -480,7 +496,6 @@ func initDB(filepath string) (*sql.DB, error) {
 	if _, err = db.Exec(createItemsTableSQL); err != nil {
 		return nil, fmt.Errorf("could not create items table: %w", err)
 	}
-
 	createHistoryTableSQL := `
 	CREATE TABLE IF NOT EXISTS scrape_history (
 		"timestamp" TEXT NOT NULL PRIMARY KEY
@@ -488,7 +503,5 @@ func initDB(filepath string) (*sql.DB, error) {
 	if _, err = db.Exec(createHistoryTableSQL); err != nil {
 		return nil, fmt.Errorf("could not create scrape_history table: %w", err)
 	}
-
 	return db, nil
 }
-
