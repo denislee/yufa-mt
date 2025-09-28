@@ -19,14 +19,17 @@ import (
 
 var db *sql.DB
 
+// CHANGED: Added MapName and MapCoordinates fields to the Item struct.
 type Item struct {
-	ID        int
-	Name      string
-	ItemID    int
-	Quantity  int
-	Price     string
-	StoreName string
-	Timestamp string
+	ID             int
+	Name           string
+	ItemID         int
+	Quantity       int
+	Price          string
+	StoreName      string
+	Timestamp      string
+	MapName        string
+	MapCoordinates string
 }
 
 type PageData struct {
@@ -60,7 +63,7 @@ func main() {
 	go startBackgroundScraper()
 
 	http.HandleFunc("/", viewHandler)
-	http.HandleFunc("/item", historyHandler) // New route for item history
+	http.HandleFunc("/item", historyHandler)
 
 	port := "8080"
 	log.Printf("🚀 Web server started. Open http://localhost:%s in your browser.", port)
@@ -69,7 +72,6 @@ func main() {
 	}
 }
 
-// historyHandler creates the page for a single item's price history graph.
 func historyHandler(w http.ResponseWriter, r *http.Request) {
 	itemName := r.FormValue("name")
 	if itemName == "" {
@@ -96,6 +98,9 @@ func historyHandler(w http.ResponseWriter, r *http.Request) {
 	defer rows.Close()
 
 	var priceHistory []PricePoint
+	// CHANGED: Initialize variables to track the last price.
+	var lastMinPrice, lastMaxPrice int = -1, -1 // Use -1 to ensure the first point is always added.
+
 	for rows.Next() {
 		var p PricePoint
 		var timestampStr string
@@ -103,13 +108,19 @@ func historyHandler(w http.ResponseWriter, r *http.Request) {
 			log.Printf("⚠️ Failed to scan history row: %v", err)
 			continue
 		}
-		// Format timestamp for display
-		t, _ := time.Parse(time.RFC3339, timestampStr)
-		p.Timestamp = t.Format("2006-01-02 15:04")
-		priceHistory = append(priceHistory, p)
+
+		// CHANGED: Only add the data point if it's the first one or if the price has changed.
+		if lastMinPrice == -1 || p.MinPrice != lastMinPrice || p.MaxPrice != lastMaxPrice {
+			t, _ := time.Parse(time.RFC3339, timestampStr)
+			p.Timestamp = t.Format("2006-01-02 15:04")
+			priceHistory = append(priceHistory, p)
+
+			// Update the last known prices
+			lastMinPrice = p.MinPrice
+			lastMaxPrice = p.MaxPrice
+		}
 	}
 
-	// Convert the price data to a JSON string for Chart.js
 	priceHistoryJSON, err := json.Marshal(priceHistory)
 	if err != nil {
 		http.Error(w, "Failed to create chart data", http.StatusInternalServerError)
@@ -129,7 +140,8 @@ func historyHandler(w http.ResponseWriter, r *http.Request) {
 	tmpl.Execute(w, data)
 }
 
-// viewHandler (for the main list) is mostly unchanged but is included for completeness.
+// NOTE: To display the new map and coordinates, you'll need to update your 'index.html' template.
+// The query and scan functions below are updated to fetch the data.
 func viewHandler(w http.ResponseWriter, r *http.Request) {
 	searchQuery := r.FormValue("query")
 	sortBy := r.FormValue("sort_by")
@@ -148,8 +160,9 @@ func viewHandler(w http.ResponseWriter, r *http.Request) {
 		order = "ASC"
 	}
 
+	// CHANGED: Added map_name and map_coordinates to the SELECT statement.
 	query := fmt.Sprintf(`
-		SELECT id, name_of_the_item, item_id, quantity, price, store_name, date_and_time_retrieved 
+		SELECT id, name_of_the_item, item_id, quantity, price, store_name, date_and_time_retrieved, map_name, map_coordinates
 		FROM items 
 		WHERE date_and_time_retrieved = (SELECT MAX(date_and_time_retrieved) FROM items) 
 		AND name_of_the_item LIKE ? ORDER BY %s %s;`, orderByClause, order)
@@ -166,7 +179,8 @@ func viewHandler(w http.ResponseWriter, r *http.Request) {
 	for rows.Next() {
 		var item Item
 		var retrievedTime string
-		if err := rows.Scan(&item.ID, &item.Name, &item.ItemID, &item.Quantity, &item.Price, &item.StoreName, &retrievedTime); err != nil {
+		// CHANGED: Added item.MapName and item.MapCoordinates to the Scan function.
+		if err := rows.Scan(&item.ID, &item.Name, &item.ItemID, &item.Quantity, &item.Price, &item.StoreName, &retrievedTime, &item.MapName, &item.MapCoordinates); err != nil {
 			log.Printf("⚠️ Failed to scan row: %v", err)
 			continue
 		}
@@ -189,7 +203,6 @@ func viewHandler(w http.ResponseWriter, r *http.Request) {
 	tmpl.Execute(w, data)
 }
 
-// No changes needed for the functions below
 func startBackgroundScraper() {
 	ticker := time.NewTicker(1 * time.Hour)
 	defer ticker.Stop()
@@ -238,7 +251,8 @@ func scrapeData() {
 	}
 	defer tx.Rollback()
 
-	insertSQL := `INSERT INTO items(name_of_the_item, item_id, quantity, price, store_name, date_and_time_retrieved) VALUES (?, ?, ?, ?, ?, ?)`
+	// CHANGED: Updated SQL query to include new fields.
+	insertSQL := `INSERT INTO items(name_of_the_item, item_id, quantity, price, store_name, date_and_time_retrieved, map_name, map_coordinates) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
 	stmt, err := tx.Prepare(insertSQL)
 	if err != nil {
 		log.Printf("⚠️ Could not prepare insert statement: %v", err)
@@ -248,6 +262,11 @@ func scrapeData() {
 
 	doc.Find(`div[data-slot="card"]`).Each(func(i int, s *goquery.Selection) {
 		shopName := strings.TrimSpace(s.Find(`div[data-slot="card-title"]`).Text())
+
+		// CHANGED: Extract map name and coordinates for each shop.
+		mapName := strings.TrimSpace(s.Find("svg.lucide-map-pin").Next().Text())
+		mapCoordinates := strings.TrimSpace(s.Find("svg.lucide-copy").Next().Text())
+
 		s.Find(`div[data-slot="card-content"] .flex.items-center.space-x-2`).Each(func(j int, itemSelection *goquery.Selection) {
 			itemName := strings.TrimSpace(itemSelection.Find("p.truncate").Text())
 			quantityStr := strings.TrimSuffix(strings.TrimSpace(itemSelection.Find("span.text-xs.text-muted-foreground").Text()), "x")
@@ -260,7 +279,8 @@ func scrapeData() {
 			itemID, _ := strconv.Atoi(idStr)
 
 			if itemName != "" && priceStr != "" && shopName != "" {
-				if _, err := stmt.Exec(itemName, itemID, quantity, priceStr, shopName, retrievalTime); err != nil {
+				// CHANGED: Pass the new map data to the database insert.
+				if _, err := stmt.Exec(itemName, itemID, quantity, priceStr, shopName, retrievalTime, mapName, mapCoordinates); err != nil {
 					log.Printf("⚠️ Could not execute insert: %v", err)
 				} else {
 					itemsSaved++
@@ -280,11 +300,19 @@ func initDB(filepath string) (*sql.DB, error) {
 	if err != nil {
 		return nil, err
 	}
+
+	// CHANGED: Added map_name and map_coordinates columns to the table definition.
 	createTableSQL := `
 	CREATE TABLE IF NOT EXISTS items (
 		"id" INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
-		"name_of_the_item" TEXT, "item_id" INTEGER, "quantity" INTEGER,
-		"price" TEXT, "store_name" TEXT, "date_and_time_retrieved" TEXT
+		"name_of_the_item" TEXT,
+		"item_id" INTEGER,
+		"quantity" INTEGER,
+		"price" TEXT,
+		"store_name" TEXT,
+		"date_and_time_retrieved" TEXT,
+		"map_name" TEXT,
+		"map_coordinates" TEXT
 	);`
 	_, err = db.Exec(createTableSQL)
 	if err != nil {
@@ -292,3 +320,4 @@ func initDB(filepath string) (*sql.DB, error) {
 	}
 	return db, nil
 }
+
