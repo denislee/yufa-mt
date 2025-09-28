@@ -19,7 +19,7 @@ import (
 
 var db *sql.DB
 
-// CHANGED: Added IsAvailable field to the Item struct.
+// Item struct remains the same
 type Item struct {
 	ID             int
 	Name           string
@@ -34,13 +34,16 @@ type Item struct {
 	IsAvailable    bool
 }
 
+// CHANGED: Added ShowAll to the PageData struct.
 type PageData struct {
 	Items       []Item
 	SearchQuery string
 	SortBy      string
 	Order       string
+	ShowAll     bool
 }
 
+// ... (PricePointDetails and HistoryPageData structs remain the same) ...
 type PricePointDetails struct {
 	Timestamp     string `json:"Timestamp"`
 	MinPrice      int    `json:"MinPrice"`
@@ -62,6 +65,7 @@ type HistoryPageData struct {
 	PriceDataJSON template.JS
 }
 
+// ... (main function remains the same) ...
 func main() {
 	var err error
 	db, err = initDB("./market_data.db")
@@ -82,6 +86,7 @@ func main() {
 	}
 }
 
+// ... (historyHandler remains the same) ...
 func historyHandler(w http.ResponseWriter, r *http.Request) {
 	itemName := r.FormValue("name")
 	if itemName == "" {
@@ -228,11 +233,12 @@ func historyHandler(w http.ResponseWriter, r *http.Request) {
 	tmpl.Execute(w, data)
 }
 
-// CHANGED: The view handler now queries for available items instead of using the latest timestamp.
+// CHANGED: The view handler now conditionally filters by item availability.
 func viewHandler(w http.ResponseWriter, r *http.Request) {
 	searchQuery := r.FormValue("query")
 	sortBy := r.FormValue("sort_by")
 	order := r.FormValue("order")
+	showAll := r.FormValue("show_all") == "true"
 
 	allowedSorts := map[string]string{
 		"name":      "name_of_the_item",
@@ -252,11 +258,17 @@ func viewHandler(w http.ResponseWriter, r *http.Request) {
 		order = "ASC"
 	}
 
+	// Dynamically build the WHERE clause based on the "show_all" checkbox
+	whereClause := "WHERE name_of_the_item LIKE ?"
+	if !showAll {
+		whereClause += " AND is_available = 1"
+	}
+
 	query := fmt.Sprintf(`
 		SELECT id, name_of_the_item, item_id, quantity, price, store_name, seller_name, date_and_time_retrieved, map_name, map_coordinates, is_available
 		FROM items 
-		WHERE is_available = 1
-		AND name_of_the_item LIKE ? ORDER BY %s %s;`, orderByClause, order)
+		%s 
+		ORDER BY %s %s;`, whereClause, orderByClause, order)
 
 	rows, err := db.Query(query, "%"+searchQuery+"%")
 	if err != nil {
@@ -270,7 +282,6 @@ func viewHandler(w http.ResponseWriter, r *http.Request) {
 	for rows.Next() {
 		var item Item
 		var retrievedTime string
-		// CHANGED: Added item.IsAvailable to the Scan function.
 		err := rows.Scan(&item.ID, &item.Name, &item.ItemID, &item.Quantity, &item.Price, &item.StoreName, &item.SellerName, &retrievedTime, &item.MapName, &item.MapCoordinates, &item.IsAvailable)
 		if err != nil {
 			log.Printf("⚠️ Failed to scan row: %v", err)
@@ -291,10 +302,11 @@ func viewHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	data := PageData{Items: items, SearchQuery: searchQuery, SortBy: sortBy, Order: order}
+	data := PageData{Items: items, SearchQuery: searchQuery, SortBy: sortBy, Order: order, ShowAll: showAll}
 	tmpl.Execute(w, data)
 }
 
+// ... (startBackgroundScraper, scrapeData, and initDB functions remain the same) ...
 func startBackgroundScraper() {
 	ticker := time.NewTicker(1 * time.Hour)
 	defer ticker.Stop()
@@ -308,8 +320,6 @@ func startBackgroundScraper() {
 		scrapeData()
 	}
 }
-
-// CHANGED: The scraper logic is heavily modified to handle item availability.
 func scrapeData() {
 	log.Println("🚀 Starting scrape...")
 	allocOpts := append(chromedp.DefaultExecAllocatorOptions[:],
@@ -430,8 +440,6 @@ func scrapeData() {
 	}
 	log.Printf("✅ Scrape complete. Checked %d items. Saved %d new/changed items. Marked %d unchanged items as available.", itemsChecked, itemsSaved, itemsUpdated)
 }
-
-// CHANGED: Added the is_available column to the items table schema.
 func initDB(filepath string) (*sql.DB, error) {
 	db, err := sql.Open("sqlite3", filepath)
 	if err != nil {
