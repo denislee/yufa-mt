@@ -25,7 +25,8 @@
 <body>
     <div class="container">
         <h1>Yufa Market</h1>
-        <p>Showing <strong>{{ len .Items }}</strong> items from the most recent data retrieval.</p>
+        <p>Last updated: <strong>{{ .LastScrapeTime }}</strong></p>
+        <p>Showing <strong>{{ len .Items }}</strong> items.</p>
         
         <form action="/" method="get">
             <input type="text" name="query" placeholder="Filter by item name..." value="{{ .SearchQuery }}">

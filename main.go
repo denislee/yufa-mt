@@ -34,13 +34,14 @@ type Item struct {
 	IsAvailable    bool
 }
 
-// CHANGED: Added ShowAll to the PageData struct.
+// CHANGED: Added LastScrapeTime and ShowAll to the PageData struct.
 type PageData struct {
-	Items       []Item
-	SearchQuery string
-	SortBy      string
-	Order       string
-	ShowAll     bool
+	Items          []Item
+	SearchQuery    string
+	SortBy         string
+	Order          string
+	ShowAll        bool
+	LastScrapeTime string
 }
 
 // ... (PricePointDetails and HistoryPageData structs remain the same) ...
@@ -233,12 +234,28 @@ func historyHandler(w http.ResponseWriter, r *http.Request) {
 	tmpl.Execute(w, data)
 }
 
-// CHANGED: The view handler now conditionally filters by item availability.
+// CHANGED: The view handler now fetches the last scrape time.
 func viewHandler(w http.ResponseWriter, r *http.Request) {
 	searchQuery := r.FormValue("query")
 	sortBy := r.FormValue("sort_by")
 	order := r.FormValue("order")
 	showAll := r.FormValue("show_all") == "true"
+
+	// Get the last scrape time
+	var lastScrapeTimestamp sql.NullString
+	err := db.QueryRow("SELECT MAX(timestamp) FROM scrape_history").Scan(&lastScrapeTimestamp)
+	if err != nil {
+		log.Printf("⚠️ Could not get last scrape time: %v", err)
+	}
+	var formattedLastScrapeTime string
+	if lastScrapeTimestamp.Valid {
+		parsedTime, err := time.Parse(time.RFC3339, lastScrapeTimestamp.String)
+		if err == nil {
+			formattedLastScrapeTime = parsedTime.Format("2006-01-02 15:04:05")
+		}
+	} else {
+		formattedLastScrapeTime = "Never"
+	}
 
 	allowedSorts := map[string]string{
 		"name":      "name_of_the_item",
@@ -302,7 +319,7 @@ func viewHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	data := PageData{Items: items, SearchQuery: searchQuery, SortBy: sortBy, Order: order, ShowAll: showAll}
+	data := PageData{Items: items, SearchQuery: searchQuery, SortBy: sortBy, Order: order, ShowAll: showAll, LastScrapeTime: formattedLastScrapeTime}
 	tmpl.Execute(w, data)
 }
 
