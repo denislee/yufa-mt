@@ -228,7 +228,8 @@ func viewHandler(w http.ResponseWriter, r *http.Request) {
 	searchQuery := r.FormValue("query")
 	sortBy := r.FormValue("sort_by")
 	order := r.FormValue("order")
-	showAll := r.FormValue("show_all") == "true"
+	// Default to showing all items unless 'only_available' is checked.
+	showAll := r.FormValue("only_available") != "true"
 	selectedCols := r.Form["cols"]
 
 	// Define all toggleable columns
@@ -289,7 +290,7 @@ func viewHandler(w http.ResponseWriter, r *http.Request) {
 
 	orderByClause, ok := allowedSorts[sortBy]
 	if !ok {
-		orderByClause, sortBy = "is_available DESC, name_of_the_item", "availability"
+		orderByClause, sortBy = "name_of_the_item", "name"
 	}
 	if strings.ToUpper(order) != "DESC" {
 		order = "ASC"

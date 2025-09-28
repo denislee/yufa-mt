@@ -42,8 +42,8 @@
             <div class="form-controls">
                 <input type="text" name="query" placeholder="Filter by item name..." value="{{ .SearchQuery }}">
                 <label>
-                    <input type="checkbox" name="show_all" value="true" {{if .ShowAll}}checked{{end}}>
-                    Show unavailable
+                    <input type="checkbox" name="only_available" value="true" {{if not .ShowAll}}checked{{end}}>
+                    Show only available
                 </label>
                 <button type="submit">Search</button>
             </div>
@@ -62,24 +62,24 @@
         <table>
             <thead>
                 <tr>
-                    <th><a href="/?query={{.SearchQuery}}&sort_by=name&show_all={{.ShowAll}}&order={{if and (eq .SortBy "name") (eq .Order "ASC")}}DESC{{else}}ASC{{end}}&{{.ColumnParams}}">Item Name {{if eq .SortBy "name"}}{{if eq .Order "ASC"}}▲{{else}}▼{{end}}{{end}}</a></th>
+                    <th><a href="/?query={{.SearchQuery}}&sort_by=name&order={{if and (eq .SortBy "name") (eq .Order "ASC")}}DESC{{else}}ASC{{end}}{{if not .ShowAll}}&only_available=true{{end}}{{if .ColumnParams}}&{{.ColumnParams}}{{end}}">Item Name {{if eq .SortBy "name"}}{{if eq .Order "ASC"}}▲{{else}}▼{{end}}{{end}}</a></th>
                     
                     {{if index .VisibleColumns "item_id"}}
-                    <th><a href="/?query={{.SearchQuery}}&sort_by=item_id&show_all={{.ShowAll}}&order={{if and (eq .SortBy "item_id") (eq .Order "ASC")}}DESC{{else}}ASC{{end}}&{{.ColumnParams}}">Item ID {{if eq .SortBy "item_id"}}{{if eq .Order "ASC"}}▲{{else}}▼{{end}}{{end}}</a></th>
+                    <th><a href="/?query={{.SearchQuery}}&sort_by=item_id&order={{if and (eq .SortBy "item_id") (eq .Order "ASC")}}DESC{{else}}ASC{{end}}{{if not .ShowAll}}&only_available=true{{end}}{{if .ColumnParams}}&{{.ColumnParams}}{{end}}">Item ID {{if eq .SortBy "item_id"}}{{if eq .Order "ASC"}}▲{{else}}▼{{end}}{{end}}</a></th>
                     {{end}}
 
                     {{if index .VisibleColumns "quantity"}}
-                    <th><a href="/?query={{.SearchQuery}}&sort_by=quantity&show_all={{.ShowAll}}&order={{if and (eq .SortBy "quantity") (eq .Order "ASC")}}DESC{{else}}ASC{{end}}&{{.ColumnParams}}">Quantity {{if eq .SortBy "quantity"}}{{if eq .Order "ASC"}}▲{{else}}▼{{end}}{{end}}</a></th>
+                    <th><a href="/?query={{.SearchQuery}}&sort_by=quantity&order={{if and (eq .SortBy "quantity") (eq .Order "ASC")}}DESC{{else}}ASC{{end}}{{if not .ShowAll}}&only_available=true{{end}}{{if .ColumnParams}}&{{.ColumnParams}}{{end}}">Quantity {{if eq .SortBy "quantity"}}{{if eq .Order "ASC"}}▲{{else}}▼{{end}}{{end}}</a></th>
                     {{end}}
 
-                    <th><a href="/?query={{.SearchQuery}}&sort_by=price&show_all={{.ShowAll}}&order={{if and (eq .SortBy "price") (eq .Order "ASC")}}DESC{{else}}ASC{{end}}&{{.ColumnParams}}">Price {{if eq .SortBy "price"}}{{if eq .Order "ASC"}}▲{{else}}▼{{end}}{{end}}</a></th>
+                    <th><a href="/?query={{.SearchQuery}}&sort_by=price&order={{if and (eq .SortBy "price") (eq .Order "ASC")}}DESC{{else}}ASC{{end}}{{if not .ShowAll}}&only_available=true{{end}}{{if .ColumnParams}}&{{.ColumnParams}}{{end}}">Price {{if eq .SortBy "price"}}{{if eq .Order "ASC"}}▲{{else}}▼{{end}}{{end}}</a></th>
                     
                     {{if index .VisibleColumns "store_name"}}
-                    <th><a href="/?query={{.SearchQuery}}&sort_by=store_name&show_all={{.ShowAll}}&order={{if and (eq .SortBy "store_name") (eq .Order "ASC")}}DESC{{else}}ASC{{end}}&{{.ColumnParams}}">Store Name {{if eq .SortBy "store_name"}}{{if eq .Order "ASC"}}▲{{else}}▼{{end}}{{end}}</a></th>
+                    <th><a href="/?query={{.SearchQuery}}&sort_by=store_name&order={{if and (eq .SortBy "store_name") (eq .Order "ASC")}}DESC{{else}}ASC{{end}}{{if not .ShowAll}}&only_available=true{{end}}{{if .ColumnParams}}&{{.ColumnParams}}{{end}}">Store Name {{if eq .SortBy "store_name"}}{{if eq .Order "ASC"}}▲{{else}}▼{{end}}{{end}}</a></th>
                     {{end}}
 
                     {{if index .VisibleColumns "seller_name"}}
-                    <th><a href="/?query={{.SearchQuery}}&sort_by=seller&show_all={{.ShowAll}}&order={{if and (eq .SortBy "seller") (eq .Order "ASC")}}DESC{{else}}ASC{{end}}&{{.ColumnParams}}">Seller Name {{if eq .SortBy "seller"}}{{if eq .Order "ASC"}}▲{{else}}▼{{end}}{{end}}</a></th>
+                    <th><a href="/?query={{.SearchQuery}}&sort_by=seller&order={{if and (eq .SortBy "seller") (eq .Order "ASC")}}DESC{{else}}ASC{{end}}{{if not .ShowAll}}&only_available=true{{end}}{{if .ColumnParams}}&{{.ColumnParams}}{{end}}">Seller Name {{if eq .SortBy "seller"}}{{if eq .Order "ASC"}}▲{{else}}▼{{end}}{{end}}</a></th>
                     {{end}}
 
                     {{if index .VisibleColumns "map_name"}}
@@ -91,11 +91,11 @@
                     {{end}}
                     
                     {{if index .VisibleColumns "retrieved"}}
-                    <th><a href="/?query={{.SearchQuery}}&sort_by=retrieved&show_all={{.ShowAll}}&order={{if and (eq .SortBy "retrieved") (eq .Order "ASC")}}DESC{{else}}ASC{{end}}&{{.ColumnParams}}">Date Retrieved {{if eq .SortBy "retrieved"}}{{if eq .Order "ASC"}}▲{{else}}▼{{end}}{{end}}</a></th>
+                    <th><a href="/?query={{.SearchQuery}}&sort_by=retrieved&order={{if and (eq .SortBy "retrieved") (eq .Order "ASC")}}DESC{{else}}ASC{{end}}{{if not .ShowAll}}&only_available=true{{end}}{{if .ColumnParams}}&{{.ColumnParams}}{{end}}">Date Retrieved {{if eq .SortBy "retrieved"}}{{if eq .Order "ASC"}}▲{{else}}▼{{end}}{{end}}</a></th>
                     {{end}}
                     
                     {{if index .VisibleColumns "availability"}}
-                    <th><a href="/?query={{.SearchQuery}}&sort_by=availability&show_all={{.ShowAll}}&order={{if and (eq .SortBy "availability") (eq .Order "ASC")}}DESC{{else}}ASC{{end}}&{{.ColumnParams}}">Available {{if eq .SortBy "availability"}}{{if eq .Order "ASC"}}▲{{else}}▼{{end}}{{end}}</a></th>
+                    <th><a href="/?query={{.SearchQuery}}&sort_by=availability&order={{if and (eq .SortBy "availability") (eq .Order "ASC")}}DESC{{else}}ASC{{end}}{{if not .ShowAll}}&only_available=true{{end}}{{if .ColumnParams}}&{{.ColumnParams}}{{end}}">Available {{if eq .SortBy "availability"}}{{if eq .Order "ASC"}}▲{{else}}▼{{end}}{{end}}</a></th>
                     {{end}}
                 </tr>
             </thead>
