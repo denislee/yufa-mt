@@ -24,6 +24,12 @@
         td a { color: #007bff; text-decoration: none; font-weight: 500; }
         td a:hover { text-decoration: underline; }
         .truncate { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .unavailable {
+            opacity: 0.6;
+        }
+        .unavailable a {
+            color: #666;
+        }
     </style>
 </head>
 <body>
@@ -87,11 +93,15 @@
                     {{if index .VisibleColumns "retrieved"}}
                     <th><a href="/?query={{.SearchQuery}}&sort_by=retrieved&show_all={{.ShowAll}}&order={{if and (eq .SortBy "retrieved") (eq .Order "ASC")}}DESC{{else}}ASC{{end}}&{{.ColumnParams}}">Date Retrieved {{if eq .SortBy "retrieved"}}{{if eq .Order "ASC"}}▲{{else}}▼{{end}}{{end}}</a></th>
                     {{end}}
+                    
+                    {{if index .VisibleColumns "availability"}}
+                    <th><a href="/?query={{.SearchQuery}}&sort_by=availability&show_all={{.ShowAll}}&order={{if and (eq .SortBy "availability") (eq .Order "ASC")}}DESC{{else}}ASC{{end}}&{{.ColumnParams}}">Available {{if eq .SortBy "availability"}}{{if eq .Order "ASC"}}▲{{else}}▼{{end}}{{end}}</a></th>
+                    {{end}}
                 </tr>
             </thead>
             <tbody>
                 {{range .Items}}
-                <tr>
+                <tr {{if not .IsAvailable}}class="unavailable" title="This item is no longer available"{{end}}>
                     <td><img src="https://static.divine-pride.net/images/items/item/{{.ItemID}}.png" alt="" width="24" height="24" style="vertical-align: middle; margin-right: 5px;"> <a href="/item?name={{.Name | urlquery}}">{{.Name}}</a></td>
                     
                     {{if index $.VisibleColumns "item_id"}}<td>{{.ItemID}}</td>{{end}}
@@ -102,6 +112,15 @@
                     {{if index $.VisibleColumns "map_name"}}<td>{{.MapName}}</td>{{end}}
                     {{if index $.VisibleColumns "map_coordinates"}}<td><a href="#" onclick="copyNavi(event, '{{.MapName}}', '{{.MapCoordinates}}')" title="Click to copy /navi command">{{.MapCoordinates}}</a></td>{{end}}
                     {{if index $.VisibleColumns "retrieved"}}<td>{{.Timestamp}}</td>{{end}}
+                    {{if index $.VisibleColumns "availability"}}
+                        <td>
+                            {{if .IsAvailable}}
+                                <span style="color: #28a745; font-weight: bold;">Yes</span>
+                            {{else}}
+                                <span style="color: #dc3545;">No</span>
+                            {{end}}
+                        </td>
+                    {{end}}
                 </tr>
                 {{end}}
             </tbody>

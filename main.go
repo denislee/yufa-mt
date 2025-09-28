@@ -240,6 +240,7 @@ func viewHandler(w http.ResponseWriter, r *http.Request) {
 		{ID: "map_name", DisplayName: "Map Name"},
 		{ID: "map_coordinates", DisplayName: "Map Coords"},
 		{ID: "retrieved", DisplayName: "Date Retrieved"},
+		{ID: "availability", DisplayName: "Availability"},
 	}
 	visibleColumns := make(map[string]bool)
 	columnParams := url.Values{}
@@ -274,21 +275,21 @@ func viewHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	allowedSorts := map[string]string{
-		"name":            "name_of_the_item",
-		"item_id":         "item_id",
-		"quantity":        "quantity",
-		"price":           "CAST(REPLACE(price, ',', '') AS INTEGER)",
-		"store":           "store_name",
-		"seller":          "seller_name",
-		"retrieved":       "date_and_time_retrieved",
-		"store_name":      "store_name",
-		"map_name":        "map_name",
-		"map_coordinates": "map_coordinates",
+		"name":         "name_of_the_item",
+		"item_id":      "item_id",
+		"quantity":     "quantity",
+		"price":        "CAST(REPLACE(price, ',', '') AS INTEGER)",
+		"store":        "store_name",
+		"seller":       "seller_name",
+		"retrieved":    "date_and_time_retrieved",
+		"store_name":   "store_name",
+		"map_name":     "map_name",
+		"availability": "is_available",
 	}
 
 	orderByClause, ok := allowedSorts[sortBy]
 	if !ok {
-		orderByClause, sortBy = "name_of_the_item", "name"
+		orderByClause, sortBy = "is_available DESC, name_of_the_item", "availability"
 	}
 	if strings.ToUpper(order) != "DESC" {
 		order = "ASC"
@@ -352,7 +353,7 @@ func viewHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func startBackgroundScraper() {
-	ticker := time.NewTicker(1 * time.Hour)
+	ticker := time.NewTicker(30 * time.Minute)
 	defer ticker.Stop()
 	go scrapeData()
 	for {
