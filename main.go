@@ -19,7 +19,7 @@ import (
 
 var db *sql.DB
 
-// CHANGED: Added SellerName field to the Item struct.
+// CHANGED: Added IsAvailable field to the Item struct.
 type Item struct {
 	ID             int
 	Name           string
@@ -31,6 +31,7 @@ type Item struct {
 	Timestamp      string
 	MapName        string
 	MapCoordinates string
+	IsAvailable    bool
 }
 
 type PageData struct {
@@ -40,7 +41,6 @@ type PageData struct {
 	Order       string
 }
 
-// CHANGED: Replaced the old PricePoint struct with a more detailed one.
 type PricePointDetails struct {
 	Timestamp     string `json:"Timestamp"`
 	MinPrice      int    `json:"MinPrice"`
@@ -82,7 +82,6 @@ func main() {
 	}
 }
 
-// CHANGED: The history handler has been extensively updated to fetch and process detailed price points.
 func historyHandler(w http.ResponseWriter, r *http.Request) {
 	itemName := r.FormValue("name")
 	if itemName == "" {
@@ -229,12 +228,12 @@ func historyHandler(w http.ResponseWriter, r *http.Request) {
 	tmpl.Execute(w, data)
 }
 
+// CHANGED: The view handler now queries for available items instead of using the latest timestamp.
 func viewHandler(w http.ResponseWriter, r *http.Request) {
 	searchQuery := r.FormValue("query")
 	sortBy := r.FormValue("sort_by")
 	order := r.FormValue("order")
 
-	// CHANGED: Added "seller" to the allowed sorts map.
 	allowedSorts := map[string]string{
 		"name":      "name_of_the_item",
 		"item_id":   "item_id",
@@ -253,11 +252,10 @@ func viewHandler(w http.ResponseWriter, r *http.Request) {
 		order = "ASC"
 	}
 
-	// CHANGED: Added seller_name to the SELECT statement.
 	query := fmt.Sprintf(`
-		SELECT id, name_of_the_item, item_id, quantity, price, store_name, seller_name, date_and_time_retrieved, map_name, map_coordinates
+		SELECT id, name_of_the_item, item_id, quantity, price, store_name, seller_name, date_and_time_retrieved, map_name, map_coordinates, is_available
 		FROM items 
-		WHERE date_and_time_retrieved = (SELECT MAX(date_and_time_retrieved) FROM items) 
+		WHERE is_available = 1
 		AND name_of_the_item LIKE ? ORDER BY %s %s;`, orderByClause, order)
 
 	rows, err := db.Query(query, "%"+searchQuery+"%")
@@ -272,8 +270,8 @@ func viewHandler(w http.ResponseWriter, r *http.Request) {
 	for rows.Next() {
 		var item Item
 		var retrievedTime string
-		// CHANGED: Added item.SellerName to the Scan function.
-		err := rows.Scan(&item.ID, &item.Name, &item.ItemID, &item.Quantity, &item.Price, &item.StoreName, &item.SellerName, &retrievedTime, &item.MapName, &item.MapCoordinates)
+		// CHANGED: Added item.IsAvailable to the Scan function.
+		err := rows.Scan(&item.ID, &item.Name, &item.ItemID, &item.Quantity, &item.Price, &item.StoreName, &item.SellerName, &retrievedTime, &item.MapName, &item.MapCoordinates, &item.IsAvailable)
 		if err != nil {
 			log.Printf("⚠️ Failed to scan row: %v", err)
 			continue
@@ -311,6 +309,7 @@ func startBackgroundScraper() {
 	}
 }
 
+// CHANGED: The scraper logic is heavily modified to handle item availability.
 func scrapeData() {
 	log.Println("🚀 Starting scrape...")
 	allocOpts := append(chromedp.DefaultExecAllocatorOptions[:],
@@ -342,6 +341,7 @@ func scrapeData() {
 
 	retrievalTime := time.Now().Format(time.RFC3339)
 	itemsSaved := 0
+	itemsUpdated := 0
 	itemsChecked := 0
 	tx, err := db.Begin()
 	if err != nil {
@@ -350,15 +350,21 @@ func scrapeData() {
 	}
 	defer tx.Rollback() // Rollback on error
 
-	// 1. Log that a scrape occurred
+	// 1. Mark all previously available items as unavailable.
+	if _, err := tx.Exec("UPDATE items SET is_available = 0 WHERE is_available = 1"); err != nil {
+		log.Printf("❌ Failed to mark old items as unavailable: %v", err)
+		return
+	}
+
+	// 2. Log that a scrape occurred
 	_, err = tx.Exec("INSERT OR IGNORE INTO scrape_history (timestamp) VALUES (?)", retrievalTime)
 	if err != nil {
 		log.Printf("❌ Failed to log scrape history: %v", err)
 		return
 	}
 
-	// CHANGED: Added seller_name to the INSERT statement.
-	insertSQL := `INSERT INTO items(name_of_the_item, item_id, quantity, price, store_name, seller_name, date_and_time_retrieved, map_name, map_coordinates) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
+	// 3. Prepare insert statement for new items/changes
+	insertSQL := `INSERT INTO items(name_of_the_item, item_id, quantity, price, store_name, seller_name, date_and_time_retrieved, map_name, map_coordinates, is_available) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1)`
 	stmt, err := tx.Prepare(insertSQL)
 	if err != nil {
 		log.Printf("⚠️ Could not prepare insert statement: %v", err)
@@ -366,19 +372,8 @@ func scrapeData() {
 	}
 	defer stmt.Close()
 
-	// CHANGED: Added SellerName to the dbItemState struct.
-	type dbItemState struct {
-		Price          string
-		Quantity       int
-		StoreName      string
-		SellerName     string
-		MapName        string
-		MapCoordinates string
-	}
-
 	doc.Find(`div[data-slot="card"]`).Each(func(i int, s *goquery.Selection) {
 		shopName := strings.TrimSpace(s.Find(`div[data-slot="card-title"]`).Text())
-		// CHANGED: Extract the seller name.
 		sellerName := strings.TrimSpace(s.Find("svg.lucide-user").Next().Text())
 		mapName := strings.TrimSpace(s.Find("svg.lucide-map-pin").Next().Text())
 		mapCoordinates := strings.TrimSpace(s.Find("svg.lucide-copy").Next().Text())
@@ -399,29 +394,32 @@ func scrapeData() {
 				return // Skip invalid entries
 			}
 
-			// 2. Get the last recorded state for this specific item
-			var lastState dbItemState
-			// CHANGED: Added seller_name to the query and Scan.
-			query := `SELECT price, quantity, store_name, seller_name, map_name, map_coordinates FROM items WHERE name_of_the_item = ? AND item_id = ? ORDER BY date_and_time_retrieved DESC LIMIT 1`
-			err := tx.QueryRow(query, itemName, itemID).Scan(&lastState.Price, &lastState.Quantity, &lastState.StoreName, &lastState.SellerName, &lastState.MapName, &lastState.MapCoordinates)
+			// 4. Check if an identical, but now unavailable, item already exists.
+			var existingID int
+			findQuery := `
+				SELECT id FROM items WHERE
+				name_of_the_item = ? AND item_id = ? AND quantity = ? AND price = ? AND
+				store_name = ? AND seller_name = ? AND map_name = ? AND map_coordinates = ? AND is_available = 0
+				ORDER BY date_and_time_retrieved DESC LIMIT 1`
+			err := tx.QueryRow(findQuery, itemName, itemID, quantity, priceStr, shopName, sellerName, mapName, mapCoordinates).Scan(&existingID)
 
-			// 3. Compare the last state with the current scraped state
-			// CHANGED: Added sellerName to the comparison.
-			if err == sql.ErrNoRows ||
-				lastState.Price != priceStr ||
-				lastState.Quantity != quantity ||
-				lastState.StoreName != shopName ||
-				lastState.SellerName != sellerName ||
-				lastState.MapName != mapName ||
-				lastState.MapCoordinates != mapCoordinates {
-
-				// 4. If different, insert the new record
-				// CHANGED: Pass sellerName to the Exec function.
+			if err == nil {
+				// 5a. Identical item found. Mark it as available again. This avoids creating a duplicate history entry.
+				if _, err := tx.Exec("UPDATE items SET is_available = 1 WHERE id = ?", existingID); err != nil {
+					log.Printf("⚠️ Could not update item %s as available: %v", itemName, err)
+				} else {
+					itemsUpdated++
+				}
+			} else if err == sql.ErrNoRows {
+				// 5b. Item is new or has changed. Insert a new record for the history.
 				if _, err := stmt.Exec(itemName, itemID, quantity, priceStr, shopName, sellerName, retrievalTime, mapName, mapCoordinates); err != nil {
 					log.Printf("⚠️ Could not execute insert for %s: %v", itemName, err)
 				} else {
 					itemsSaved++
 				}
+			} else {
+				// A real database error occurred during the check
+				log.Printf("❌ Error checking for existing item %s: %v", itemName, err)
 			}
 		})
 	})
@@ -430,16 +428,16 @@ func scrapeData() {
 		log.Printf("❌ Failed to commit transaction: %v", err)
 		return
 	}
-	log.Printf("✅ Scrape complete. Checked %d items, saved %d changes.", itemsChecked, itemsSaved)
+	log.Printf("✅ Scrape complete. Checked %d items. Saved %d new/changed items. Marked %d unchanged items as available.", itemsChecked, itemsSaved, itemsUpdated)
 }
 
+// CHANGED: Added the is_available column to the items table schema.
 func initDB(filepath string) (*sql.DB, error) {
 	db, err := sql.Open("sqlite3", filepath)
 	if err != nil {
 		return nil, err
 	}
 
-	// CHANGED: Added seller_name column to the items table.
 	createItemsTableSQL := `
 	CREATE TABLE IF NOT EXISTS items (
 		"id" INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
@@ -451,7 +449,8 @@ func initDB(filepath string) (*sql.DB, error) {
 		"seller_name" TEXT,
 		"date_and_time_retrieved" TEXT,
 		"map_name" TEXT,
-		"map_coordinates" TEXT
+		"map_coordinates" TEXT,
+		"is_available" INTEGER DEFAULT 1
 	);`
 	if _, err = db.Exec(createItemsTableSQL); err != nil {
 		return nil, fmt.Errorf("could not create items table: %w", err)
@@ -467,3 +466,4 @@ func initDB(filepath string) (*sql.DB, error) {
 
 	return db, nil
 }
+
