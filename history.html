@@ -24,6 +24,7 @@
 
         // Prepare data for Chart.js
         const labels = priceHistoryData.map(p => p.Timestamp);
+        // CHANGED: The data source for prices is now more specific (e.g., p.MinPrice).
         const minPrices = priceHistoryData.map(p => p.MinPrice);
         const maxPrices = priceHistoryData.map(p => p.MaxPrice);
 
@@ -53,6 +54,7 @@
                     }
                 ]
             },
+            // CHANGED: Added a detailed tooltip configuration.
             options: {
                 scales: {
                     y: {
@@ -60,6 +62,34 @@
                         ticks: {
                             callback: function(value, index, values) {
                                 return value.toLocaleString() + 'z'; // Format Y-axis with 'z'
+                            }
+                        }
+                    }
+                },
+                plugins: {
+                    tooltip: {
+                        callbacks: {
+                            // The 'afterLabel' callback adds extra lines of text to the tooltip.
+                            afterLabel: function(context) {
+                                const dataPoint = priceHistoryData[context.dataIndex];
+                                if (!dataPoint) return '';
+
+                                let details = [];
+                                // Check which dataset (Min or Max price) the user is hovering over
+                                // and display the corresponding details.
+                                if (context.dataset.label === 'Minimum Price') {
+                                    details.push(`  Quantity: ${dataPoint.MinQuantity.toLocaleString()}`);
+                                    details.push(`  Store: ${dataPoint.MinStoreName}`);
+                                    details.push(`  Seller: ${dataPoint.MinSellerName}`);
+                                    details.push(`  Map: ${dataPoint.MinMapName} (${dataPoint.MinMapCoords})`);
+                                } else if (context.dataset.label === 'Maximum Price') {
+                                    details.push(`  Quantity: ${dataPoint.MaxQuantity.toLocaleString()}`);
+                                    details.push(`  Store: ${dataPoint.MaxStoreName}`);
+                                    details.push(`  Seller: ${dataPoint.MaxSellerName}`);
+                                    details.push(`  Map: ${dataPoint.MaxMapName} (${dataPoint.MaxMapCoords})`);
+                                }
+                                // The returned array of strings will be rendered as new lines.
+                                return details;
                             }
                         }
                     }
