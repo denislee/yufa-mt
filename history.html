@@ -48,8 +48,8 @@
 
         {{if .ItemDetails.DropRates}}
         <div class="drop-info">
-            <h3>Dropped By</h3>
-            <table>
+            <h3 id="drop-header" style="cursor: pointer; user-select: none;">Dropped By <span id="drop-indicator">[+]</span></h3>
+            <table id="drop-table" style="display: none;">
                 <thead>
                     <tr>
                         <th>Monster</th>
@@ -233,6 +233,19 @@
                 }
             }
         });
+
+        // --- Collapsible "Dropped By" section logic ---
+        const dropHeader = document.getElementById('drop-header');
+        if (dropHeader) {
+            const dropTable = document.getElementById('drop-table');
+            const dropIndicator = document.getElementById('drop-indicator');
+
+            dropHeader.addEventListener('click', () => {
+                const isCollapsed = dropTable.style.display === 'none';
+                dropTable.style.display = isCollapsed ? '' : 'none'; // Use '' to reset to default display
+                dropIndicator.textContent = isCollapsed ? '[-]' : '[+]';
+            });
+        }
     </script>
 </body>
 </html>
