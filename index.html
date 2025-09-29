@@ -40,7 +40,7 @@
         <h1>Yufa Market Tracker</h1>
         <div class="header-info">
             <div>
-                <p>Last updated: <strong>{{ .LastScrapeTime }}</strong></p>
+                <p>Last updated: <strong data-timestamp="{{.LastScrapeTime}}">{{.LastScrapeTime}}</strong> <span id="time-ago"></span></p>
                 <p>Showing <strong>{{ len .Items }}</strong> items.</p>
             </div>
             <a href="/activity">View Recent Market Activity &rarr;</a>
@@ -156,6 +156,50 @@
                 alert('Could not copy the /navi command to your clipboard.');
             });
         }
+
+        // === New script for dynamic time calculation ===
+        document.addEventListener('DOMContentLoaded', () => {
+            const timeAgoSpan = document.getElementById('time-ago');
+            const lastUpdateElement = document.querySelector('[data-timestamp]');
+
+            if (!lastUpdateElement) return;
+
+            const timestampStr = lastUpdateElement.dataset.timestamp;
+
+            // If the timestamp is invalid or "Never", don't start the timer.
+            if (!timestampStr || timestampStr === 'Never') {
+                timeAgoSpan.textContent = '(never updated)';
+                return;
+            }
+            
+            // The Go template format "2006-01-02 15:04:05" is easily parsed by new Date().
+            const lastUpdateDate = new Date(timestampStr);
+
+            function updateTimeAgo() {
+                const now = new Date();
+                // Get difference in seconds
+                const secondsPast = Math.floor((now.getTime() - lastUpdateDate.getTime()) / 1000);
+
+                if (secondsPast < 60) {
+                    timeAgoSpan.textContent = `(${secondsPast} second${secondsPast !== 1 ? 's' : ''} ago)`;
+                } else if (secondsPast < 3600) {
+                    const minutes = Math.floor(secondsPast / 60);
+                    timeAgoSpan.textContent = `(${minutes} minute${minutes !== 1 ? 's' : ''} ago)`;
+                } else if (secondsPast < 86400) {
+                    const hours = Math.floor(secondsPast / 3600);
+                    timeAgoSpan.textContent = `(${hours} hour${hours !== 1 ? 's' : ''} ago)`;
+                } else {
+                    const days = Math.floor(secondsPast / 86400);
+                    timeAgoSpan.textContent = `(${days} day${days !== 1 ? 's' : ''} ago)`;
+                }
+            }
+
+            // Update the text immediately on page load
+            updateTimeAgo();
+
+            // Then, update it every second
+            setInterval(updateTimeAgo, 1000);
+        });
     </script>
 </body>
 </html>
