@@ -10,6 +10,7 @@ import (
 	"log"
 	"net/http"
 	"net/url"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -20,6 +21,9 @@ import (
 )
 
 var db *sql.DB
+
+// (The rest of your structs remain the same: Item, comparableItem, Column, etc.)
+// ...
 
 type Item struct {
 	ID             int
@@ -201,6 +205,8 @@ func main() {
 	}
 }
 
+// (The rest of your functions remain the same: getLastScrapeTime, viewHandler, etc.)
+// ...
 // getLastScrapeTime is a helper function to get the most recent scrape time.
 func getLastScrapeTime() string {
 	var lastScrapeTimestamp sql.NullString
@@ -787,6 +793,10 @@ func areItemSetsIdentical(setA, setB []Item) bool {
 
 func scrapeData() {
 	log.Println("🚀 Starting scrape...")
+	// Compile regexes once for efficiency.
+	reRefineMid := regexp.MustCompile(`\s(\+\d+)`)
+	reRefineStart := regexp.MustCompile(`^(\+\d+)\s`)
+
 	allocOpts := append(chromedp.DefaultExecAllocatorOptions[:],
 		chromedp.Flag("headless", true),
 		chromedp.Flag("disable-gpu", true),
@@ -825,9 +835,37 @@ func scrapeData() {
 
 		s.Find(`div[data-slot="card-content"] .flex.items-center.space-x-2`).Each(func(j int, itemSelection *goquery.Selection) {
 			itemName := strings.TrimSpace(itemSelection.Find("p.truncate").Text())
+
+			// Standardize item names by moving refinement level (e.g., +7) to the end.
+			if match := reRefineMid.FindStringSubmatch(itemName); len(match) > 1 && !strings.HasSuffix(itemName, match[0]) {
+				cleanedName := strings.Replace(itemName, match[0], "", 1)
+				cleanedName = strings.Join(strings.Fields(cleanedName), " ")
+				itemName = cleanedName + match[0]
+			} else {
+				if match := reRefineStart.FindStringSubmatch(itemName); len(match) > 1 {
+					cleanedName := strings.Replace(itemName, match[0], "", 1)
+					cleanedName = strings.Join(strings.Fields(cleanedName), " ")
+					itemName = cleanedName + " " + match[1] // Re-add space before the refinement
+				}
+			}
+
+			// Find and append card names.
+			var cardNames []string
+			itemSelection.Find("div.mt-1.flex.flex-wrap.gap-1 span[data-slot='badge']").Each(func(k int, cardSelection *goquery.Selection) {
+				cardName := strings.TrimSpace(strings.TrimSuffix(cardSelection.Text(), " Card"))
+				if cardName != "" {
+					cardNames = append(cardNames, cardName)
+				}
+			})
+
+			if len(cardNames) > 0 {
+				itemName = fmt.Sprintf("%s [%s]", itemName, strings.Join(cardNames, " "))
+			}
+
 			quantityStr := strings.TrimSuffix(strings.TrimSpace(itemSelection.Find("span.text-xs.text-muted-foreground").Text()), "x")
 			priceStr := strings.TrimSpace(itemSelection.Find("span.text-xs.font-medium.text-green-600").Text())
-			idStr := strings.TrimPrefix(strings.TrimSpace(itemSelection.Find(`span[data-slot="badge"]`).First().Text()), "ID: ")
+			// Use a more specific selector for the ID to avoid picking up card badges.
+			idStr := strings.TrimPrefix(strings.TrimSpace(itemSelection.Find("div.flex.items-center.gap-1 span[data-slot='badge']").First().Text()), "ID: ")
 
 			if itemName == "" || priceStr == "" || shopName == "" {
 				return
@@ -1043,4 +1081,3 @@ func initDB(filepath string) (*sql.DB, error) {
 	}
 	return db, nil
 }
-
