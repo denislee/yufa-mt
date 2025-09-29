@@ -34,16 +34,16 @@
                     <span class="log-timestamp">{{.Timestamp}}</span>
                     {{if eq .EventType "ADDED"}}
                         <span class="log-event log-added">
-                            ➕ <strong><a href="/item?name={{.ItemName | urlquery}}">{{.ItemName}}</a></strong> was added for sale. 
+                            ➕ <strong><img src="https://static.divine-pride.net/images/items/item/{{.ItemID}}.png" alt="" width="24" height="24" style="vertical-align: middle; margin-right: 5px;"> <a href="/item?name={{.ItemName | urlquery}}">{{.ItemName}}</a> <small>({{.ItemID}})</small></strong> was added for sale.
                             <small>({{.Details.price}}z, Qty: {{printf "%.0f" .Details.quantity}}, by {{.Details.seller}})</small>
                         </span>
                     {{else if eq .EventType "REMOVED"}}
                         <span class="log-event log-removed">
-                            ➖ <strong><a href="/item?name={{.ItemName | urlquery}}">{{.ItemName}}</a></strong> is no longer for sale.
+                            ➖ <strong><img src="https://static.divine-pride.net/images/items/item/{{.ItemID}}.png" alt="" width="24" height="24" style="vertical-align: middle; margin-right: 5px;"> <a href="/item?name={{.ItemName | urlquery}}">{{.ItemName}}</a> <small>({{.ItemID}})</small></strong> is no longer for sale.
                         </span>
                     {{else if eq .EventType "NEW_LOW"}}
                          <span class="log-event log-new-low">
-                            🏆 <span class="highlight">New historical low price</span> for <strong><a href="/item?name={{.ItemName | urlquery}}">{{.ItemName}}</a></strong>!
+                            🏆 <span class="highlight">New historical low price</span> for <strong><img src="https://static.divine-pride.net/images/items/item/{{.ItemID}}.png" alt="" width="24" height="24" style="vertical-align: middle; margin-right: 5px;"> <a href="/item?name={{.ItemName | urlquery}}">{{.ItemName}}</a> <small>({{.ItemID}})</small></strong>!
                             <small>({{.Details.price}}z, Qty: {{printf "%.0f" .Details.quantity}}, by {{.Details.seller}})</small>
                         </span>
                     {{end}}

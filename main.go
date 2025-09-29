@@ -58,6 +58,7 @@ type MarketEvent struct {
 	Timestamp string
 	EventType string
 	ItemName  string
+	ItemID    int // Added ItemID
 	Details   map[string]interface{}
 }
 
@@ -181,7 +182,7 @@ func main() {
 // activityHandler serves the new page for recent market activity
 func activityHandler(w http.ResponseWriter, r *http.Request) {
 	eventRows, err := db.Query(`
-        SELECT event_timestamp, event_type, item_name, details
+        SELECT event_timestamp, event_type, item_name, item_id, details
         FROM market_events
         ORDER BY event_timestamp DESC
         LIMIT 200`) // Show more events on the dedicated page
@@ -196,7 +197,7 @@ func activityHandler(w http.ResponseWriter, r *http.Request) {
 	for eventRows.Next() {
 		var event MarketEvent
 		var detailsStr, timestampStr string
-		if err := eventRows.Scan(&timestampStr, &event.EventType, &event.ItemName, &detailsStr); err != nil {
+		if err := eventRows.Scan(&timestampStr, &event.EventType, &event.ItemName, &event.ItemID, &detailsStr); err != nil {
 			log.Printf("⚠️ Failed to scan market event row: %v", err)
 			continue
 		}
@@ -810,9 +811,10 @@ func scrapeData() {
 
 		if len(lastAvailableItems) == 0 {
 			itemsAdded++
-			for _, item := range currentScrapedItems {
-				details, _ := json.Marshal(map[string]interface{}{"price": item.Price, "quantity": item.Quantity, "seller": item.SellerName})
-				_, err := tx.Exec(`INSERT INTO market_events (event_timestamp, event_type, item_name, details) VALUES (?, 'ADDED', ?, ?)`, retrievalTime, itemName, string(details))
+			if len(currentScrapedItems) > 0 {
+				firstItem := currentScrapedItems[0]
+				details, _ := json.Marshal(map[string]interface{}{"price": firstItem.Price, "quantity": firstItem.Quantity, "seller": firstItem.SellerName})
+				_, err := tx.Exec(`INSERT INTO market_events (event_timestamp, event_type, item_name, item_id, details) VALUES (?, 'ADDED', ?, ?, ?)`, retrievalTime, itemName, firstItem.ItemID, string(details))
 				if err != nil {
 					log.Printf("❌ Failed to log ADDED event for %s: %v", itemName, err)
 				}
@@ -840,7 +842,7 @@ func scrapeData() {
 
 			if minPriceInBatch != -1 && (!historicalMinPrice.Valid || int64(minPriceInBatch) < historicalMinPrice.Int64) {
 				details, _ := json.Marshal(map[string]interface{}{"price": minPriceListingInBatch.Price, "quantity": minPriceListingInBatch.Quantity, "seller": minPriceListingInBatch.SellerName})
-				_, err := tx.Exec(`INSERT INTO market_events (event_timestamp, event_type, item_name, details) VALUES (?, 'NEW_LOW', ?, ?)`, retrievalTime, itemName, string(details))
+				_, err := tx.Exec(`INSERT INTO market_events (event_timestamp, event_type, item_name, item_id, details) VALUES (?, 'NEW_LOW', ?, ?, ?)`, retrievalTime, itemName, minPriceListingInBatch.ItemID, string(details))
 				if err != nil {
 					log.Printf("❌ Failed to log NEW_LOW event for %s: %v", itemName, err)
 				}
@@ -853,7 +855,14 @@ func scrapeData() {
 	itemsRemoved := 0
 	for name := range dbAvailableNames {
 		if _, foundInScrape := scrapedItemsByName[name]; !foundInScrape {
-			_, err := tx.Exec(`INSERT INTO market_events (event_timestamp, event_type, item_name, details) VALUES (?, 'REMOVED', ?, '{}')`, retrievalTime, name)
+			var itemID int
+			err := tx.QueryRow("SELECT item_id FROM items WHERE name_of_the_item = ? AND item_id > 0 LIMIT 1", name).Scan(&itemID)
+			if err != nil {
+				log.Printf("⚠️ Could not find item_id for removed item '%s', logging event with item_id 0: %v", name, err)
+				itemID = 0
+			}
+
+			_, err = tx.Exec(`INSERT INTO market_events (event_timestamp, event_type, item_name, item_id, details) VALUES (?, 'REMOVED', ?, ?, '{}')`, retrievalTime, name, itemID)
 			if err != nil {
 				log.Printf("❌ Failed to log REMOVED event for %s: %v", name, err)
 			}
@@ -901,6 +910,7 @@ func initDB(filepath string) (*sql.DB, error) {
 		"event_timestamp" TEXT NOT NULL,
 		"event_type" TEXT NOT NULL,
 		"item_name" TEXT NOT NULL,
+		"item_id" INTEGER,
 		"details" TEXT
 	);`
 	if _, err = db.Exec(createEventsTableSQL); err != nil {
