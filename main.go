@@ -80,6 +80,20 @@ type ActivityPageData struct {
 	MarketEvents []MarketEvent
 }
 
+// ItemSummary for the new summary view
+type ItemSummary struct {
+	Name         string
+	ItemID       int
+	MinPrice     int
+	MaxPrice     int
+	ListingCount int
+}
+
+// SummaryPageData for the summary view template
+type SummaryPageData struct {
+	Items []ItemSummary
+}
+
 type PricePointDetails struct {
 	Timestamp     string `json:"Timestamp"`
 	MinPrice      int    `json:"MinPrice"`
@@ -170,13 +184,59 @@ func main() {
 
 	http.HandleFunc("/", viewHandler)
 	http.HandleFunc("/item", historyHandler)
-	http.HandleFunc("/activity", activityHandler) // New route for market activity
+	http.HandleFunc("/activity", activityHandler)
+	http.HandleFunc("/summary", summaryHandler) // New route for the summary page
 
 	port := "8080"
 	log.Printf("🚀 Web server started. Open http://localhost:%s in your browser.", port)
 	if err := http.ListenAndServe(":"+port, nil); err != nil {
 		log.Fatalf("❌ Failed to start web server: %v", err)
 	}
+}
+
+// summaryHandler serves the new summary page
+func summaryHandler(w http.ResponseWriter, r *http.Request) {
+	query := `
+        SELECT
+            name_of_the_item,
+            MIN(item_id) as item_id, -- Assuming item_id is consistent for a given name
+            MIN(CAST(REPLACE(price, ',', '') AS INTEGER)) as min_price,
+            MAX(CAST(REPLACE(price, ',', '') AS INTEGER)) as max_price,
+            COUNT(*) as listing_count
+        FROM items
+        WHERE is_available = 1
+        GROUP BY name_of_the_item
+        ORDER BY name_of_the_item ASC;
+    `
+	rows, err := db.Query(query)
+	if err != nil {
+		http.Error(w, "Database query for summary failed", http.StatusInternalServerError)
+		log.Printf("❌ Summary query error: %v", err)
+		return
+	}
+	defer rows.Close()
+
+	var items []ItemSummary
+	for rows.Next() {
+		var item ItemSummary
+		if err := rows.Scan(&item.Name, &item.ItemID, &item.MinPrice, &item.MaxPrice, &item.ListingCount); err != nil {
+			log.Printf("⚠️ Failed to scan summary row: %v", err)
+			continue
+		}
+		items = append(items, item)
+	}
+
+	tmpl, err := template.ParseFiles("summary.html")
+	if err != nil {
+		http.Error(w, "Could not load summary template", http.StatusInternalServerError)
+		log.Printf("❌ Could not load summary.html template: %v", err)
+		return
+	}
+
+	data := SummaryPageData{
+		Items: items,
+	}
+	tmpl.Execute(w, data)
 }
 
 // activityHandler serves the new page for recent market activity
