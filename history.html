@@ -31,6 +31,13 @@
         .drop-info th, .drop-info td { padding: 10px; text-align: left; border-bottom: 1px solid #ddd; }
         .drop-info th { background-color: #f8f8f8; font-weight: 600; }
         .drop-info tr:hover { background-color: #f1f1f1; }
+        .listings-history { margin-top: 40px; }
+        .listings-history table { width: 100%; border-collapse: collapse; }
+        .listings-history th, .listings-history td { padding: 12px; text-align: left; border-bottom: 1px solid #ddd; word-wrap: break-word; }
+        .listings-history th { background-color: #f8f8f8; font-weight: 600; }
+        .listings-history tr:hover { background-color: #f1f1f1; }
+        .unavailable { opacity: 0.6; }
+        .unavailable a { color: #666; }
     </style>
 </head>
 <body>
@@ -107,6 +114,45 @@
         </div>
 
         <canvas id="priceChart"></canvas>
+
+        {{if .AllListings}}
+        <div class="listings-history">
+            <h3>All Recorded Listings</h3>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Price</th>
+                        <th>Qty</th>
+                        <th>Store</th>
+                        <th>Seller</th>
+                        <th>Location</th>
+                        <th>Date Scanned</th>
+                        <th>Available</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {{range .AllListings}}
+                    <tr {{if not .IsAvailable}}class="unavailable" title="This specific listing is no longer available"{{end}}>
+                        <td>{{.Price}}z</td>
+                        <td>{{.Quantity}}</td>
+                        <td>{{.StoreName}}</td>
+                        <td>{{.SellerName}}</td>
+                        <td><a href="#" onclick="copyNavi(event, '{{.MapName}}', '{{.MapCoordinates}}')" title="Click to copy /navi command">{{.MapName}} {{.MapCoordinates}}</a></td>
+                        <td>{{.Timestamp}}</td>
+                        <td>
+                            {{if .IsAvailable}}
+                                <span style="color: #28a745; font-weight: bold;">Yes</span>
+                            {{else}}
+                                <span style="color: #dc3545;">No</span>
+                            {{end}}
+                        </td>
+                    </tr>
+                    {{end}}
+                </tbody>
+            </table>
+        </div>
+        {{end}}
+
     </div>
 
     <script>

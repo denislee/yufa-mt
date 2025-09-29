@@ -154,6 +154,7 @@ type HistoryPageData struct {
 	CurrentMinJSON template.JS
 	CurrentMaxJSON template.JS
 	ItemDetails    *RagnaItem
+	AllListings    []Item
 }
 
 func main() {
@@ -432,6 +433,45 @@ func historyHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	allListingsQuery := `
+		SELECT
+			price,
+			quantity,
+			store_name,
+			seller_name,
+			map_name,
+			map_coordinates,
+			date_and_time_retrieved,
+            is_available
+		FROM items
+		WHERE name_of_the_item = ?
+		ORDER BY is_available DESC, date_and_time_retrieved DESC;
+	`
+	rowsAll, err := db.Query(allListingsQuery, itemName)
+	if err != nil {
+		http.Error(w, "Database query for all listings failed", http.StatusInternalServerError)
+		log.Printf("❌ All listings query error: %v", err)
+		return
+	}
+	defer rowsAll.Close()
+
+	var allListings []Item
+	for rowsAll.Next() {
+		var listing Item
+		var timestampStr string
+		if err := rowsAll.Scan(&listing.Price, &listing.Quantity, &listing.StoreName, &listing.SellerName, &listing.MapName, &listing.MapCoordinates, &timestampStr, &listing.IsAvailable); err != nil {
+			log.Printf("⚠️ Failed to scan all listing row: %v", err)
+			continue
+		}
+		parsedTime, err := time.Parse(time.RFC3339, timestampStr)
+		if err == nil {
+			listing.Timestamp = parsedTime.Format("2006-01-02 15:04")
+		} else {
+			listing.Timestamp = timestampStr
+		}
+		allListings = append(allListings, listing)
+	}
+
 	tmpl, err := template.ParseFiles("history.html")
 	if err != nil {
 		http.Error(w, "Could not load history template", http.StatusInternalServerError)
@@ -446,6 +486,7 @@ func historyHandler(w http.ResponseWriter, r *http.Request) {
 		CurrentMinJSON: template.JS(currentMinJSON),
 		CurrentMaxJSON: template.JS(currentMaxJSON),
 		ItemDetails:    ragnaItemDetails,
+		AllListings:    allListings,
 	}
 	tmpl.Execute(w, data)
 }
@@ -875,3 +916,4 @@ func initDB(filepath string) (*sql.DB, error) {
 	}
 	return db, nil
 }
+
