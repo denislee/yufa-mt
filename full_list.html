@@ -43,7 +43,7 @@
         <div class="header-info">
             <div>
                 <h1>Yufa Market Tracker</h1>
-                <p>Showing <strong>{{ len .Items }}</strong> items.</p>
+                <p>Last updated: <strong data-timestamp="{{.LastScrapeTime}}">{{.LastScrapeTime}}</strong> <span id="time-ago"></span></p>
             </div>
             <nav class="main-nav">
                 <a href="/">Summary</a>
@@ -51,6 +51,7 @@
                 <a href="/activity">Activity</a>
             </nav>
         </div>
+        <p>Showing <strong>{{ len .Items }}</strong> items.</p>
         
         <form action="/full-list" method="get">
             <div class="form-controls">
@@ -163,7 +164,6 @@
             });
         }
 
-        // === New script for dynamic time calculation ===
         document.addEventListener('DOMContentLoaded', () => {
             const timeAgoSpan = document.getElementById('time-ago');
             const lastUpdateElement = document.querySelector('[data-timestamp]');
@@ -172,18 +172,15 @@
 
             const timestampStr = lastUpdateElement.dataset.timestamp;
 
-            // If the timestamp is invalid or "Never", don't start the timer.
             if (!timestampStr || timestampStr === 'Never') {
                 timeAgoSpan.textContent = '(never updated)';
                 return;
             }
             
-            // The Go template format "2006-01-02 15:04:05" is easily parsed by new Date().
             const lastUpdateDate = new Date(timestampStr);
 
             function updateTimeAgo() {
                 const now = new Date();
-                // Get difference in seconds
                 const secondsPast = Math.floor((now.getTime() - lastUpdateDate.getTime()) / 1000);
 
                 if (secondsPast < 60) {
@@ -200,10 +197,7 @@
                 }
             }
 
-            // Update the text immediately on page load
             updateTimeAgo();
-
-            // Then, update it every second
             setInterval(updateTimeAgo, 1000);
         });
     </script>

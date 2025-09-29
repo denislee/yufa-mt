@@ -77,7 +77,8 @@ type PageData struct {
 
 // ActivityPageData for the new market activity page
 type ActivityPageData struct {
-	MarketEvents []MarketEvent
+	MarketEvents   []MarketEvent
+	LastScrapeTime string
 }
 
 // ItemSummary for the main summary view
@@ -175,6 +176,7 @@ type HistoryPageData struct {
 	CurrentMaxJSON template.JS
 	ItemDetails    *RagnaItem
 	AllListings    []Item
+	LastScrapeTime string
 }
 
 func main() {
@@ -197,6 +199,22 @@ func main() {
 	if err := http.ListenAndServe(":"+port, nil); err != nil {
 		log.Fatalf("❌ Failed to start web server: %v", err)
 	}
+}
+
+// getLastScrapeTime is a helper function to get the most recent scrape time.
+func getLastScrapeTime() string {
+	var lastScrapeTimestamp sql.NullString
+	err := db.QueryRow("SELECT MAX(timestamp) FROM scrape_history").Scan(&lastScrapeTimestamp)
+	if err != nil {
+		log.Printf("⚠️ Could not get last scrape time: %v", err)
+	}
+	if lastScrapeTimestamp.Valid {
+		parsedTime, err := time.Parse(time.RFC3339, lastScrapeTimestamp.String)
+		if err == nil {
+			return parsedTime.Format("2006-01-02 15:04:05")
+		}
+	}
+	return "Never"
 }
 
 // viewHandler serves the main summary page
@@ -265,21 +283,6 @@ func viewHandler(w http.ResponseWriter, r *http.Request) {
 		items = append(items, item)
 	}
 
-	var lastScrapeTimestamp sql.NullString
-	err = db.QueryRow("SELECT MAX(timestamp) FROM scrape_history").Scan(&lastScrapeTimestamp)
-	if err != nil {
-		log.Printf("⚠️ Could not get last scrape time: %v", err)
-	}
-	var formattedLastScrapeTime string
-	if lastScrapeTimestamp.Valid {
-		parsedTime, err := time.Parse(time.RFC3339, lastScrapeTimestamp.String)
-		if err == nil {
-			formattedLastScrapeTime = parsedTime.Format("2006-01-02 15:04:05")
-		}
-	} else {
-		formattedLastScrapeTime = "Never"
-	}
-
 	// Create a FuncMap to register the "lower" function.
 	funcMap := template.FuncMap{
 		"lower": strings.ToLower,
@@ -300,7 +303,7 @@ func viewHandler(w http.ResponseWriter, r *http.Request) {
 		SortBy:         sortBy,
 		Order:          order,
 		ShowAll:        showAll,
-		LastScrapeTime: formattedLastScrapeTime,
+		LastScrapeTime: getLastScrapeTime(),
 	}
 	tmpl.Execute(w, data)
 }
@@ -349,7 +352,8 @@ func activityHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	data := ActivityPageData{
-		MarketEvents: marketEvents,
+		MarketEvents:   marketEvents,
+		LastScrapeTime: getLastScrapeTime(),
 	}
 	tmpl.Execute(w, data)
 }
@@ -614,6 +618,7 @@ func historyHandler(w http.ResponseWriter, r *http.Request) {
 		CurrentMaxJSON: template.JS(currentMaxJSON),
 		ItemDetails:    ragnaItemDetails,
 		AllListings:    allListings,
+		LastScrapeTime: getLastScrapeTime(),
 	}
 	tmpl.Execute(w, data)
 }
@@ -726,6 +731,7 @@ func fullListHandler(w http.ResponseWriter, r *http.Request) {
 		SortBy:         sortBy,
 		Order:          order,
 		ShowAll:        showAll,
+		LastScrapeTime: getLastScrapeTime(),
 		VisibleColumns: visibleColumns,
 		AllColumns:     allCols,
 		ColumnParams:   template.URL(columnParams.Encode()),
@@ -1037,3 +1043,4 @@ func initDB(filepath string) (*sql.DB, error) {
 	}
 	return db, nil
 }
+
