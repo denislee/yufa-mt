@@ -9,18 +9,104 @@
         body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; line-height: 1.6; background-color: #f4f4f9; color: #333; margin: 0; padding: 20px; }
         .container { max-width: 1000px; margin: auto; background: #fff; padding: 20px; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
         a { color: #007bff; }
+        .info-cards {
+            display: flex;
+            gap: 20px;
+            margin-bottom: 30px;
+            flex-wrap: wrap;
+        }
+        .card {
+            flex: 1;
+            min-width: 300px;
+            background: #fdfdfd;
+            border: 1px solid #e1e4e8;
+            padding: 15px 20px;
+            border-radius: 6px;
+            box-shadow: 0 1px 5px rgba(0,0,0,0.05);
+        }
+        .card h2 {
+            margin-top: 0;
+            border-bottom: 1px solid #eee;
+            padding-bottom: 10px;
+            font-size: 1.2em;
+            color: #333;
+        }
+        .card p {
+            margin: 8px 0;
+            font-size: 0.95em;
+        }
+        .card strong {
+            color: #555;
+            display: inline-block;
+            width: 80px;
+        }
+        #min-price-card h2 { color: #28a745; }
+        #max-price-card h2 { color: #dc3545; }
     </style>
 </head>
 <body>
     <div class="container">
         <a href="/">&larr; Back to Market List</a>
         <h1>Price History for: <strong>{{.ItemName}}</strong></h1>
+
+        <div class="info-cards">
+            <div class="card" id="min-price-card">
+                <h2>Lowest Price</h2>
+                <p><strong>Price:</strong> <span id="min-price-val"></span></p>
+                <p><strong>Quantity:</strong> <span id="min-quantity-val"></span></p>
+                <p><strong>Store:</strong> <span id="min-store-val"></span></p>
+                <p><strong>Seller:</strong> <span id="min-seller-val"></span></p>
+                <p><strong>Location:</strong> <span id="min-location-val"></span></p>
+                <p><strong>Date:</strong> <span id="min-date-val"></span></p>
+            </div>
+            <div class="card" id="max-price-card">
+                <h2>Highest Price</h2>
+                <p><strong>Price:</strong> <span id="max-price-val"></span></p>
+                <p><strong>Quantity:</strong> <span id="max-quantity-val"></span></p>
+                <p><strong>Store:</strong> <span id="max-store-val"></span></p>
+                <p><strong>Seller:</strong> <span id="max-seller-val"></span></p>
+                <p><strong>Location:</strong> <span id="max-location-val"></span></p>
+                <p><strong>Date:</strong> <span id="max-date-val"></span></p>
+            </div>
+        </div>
+
         <canvas id="priceChart"></canvas>
     </div>
 
     <script>
         // Go's template engine will safely inject the JSON data here
         const priceHistoryData = {{.PriceDataJSON}};
+
+        // --- ADDED: Populate Info Cards ---
+        if (priceHistoryData && priceHistoryData.length > 0) {
+            // Find the data point with the overall lowest min price
+            const overallMinPriceData = priceHistoryData.reduce((prev, current) => {
+                return (prev.MinPrice < current.MinPrice) ? prev : current;
+            });
+
+            // Find the data point with the overall highest max price
+            const overallMaxPriceData = priceHistoryData.reduce((prev, current) => {
+                return (prev.MaxPrice > current.MaxPrice) ? prev : current;
+            });
+
+            // Populate the Min Price Card
+            document.getElementById('min-price-val').textContent = `${overallMinPriceData.MinPrice.toLocaleString()}z`;
+            document.getElementById('min-quantity-val').textContent = overallMinPriceData.MinQuantity.toLocaleString();
+            document.getElementById('min-store-val').textContent = overallMinPriceData.MinStoreName;
+            document.getElementById('min-seller-val').textContent = overallMinPriceData.MinSellerName;
+            document.getElementById('min-location-val').textContent = `${overallMinPriceData.MinMapName} (${overallMinPriceData.MinMapCoords})`;
+            document.getElementById('min-date-val').textContent = overallMinPriceData.Timestamp;
+
+            // Populate the Max Price Card
+            document.getElementById('max-price-val').textContent = `${overallMaxPriceData.MaxPrice.toLocaleString()}z`;
+            document.getElementById('max-quantity-val').textContent = overallMaxPriceData.MaxQuantity.toLocaleString();
+            document.getElementById('max-store-val').textContent = overallMaxPriceData.MaxStoreName;
+            document.getElementById('max-seller-val').textContent = overallMaxPriceData.MaxSellerName;
+            document.getElementById('max-location-val').textContent = `${overallMaxPriceData.MaxMapName} (${overallMaxPriceData.MaxMapCoords})`;
+            document.getElementById('max-date-val').textContent = overallMaxPriceData.Timestamp;
+        }
+        // --- END: Populate Info Cards ---
+
 
         // Prepare data for Chart.js
         const labels = priceHistoryData.map(p => p.Timestamp);
@@ -37,8 +123,8 @@
                     {
                         label: 'Minimum Price',
                         data: minPrices,
-                        borderColor: 'rgba(255, 99, 132, 1)',
-                        backgroundColor: 'rgba(255, 99, 132, 0.2)',
+                        borderColor: 'rgba(40, 167, 69, 1)',
+                        backgroundColor: 'rgba(40, 167, 69, 0.2)',
                         borderWidth: 2,
                         fill: false,
                         tension: 0.1
@@ -46,8 +132,8 @@
                     {
                         label: 'Maximum Price',
                         data: maxPrices,
-                        borderColor: 'rgba(54, 162, 235, 1)',
-                        backgroundColor: 'rgba(54, 162, 235, 0.2)',
+                        borderColor: 'rgba(220, 53, 69, 1)',
+                        backgroundColor: 'rgba(220, 53, 69, 0.2)',
                         borderWidth: 2,
                         fill: false,
                         tension: 0.1
