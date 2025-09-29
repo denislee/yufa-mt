@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Recent Market Activity</title>
+    <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; line-height: 1.6; background-color: #f4f4f9; color: #333; margin: 0; padding: 20px; }
+        .container { max-width: 1200px; margin: auto; background: #fff; padding: 20px; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
+        h1 { color: #333; border-bottom: 1px solid #eee; padding-bottom: 10px; }
+        a { color: #007bff; text-decoration: none; }
+        a:hover { text-decoration: underline; }
+        .market-log ul { list-style-type: none; padding: 0; margin: 0; }
+        .market-log li { padding: 10px 5px; border-bottom: 1px solid #f1f1f1; display: flex; align-items: center; gap: 15px; font-size: 0.95em; }
+        .market-log li:last-child { border-bottom: none; }
+        .log-timestamp { font-size: 0.9em; color: #555; width: 120px; flex-shrink: 0; }
+        .log-event strong { font-weight: 600; }
+        .log-added { color: #28a745; }
+        .log-removed { color: #6c757d; }
+        .log-new-low { color: #e67e22; }
+        .log-new-low .highlight { font-weight: bold; background-color: #fff3cd; padding: 2px 5px; border-radius: 3px;}
+    </style>
+</head>
+<body>
+    <div class="container">
+        <a href="/">&larr; Back to Market List</a>
+        <h1>Recent Market Activity</h1>
+
+        {{if .MarketEvents}}
+        <div class="market-log">
+            <ul>
+                {{range .MarketEvents}}
+                <li>
+                    <span class="log-timestamp">{{.Timestamp}}</span>
+                    {{if eq .EventType "ADDED"}}
+                        <span class="log-event log-added">
+                            ➕ <strong><a href="/item?name={{.ItemName | urlquery}}">{{.ItemName}}</a></strong> was added for sale. 
+                            <small>({{.Details.price}}z, Qty: {{printf "%.0f" .Details.quantity}}, by {{.Details.seller}})</small>
+                        </span>
+                    {{else if eq .EventType "REMOVED"}}
+                        <span class="log-event log-removed">
+                            ➖ <strong><a href="/item?name={{.ItemName | urlquery}}">{{.ItemName}}</a></strong> is no longer for sale.
+                        </span>
+                    {{else if eq .EventType "NEW_LOW"}}
+                         <span class="log-event log-new-low">
+                            🏆 <span class="highlight">New historical low price</span> for <strong><a href="/item?name={{.ItemName | urlquery}}">{{.ItemName}}</a></strong>!
+                            <small>({{.Details.price}}z, Qty: {{printf "%.0f" .Details.quantity}}, by {{.Details.seller}})</small>
+                        </span>
+                    {{end}}
+                </li>
+                {{end}}
+            </ul>
+        </div>
+        {{else}}
+        <p>No market activity has been recorded yet.</p>
+        {{end}}
+    </div>
+</body>
+</html>

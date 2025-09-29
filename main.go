@@ -53,7 +53,15 @@ type Column struct {
 	DisplayName string
 }
 
-// PageData struct updated with column visibility info
+// MarketEvent struct for logging market changes
+type MarketEvent struct {
+	Timestamp string
+	EventType string
+	ItemName  string
+	Details   map[string]interface{}
+}
+
+// PageData for the main market view
 type PageData struct {
 	Items          []Item
 	SearchQuery    string
@@ -64,6 +72,11 @@ type PageData struct {
 	VisibleColumns map[string]bool
 	AllColumns     []Column
 	ColumnParams   template.URL
+}
+
+// ActivityPageData for the new market activity page
+type ActivityPageData struct {
+	MarketEvents []MarketEvent
 }
 
 type PricePointDetails struct {
@@ -104,31 +117,22 @@ type RagnaItem struct {
 
 // UnmarshalJSON is a custom unmarshaler for RagnaItem to handle inconsistent "drop_rate" types.
 func (r *RagnaItem) UnmarshalJSON(data []byte) error {
-	// Use an alias to avoid recursion
 	type Alias RagnaItem
-
-	// Create a temporary struct with a json.RawMessage for the drop_rate field
 	aux := &struct {
 		DropRates json.RawMessage `json:"drop_rate"`
 		*Alias
 	}{
 		Alias: (*Alias)(r),
 	}
-
 	if err := json.Unmarshal(data, &aux); err != nil {
 		return err
 	}
-
-	// Try to unmarshal drop_rate as a slice.
 	var dropRates []DropRate
 	if err := json.Unmarshal(aux.DropRates, &dropRates); err == nil {
-		// If successful (it's an array), assign it.
 		r.DropRates = dropRates
 	} else {
-		// If it fails (e.g., it's a boolean `false`), set DropRates to nil.
 		r.DropRates = nil
 	}
-
 	return nil
 }
 
@@ -164,12 +168,62 @@ func main() {
 
 	http.HandleFunc("/", viewHandler)
 	http.HandleFunc("/item", historyHandler)
+	http.HandleFunc("/activity", activityHandler) // New route for market activity
 
 	port := "8080"
 	log.Printf("🚀 Web server started. Open http://localhost:%s in your browser.", port)
 	if err := http.ListenAndServe(":"+port, nil); err != nil {
 		log.Fatalf("❌ Failed to start web server: %v", err)
 	}
+}
+
+// activityHandler serves the new page for recent market activity
+func activityHandler(w http.ResponseWriter, r *http.Request) {
+	eventRows, err := db.Query(`
+        SELECT event_timestamp, event_type, item_name, details
+        FROM market_events
+        ORDER BY event_timestamp DESC
+        LIMIT 200`) // Show more events on the dedicated page
+	if err != nil {
+		http.Error(w, "Could not query for market events", http.StatusInternalServerError)
+		log.Printf("❌ Could not query for market events: %v", err)
+		return
+	}
+	defer eventRows.Close()
+
+	var marketEvents []MarketEvent
+	for eventRows.Next() {
+		var event MarketEvent
+		var detailsStr, timestampStr string
+		if err := eventRows.Scan(&timestampStr, &event.EventType, &event.ItemName, &detailsStr); err != nil {
+			log.Printf("⚠️ Failed to scan market event row: %v", err)
+			continue
+		}
+
+		parsedTime, err := time.Parse(time.RFC3339, timestampStr)
+		if err == nil {
+			event.Timestamp = parsedTime.Format("2006-01-02 15:04")
+		} else {
+			event.Timestamp = timestampStr
+		}
+
+		if err := json.Unmarshal([]byte(detailsStr), &event.Details); err != nil {
+			event.Details = make(map[string]interface{})
+		}
+		marketEvents = append(marketEvents, event)
+	}
+
+	tmpl, err := template.ParseFiles("activity.html")
+	if err != nil {
+		http.Error(w, "Could not load activity template", http.StatusInternalServerError)
+		log.Printf("❌ Could not load activity.html template: %v", err)
+		return
+	}
+
+	data := ActivityPageData{
+		MarketEvents: marketEvents,
+	}
+	tmpl.Execute(w, data)
 }
 
 func historyHandler(w http.ResponseWriter, r *http.Request) {
@@ -179,7 +233,6 @@ func historyHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Fetch item details from RagnaAPI
 	var itemID int
 	err := db.QueryRow("SELECT item_id FROM items WHERE name_of_the_item = ? AND item_id > 0 LIMIT 1", itemName).Scan(&itemID)
 	if err != nil {
@@ -201,7 +254,6 @@ func historyHandler(w http.ResponseWriter, r *http.Request) {
 					log.Printf("❌ Failed to read RagnaAPI response body for item ID %d: %v", itemID, err)
 				} else {
 					var itemDetails RagnaItem
-					// The custom UnmarshalJSON method on RagnaItem will be called here
 					if err := json.Unmarshal(body, &itemDetails); err != nil {
 						log.Printf("❌ Failed to unmarshal RagnaAPI JSON for item ID %d: %v", itemID, err)
 					} else {
@@ -214,7 +266,6 @@ func historyHandler(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// Query for current available listings to find min and max for the cards
 	currentListingsQuery := `
 		SELECT
 			CAST(REPLACE(price, ',', '') AS INTEGER) as price_int,
@@ -264,7 +315,6 @@ func historyHandler(w http.ResponseWriter, r *http.Request) {
 	currentMinJSON, _ := json.Marshal(currentMin)
 	currentMaxJSON, _ := json.Marshal(currentMax)
 
-	// ADDED: Query for overall min and max prices across all history
 	var overallMin, overallMax sql.NullInt64
 	overallStatsQuery := `
         SELECT
@@ -400,7 +450,7 @@ func historyHandler(w http.ResponseWriter, r *http.Request) {
 	tmpl.Execute(w, data)
 }
 
-// viewHandler now manages column visibility
+// viewHandler now only shows the main market list
 func viewHandler(w http.ResponseWriter, r *http.Request) {
 	if err := r.ParseForm(); err != nil {
 		http.Error(w, "Failed to parse form", http.StatusBadRequest)
@@ -410,11 +460,9 @@ func viewHandler(w http.ResponseWriter, r *http.Request) {
 	searchQuery := r.FormValue("query")
 	sortBy := r.FormValue("sort_by")
 	order := r.FormValue("order")
-	// Default to showing all items unless 'only_available' is checked.
 	showAll := r.FormValue("only_available") != "true"
 	selectedCols := r.Form["cols"]
 
-	// Define all toggleable columns
 	allCols := []Column{
 		{ID: "item_id", DisplayName: "Item ID"},
 		{ID: "quantity", DisplayName: "Quantity"},
@@ -428,20 +476,17 @@ func viewHandler(w http.ResponseWriter, r *http.Request) {
 	visibleColumns := make(map[string]bool)
 	columnParams := url.Values{}
 
-	// If user submitted a preference, use it. Otherwise, use defaults.
 	if len(selectedCols) > 0 {
 		for _, col := range selectedCols {
 			visibleColumns[col] = true
 			columnParams.Add("cols", col)
 		}
 	} else {
-		// Default columns
 		visibleColumns["quantity"] = true
 		visibleColumns["store_name"] = true
 		visibleColumns["map_coordinates"] = true
 	}
 
-	// Get the last scrape time
 	var lastScrapeTimestamp sql.NullString
 	err := db.QueryRow("SELECT MAX(timestamp) FROM scrape_history").Scan(&lastScrapeTimestamp)
 	if err != nil {
@@ -546,14 +591,10 @@ func startBackgroundScraper() {
 	}
 }
 
-// areItemSetsIdentical checks if two slices of items are semantically identical,
-// ignoring order and fields not relevant for comparison.
 func areItemSetsIdentical(setA, setB []Item) bool {
 	if len(setA) != len(setB) {
 		return false
 	}
-
-	// Create comparable representations of each item
 	makeComparable := func(items []Item) []comparableItem {
 		comp := make([]comparableItem, len(items))
 		for i, item := range items {
@@ -570,25 +611,18 @@ func areItemSetsIdentical(setA, setB []Item) bool {
 		}
 		return comp
 	}
-
 	compA := makeComparable(setA)
 	compB := makeComparable(setB)
-
-	// Use a map to count occurrences in setA
 	counts := make(map[comparableItem]int)
 	for _, item := range compA {
 		counts[item]++
 	}
-
-	// Decrement counts for items in setB
 	for _, item := range compB {
 		if counts[item] == 0 {
-			return false // Item in B not in A, or excess count
+			return false
 		}
 		counts[item]--
 	}
-
-	// If all counts are zero, the sets are identical
 	return true
 }
 
@@ -624,7 +658,6 @@ func scrapeData() {
 	retrievalTime := time.Now().Format(time.RFC3339)
 	scrapedItemsByName := make(map[string][]Item)
 
-	// Step 1: Scrape all items from the website and group them by name in memory.
 	doc.Find(`div[data-slot="card"]`).Each(func(i int, s *goquery.Selection) {
 		shopName := strings.TrimSpace(s.Find(`div[data-slot="card-title"]`).Text())
 		sellerName := strings.TrimSpace(s.Find("svg.lucide-user").Next().Text())
@@ -674,7 +707,6 @@ func scrapeData() {
 		return
 	}
 
-	// Get a set of all item names currently marked as available in the DB
 	rows, err := tx.Query("SELECT DISTINCT name_of_the_item FROM items WHERE is_available = 1")
 	if err != nil {
 		log.Printf("❌ Could not get list of available items: %v", err)
@@ -694,7 +726,6 @@ func scrapeData() {
 	itemsUnchanged := 0
 	itemsAdded := 0
 
-	// Step 2: For each item name scraped, compare with DB records.
 	for itemName, currentScrapedItems := range scrapedItemsByName {
 		var lastAvailableItems []Item
 		rows, err := tx.Query("SELECT name_of_the_item, item_id, quantity, price, store_name, seller_name, map_name, map_coordinates FROM items WHERE name_of_the_item = ? AND is_available = 1", itemName)
@@ -714,18 +745,15 @@ func scrapeData() {
 		rows.Close()
 
 		if areItemSetsIdentical(currentScrapedItems, lastAvailableItems) {
-			// No changes for this item name, do nothing.
 			itemsUnchanged++
 			continue
 		}
 
-		// There's a change. Mark all old versions as unavailable.
 		if _, err := tx.Exec("UPDATE items SET is_available = 0 WHERE name_of_the_item = ?", itemName); err != nil {
 			log.Printf("❌ Failed to mark old %s as unavailable: %v", itemName, err)
 			continue
 		}
 
-		// Insert the new versions.
 		insertSQL := `INSERT INTO items(name_of_the_item, item_id, quantity, price, store_name, seller_name, date_and_time_retrieved, map_name, map_coordinates, is_available) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1)`
 		stmt, err := tx.Prepare(insertSQL)
 		if err != nil {
@@ -738,17 +766,56 @@ func scrapeData() {
 			}
 		}
 		stmt.Close()
+
 		if len(lastAvailableItems) == 0 {
 			itemsAdded++
+			for _, item := range currentScrapedItems {
+				details, _ := json.Marshal(map[string]interface{}{"price": item.Price, "quantity": item.Quantity, "seller": item.SellerName})
+				_, err := tx.Exec(`INSERT INTO market_events (event_timestamp, event_type, item_name, details) VALUES (?, 'ADDED', ?, ?)`, retrievalTime, itemName, string(details))
+				if err != nil {
+					log.Printf("❌ Failed to log ADDED event for %s: %v", itemName, err)
+				}
+			}
+
+			var historicalMinPrice sql.NullInt64
+			err := tx.QueryRow(`SELECT MIN(CAST(REPLACE(price, ',', '') AS INTEGER)) FROM items WHERE name_of_the_item = ?`, itemName).Scan(&historicalMinPrice)
+			if err != nil && err != sql.ErrNoRows {
+				log.Printf("⚠️ Could not get historical min price for %s: %v", itemName, err)
+			}
+
+			var minPriceListingInBatch Item
+			minPriceInBatch := -1
+			for _, item := range currentScrapedItems {
+				priceStr := strings.ReplaceAll(item.Price, ",", "")
+				currentPrice, convErr := strconv.Atoi(priceStr)
+				if convErr != nil {
+					continue
+				}
+				if minPriceInBatch == -1 || currentPrice < minPriceInBatch {
+					minPriceInBatch = currentPrice
+					minPriceListingInBatch = item
+				}
+			}
+
+			if minPriceInBatch != -1 && (!historicalMinPrice.Valid || int64(minPriceInBatch) < historicalMinPrice.Int64) {
+				details, _ := json.Marshal(map[string]interface{}{"price": minPriceListingInBatch.Price, "quantity": minPriceListingInBatch.Quantity, "seller": minPriceListingInBatch.SellerName})
+				_, err := tx.Exec(`INSERT INTO market_events (event_timestamp, event_type, item_name, details) VALUES (?, 'NEW_LOW', ?, ?)`, retrievalTime, itemName, string(details))
+				if err != nil {
+					log.Printf("❌ Failed to log NEW_LOW event for %s: %v", itemName, err)
+				}
+			}
 		} else {
 			itemsUpdated++
 		}
 	}
 
-	// Step 3: Mark any items that were in the DB but not in the new scrape as unavailable.
 	itemsRemoved := 0
 	for name := range dbAvailableNames {
 		if _, foundInScrape := scrapedItemsByName[name]; !foundInScrape {
+			_, err := tx.Exec(`INSERT INTO market_events (event_timestamp, event_type, item_name, details) VALUES (?, 'REMOVED', ?, '{}')`, retrievalTime, name)
+			if err != nil {
+				log.Printf("❌ Failed to log REMOVED event for %s: %v", name, err)
+			}
 			if _, err := tx.Exec("UPDATE items SET is_available = 0 WHERE name_of_the_item = ?", name); err != nil {
 				log.Printf("❌ Failed to mark disappeared item %s as unavailable: %v", name, err)
 			} else {
@@ -786,6 +853,19 @@ func initDB(filepath string) (*sql.DB, error) {
 	if _, err = db.Exec(createItemsTableSQL); err != nil {
 		return nil, fmt.Errorf("could not create items table: %w", err)
 	}
+
+	createEventsTableSQL := `
+	CREATE TABLE IF NOT EXISTS market_events (
+		"id" INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+		"event_timestamp" TEXT NOT NULL,
+		"event_type" TEXT NOT NULL,
+		"item_name" TEXT NOT NULL,
+		"details" TEXT
+	);`
+	if _, err = db.Exec(createEventsTableSQL); err != nil {
+		return nil, fmt.Errorf("could not create market_events table: %w", err)
+	}
+
 	createHistoryTableSQL := `
 	CREATE TABLE IF NOT EXISTS scrape_history (
 		"timestamp" TEXT NOT NULL PRIMARY KEY
