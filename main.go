@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"html/template"
+	"io"
 	"log"
 	"net/http"
 	"net/url"
@@ -92,6 +93,55 @@ type ItemListing struct {
 	Timestamp      string `json:"Timestamp"`
 }
 
+// RagnaItem holds the detailed information fetched from RagnaAPI.
+type RagnaItem struct {
+	ID          int        `json:"id"`
+	Name        string     `json:"name"`
+	Description string     `json:"description"`
+	ImageURL    string     `json:"img"`
+	DropRates   []DropRate `json:"drop_rate"`
+}
+
+// UnmarshalJSON is a custom unmarshaler for RagnaItem to handle inconsistent "drop_rate" types.
+func (r *RagnaItem) UnmarshalJSON(data []byte) error {
+	// Use an alias to avoid recursion
+	type Alias RagnaItem
+
+	// Create a temporary struct with a json.RawMessage for the drop_rate field
+	aux := &struct {
+		DropRates json.RawMessage `json:"drop_rate"`
+		*Alias
+	}{
+		Alias: (*Alias)(r),
+	}
+
+	if err := json.Unmarshal(data, &aux); err != nil {
+		return err
+	}
+
+	// Try to unmarshal drop_rate as a slice.
+	var dropRates []DropRate
+	if err := json.Unmarshal(aux.DropRates, &dropRates); err == nil {
+		// If successful (it's an array), assign it.
+		r.DropRates = dropRates
+	} else {
+		// If it fails (e.g., it's a boolean `false`), set DropRates to nil.
+		r.DropRates = nil
+	}
+
+	return nil
+}
+
+// DropRate holds monster drop information.
+type DropRate struct {
+	Monster      string `json:"monster"`
+	Rate         string `json:"rate"`
+	HighestSpawn string `json:"highest_spawn"`
+	Element      string `json:"element"`
+	Flee         string `json:"flee"`
+	Hit          string `json:"hit"`
+}
+
 type HistoryPageData struct {
 	ItemName       string
 	PriceDataJSON  template.JS
@@ -99,6 +149,7 @@ type HistoryPageData struct {
 	OverallMax     int
 	CurrentMinJSON template.JS
 	CurrentMaxJSON template.JS
+	ItemDetails    *RagnaItem
 }
 
 func main() {
@@ -126,6 +177,41 @@ func historyHandler(w http.ResponseWriter, r *http.Request) {
 	if itemName == "" {
 		http.Error(w, "Item name is required", http.StatusBadRequest)
 		return
+	}
+
+	// Fetch item details from RagnaAPI
+	var itemID int
+	err := db.QueryRow("SELECT item_id FROM items WHERE name_of_the_item = ? AND item_id > 0 LIMIT 1", itemName).Scan(&itemID)
+	if err != nil {
+		log.Printf("⚠️ Could not find a valid ItemID for '%s' in the database: %v", itemName, err)
+	}
+
+	var ragnaItemDetails *RagnaItem
+	if itemID > 0 {
+		apiURL := fmt.Sprintf("https://ragnapi.com/api/v1/old-times/items/%d", itemID)
+		client := http.Client{Timeout: 10 * time.Second}
+		resp, err := client.Get(apiURL)
+		if err != nil {
+			log.Printf("❌ Failed to call RagnaAPI for item ID %d: %v", itemID, err)
+		} else {
+			defer resp.Body.Close()
+			if resp.StatusCode == http.StatusOK {
+				body, err := io.ReadAll(resp.Body)
+				if err != nil {
+					log.Printf("❌ Failed to read RagnaAPI response body for item ID %d: %v", itemID, err)
+				} else {
+					var itemDetails RagnaItem
+					// The custom UnmarshalJSON method on RagnaItem will be called here
+					if err := json.Unmarshal(body, &itemDetails); err != nil {
+						log.Printf("❌ Failed to unmarshal RagnaAPI JSON for item ID %d: %v", itemID, err)
+					} else {
+						ragnaItemDetails = &itemDetails
+					}
+				}
+			} else {
+				log.Printf("⚠️ RagnaAPI returned non-OK status for item ID %d: %s", itemID, resp.Status)
+			}
+		}
 	}
 
 	// Query for current available listings to find min and max for the cards
@@ -309,6 +395,7 @@ func historyHandler(w http.ResponseWriter, r *http.Request) {
 		OverallMax:     int(overallMax.Int64),
 		CurrentMinJSON: template.JS(currentMinJSON),
 		CurrentMaxJSON: template.JS(currentMaxJSON),
+		ItemDetails:    ragnaItemDetails,
 	}
 	tmpl.Execute(w, data)
 }
