@@ -84,14 +84,18 @@ type ActivityPageData struct {
 type ItemSummary struct {
 	Name         string
 	ItemID       int
-	MinPrice     int
-	MaxPrice     int
+	MinPrice     sql.NullInt64 // Use sql.NullInt64 to handle cases with no available listings
+	MaxPrice     sql.NullInt64 // Use sql.NullInt64
 	ListingCount int
 }
 
 // SummaryPageData for the summary view template
 type SummaryPageData struct {
-	Items []ItemSummary
+	Items       []ItemSummary
+	SearchQuery string
+	SortBy      string
+	Order       string
+	ShowAll     bool // To track the state of the "show all" checkbox
 }
 
 type PricePointDetails struct {
@@ -196,19 +200,52 @@ func main() {
 
 // summaryHandler serves the new summary page
 func summaryHandler(w http.ResponseWriter, r *http.Request) {
-	query := `
+	// 1. Get parameters from the request
+	searchQuery := r.FormValue("query")
+	sortBy := r.FormValue("sort_by")
+	order := r.FormValue("order")
+	showAll := r.FormValue("show_all") == "true"
+
+	// 2. Build the query dynamically
+	params := []interface{}{"%" + searchQuery + "%"}
+
+	// Base query with conditional aggregation for min/max price and a sum for available count
+	baseQuery := `
         SELECT
             name_of_the_item,
-            MIN(item_id) as item_id, -- Assuming item_id is consistent for a given name
-            MIN(CAST(REPLACE(price, ',', '') AS INTEGER)) as min_price,
-            MAX(CAST(REPLACE(price, ',', '') AS INTEGER)) as max_price,
-            COUNT(*) as listing_count
+            MIN(item_id) as item_id,
+            MIN(CASE WHEN is_available = 1 THEN CAST(REPLACE(price, ',', '') AS INTEGER) ELSE NULL END) as min_price,
+            MAX(CASE WHEN is_available = 1 THEN CAST(REPLACE(price, ',', '') AS INTEGER) ELSE NULL END) as max_price,
+            SUM(CASE WHEN is_available = 1 THEN 1 ELSE 0 END) as listing_count
         FROM items
-        WHERE is_available = 1
+        WHERE name_of_the_item LIKE ?
         GROUP BY name_of_the_item
-        ORDER BY name_of_the_item ASC;
     `
-	rows, err := db.Query(query)
+	// Add HAVING clause if we only want to show items with available listings
+	if !showAll {
+		baseQuery += " HAVING listing_count > 0"
+	}
+
+	// 3. Handle sorting securely
+	allowedSorts := map[string]string{
+		"name":      "name_of_the_item",
+		"item_id":   "item_id",
+		"listings":  "listing_count",
+		"min_price": "min_price",
+		"max_price": "max_price",
+	}
+	orderByClause, ok := allowedSorts[sortBy]
+	if !ok {
+		orderByClause, sortBy = "name_of_the_item", "name" // Default sort
+	}
+	if strings.ToUpper(order) != "DESC" {
+		order = "ASC"
+	}
+
+	// Append ORDER BY to the query, with a secondary sort for stability
+	query := fmt.Sprintf("%s ORDER BY %s %s, name_of_the_item ASC;", baseQuery, orderByClause, order)
+
+	rows, err := db.Query(query, params...)
 	if err != nil {
 		http.Error(w, "Database query for summary failed", http.StatusInternalServerError)
 		log.Printf("❌ Summary query error: %v", err)
@@ -219,6 +256,7 @@ func summaryHandler(w http.ResponseWriter, r *http.Request) {
 	var items []ItemSummary
 	for rows.Next() {
 		var item ItemSummary
+		// Scan into the new struct with sql.NullInt64 for prices
 		if err := rows.Scan(&item.Name, &item.ItemID, &item.MinPrice, &item.MaxPrice, &item.ListingCount); err != nil {
 			log.Printf("⚠️ Failed to scan summary row: %v", err)
 			continue
@@ -226,15 +264,27 @@ func summaryHandler(w http.ResponseWriter, r *http.Request) {
 		items = append(items, item)
 	}
 
-	tmpl, err := template.ParseFiles("summary.html")
+	// *** FIX IS HERE ***
+	// Create a FuncMap to register the "lower" function.
+	funcMap := template.FuncMap{
+		"lower": strings.ToLower,
+	}
+
+	// Parse the template file with the custom function map.
+	tmpl, err := template.New("summary.html").Funcs(funcMap).ParseFiles("summary.html")
 	if err != nil {
 		http.Error(w, "Could not load summary template", http.StatusInternalServerError)
 		log.Printf("❌ Could not load summary.html template: %v", err)
 		return
 	}
 
+	// 4. Populate data for the template
 	data := SummaryPageData{
-		Items: items,
+		Items:       items,
+		SearchQuery: searchQuery,
+		SortBy:      sortBy,
+		Order:       order,
+		ShowAll:     showAll,
 	}
 	tmpl.Execute(w, data)
 }
@@ -986,4 +1036,3 @@ func initDB(filepath string) (*sql.DB, error) {
 	}
 	return db, nil
 }
-

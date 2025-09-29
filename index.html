@@ -11,6 +11,7 @@
         .header-info { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; margin-bottom: 10px; border-bottom: 1px solid #eee; padding-bottom: 15px; }
         .header-info p { margin: 0; }
         .header-info a { font-weight: 500; }
+        .nav-links { display: flex; flex-direction: column; align-items: flex-end; gap: 5px; }
         form { margin-bottom: 20px; }
         .form-controls { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 15px; }
         .column-selector { display: flex; flex-wrap: wrap; align-items: center; gap: 15px; padding: 10px; background-color: #f8f8f8; border-radius: 4px; }
@@ -43,7 +44,10 @@
                 <p>Last updated: <strong data-timestamp="{{.LastScrapeTime}}">{{.LastScrapeTime}}</strong> <span id="time-ago"></span></p>
                 <p>Showing <strong>{{ len .Items }}</strong> items.</p>
             </div>
-            <a href="/activity">View Recent Market Activity &rarr;</a>
+            <div class="nav-links">
+                <a href="/summary">View Item Summary &rarr;</a>
+                <a href="/activity">View Recent Market Activity &rarr;</a>
+            </div>
         </div>
         
         <form action="/" method="get">
