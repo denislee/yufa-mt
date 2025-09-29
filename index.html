@@ -10,8 +10,10 @@
         h1 { color: #333; }
         .header-info { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; margin-bottom: 20px; border-bottom: 1px solid #eee; padding-bottom: 15px; }
         .header-info p { margin: 0; }
-        .header-info a { font-weight: 500; }
-        .nav-links { display: flex; flex-direction: column; align-items: flex-end; gap: 5px; }
+        .main-nav { display: flex; gap: 15px; align-items: center; }
+        .main-nav a, .main-nav strong { font-weight: 500; padding: 5px 10px; border-radius: 4px; font-size: 1.1em; }
+        .main-nav a:hover { background-color: #f1f1f1; text-decoration: none; }
+        .main-nav strong { color: #333; }
         a { color: #007bff; text-decoration: none; }
         a:hover { text-decoration: underline; }
         table { width: 100%; border-collapse: collapse; margin-top: 20px; }
@@ -40,10 +42,11 @@
                 <h1>Yufa Market Tracker</h1>
                 <p>Last updated: <strong data-timestamp="{{.LastScrapeTime}}">{{.LastScrapeTime}}</strong> <span id="time-ago"></span></p>
             </div>
-            <div class="nav-links">
-                <a href="/full-list">View Full Market List &rarr;</a>
-                <a href="/activity">View Recent Market Activity &rarr;</a>
-            </div>
+            <nav class="main-nav">
+                <strong>Summary</strong>
+                <a href="/full-list">Full List</a>
+                <a href="/activity">Activity</a>
+            </nav>
         </div>
 
         <form action="/" method="GET" class="filter-form">
@@ -55,7 +58,7 @@
             <button type="submit">Filter</button>
         </form>
 
-        <p>Showing a summary of <strong>{{ len .Items }}</strong> unique items based on your filters.</p>
+        <p>Showing <strong>{{ len .Items }}</strong> items.</p>
 
         <table>
             <thead>

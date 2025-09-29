@@ -7,7 +7,12 @@
     <style>
         body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; line-height: 1.6; background-color: #f4f4f9; color: #333; margin: 0; padding: 20px; }
         .container { max-width: 1200px; margin: auto; background: #fff; padding: 20px; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
-        h1 { color: #333; border-bottom: 1px solid #eee; padding-bottom: 10px; }
+        h1, h2 { color: #333; border-bottom: 1px solid #eee; padding-bottom: 10px; }
+        .header-info { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; margin-bottom: 10px; }
+        .main-nav { display: flex; gap: 15px; align-items: center; }
+        .main-nav a, .main-nav strong { font-weight: 500; padding: 5px 10px; border-radius: 4px; font-size: 1.1em; text-decoration: none; color: #007bff; }
+        .main-nav a:hover { background-color: #f1f1f1; text-decoration: none; }
+        .main-nav strong { color: #333; }
         a { color: #007bff; text-decoration: none; }
         a:hover { text-decoration: underline; }
         .market-log ul { list-style-type: none; padding: 0; margin: 0; }
@@ -23,8 +28,15 @@
 </head>
 <body>
     <div class="container">
-        <a href="/">&larr; Back to Market List</a>
-        <h1>Recent Market Activity</h1>
+        <div class="header-info">
+            <h1>Yufa Market Tracker</h1>
+            <nav class="main-nav">
+                <a href="/">Summary</a>
+                <a href="/full-list">Full List</a>
+                <strong>Activity</strong>
+            </nav>
+        </div>
+        <h2>Recent Market Activity</h2>
 
         {{if .MarketEvents}}
         <div class="market-log">
