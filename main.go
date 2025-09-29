@@ -859,7 +859,11 @@ func scrapeData() {
 			})
 
 			if len(cardNames) > 0 {
-				itemName = fmt.Sprintf("%s [%s]", itemName, strings.Join(cardNames, " "))
+				wrapped := make([]string, len(cardNames))
+				for i, c := range cardNames {
+					wrapped[i] = fmt.Sprintf(" [%s]", c)
+				}
+				itemName = fmt.Sprintf("%s%s", itemName, strings.Join(wrapped, ""))
 			}
 
 			quantityStr := strings.TrimSuffix(strings.TrimSpace(itemSelection.Find("span.text-xs.text-muted-foreground").Text()), "x")
