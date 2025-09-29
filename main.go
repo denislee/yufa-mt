@@ -581,11 +581,11 @@ func viewHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func startBackgroundScraper() {
-	ticker := time.NewTicker(30 * time.Minute)
+	ticker := time.NewTicker(5 * time.Minute)
 	defer ticker.Stop()
 	go scrapeData()
 	for {
-		log.Printf("🕒 Waiting for the next 30-minute schedule...")
+		log.Printf("🕒 Waiting for the next 5-minute schedule...")
 		<-ticker.C
 		scrapeData()
 	}
@@ -875,4 +875,3 @@ func initDB(filepath string) (*sql.DB, error) {
 	}
 	return db, nil
 }
-
