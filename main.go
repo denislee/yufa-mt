@@ -225,11 +225,21 @@ func getLastScrapeTime() string {
 
 // viewHandler serves the main summary page
 func viewHandler(w http.ResponseWriter, r *http.Request) {
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "Failed to parse form", http.StatusBadRequest)
+		return
+	}
 	// 1. Get parameters from the request
 	searchQuery := r.FormValue("query")
 	sortBy := r.FormValue("sort_by")
 	order := r.FormValue("order")
-	showAll := r.FormValue("show_all") == "true"
+
+	// Default to "only available" unless a form was submitted with the box unchecked.
+	formSubmitted := len(r.Form) > 0
+	showAll := false
+	if formSubmitted && r.FormValue("only_available") != "true" {
+		showAll = true
+	}
 
 	// 2. Build the query dynamically
 	params := []interface{}{"%" + searchQuery + "%"}
@@ -639,8 +649,14 @@ func fullListHandler(w http.ResponseWriter, r *http.Request) {
 	searchQuery := r.FormValue("query")
 	sortBy := r.FormValue("sort_by")
 	order := r.FormValue("order")
-	showAll := r.FormValue("only_available") != "true"
 	selectedCols := r.Form["cols"]
+
+	// Default to "only available" unless a form was submitted with the box unchecked.
+	formSubmitted := len(r.Form) > 0
+	showAll := false
+	if formSubmitted && r.FormValue("only_available") != "true" {
+		showAll = true
+	}
 
 	allCols := []Column{
 		{ID: "item_id", DisplayName: "Item ID"},
@@ -1085,3 +1101,4 @@ func initDB(filepath string) (*sql.DB, error) {
 	}
 	return db, nil
 }
+

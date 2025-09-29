@@ -50,16 +50,16 @@
             </nav>
         </div>
 
+        <p>Showing <strong>{{ len .Items }}</strong> items.</p>
+
         <form action="/" method="GET" class="filter-form">
             <input type="text" name="query" placeholder="Search for an item..." value="{{.SearchQuery}}">
             <label>
-                <input type="checkbox" name="show_all" value="true" {{if .ShowAll}}checked{{end}}>
-                Show items with no available listings
+                <input type="checkbox" name="only_available" value="true" {{if not .ShowAll}}checked{{end}}>
+                Show only available
             </label>
             <button type="submit">Filter</button>
         </form>
-
-        <p>Showing <strong>{{ len .Items }}</strong> items.</p>
 
         <table>
             <thead>
@@ -71,19 +71,19 @@
                     {{$revOrder := "ASC"}}{{if eq $currentOrder "ASC"}}{{$revOrder = "DESC"}}{{end}}
                     
                     <th class="{{if eq $currentSort "name"}}sorted-{{$currentOrder | lower}}{{end}}">
-                        <a href="/?query={{$query}}&show_all={{$showAll}}&sort_by=name&order={{if eq $currentSort "name"}}{{$revOrder}}{{else}}ASC{{end}}">Item Name</a>
+                        <a href="/?query={{$query}}{{if not $showAll}}&only_available=true{{end}}&sort_by=name&order={{if eq $currentSort "name"}}{{$revOrder}}{{else}}ASC{{end}}">Item Name</a>
                     </th>
                     <th class="{{if eq $currentSort "item_id"}}sorted-{{$currentOrder | lower}}{{end}}">
-                        <a href="/?query={{$query}}&show_all={{$showAll}}&sort_by=item_id&order={{if eq $currentSort "item_id"}}{{$revOrder}}{{else}}ASC{{end}}">Item ID</a>
+                        <a href="/?query={{$query}}{{if not $showAll}}&only_available=true{{end}}&sort_by=item_id&order={{if eq $currentSort "item_id"}}{{$revOrder}}{{else}}ASC{{end}}">Item ID</a>
                     </th>
                     <th class="{{if eq $currentSort "listings"}}sorted-{{$currentOrder | lower}}{{end}}">
-                        <a href="/?query={{$query}}&show_all={{$showAll}}&sort_by=listings&order={{if eq $currentSort "listings"}}{{$revOrder}}{{else}}DESC{{end}}">Available Listings</a>
+                        <a href="/?query={{$query}}{{if not $showAll}}&only_available=true{{end}}&sort_by=listings&order={{if eq $currentSort "listings"}}{{$revOrder}}{{else}}DESC{{end}}">Available Listings</a>
                     </th>
                     <th class="{{if eq $currentSort "min_price"}}sorted-{{$currentOrder | lower}}{{end}}">
-                        <a href="/?query={{$query}}&show_all={{$showAll}}&sort_by=min_price&order={{if eq $currentSort "min_price"}}{{$revOrder}}{{else}}ASC{{end}}">Lowest Price</a>
+                        <a href="/?query={{$query}}{{if not $showAll}}&only_available=true{{end}}&sort_by=min_price&order={{if eq $currentSort "min_price"}}{{$revOrder}}{{else}}ASC{{end}}">Lowest Price</a>
                     </th>
                     <th class="{{if eq $currentSort "max_price"}}sorted-{{$currentOrder | lower}}{{end}}">
-                        <a href="/?query={{$query}}&show_all={{$showAll}}&sort_by=max_price&order={{if eq $currentSort "max_price"}}{{$revOrder}}{{else}}DESC{{end}}">Highest Price</a>
+                        <a href="/?query={{$query}}{{if not $showAll}}&only_available=true{{end}}&sort_by=max_price&order={{if eq $currentSort "max_price"}}{{$revOrder}}{{else}}DESC{{end}}">Highest Price</a>
                     </th>
                 </tr>
             </thead>
