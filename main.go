@@ -69,6 +69,16 @@ type PricePointDetails struct {
 	MaxMapCoords  string `json:"MaxMapCoords"`
 }
 
+// HistoricalItemDetails struct to hold full details for a single item entry
+type HistoricalItemDetails struct {
+	Price      int
+	Quantity   int
+	StoreName  string
+	SellerName string
+	MapName    string
+	MapCoords  string
+}
+
 type HistoryPageData struct {
 	ItemName      string
 	PriceDataJSON template.JS
@@ -101,6 +111,30 @@ func historyHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Get the overall historical min and max priced items to fill in data gaps.
+	var overallMin, overallMax HistoricalItemDetails
+	var overallMinFound, overallMaxFound bool
+
+	minQuery := `
+		SELECT CAST(REPLACE(price, ',', '') AS INTEGER), quantity, store_name, seller_name, map_name, map_coordinates
+		FROM items WHERE name_of_the_item = ? ORDER BY CAST(REPLACE(price, ',', '') AS INTEGER) ASC LIMIT 1`
+	err := db.QueryRow(minQuery, itemName).Scan(&overallMin.Price, &overallMin.Quantity, &overallMin.StoreName, &overallMin.SellerName, &overallMin.MapName, &overallMin.MapCoords)
+	if err == nil {
+		overallMinFound = true
+	} else if err != sql.ErrNoRows {
+		log.Printf("⚠️ Error querying for overall min price: %v", err)
+	}
+
+	maxQuery := `
+		SELECT CAST(REPLACE(price, ',', '') AS INTEGER), quantity, store_name, seller_name, map_name, map_coordinates
+		FROM items WHERE name_of_the_item = ? ORDER BY CAST(REPLACE(price, ',', '') AS INTEGER) DESC LIMIT 1`
+	err = db.QueryRow(maxQuery, itemName).Scan(&overallMax.Price, &overallMax.Quantity, &overallMax.StoreName, &overallMax.SellerName, &overallMax.MapName, &overallMax.MapCoords)
+	if err == nil {
+		overallMaxFound = true
+	} else if err != sql.ErrNoRows {
+		log.Printf("⚠️ Error querying for overall max price: %v", err)
+	}
+
 	priceChangeQuery := `
 		WITH RankedItems AS (
 			SELECT
@@ -112,14 +146,16 @@ func historyHandler(w http.ResponseWriter, r *http.Request) {
 				map_name,
 				map_coordinates,
 				ROW_NUMBER() OVER(PARTITION BY date_and_time_retrieved ORDER BY CAST(REPLACE(price, ',', '') AS INTEGER) ASC) as rn_asc,
-				ROW_NUMBER() OVER(PARTITION BY date_and_time_retrieved ORDER BY CAST(REPLACE(price, ',', '') AS INTEGER) DESC) as rn_desc
+				ROW_NUMBER() OVER(PARTITION BY date_and_time_retrieved ORDER BY CAST(REPLACE(price, ',', '') AS INTEGER) DESC) as rn_desc,
+				COUNT(*) OVER(PARTITION BY date_and_time_retrieved) as item_count
 			FROM items
 			WHERE name_of_the_item = ?
 		)
 		SELECT
 			t_min.date_and_time_retrieved,
 			t_min.price_int, t_min.quantity, t_min.store_name, t_min.seller_name, t_min.map_name, t_min.map_coordinates,
-			t_max.price_int, t_max.quantity, t_max.store_name, t_max.seller_name, t_max.map_name, t_max.map_coordinates
+			t_max.price_int, t_max.quantity, t_max.store_name, t_max.seller_name, t_max.map_name, t_max.map_coordinates,
+			t_min.item_count
 		FROM
 			(SELECT * FROM RankedItems WHERE rn_asc = 1) AS t_min
 		JOIN
@@ -141,15 +177,44 @@ func historyHandler(w http.ResponseWriter, r *http.Request) {
 	for rows.Next() {
 		var p PricePointDetails
 		var timestampStr string
+		var itemCount int
 		err := rows.Scan(
 			&timestampStr,
 			&p.MinPrice, &p.MinQuantity, &p.MinStoreName, &p.MinSellerName, &p.MinMapName, &p.MinMapCoords,
 			&p.MaxPrice, &p.MaxQuantity, &p.MaxStoreName, &p.MaxSellerName, &p.MaxMapName, &p.MaxMapCoords,
+			&itemCount,
 		)
 		if err != nil {
 			log.Printf("⚠️ Failed to scan history row: %v", err)
 			continue
 		}
+
+		// If a scrape timestamp has only one item, its min and max prices will be the same.
+		// In this case, we use the overall historical min/max to provide a price range.
+		if itemCount == 1 && overallMinFound && overallMaxFound && overallMin.Price != overallMax.Price {
+			currentPrice := p.MinPrice // min and max are identical here
+			// Determine if the single point is closer to the historical min or max
+			if (currentPrice - overallMin.Price) <= (overallMax.Price - currentPrice) {
+				// The point is "min-like"; keep its details for the min price
+				// and use the historical overall max for the max price.
+				p.MaxPrice = overallMax.Price
+				p.MaxQuantity = overallMax.Quantity
+				p.MaxStoreName = overallMax.StoreName
+				p.MaxSellerName = overallMax.SellerName
+				p.MaxMapName = overallMax.MapName
+				p.MaxMapCoords = overallMax.MapCoords
+			} else {
+				// The point is "max-like"; keep its details for the max price
+				// and use the historical overall min for the min price.
+				p.MinPrice = overallMin.Price
+				p.MinQuantity = overallMin.Quantity
+				p.MinStoreName = overallMin.StoreName
+				p.MinSellerName = overallMin.SellerName
+				p.MinMapName = overallMin.MapName
+				p.MinMapCoords = overallMin.MapCoords
+			}
+		}
+
 		priceEvents[timestampStr] = p
 	}
 
@@ -507,3 +572,4 @@ func initDB(filepath string) (*sql.DB, error) {
 	}
 	return db, nil
 }
+
