@@ -81,11 +81,24 @@ type PricePointDetails struct {
 	MaxMapCoords  string `json:"MaxMapCoords"`
 }
 
+// ItemListing holds details for a single current listing for the info cards.
+type ItemListing struct {
+	Price          int    `json:"Price"`
+	Quantity       int    `json:"Quantity"`
+	StoreName      string `json:"StoreName"`
+	SellerName     string `json:"SellerName"`
+	MapName        string `json:"MapName"`
+	MapCoordinates string `json:"MapCoordinates"`
+	Timestamp      string `json:"Timestamp"`
+}
+
 type HistoryPageData struct {
-	ItemName      string
-	PriceDataJSON template.JS
-	OverallMin    int
-	OverallMax    int
+	ItemName       string
+	PriceDataJSON  template.JS
+	OverallMin     int
+	OverallMax     int
+	CurrentMinJSON template.JS
+	CurrentMaxJSON template.JS
 }
 
 func main() {
@@ -115,6 +128,56 @@ func historyHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Query for current available listings to find min and max for the cards
+	currentListingsQuery := `
+		SELECT
+			CAST(REPLACE(price, ',', '') AS INTEGER) as price_int,
+			quantity,
+			store_name,
+			seller_name,
+			map_name,
+			map_coordinates,
+			date_and_time_retrieved
+		FROM items
+		WHERE name_of_the_item = ? AND is_available = 1
+		ORDER BY price_int ASC;
+	`
+	rowsCurrent, err := db.Query(currentListingsQuery, itemName)
+	if err != nil {
+		http.Error(w, "Database query for current listings failed", http.StatusInternalServerError)
+		log.Printf("❌ Current listings query error: %v", err)
+		return
+	}
+	defer rowsCurrent.Close()
+
+	var currentListings []ItemListing
+	for rowsCurrent.Next() {
+		var listing ItemListing
+		var timestampStr string
+		if err := rowsCurrent.Scan(&listing.Price, &listing.Quantity, &listing.StoreName, &listing.SellerName, &listing.MapName, &listing.MapCoordinates, &timestampStr); err != nil {
+			log.Printf("⚠️ Failed to scan current listing row: %v", err)
+			continue
+		}
+		parsedTime, err := time.Parse(time.RFC3339, timestampStr)
+		if err == nil {
+			listing.Timestamp = parsedTime.Format("2006-01-02 15:04")
+		} else {
+			listing.Timestamp = timestampStr
+		}
+		currentListings = append(currentListings, listing)
+	}
+
+	var currentMin, currentMax *ItemListing
+	if len(currentListings) > 0 {
+		minListing := currentListings[0]
+		currentMin = &minListing
+		maxListing := currentListings[len(currentListings)-1]
+		currentMax = &maxListing
+	}
+
+	currentMinJSON, _ := json.Marshal(currentMin)
+	currentMaxJSON, _ := json.Marshal(currentMax)
+
 	// ADDED: Query for overall min and max prices across all history
 	var overallMin, overallMax sql.NullInt64
 	overallStatsQuery := `
@@ -124,7 +187,7 @@ func historyHandler(w http.ResponseWriter, r *http.Request) {
         FROM items
         WHERE name_of_the_item = ?;
     `
-	err := db.QueryRow(overallStatsQuery, itemName).Scan(&overallMin, &overallMax)
+	err = db.QueryRow(overallStatsQuery, itemName).Scan(&overallMin, &overallMax)
 	if err != nil {
 		log.Printf("❌ Overall stats query error for '%s': %v", itemName, err)
 	}
@@ -240,10 +303,12 @@ func historyHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	data := HistoryPageData{
-		ItemName:      itemName,
-		PriceDataJSON: template.JS(priceHistoryJSON),
-		OverallMin:    int(overallMin.Int64),
-		OverallMax:    int(overallMax.Int64),
+		ItemName:       itemName,
+		PriceDataJSON:  template.JS(priceHistoryJSON),
+		OverallMin:     int(overallMin.Int64),
+		OverallMax:     int(overallMax.Int64),
+		CurrentMinJSON: template.JS(currentMinJSON),
+		CurrentMaxJSON: template.JS(currentMaxJSON),
 	}
 	tmpl.Execute(w, data)
 }

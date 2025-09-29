@@ -76,7 +76,7 @@
         <div class="info-cards">
             <div class="card" id="min-price-card">
                 <h2>Lowest Price</h2>
-                <p><strong>Price:</strong> <span id="min-price-val"></span></p>
+                    <p><strong>Price:</strong> <strong id="overall-min-display" style="color: #28a745;"><span id="min-price-val"></span></strong></p>
                 <p><strong>Quantity:</strong> <span id="min-quantity-val"></span></p>
                 <p><strong>Store:</strong> <span id="min-store-val"></span></p>
                 <p><strong>Seller:</strong> <span id="min-seller-val"></span></p>
@@ -85,7 +85,7 @@
             </div>
             <div class="card" id="max-price-card">
                 <h2>Highest Price</h2>
-                <p><strong>Price:</strong> <span id="max-price-val"></span></p>
+                    <p><strong>Price:</strong> <strong id="overall-max-display" style="color: #dc3545;"><span id="max-price-val"></span></strong></p>
                 <p><strong>Quantity:</strong> <span id="max-quantity-val"></span></p>
                 <p><strong>Store:</strong> <span id="max-store-val"></span></p>
                 <p><strong>Seller:</strong> <span id="max-seller-val"></span></p>
@@ -100,6 +100,8 @@
     <script>
         // Go's template engine will safely inject the JSON data here
         const priceHistoryData = {{.PriceDataJSON}};
+        const currentMinData = {{.CurrentMinJSON}};
+        const currentMaxData = {{.CurrentMaxJSON}};
 
         // ADDED: Populate All-Time Summary
         const overallMin = {{.OverallMin}};
@@ -112,33 +114,25 @@
             document.getElementById('overall-max-display').textContent = `${overallMax.toLocaleString()}z`;
         }
 
-        // --- ADDED: Populate Info Cards ---
-        if (priceHistoryData && priceHistoryData.length > 0) {
-            // Find the data point with the overall lowest min price
-            const overallMinPriceData = priceHistoryData.reduce((prev, current) => {
-                return (prev.MinPrice < current.MinPrice) ? prev : current;
-            });
-
-            // Find the data point with the overall highest max price
-            const overallMaxPriceData = priceHistoryData.reduce((prev, current) => {
-                return (prev.MaxPrice > current.MaxPrice) ? prev : current;
-            });
-
+        // --- REPLACED: Populate Info Cards with current available items ---
+        if (currentMinData) {
             // Populate the Min Price Card
-            document.getElementById('min-price-val').textContent = `${overallMinPriceData.MinPrice.toLocaleString()}z`;
-            document.getElementById('min-quantity-val').textContent = overallMinPriceData.MinQuantity.toLocaleString();
-            document.getElementById('min-store-val').textContent = overallMinPriceData.MinStoreName;
-            document.getElementById('min-seller-val').textContent = overallMinPriceData.MinSellerName;
-            document.getElementById('min-location-val').textContent = `${overallMinPriceData.MinMapName} (${overallMinPriceData.MinMapCoords})`;
-            document.getElementById('min-date-val').textContent = overallMinPriceData.Timestamp;
+            document.getElementById('min-price-val').textContent = `${currentMinData.Price.toLocaleString()}z`;
+            document.getElementById('min-quantity-val').textContent = currentMinData.Quantity.toLocaleString();
+            document.getElementById('min-store-val').textContent = currentMinData.StoreName;
+            document.getElementById('min-seller-val').textContent = currentMinData.SellerName;
+            document.getElementById('min-location-val').textContent = `${currentMinData.MapName} (${currentMinData.MapCoordinates})`;
+            document.getElementById('min-date-val').textContent = currentMinData.Timestamp;
+        }
 
+        if (currentMaxData) {
             // Populate the Max Price Card
-            document.getElementById('max-price-val').textContent = `${overallMaxPriceData.MaxPrice.toLocaleString()}z`;
-            document.getElementById('max-quantity-val').textContent = overallMaxPriceData.MaxQuantity.toLocaleString();
-            document.getElementById('max-store-val').textContent = overallMaxPriceData.MaxStoreName;
-            document.getElementById('max-seller-val').textContent = overallMaxPriceData.MaxSellerName;
-            document.getElementById('max-location-val').textContent = `${overallMaxPriceData.MaxMapName} (${overallMaxPriceData.MaxMapCoords})`;
-            document.getElementById('max-date-val').textContent = overallMaxPriceData.Timestamp;
+            document.getElementById('max-price-val').textContent = `${currentMaxData.Price.toLocaleString()}z`;
+            document.getElementById('max-quantity-val').textContent = currentMaxData.Quantity.toLocaleString();
+            document.getElementById('max-store-val').textContent = currentMaxData.StoreName;
+            document.getElementById('max-seller-val').textContent = currentMaxData.SellerName;
+            document.getElementById('max-location-val').textContent = `${currentMaxData.MapName} (${currentMaxData.MapCoordinates})`;
+            document.getElementById('max-date-val').textContent = currentMaxData.Timestamp;
         }
         // --- END: Populate Info Cards ---
 
