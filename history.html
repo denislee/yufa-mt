@@ -42,12 +42,36 @@
         }
         #min-price-card h2 { color: #28a745; }
         #max-price-card h2 { color: #dc3545; }
+        .overall-summary {
+            background: #f8f9fa;
+            border: 1px solid #dee2e6;
+            padding: 15px 20px;
+            border-radius: 6px;
+            margin-bottom: 30px;
+            text-align: center;
+        }
+        .overall-summary p {
+            margin: 0;
+            font-size: 1.1em;
+            color: #495057;
+        }
+        .overall-summary strong {
+            font-weight: 600;
+        }
     </style>
 </head>
 <body>
     <div class="container">
         <a href="/">&larr; Back to Market List</a>
         <h1>Price History for: <strong>{{.ItemName}}</strong></h1>
+
+        <div class="overall-summary">
+            <p>
+                All-Time Price Range: 
+                <strong id="overall-min-display" style="color: #28a745;">N/A</strong> &mdash; 
+                <strong id="overall-max-display" style="color: #dc3545;">N/A</strong>
+            </p>
+        </div>
 
         <div class="info-cards">
             <div class="card" id="min-price-card">
@@ -76,6 +100,17 @@
     <script>
         // Go's template engine will safely inject the JSON data here
         const priceHistoryData = {{.PriceDataJSON}};
+
+        // ADDED: Populate All-Time Summary
+        const overallMin = {{.OverallMin}};
+        const overallMax = {{.OverallMax}};
+
+        if (overallMin > 0) {
+            document.getElementById('overall-min-display').textContent = `${overallMin.toLocaleString()}z`;
+        }
+        if (overallMax > 0) {
+            document.getElementById('overall-max-display').textContent = `${overallMax.toLocaleString()}z`;
+        }
 
         // --- ADDED: Populate Info Cards ---
         if (priceHistoryData && priceHistoryData.length > 0) {

@@ -84,6 +84,8 @@ type PricePointDetails struct {
 type HistoryPageData struct {
 	ItemName      string
 	PriceDataJSON template.JS
+	OverallMin    int
+	OverallMax    int
 }
 
 func main() {
@@ -111,6 +113,20 @@ func historyHandler(w http.ResponseWriter, r *http.Request) {
 	if itemName == "" {
 		http.Error(w, "Item name is required", http.StatusBadRequest)
 		return
+	}
+
+	// ADDED: Query for overall min and max prices across all history
+	var overallMin, overallMax sql.NullInt64
+	overallStatsQuery := `
+        SELECT
+            MIN(CAST(REPLACE(price, ',', '') AS INTEGER)),
+            MAX(CAST(REPLACE(price, ',', '') AS INTEGER))
+        FROM items
+        WHERE name_of_the_item = ?;
+    `
+	err := db.QueryRow(overallStatsQuery, itemName).Scan(&overallMin, &overallMax)
+	if err != nil {
+		log.Printf("❌ Overall stats query error for '%s': %v", itemName, err)
 	}
 
 	priceChangeQuery := `
@@ -226,6 +242,8 @@ func historyHandler(w http.ResponseWriter, r *http.Request) {
 	data := HistoryPageData{
 		ItemName:      itemName,
 		PriceDataJSON: template.JS(priceHistoryJSON),
+		OverallMin:    int(overallMin.Int64),
+		OverallMax:    int(overallMax.Int64),
 	}
 	tmpl.Execute(w, data)
 }
