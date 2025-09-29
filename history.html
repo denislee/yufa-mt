@@ -8,7 +8,8 @@
     <style>
         body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; line-height: 1.6; background-color: #f4f4f9; color: #333; margin: 0; padding: 20px; }
         .container { max-width: 1000px; margin: auto; background: #fff; padding: 20px; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
-        a { color: #007bff; }
+        a { color: #007bff; text-decoration: none; }
+        a:hover { text-decoration: underline; }
         .info-cards {
             display: flex;
             gap: 20px;
@@ -76,7 +77,7 @@
         <div class="info-cards">
             <div class="card" id="min-price-card">
                 <h2>Lowest Price</h2>
-                    <p><strong>Price:</strong> <strong id="overall-min-display" style="color: #28a745;"><span id="min-price-val"></span></strong></p>
+                <p><strong>Price:</strong> <span id="min-price-val"></span></p>
                 <p><strong>Quantity:</strong> <span id="min-quantity-val"></span></p>
                 <p><strong>Store:</strong> <span id="min-store-val"></span></p>
                 <p><strong>Seller:</strong> <span id="min-seller-val"></span></p>
@@ -85,7 +86,7 @@
             </div>
             <div class="card" id="max-price-card">
                 <h2>Highest Price</h2>
-                    <p><strong>Price:</strong> <strong id="overall-max-display" style="color: #dc3545;"><span id="max-price-val"></span></strong></p>
+                <p><strong>Price:</strong> <span id="max-price-val"></span></p>
                 <p><strong>Quantity:</strong> <span id="max-quantity-val"></span></p>
                 <p><strong>Store:</strong> <span id="max-store-val"></span></p>
                 <p><strong>Seller:</strong> <span id="max-seller-val"></span></p>
@@ -114,24 +115,49 @@
             document.getElementById('overall-max-display').textContent = `${overallMax.toLocaleString()}z`;
         }
 
+        function copyNavi(event, mapName, coordinates) {
+            event.preventDefault();
+            const formattedCoords = coordinates.trim().replace('(', '').replace(')', '').replace(',', '/');
+            const command = `/navi ${mapName.trim()} ${formattedCoords}`;
+            navigator.clipboard.writeText(command).then(() => {
+                const originalElement = event.target;
+                const originalText = originalElement.innerText;
+                originalElement.innerText = 'Copied!';
+                originalElement.style.color = '#28a745';
+                originalElement.style.fontWeight = 'bold';
+                setTimeout(() => {
+                    originalElement.innerText = originalText;
+                    originalElement.style.color = '';
+                    originalElement.style.fontWeight = '';
+                }, 1500);
+            }).catch(err => {
+                console.error('Failed to copy command: ', err);
+                alert('Could not copy the /navi command to your clipboard.');
+            });
+        }
+
         // --- REPLACED: Populate Info Cards with current available items ---
         if (currentMinData) {
+            const mapName = currentMinData.MapName;
+            const mapCoords = currentMinData.MapCoordinates;
             // Populate the Min Price Card
             document.getElementById('min-price-val').textContent = `${currentMinData.Price.toLocaleString()}z`;
             document.getElementById('min-quantity-val').textContent = currentMinData.Quantity.toLocaleString();
             document.getElementById('min-store-val').textContent = currentMinData.StoreName;
             document.getElementById('min-seller-val').textContent = currentMinData.SellerName;
-            document.getElementById('min-location-val').textContent = `${currentMinData.MapName} (${currentMinData.MapCoordinates})`;
+            document.getElementById('min-location-val').innerHTML = `<a href="#" onclick="copyNavi(event, '${mapName.replace(/'/g, "\\'")}', '${mapCoords.replace(/'/g, "\\'")}')" title="Click to copy /navi command">${mapName} (${mapCoords})</a>`;
             document.getElementById('min-date-val').textContent = currentMinData.Timestamp;
         }
 
         if (currentMaxData) {
+            const mapName = currentMaxData.MapName;
+            const mapCoords = currentMaxData.MapCoordinates;
             // Populate the Max Price Card
             document.getElementById('max-price-val').textContent = `${currentMaxData.Price.toLocaleString()}z`;
             document.getElementById('max-quantity-val').textContent = currentMaxData.Quantity.toLocaleString();
             document.getElementById('max-store-val').textContent = currentMaxData.StoreName;
             document.getElementById('max-seller-val').textContent = currentMaxData.SellerName;
-            document.getElementById('max-location-val').textContent = `${currentMaxData.MapName} (${currentMaxData.MapCoordinates})`;
+            document.getElementById('max-location-val').innerHTML = `<a href="#" onclick="copyNavi(event, '${mapName.replace(/'/g, "\\'")}', '${mapCoords.replace(/'/g, "\\'")}')" title="Click to copy /navi command">${mapName} (${mapCoords})</a>`;
             document.getElementById('max-date-val').textContent = currentMaxData.Timestamp;
         }
         // --- END: Populate Info Cards ---
