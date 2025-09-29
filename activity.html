@@ -53,7 +53,7 @@
                     {{if eq .EventType "ADDED"}}
                         <span class="log-event log-added">
                             ➕ <strong><img src="https://static.divine-pride.net/images/items/item/{{.ItemID}}.png" alt="" width="24" height="24" style="vertical-align: middle; margin-right: 5px;"> <a href="/item?name={{.ItemName | urlquery}}">{{.ItemName}}</a> <small>({{.ItemID}})</small></strong> was added for sale.
-                            <small>({{.Details.price}}z, Qty: {{printf "%.0f" .Details.quantity}}, by {{.Details.seller}})</small>
+                            <small>({{.Details.price}}, Qty: {{printf "%.0f" .Details.quantity}}, by {{.Details.seller}})</small>
                         </span>
                     {{else if eq .EventType "REMOVED"}}
                         <span class="log-event log-removed">
@@ -62,7 +62,7 @@
                     {{else if eq .EventType "NEW_LOW"}}
                          <span class="log-event log-new-low">
                             🏆 <span class="highlight">New historical low price</span> for <strong><img src="https://static.divine-pride.net/images/items/item/{{.ItemID}}.png" alt="" width="24" height="24" style="vertical-align: middle; margin-right: 5px;"> <a href="/item?name={{.ItemName | urlquery}}">{{.ItemName}}</a> <small>({{.ItemID}})</small></strong>!
-                            <small>({{.Details.price}}z, Qty: {{printf "%.0f" .Details.quantity}}, by {{.Details.seller}})</small>
+                            <small>({{.Details.price}}, Qty: {{printf "%.0f" .Details.quantity}}, by {{.Details.seller}})</small>
                         </span>
                     {{end}}
                 </li>
