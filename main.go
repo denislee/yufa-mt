@@ -34,6 +34,18 @@ type Item struct {
 	IsAvailable    bool
 }
 
+// A comparable version of Item for easy checking of differences.
+type comparableItem struct {
+	Name           string
+	ItemID         int
+	Quantity       int
+	Price          string
+	StoreName      string
+	SellerName     string
+	MapName        string
+	MapCoordinates string
+}
+
 // Column struct to define toggleable columns
 type Column struct {
 	ID          string
@@ -69,16 +81,6 @@ type PricePointDetails struct {
 	MaxMapCoords  string `json:"MaxMapCoords"`
 }
 
-// HistoricalItemDetails struct to hold full details for a single item entry
-type HistoricalItemDetails struct {
-	Price      int
-	Quantity   int
-	StoreName  string
-	SellerName string
-	MapName    string
-	MapCoords  string
-}
-
 type HistoryPageData struct {
 	ItemName      string
 	PriceDataJSON template.JS
@@ -111,30 +113,6 @@ func historyHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Get the overall historical min and max priced items to fill in data gaps.
-	var overallMin, overallMax HistoricalItemDetails
-	var overallMinFound, overallMaxFound bool
-
-	minQuery := `
-		SELECT CAST(REPLACE(price, ',', '') AS INTEGER), quantity, store_name, seller_name, map_name, map_coordinates
-		FROM items WHERE name_of_the_item = ? ORDER BY CAST(REPLACE(price, ',', '') AS INTEGER) ASC LIMIT 1`
-	err := db.QueryRow(minQuery, itemName).Scan(&overallMin.Price, &overallMin.Quantity, &overallMin.StoreName, &overallMin.SellerName, &overallMin.MapName, &overallMin.MapCoords)
-	if err == nil {
-		overallMinFound = true
-	} else if err != sql.ErrNoRows {
-		log.Printf("⚠️ Error querying for overall min price: %v", err)
-	}
-
-	maxQuery := `
-		SELECT CAST(REPLACE(price, ',', '') AS INTEGER), quantity, store_name, seller_name, map_name, map_coordinates
-		FROM items WHERE name_of_the_item = ? ORDER BY CAST(REPLACE(price, ',', '') AS INTEGER) DESC LIMIT 1`
-	err = db.QueryRow(maxQuery, itemName).Scan(&overallMax.Price, &overallMax.Quantity, &overallMax.StoreName, &overallMax.SellerName, &overallMax.MapName, &overallMax.MapCoords)
-	if err == nil {
-		overallMaxFound = true
-	} else if err != sql.ErrNoRows {
-		log.Printf("⚠️ Error querying for overall max price: %v", err)
-	}
-
 	priceChangeQuery := `
 		WITH RankedItems AS (
 			SELECT
@@ -146,16 +124,14 @@ func historyHandler(w http.ResponseWriter, r *http.Request) {
 				map_name,
 				map_coordinates,
 				ROW_NUMBER() OVER(PARTITION BY date_and_time_retrieved ORDER BY CAST(REPLACE(price, ',', '') AS INTEGER) ASC) as rn_asc,
-				ROW_NUMBER() OVER(PARTITION BY date_and_time_retrieved ORDER BY CAST(REPLACE(price, ',', '') AS INTEGER) DESC) as rn_desc,
-				COUNT(*) OVER(PARTITION BY date_and_time_retrieved) as item_count
+				ROW_NUMBER() OVER(PARTITION BY date_and_time_retrieved ORDER BY CAST(REPLACE(price, ',', '') AS INTEGER) DESC) as rn_desc
 			FROM items
 			WHERE name_of_the_item = ?
 		)
 		SELECT
 			t_min.date_and_time_retrieved,
 			t_min.price_int, t_min.quantity, t_min.store_name, t_min.seller_name, t_min.map_name, t_min.map_coordinates,
-			t_max.price_int, t_max.quantity, t_max.store_name, t_max.seller_name, t_max.map_name, t_max.map_coordinates,
-			t_min.item_count
+			t_max.price_int, t_max.quantity, t_max.store_name, t_max.seller_name, t_max.map_name, t_max.map_coordinates
 		FROM
 			(SELECT * FROM RankedItems WHERE rn_asc = 1) AS t_min
 		JOIN
@@ -177,44 +153,15 @@ func historyHandler(w http.ResponseWriter, r *http.Request) {
 	for rows.Next() {
 		var p PricePointDetails
 		var timestampStr string
-		var itemCount int
 		err := rows.Scan(
 			&timestampStr,
 			&p.MinPrice, &p.MinQuantity, &p.MinStoreName, &p.MinSellerName, &p.MinMapName, &p.MinMapCoords,
 			&p.MaxPrice, &p.MaxQuantity, &p.MaxStoreName, &p.MaxSellerName, &p.MaxMapName, &p.MaxMapCoords,
-			&itemCount,
 		)
 		if err != nil {
 			log.Printf("⚠️ Failed to scan history row: %v", err)
 			continue
 		}
-
-		// If a scrape timestamp has only one item, its min and max prices will be the same.
-		// In this case, we use the overall historical min/max to provide a price range.
-		if itemCount == 1 && overallMinFound && overallMaxFound && overallMin.Price != overallMax.Price {
-			currentPrice := p.MinPrice // min and max are identical here
-			// Determine if the single point is closer to the historical min or max
-			if (currentPrice - overallMin.Price) <= (overallMax.Price - currentPrice) {
-				// The point is "min-like"; keep its details for the min price
-				// and use the historical overall max for the max price.
-				p.MaxPrice = overallMax.Price
-				p.MaxQuantity = overallMax.Quantity
-				p.MaxStoreName = overallMax.StoreName
-				p.MaxSellerName = overallMax.SellerName
-				p.MaxMapName = overallMax.MapName
-				p.MaxMapCoords = overallMax.MapCoords
-			} else {
-				// The point is "max-like"; keep its details for the max price
-				// and use the historical overall min for the min price.
-				p.MinPrice = overallMin.Price
-				p.MinQuantity = overallMin.Quantity
-				p.MinStoreName = overallMin.StoreName
-				p.MinSellerName = overallMin.SellerName
-				p.MinMapName = overallMin.MapName
-				p.MinMapCoords = overallMin.MapCoords
-			}
-		}
-
 		priceEvents[timestampStr] = p
 	}
 
@@ -423,10 +370,56 @@ func startBackgroundScraper() {
 	defer ticker.Stop()
 	go scrapeData()
 	for {
-		log.Printf("🕒 Waiting for the next hourly schedule...")
+		log.Printf("🕒 Waiting for the next 30-minute schedule...")
 		<-ticker.C
 		scrapeData()
 	}
+}
+
+// areItemSetsIdentical checks if two slices of items are semantically identical,
+// ignoring order and fields not relevant for comparison.
+func areItemSetsIdentical(setA, setB []Item) bool {
+	if len(setA) != len(setB) {
+		return false
+	}
+
+	// Create comparable representations of each item
+	makeComparable := func(items []Item) []comparableItem {
+		comp := make([]comparableItem, len(items))
+		for i, item := range items {
+			comp[i] = comparableItem{
+				Name:           item.Name,
+				ItemID:         item.ItemID,
+				Quantity:       item.Quantity,
+				Price:          item.Price,
+				StoreName:      item.StoreName,
+				SellerName:     item.SellerName,
+				MapName:        item.MapName,
+				MapCoordinates: item.MapCoordinates,
+			}
+		}
+		return comp
+	}
+
+	compA := makeComparable(setA)
+	compB := makeComparable(setB)
+
+	// Use a map to count occurrences in setA
+	counts := make(map[comparableItem]int)
+	for _, item := range compA {
+		counts[item]++
+	}
+
+	// Decrement counts for items in setB
+	for _, item := range compB {
+		if counts[item] == 0 {
+			return false // Item in B not in A, or excess count
+		}
+		counts[item]--
+	}
+
+	// If all counts are zero, the sets are identical
+	return true
 }
 
 func scrapeData() {
@@ -459,33 +452,9 @@ func scrapeData() {
 	}
 
 	retrievalTime := time.Now().Format(time.RFC3339)
-	itemsSaved := 0
-	itemsUpdated := 0
-	itemsChecked := 0
-	tx, err := db.Begin()
-	if err != nil {
-		log.Printf("❌ Failed to begin transaction: %v", err)
-		return
-	}
-	defer tx.Rollback()
+	scrapedItemsByName := make(map[string][]Item)
 
-	if _, err := tx.Exec("UPDATE items SET is_available = 0 WHERE is_available = 1"); err != nil {
-		log.Printf("❌ Failed to mark old items as unavailable: %v", err)
-		return
-	}
-	_, err = tx.Exec("INSERT OR IGNORE INTO scrape_history (timestamp) VALUES (?)", retrievalTime)
-	if err != nil {
-		log.Printf("❌ Failed to log scrape history: %v", err)
-		return
-	}
-	insertSQL := `INSERT INTO items(name_of_the_item, item_id, quantity, price, store_name, seller_name, date_and_time_retrieved, map_name, map_coordinates, is_available) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1)`
-	stmt, err := tx.Prepare(insertSQL)
-	if err != nil {
-		log.Printf("⚠️ Could not prepare insert statement: %v", err)
-		return
-	}
-	defer stmt.Close()
-
+	// Step 1: Scrape all items from the website and group them by name in memory.
 	doc.Find(`div[data-slot="card"]`).Each(func(i int, s *goquery.Selection) {
 		shopName := strings.TrimSpace(s.Find(`div[data-slot="card-title"]`).Text())
 		sellerName := strings.TrimSpace(s.Find("svg.lucide-user").Next().Text())
@@ -493,52 +462,136 @@ func scrapeData() {
 		mapCoordinates := strings.TrimSpace(s.Find("svg.lucide-copy").Next().Text())
 
 		s.Find(`div[data-slot="card-content"] .flex.items-center.space-x-2`).Each(func(j int, itemSelection *goquery.Selection) {
-			itemsChecked++
 			itemName := strings.TrimSpace(itemSelection.Find("p.truncate").Text())
 			quantityStr := strings.TrimSuffix(strings.TrimSpace(itemSelection.Find("span.text-xs.text-muted-foreground").Text()), "x")
 			priceStr := strings.TrimSpace(itemSelection.Find("span.text-xs.font-medium.text-green-600").Text())
 			idStr := strings.TrimPrefix(strings.TrimSpace(itemSelection.Find(`span[data-slot="badge"]`).First().Text()), "ID: ")
+
+			if itemName == "" || priceStr == "" || shopName == "" {
+				return
+			}
 			quantity, _ := strconv.Atoi(quantityStr)
 			if quantity == 0 {
 				quantity = 1
 			}
 			itemID, _ := strconv.Atoi(idStr)
 
-			if itemName == "" || priceStr == "" || shopName == "" {
-				return
+			item := Item{
+				Name:           itemName,
+				ItemID:         itemID,
+				Quantity:       quantity,
+				Price:          priceStr,
+				StoreName:      shopName,
+				SellerName:     sellerName,
+				MapName:        mapName,
+				MapCoordinates: mapCoordinates,
 			}
-
-			var existingID int
-			findQuery := `
-				SELECT id FROM items WHERE
-				name_of_the_item = ? AND item_id = ? AND quantity = ? AND price = ? AND
-				store_name = ? AND seller_name = ? AND map_name = ? AND map_coordinates = ? AND is_available = 0
-				ORDER BY date_and_time_retrieved DESC LIMIT 1`
-			err := tx.QueryRow(findQuery, itemName, itemID, quantity, priceStr, shopName, sellerName, mapName, mapCoordinates).Scan(&existingID)
-
-			if err == nil {
-				if _, err := tx.Exec("UPDATE items SET is_available = 1 WHERE id = ?", existingID); err != nil {
-					log.Printf("⚠️ Could not update item %s as available: %v", itemName, err)
-				} else {
-					itemsUpdated++
-				}
-			} else if err == sql.ErrNoRows {
-				if _, err := stmt.Exec(itemName, itemID, quantity, priceStr, shopName, sellerName, retrievalTime, mapName, mapCoordinates); err != nil {
-					log.Printf("⚠️ Could not execute insert for %s: %v", itemName, err)
-				} else {
-					itemsSaved++
-				}
-			} else {
-				log.Printf("❌ Error checking for existing item %s: %v", itemName, err)
-			}
+			scrapedItemsByName[itemName] = append(scrapedItemsByName[itemName], item)
 		})
 	})
+
+	log.Printf("🔎 Scrape parsed. Found %d unique item names.", len(scrapedItemsByName))
+	tx, err := db.Begin()
+	if err != nil {
+		log.Printf("❌ Failed to begin transaction: %v", err)
+		return
+	}
+	defer tx.Rollback()
+
+	_, err = tx.Exec("INSERT OR IGNORE INTO scrape_history (timestamp) VALUES (?)", retrievalTime)
+	if err != nil {
+		log.Printf("❌ Failed to log scrape history: %v", err)
+		return
+	}
+
+	// Get a set of all item names currently marked as available in the DB
+	rows, err := tx.Query("SELECT DISTINCT name_of_the_item FROM items WHERE is_available = 1")
+	if err != nil {
+		log.Printf("❌ Could not get list of available items: %v", err)
+		return
+	}
+	dbAvailableNames := make(map[string]bool)
+	for rows.Next() {
+		var name string
+		if err := rows.Scan(&name); err != nil {
+			continue
+		}
+		dbAvailableNames[name] = true
+	}
+	rows.Close()
+
+	itemsUpdated := 0
+	itemsUnchanged := 0
+	itemsAdded := 0
+
+	// Step 2: For each item name scraped, compare with DB records.
+	for itemName, currentScrapedItems := range scrapedItemsByName {
+		var lastAvailableItems []Item
+		rows, err := tx.Query("SELECT name_of_the_item, item_id, quantity, price, store_name, seller_name, map_name, map_coordinates FROM items WHERE name_of_the_item = ? AND is_available = 1", itemName)
+		if err != nil {
+			log.Printf("⚠️ Failed to query for existing item %s: %v", itemName, err)
+			continue
+		}
+		for rows.Next() {
+			var item Item
+			err := rows.Scan(&item.Name, &item.ItemID, &item.Quantity, &item.Price, &item.StoreName, &item.SellerName, &item.MapName, &item.MapCoordinates)
+			if err != nil {
+				log.Printf("⚠️ Failed to scan existing item: %v", err)
+				continue
+			}
+			lastAvailableItems = append(lastAvailableItems, item)
+		}
+		rows.Close()
+
+		if areItemSetsIdentical(currentScrapedItems, lastAvailableItems) {
+			// No changes for this item name, do nothing.
+			itemsUnchanged++
+			continue
+		}
+
+		// There's a change. Mark all old versions as unavailable.
+		if _, err := tx.Exec("UPDATE items SET is_available = 0 WHERE name_of_the_item = ?", itemName); err != nil {
+			log.Printf("❌ Failed to mark old %s as unavailable: %v", itemName, err)
+			continue
+		}
+
+		// Insert the new versions.
+		insertSQL := `INSERT INTO items(name_of_the_item, item_id, quantity, price, store_name, seller_name, date_and_time_retrieved, map_name, map_coordinates, is_available) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1)`
+		stmt, err := tx.Prepare(insertSQL)
+		if err != nil {
+			log.Printf("⚠️ Could not prepare insert for %s: %v", itemName, err)
+			continue
+		}
+		for _, item := range currentScrapedItems {
+			if _, err := stmt.Exec(item.Name, item.ItemID, item.Quantity, item.Price, item.StoreName, item.SellerName, retrievalTime, item.MapName, item.MapCoordinates); err != nil {
+				log.Printf("⚠️ Could not execute insert for %s: %v", item.Name, err)
+			}
+		}
+		stmt.Close()
+		if len(lastAvailableItems) == 0 {
+			itemsAdded++
+		} else {
+			itemsUpdated++
+		}
+	}
+
+	// Step 3: Mark any items that were in the DB but not in the new scrape as unavailable.
+	itemsRemoved := 0
+	for name := range dbAvailableNames {
+		if _, foundInScrape := scrapedItemsByName[name]; !foundInScrape {
+			if _, err := tx.Exec("UPDATE items SET is_available = 0 WHERE name_of_the_item = ?", name); err != nil {
+				log.Printf("❌ Failed to mark disappeared item %s as unavailable: %v", name, err)
+			} else {
+				itemsRemoved++
+			}
+		}
+	}
 
 	if err := tx.Commit(); err != nil {
 		log.Printf("❌ Failed to commit transaction: %v", err)
 		return
 	}
-	log.Printf("✅ Scrape complete. Checked %d items. Saved %d new/changed items. Marked %d unchanged items as available.", itemsChecked, itemsSaved, itemsUpdated)
+	log.Printf("✅ Scrape complete. Unchanged: %d groups. Updated: %d groups. Newly Added: %d groups. Removed: %d groups.", itemsUnchanged, itemsUpdated, itemsAdded, itemsRemoved)
 }
 
 func initDB(filepath string) (*sql.DB, error) {
