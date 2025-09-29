@@ -197,7 +197,7 @@
             document.getElementById('min-quantity-val').textContent = currentMinData.Quantity.toLocaleString();
             document.getElementById('min-store-val').textContent = currentMinData.StoreName;
             document.getElementById('min-seller-val').textContent = currentMinData.SellerName;
-            document.getElementById('min-location-val').innerHTML = `<a href="#" onclick="copyNavi(event, '${mapName.replace(/'/g, "\\'")}', '${mapCoords.replace(/'/g, "\\'")}')" title="Click to copy /navi command">${mapName} (${mapCoords})</a>`;
+            document.getElementById('min-location-val').innerHTML = `<a href="#" onclick="copyNavi(event, '${mapName.replace(/'/g, "\\'")}', '${mapCoords.replace(/'/g, "\\'")}')" title="Click to copy /navi command">${mapName} ${mapCoords}</a>`;
             document.getElementById('min-date-val').textContent = currentMinData.Timestamp;
         }
 
@@ -208,7 +208,7 @@
             document.getElementById('max-quantity-val').textContent = currentMaxData.Quantity.toLocaleString();
             document.getElementById('max-store-val').textContent = currentMaxData.StoreName;
             document.getElementById('max-seller-val').textContent = currentMaxData.SellerName;
-            document.getElementById('max-location-val').innerHTML = `<a href="#" onclick="copyNavi(event, '${mapName.replace(/'/g, "\\'")}', '${mapCoords.replace(/'/g, "\\'")}')" title="Click to copy /navi command">${mapName} (${mapCoords})</a>`;
+            document.getElementById('max-location-val').innerHTML = `<a href="#" onclick="copyNavi(event, '${mapName.replace(/'/g, "\\'")}', '${mapCoords.replace(/'/g, "\\'")}')" title="Click to copy /navi command">${mapName} ${mapCoords}</a>`;
             document.getElementById('max-date-val').textContent = currentMaxData.Timestamp;
         }
 
