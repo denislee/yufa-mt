@@ -1,0 +1,208 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF--8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Yufa Market - Full List</title>
+    <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; line-height: 1.6; background-color: #f4f4f9; color: #333; margin: 0; padding: 20px; }
+        .container { max-width: 1200px; margin: auto; background: #fff; padding: 20px; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
+        h1 { color: #333; }
+        .header-info { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; margin-bottom: 10px; border-bottom: 1px solid #eee; padding-bottom: 15px; }
+        .header-info p { margin: 0; }
+        .header-info a { font-weight: 500; }
+        .nav-links { display: flex; flex-direction: column; align-items: flex-end; gap: 5px; }
+        form { margin-bottom: 20px; }
+        .form-controls { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 15px; }
+        .column-selector { display: flex; flex-wrap: wrap; align-items: center; gap: 15px; padding: 10px; background-color: #f8f8f8; border-radius: 4px; }
+        .column-selector label { display: flex; align-items: center; gap: 5px; font-size: 0.9em; cursor: pointer; }
+        input[type="text"] { flex-grow: 1; padding: 10px; border: 1px solid #ddd; border-radius: 4px; }
+        button { padding: 10px 15px; border: none; background-color: #007bff; color: white; border-radius: 4px; cursor: pointer; }
+        button:hover { background-color: #0056b3; }
+        table { width: 100%; border-collapse: collapse; margin-top: 20px; table-layout: fixed; }
+        th, td { padding: 12px; text-align: left; border-bottom: 1px solid #ddd; word-wrap: break-word; }
+        th { background-color: #f8f8f8; }
+        th a { text-decoration: none; color: inherit; display: block; }
+        th a:hover { color: #0056b3; }
+        tr:hover { background-color: #f1f1f1; }
+        td a { color: #007bff; text-decoration: none; font-weight: 500; }
+        td a:hover { text-decoration: underline; }
+        .truncate { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .unavailable {
+            opacity: 0.6;
+        }
+        .unavailable a {
+            color: #666;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Yufa Market Tracker - Full List</h1>
+        <div class="header-info">
+            <div>
+                <p>Showing <strong>{{ len .Items }}</strong> items.</p>
+            </div>
+            <div class="nav-links">
+                <a href="/">&larr; Back to Market Summary</a>
+                <a href="/activity">View Recent Market Activity &rarr;</a>
+            </div>
+        </div>
+        
+        <form action="/full-list" method="get">
+            <div class="form-controls">
+                <input type="text" name="query" placeholder="Filter by item name..." value="{{ .SearchQuery }}">
+                <label>
+                    <input type="checkbox" name="only_available" value="true" {{if not .ShowAll}}checked{{end}}>
+                    Show only available
+                </label>
+                <button type="submit">Search</button>
+            </div>
+            
+            <div class="column-selector">
+                <strong>Show Columns:</strong>
+                {{range .AllColumns}}
+                <label>
+                    <input type="checkbox" name="cols" value="{{.ID}}" {{if index $.VisibleColumns .ID}}checked{{end}}>
+                    {{.DisplayName}}
+                </label>
+                {{end}}
+            </div>
+        </form>
+
+        <table>
+            <thead>
+                <tr>
+                    <th><a href="/full-list?query={{.SearchQuery}}&sort_by=name&order={{if and (eq .SortBy "name") (eq .Order "ASC")}}DESC{{else}}ASC{{end}}{{if not .ShowAll}}&only_available=true{{end}}{{if .ColumnParams}}&{{.ColumnParams}}{{end}}">Item Name {{if eq .SortBy "name"}}{{if eq .Order "ASC"}}▲{{else}}▼{{end}}{{end}}</a></th>
+                    
+                    {{if index .VisibleColumns "item_id"}}
+                    <th><a href="/full-list?query={{.SearchQuery}}&sort_by=item_id&order={{if and (eq .SortBy "item_id") (eq .Order "ASC")}}DESC{{else}}ASC{{end}}{{if not .ShowAll}}&only_available=true{{end}}{{if .ColumnParams}}&{{.ColumnParams}}{{end}}">Item ID {{if eq .SortBy "item_id"}}{{if eq .Order "ASC"}}▲{{else}}▼{{end}}{{end}}</a></th>
+                    {{end}}
+
+                    {{if index .VisibleColumns "quantity"}}
+                    <th><a href="/full-list?query={{.SearchQuery}}&sort_by=quantity&order={{if and (eq .SortBy "quantity") (eq .Order "ASC")}}DESC{{else}}ASC{{end}}{{if not .ShowAll}}&only_available=true{{end}}{{if .ColumnParams}}&{{.ColumnParams}}{{end}}">Quantity {{if eq .SortBy "quantity"}}{{if eq .Order "ASC"}}▲{{else}}▼{{end}}{{end}}</a></th>
+                    {{end}}
+
+                    <th><a href="/full-list?query={{.SearchQuery}}&sort_by=price&order={{if and (eq .SortBy "price") (eq .Order "ASC")}}DESC{{else}}ASC{{end}}{{if not .ShowAll}}&only_available=true{{end}}{{if .ColumnParams}}&{{.ColumnParams}}{{end}}">Price {{if eq .SortBy "price"}}{{if eq .Order "ASC"}}▲{{else}}▼{{end}}{{end}}</a></th>
+                    
+                    {{if index .VisibleColumns "store_name"}}
+                    <th><a href="/full-list?query={{.SearchQuery}}&sort_by=store_name&order={{if and (eq .SortBy "store_name") (eq .Order "ASC")}}DESC{{else}}ASC{{end}}{{if not .ShowAll}}&only_available=true{{end}}{{if .ColumnParams}}&{{.ColumnParams}}{{end}}">Store Name {{if eq .SortBy "store_name"}}{{if eq .Order "ASC"}}▲{{else}}▼{{end}}{{end}}</a></th>
+                    {{end}}
+
+                    {{if index .VisibleColumns "seller_name"}}
+                    <th><a href="/full-list?query={{.SearchQuery}}&sort_by=seller&order={{if and (eq .SortBy "seller") (eq .Order "ASC")}}DESC{{else}}ASC{{end}}{{if not .ShowAll}}&only_available=true{{end}}{{if .ColumnParams}}&{{.ColumnParams}}{{end}}">Seller Name {{if eq .SortBy "seller"}}{{if eq .Order "ASC"}}▲{{else}}▼{{end}}{{end}}</a></th>
+                    {{end}}
+
+                    {{if index .VisibleColumns "map_name"}}
+                    <th>Map Name</th>
+                    {{end}}
+
+                    {{if index .VisibleColumns "map_coordinates"}}
+                    <th>Map Coordinates</th>
+                    {{end}}
+                    
+                    {{if index .VisibleColumns "retrieved"}}
+                    <th><a href="/full-list?query={{.SearchQuery}}&sort_by=retrieved&order={{if and (eq .SortBy "retrieved") (eq .Order "ASC")}}DESC{{else}}ASC{{end}}{{if not .ShowAll}}&only_available=true{{end}}{{if .ColumnParams}}&{{.ColumnParams}}{{end}}">Date Retrieved {{if eq .SortBy "retrieved"}}{{if eq .Order "ASC"}}▲{{else}}▼{{end}}{{end}}</a></th>
+                    {{end}}
+                    
+                    {{if index .VisibleColumns "availability"}}
+                    <th><a href="/full-list?query={{.SearchQuery}}&sort_by=availability&order={{if and (eq .SortBy "availability") (eq .Order "ASC")}}DESC{{else}}ASC{{end}}{{if not .ShowAll}}&only_available=true{{end}}{{if .ColumnParams}}&{{.ColumnParams}}{{end}}">Available {{if eq .SortBy "availability"}}{{if eq .Order "ASC"}}▲{{else}}▼{{end}}{{end}}</a></th>
+                    {{end}}
+                </tr>
+            </thead>
+            <tbody>
+                {{range .Items}}
+                <tr {{if not .IsAvailable}}class="unavailable" title="This item is no longer available"{{end}}>
+                    <td><img src="https://static.divine-pride.net/images/items/item/{{.ItemID}}.png" alt="" width="24" height="24" style="vertical-align: middle; margin-right: 5px;"> <a href="/item?name={{.Name | urlquery}}">{{.Name}}</a></td>
+                    
+                    {{if index $.VisibleColumns "item_id"}}<td>{{.ItemID}}</td>{{end}}
+                    {{if index $.VisibleColumns "quantity"}}<td>{{.Quantity}}</td>{{end}}
+                    <td>{{.Price}}</td>
+                    {{if index $.VisibleColumns "store_name"}}<td class="truncate" title="{{.StoreName}}">{{.StoreName}}</td>{{end}}
+                    {{if index $.VisibleColumns "seller_name"}}<td>{{.SellerName}}</td>{{end}}
+                    {{if index $.VisibleColumns "map_name"}}<td>{{.MapName}}</td>{{end}}
+                    {{if index $.VisibleColumns "map_coordinates"}}<td><a href="#" onclick="copyNavi(event, '{{.MapName}}', '{{.MapCoordinates}}')" title="Click to copy /navi command">{{.MapCoordinates}}</a></td>{{end}}
+                    {{if index $.VisibleColumns "retrieved"}}<td>{{.Timestamp}}</td>{{end}}
+                    {{if index $.VisibleColumns "availability"}}
+                        <td>
+                            {{if .IsAvailable}}
+                                <span style="color: #28a745; font-weight: bold;">Yes</span>
+                            {{else}}
+                                <span style="color: #dc3545;">No</span>
+                            {{end}}
+                        </td>
+                    {{end}}
+                </tr>
+                {{end}}
+            </tbody>
+        </table>
+    </div>
+    
+    <script>
+        function copyNavi(event, mapName, coordinates) {
+            event.preventDefault();
+            const formattedCoords = coordinates.trim().replace('(', '').replace(')', '').replace(',', '/');
+            const command = `/navi ${mapName.trim()} ${formattedCoords}`;
+            navigator.clipboard.writeText(command).then(() => {
+                const originalElement = event.target;
+                const originalText = originalElement.innerText;
+                originalElement.innerText = 'Copied!';
+                originalElement.style.color = '#28a745';
+                originalElement.style.fontWeight = 'bold';
+                setTimeout(() => {
+                    originalElement.innerText = originalText;
+                    originalElement.style.color = '';
+                    originalElement.style.fontWeight = '';
+                }, 1500);
+            }).catch(err => {
+                console.error('Failed to copy command: ', err);
+                alert('Could not copy the /navi command to your clipboard.');
+            });
+        }
+
+        // === New script for dynamic time calculation ===
+        document.addEventListener('DOMContentLoaded', () => {
+            const timeAgoSpan = document.getElementById('time-ago');
+            const lastUpdateElement = document.querySelector('[data-timestamp]');
+
+            if (!lastUpdateElement) return;
+
+            const timestampStr = lastUpdateElement.dataset.timestamp;
+
+            // If the timestamp is invalid or "Never", don't start the timer.
+            if (!timestampStr || timestampStr === 'Never') {
+                timeAgoSpan.textContent = '(never updated)';
+                return;
+            }
+            
+            // The Go template format "2006-01-02 15:04:05" is easily parsed by new Date().
+            const lastUpdateDate = new Date(timestampStr);
+
+            function updateTimeAgo() {
+                const now = new Date();
+                // Get difference in seconds
+                const secondsPast = Math.floor((now.getTime() - lastUpdateDate.getTime()) / 1000);
+
+                if (secondsPast < 60) {
+                    timeAgoSpan.textContent = `(${secondsPast} second${secondsPast !== 1 ? 's' : ''} ago)`;
+                } else if (secondsPast < 3600) {
+                    const minutes = Math.floor(secondsPast / 60);
+                    timeAgoSpan.textContent = `(${minutes} minute${minutes !== 1 ? 's' : ''} ago)`;
+                } else if (secondsPast < 86400) {
+                    const hours = Math.floor(secondsPast / 3600);
+                    timeAgoSpan.textContent = `(${hours} hour${hours !== 1 ? 's' : ''} ago)`;
+                } else {
+                    const days = Math.floor(secondsPast / 86400);
+                    timeAgoSpan.textContent = `(${days} day${days !== 1 ? 's' : ''} ago)`;
+                }
+            }
+
+            // Update the text immediately on page load
+            updateTimeAgo();
+
+            // Then, update it every second
+            setInterval(updateTimeAgo, 1000);
+        });
+    </script>
+</body>
+</html>

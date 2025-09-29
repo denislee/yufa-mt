@@ -62,7 +62,7 @@ type MarketEvent struct {
 	Details   map[string]interface{}
 }
 
-// PageData for the main market view
+// PageData for the detailed full list view
 type PageData struct {
 	Items          []Item
 	SearchQuery    string
@@ -80,7 +80,7 @@ type ActivityPageData struct {
 	MarketEvents []MarketEvent
 }
 
-// ItemSummary for the new summary view
+// ItemSummary for the main summary view
 type ItemSummary struct {
 	Name         string
 	ItemID       int
@@ -89,13 +89,14 @@ type ItemSummary struct {
 	ListingCount int
 }
 
-// SummaryPageData for the summary view template
+// SummaryPageData for the summary view template (now the main page data)
 type SummaryPageData struct {
-	Items       []ItemSummary
-	SearchQuery string
-	SortBy      string
-	Order       string
-	ShowAll     bool // To track the state of the "show all" checkbox
+	Items          []ItemSummary
+	SearchQuery    string
+	SortBy         string
+	Order          string
+	ShowAll        bool // To track the state of the "show all" checkbox
+	LastScrapeTime string
 }
 
 type PricePointDetails struct {
@@ -186,10 +187,10 @@ func main() {
 
 	go startBackgroundScraper()
 
-	http.HandleFunc("/", viewHandler)
+	http.HandleFunc("/", viewHandler)              // Now serves the summary page
+	http.HandleFunc("/full-list", fullListHandler) // New route for the detailed list
 	http.HandleFunc("/item", historyHandler)
 	http.HandleFunc("/activity", activityHandler)
-	http.HandleFunc("/summary", summaryHandler) // New route for the summary page
 
 	port := "8080"
 	log.Printf("🚀 Web server started. Open http://localhost:%s in your browser.", port)
@@ -198,8 +199,8 @@ func main() {
 	}
 }
 
-// summaryHandler serves the new summary page
-func summaryHandler(w http.ResponseWriter, r *http.Request) {
+// viewHandler serves the main summary page
+func viewHandler(w http.ResponseWriter, r *http.Request) {
 	// 1. Get parameters from the request
 	searchQuery := r.FormValue("query")
 	sortBy := r.FormValue("sort_by")
@@ -264,27 +265,42 @@ func summaryHandler(w http.ResponseWriter, r *http.Request) {
 		items = append(items, item)
 	}
 
-	// *** FIX IS HERE ***
+	var lastScrapeTimestamp sql.NullString
+	err = db.QueryRow("SELECT MAX(timestamp) FROM scrape_history").Scan(&lastScrapeTimestamp)
+	if err != nil {
+		log.Printf("⚠️ Could not get last scrape time: %v", err)
+	}
+	var formattedLastScrapeTime string
+	if lastScrapeTimestamp.Valid {
+		parsedTime, err := time.Parse(time.RFC3339, lastScrapeTimestamp.String)
+		if err == nil {
+			formattedLastScrapeTime = parsedTime.Format("2006-01-02 15:04:05")
+		}
+	} else {
+		formattedLastScrapeTime = "Never"
+	}
+
 	// Create a FuncMap to register the "lower" function.
 	funcMap := template.FuncMap{
 		"lower": strings.ToLower,
 	}
 
 	// Parse the template file with the custom function map.
-	tmpl, err := template.New("summary.html").Funcs(funcMap).ParseFiles("summary.html")
+	tmpl, err := template.New("index.html").Funcs(funcMap).ParseFiles("index.html")
 	if err != nil {
-		http.Error(w, "Could not load summary template", http.StatusInternalServerError)
-		log.Printf("❌ Could not load summary.html template: %v", err)
+		http.Error(w, "Could not load index template", http.StatusInternalServerError)
+		log.Printf("❌ Could not load index.html template: %v", err)
 		return
 	}
 
 	// 4. Populate data for the template
 	data := SummaryPageData{
-		Items:       items,
-		SearchQuery: searchQuery,
-		SortBy:      sortBy,
-		Order:       order,
-		ShowAll:     showAll,
+		Items:          items,
+		SearchQuery:    searchQuery,
+		SortBy:         sortBy,
+		Order:          order,
+		ShowAll:        showAll,
+		LastScrapeTime: formattedLastScrapeTime,
 	}
 	tmpl.Execute(w, data)
 }
@@ -602,8 +618,8 @@ func historyHandler(w http.ResponseWriter, r *http.Request) {
 	tmpl.Execute(w, data)
 }
 
-// viewHandler now only shows the main market list
-func viewHandler(w http.ResponseWriter, r *http.Request) {
+// fullListHandler shows the complete, detailed market list
+func fullListHandler(w http.ResponseWriter, r *http.Request) {
 	if err := r.ParseForm(); err != nil {
 		http.Error(w, "Failed to parse form", http.StatusBadRequest)
 		return
@@ -637,21 +653,6 @@ func viewHandler(w http.ResponseWriter, r *http.Request) {
 		visibleColumns["quantity"] = true
 		visibleColumns["store_name"] = true
 		visibleColumns["map_coordinates"] = true
-	}
-
-	var lastScrapeTimestamp sql.NullString
-	err := db.QueryRow("SELECT MAX(timestamp) FROM scrape_history").Scan(&lastScrapeTimestamp)
-	if err != nil {
-		log.Printf("⚠️ Could not get last scrape time: %v", err)
-	}
-	var formattedLastScrapeTime string
-	if lastScrapeTimestamp.Valid {
-		parsedTime, err := time.Parse(time.RFC3339, lastScrapeTimestamp.String)
-		if err == nil {
-			formattedLastScrapeTime = parsedTime.Format("2006-01-02 15:04:05")
-		}
-	} else {
-		formattedLastScrapeTime = "Never"
 	}
 
 	allowedSorts := map[string]string{
@@ -712,9 +713,10 @@ func viewHandler(w http.ResponseWriter, r *http.Request) {
 		items = append(items, item)
 	}
 
-	tmpl, err := template.ParseFiles("index.html")
+	tmpl, err := template.ParseFiles("full_list.html")
 	if err != nil {
-		http.Error(w, "Could not load template", http.StatusInternalServerError)
+		http.Error(w, "Could not load full_list template", http.StatusInternalServerError)
+		log.Printf("❌ Could not load full_list.html template: %v", err)
 		return
 	}
 
@@ -724,7 +726,6 @@ func viewHandler(w http.ResponseWriter, r *http.Request) {
 		SortBy:         sortBy,
 		Order:          order,
 		ShowAll:        showAll,
-		LastScrapeTime: formattedLastScrapeTime,
 		VisibleColumns: visibleColumns,
 		AllColumns:     allCols,
 		ColumnParams:   template.URL(columnParams.Encode()),
