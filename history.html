@@ -111,6 +111,7 @@
         .overall-summary p { margin: 0; font-size: 1.1em; color: #495057; }
         .text-success { color: #28a745; font-weight: bold; }
         .text-danger { color: #dc3545; font-weight: bold; }
+        .truncate { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 200px; display: inline-block; vertical-align: middle; }
 
     </style>
 </head>
@@ -170,7 +171,7 @@
                 <h2>Lowest Current Price</h2>
                 <p><strong>Price:</strong> <span id="lowest-price-val" class="text-success">N/A</span></p>
                 <p><strong>Quantity:</strong> <span id="lowest-quantity-val">N/A</span></p>
-                <p><strong>Store:</strong> <span id="lowest-store-val">N/A</span></p>
+                <p><strong>Store:</strong> <span id="lowest-store-val" class="truncate">N/A</span></p>
                 <p><strong>Seller:</strong> <span id="lowest-seller-val">N/A</span></p>
                 <p><strong>Location:</strong> <span id="lowest-location-val">N/A</span></p>
                 <p><strong>Date:</strong> <span id="lowest-date-val">N/A</span></p>
@@ -179,7 +180,7 @@
                 <h2>Highest Current Price</h2>
                 <p><strong>Price:</strong> <span id="highest-price-val" class="text-danger">N/A</span></p>
                 <p><strong>Quantity:</strong> <span id="highest-quantity-val">N/A</span></p>
-                <p><strong>Store:</strong> <span id="highest-store-val">N/A</span></p>
+                <p><strong>Store:</strong> <span id="highest-store-val" class="truncate">N/A</span></p>
                 <p><strong>Seller:</strong> <span id="highest-seller-val">N/A</span></p>
                 <p><strong>Location:</strong> <span id="highest-location-val">N/A</span></p>
                 <p><strong>Date:</strong> <span id="highest-date-val">N/A</span></p>
@@ -208,7 +209,7 @@
                     <tr {{if not .IsAvailable}}class="unavailable" title="This specific listing is no longer available"{{end}}>
                         <td>{{.Price}}</td>
                         <td>{{.Quantity}}</td>
-                        <td>{{.StoreName}}</td>
+                        <td><span class="truncate" title="{{.StoreName}}">{{.StoreName}}</span></td>
                         <td>{{.SellerName}}</td>
                         <td><a href="#" onclick="copyNavi(event, '{{.MapName}}', '{{.MapCoordinates}}')" title="Click to copy /navi command">{{.MapName}} {{.MapCoordinates}}</a></td>
                         <td>{{.Timestamp}}</td>
@@ -265,9 +266,12 @@
         if (currentLowestData) {
             const mapName = currentLowestData.MapName;
             const mapCoords = currentLowestData.MapCoordinates;
+            const lowestStoreSpan = document.getElementById('lowest-store-val');
+            
             document.getElementById('lowest-price-val').textContent = `${currentLowestData.Price.toLocaleString()}z`;
             document.getElementById('lowest-quantity-val').textContent = currentLowestData.Quantity.toLocaleString();
-            document.getElementById('lowest-store-val').textContent = currentLowestData.StoreName;
+            lowestStoreSpan.textContent = currentLowestData.StoreName;
+            lowestStoreSpan.title = currentLowestData.StoreName;
             document.getElementById('lowest-seller-val').textContent = currentLowestData.SellerName;
             document.getElementById('lowest-location-val').innerHTML = `<a href="#" onclick="copyNavi(event, '${mapName.replace(/'/g, "\\'")}', '${mapCoords.replace(/'/g, "\\'")}')" title="Click to copy /navi command">${mapName} ${mapCoords}</a>`;
             document.getElementById('lowest-date-val').textContent = currentLowestData.Timestamp;
@@ -276,9 +280,12 @@
         if (currentHighestData) {
             const mapName = currentHighestData.MapName;
             const mapCoords = currentHighestData.MapCoordinates;
+            const highestStoreSpan = document.getElementById('highest-store-val');
+
             document.getElementById('highest-price-val').textContent = `${currentHighestData.Price.toLocaleString()}z`;
             document.getElementById('highest-quantity-val').textContent = currentHighestData.Quantity.toLocaleString();
-            document.getElementById('highest-store-val').textContent = currentHighestData.StoreName;
+            highestStoreSpan.textContent = currentHighestData.StoreName;
+            highestStoreSpan.title = currentHighestData.StoreName;
             document.getElementById('highest-seller-val').textContent = currentHighestData.SellerName;
             document.getElementById('highest-location-val').innerHTML = `<a href="#" onclick="copyNavi(event, '${mapName.replace(/'/g, "\\'")}', '${mapCoords.replace(/'/g, "\\'")}')" title="Click to copy /navi command">${mapName} ${mapCoords}</a>`;
             document.getElementById('highest-date-val').textContent = currentHighestData.Timestamp;
