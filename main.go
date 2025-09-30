@@ -376,7 +376,7 @@ func scrapeRMSItemDetails(itemID int) (*RMSItem, error) {
 
 	item := &RMSItem{
 		ID:       itemID,
-		ImageURL: fmt.Sprintf("https://file5s.ratemyserver.net/items/large/%d.gif", itemID),
+		ImageURL: fmt.Sprintf("https://divine-pride.net/img/items/collection/iRO/%d", itemID),
 	}
 
 	// Get Item Name
@@ -1146,3 +1146,4 @@ func initDB(filepath string) (*sql.DB, error) {
 	}
 	return db, nil
 }
+
