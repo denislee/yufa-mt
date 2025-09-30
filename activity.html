@@ -5,28 +5,85 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Yufa Market Tracker / Activity</title>
     <style>
-        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; line-height: 1.6; background-color: #f4f4f9; color: #333; margin: 0; padding: 20px; }
-        .container { max-width: 1200px; margin: auto; background: #fff; padding: 20px; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
-        h1, h2 { color: #333; }
-        h1 { margin-bottom: 0; }
-        h2 { border-bottom: 1px solid #eee; padding-bottom: 10px; }
-        .header-info { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; margin-bottom: 20px; border-bottom: 1px solid #eee; padding-bottom: 15px; }
-        .header-info p { margin: 0; }
-        .main-nav { display: flex; gap: 15px; align-items: center; }
-        .main-nav a, .main-nav strong { font-weight: 500; padding: 5px 10px; border-radius: 4px; font-size: 1.1em; text-decoration: none; }
-        .main-nav a:hover { background-color: #f1f1f1; text-decoration: none; }
-        .main-nav strong { color: #333; }
+        /* --- General & Typography --- */
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            line-height: 1.6;
+            background-color: #f8f9fa;
+            color: #212529;
+            margin: 0;
+            padding: 24px;
+        }
+        .container {
+            max-width: 1200px;
+            margin: auto;
+            background: #ffffff;
+            padding: 24px;
+            border-radius: 8px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);
+            border: 1px solid #dee2e6;
+        }
+        h1, h2, h3 {
+            color: #343a40;
+            margin-top: 0;
+        }
+        h1 { font-size: 2em; margin-bottom: 0.25em; }
+        h2 { font-size: 1.5em; margin-bottom: 1em; border-bottom: 1px solid #e9ecef; padding-bottom: 0.5em; }
+        h3 { font-size: 1.25em; margin-bottom: 0.75em; }
         a { color: #007bff; text-decoration: none; }
-        a:hover { text-decoration: underline; }
-        .market-log ul { list-style-type: none; padding: 0; margin: 0; }
-        .market-log li { padding: 10px 5px; border-bottom: 1px solid #f1f1f1; display: flex; align-items: center; gap: 15px; font-size: 0.95em; }
-        .market-log li:last-child { border-bottom: none; }
-        .log-timestamp { font-size: 0.9em; color: #555; width: 120px; flex-shrink: 0; }
-        .log-event strong { font-weight: 600; }
+        a:hover { text-decoration: underline; color: #0056b3; }
+        p { margin-top: 0; }
+        img.item-icon {
+            width: 24px;
+            height: 24px;
+            vertical-align: middle;
+            margin-right: 8px;
+            image-rendering: pixelated;
+        }
+
+        /* --- Header & Navigation --- */
+        .header-info {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 16px;
+            margin-bottom: 24px;
+            border-bottom: 1px solid #e9ecef;
+            padding-bottom: 16px;
+        }
+        .header-info p { margin: 0; color: #6c757d; }
+        .main-nav { display: flex; gap: 8px; align-items: center; }
+        .main-nav a, .main-nav strong {
+            font-weight: 500;
+            padding: 8px 12px;
+            border-radius: 6px;
+            font-size: 1.1em;
+            text-decoration: none;
+            color: #007bff;
+            transition: background-color 0.2s ease;
+        }
+        .main-nav a:hover {
+            background-color: #e9ecef;
+            text-decoration: none;
+        }
+        .main-nav strong {
+            color: #ffffff;
+            background-color: #007bff;
+        }
+
+        /* --- Page-Specific: Activity --- */
+        .activity-log ul { list-style-type: none; padding: 0; margin: 0; }
+        .activity-log li { padding: 12px 8px; border-bottom: 1px solid #e9ecef; display: flex; align-items: center; gap: 16px; font-size: 1em; }
+        .activity-log li:last-child { border-bottom: none; }
+        .log-timestamp { font-size: 0.9em; color: #6c757d; width: 120px; flex-shrink: 0; }
+        .log-event { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+        .log-event strong a { font-weight: 600; color: #343a40; }
+        .log-event small { color: #6c757d; }
         .log-added { color: #28a745; }
         .log-removed { color: #6c757d; }
-        .log-new-low { color: #e67e22; }
-        .log-new-low .highlight { font-weight: bold; background-color: #fff3cd; padding: 2px 5px; border-radius: 3px;}
+        .log-new-low { color: #fd7e14; }
+        .log-new-low .highlight { font-weight: bold; background-color: #fff3cd; padding: 2px 5px; border-radius: 3px; }
     </style>
 </head>
 <body>
@@ -45,24 +102,24 @@
         <h2>Recent Market Activity</h2>
 
         {{if .MarketEvents}}
-        <div class="market-log">
+        <div class="activity-log">
             <ul>
                 {{range .MarketEvents}}
                 <li>
                     <span class="log-timestamp">{{.Timestamp}}</span>
                     {{if eq .EventType "ADDED"}}
                         <span class="log-event log-added">
-                            ➕ <strong><img src="https://static.divine-pride.net/images/items/item/{{.ItemID}}.png" alt="" width="24" height="24" style="vertical-align: middle; margin-right: 5px;"> <a href="/item?name={{.ItemName | urlquery}}">{{.ItemName}}</a> <small>({{.ItemID}})</small></strong> was added for sale.
-                            <small>({{.Details.price}}, Qty: {{printf "%.0f" .Details.quantity}}, by {{.Details.seller}})</small>
+                            ➕ <strong><img src="https://static.divine-pride.net/images/items/item/{{.ItemID}}.png" alt="" class="item-icon"> <a href="/item?name={{.ItemName | urlquery}}">{{.ItemName}}</a></strong> was added for sale.
+                            <small>({{.Details.price}} zeny, Qty: {{printf "%.0f" .Details.quantity}} by {{.Details.seller}})</small>
                         </span>
                     {{else if eq .EventType "REMOVED"}}
                         <span class="log-event log-removed">
-                            ➖ <strong><img src="https://static.divine-pride.net/images/items/item/{{.ItemID}}.png" alt="" width="24" height="24" style="vertical-align: middle; margin-right: 5px;"> <a href="/item?name={{.ItemName | urlquery}}">{{.ItemName}}</a> <small>({{.ItemID}})</small></strong> is no longer for sale.
+                            ➖ <strong><img src="https://static.divine-pride.net/images/items/item/{{.ItemID}}.png" alt="" class="item-icon"> <a href="/item?name={{.ItemName | urlquery}}">{{.ItemName}}</a></strong> is no longer for sale.
                         </span>
                     {{else if eq .EventType "NEW_LOW"}}
                          <span class="log-event log-new-low">
-                            🏆 <span class="highlight">New historical low price</span> for <strong><img src="https://static.divine-pride.net/images/items/item/{{.ItemID}}.png" alt="" width="24" height="24" style="vertical-align: middle; margin-right: 5px;"> <a href="/item?name={{.ItemName | urlquery}}">{{.ItemName}}</a> <small>({{.ItemID}})</small></strong>!
-                            <small>({{.Details.price}}, Qty: {{printf "%.0f" .Details.quantity}}, by {{.Details.seller}})</small>
+                            🏆 <span class="highlight">New historical low</span> for <strong><img src="https://static.divine-pride.net/images/items/item/{{.ItemID}}.png" alt="" class="item-icon"> <a href="/item?name={{.ItemName | urlquery}}">{{.ItemName}}</a></strong>!
+                            <small>({{.Details.price}} zeny, Qty: {{printf "%.0f" .Details.quantity}} by {{.Details.seller}})</small>
                         </span>
                     {{end}}
                 </li>
@@ -77,22 +134,17 @@
         document.addEventListener('DOMContentLoaded', () => {
             const timeAgoSpan = document.getElementById('time-ago');
             const lastUpdateElement = document.querySelector('[data-timestamp]');
-
             if (!lastUpdateElement) return;
-
             const timestampStr = lastUpdateElement.dataset.timestamp;
-
             if (!timestampStr || timestampStr === 'Never') {
                 timeAgoSpan.textContent = '(never updated)';
                 return;
             }
-            
             const lastUpdateDate = new Date(timestampStr);
 
             function updateTimeAgo() {
                 const now = new Date();
                 const secondsPast = Math.floor((now.getTime() - lastUpdateDate.getTime()) / 1000);
-
                 if (secondsPast < 60) {
                     timeAgoSpan.textContent = `(${secondsPast} second${secondsPast !== 1 ? 's' : ''} ago)`;
                 } else if (secondsPast < 3600) {
@@ -106,9 +158,8 @@
                     timeAgoSpan.textContent = `(${days} day${days !== 1 ? 's' : ''} ago)`;
                 }
             }
-
             updateTimeAgo();
-            setInterval(updateTimeAgo, 1000);
+            setInterval(updateTimeAgo, 30000);
         });
     </script>
 </body>

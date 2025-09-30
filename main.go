@@ -869,8 +869,11 @@ func fullListHandler(w http.ResponseWriter, r *http.Request) {
 		}
 		items = append(items, item)
 	}
+	funcMap := template.FuncMap{
+		"lower": strings.ToLower,
+	}
 
-	tmpl, err := template.ParseFiles("full_list.html")
+	tmpl, err := template.New("full_list.html").Funcs(funcMap).ParseFiles("full_list.html")
 	if err != nil {
 		http.Error(w, "Could not load full_list template", http.StatusInternalServerError)
 		log.Printf("❌ Could not load full_list.html template: %v", err)
@@ -1257,4 +1260,3 @@ func initDB(filepath string) (*sql.DB, error) {
 }
 
 // ---- END: MODIFIED initDB ----
-

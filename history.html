@@ -6,45 +6,112 @@
     <title>Yufa Market Tracker / Price History for {{.ItemName}}</title>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
-        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; line-height: 1.6; background-color: #f4f4f9; color: #333; margin: 0; padding: 20px; }
-        .container { max-width: 1000px; margin: auto; background: #fff; padding: 20px; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
-        h1 { margin-bottom: 0; }
-        .header-info { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; margin-bottom: 20px; border-bottom: 1px solid #eee; padding-bottom: 15px; }
-        .header-info p { margin: 0; }
-        .main-nav { display: flex; gap: 15px; align-items: center; }
-        .main-nav a, .main-nav strong { font-weight: 500; padding: 5px 10px; border-radius: 4px; font-size: 1.1em; text-decoration: none; }
-        .main-nav a:hover { background-color: #f1f1f1; text-decoration: none; }
+        /* --- General & Typography --- */
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            line-height: 1.6;
+            background-color: #f8f9fa;
+            color: #212529;
+            margin: 0;
+            padding: 24px;
+        }
+        .container {
+            max-width: 1000px;
+            margin: auto;
+            background: #ffffff;
+            padding: 24px;
+            border-radius: 8px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);
+            border: 1px solid #dee2e6;
+        }
+        h1, h2, h3 {
+            color: #343a40;
+            margin-top: 0;
+        }
+        h1 { font-size: 2em; margin-bottom: 0.25em; }
+        h2 { font-size: 1.5em; margin-bottom: 1em; border-bottom: 1px solid #e9ecef; padding-bottom: 0.5em; }
+        h3 { font-size: 1.25em; margin-bottom: 0.75em; }
         a { color: #007bff; text-decoration: none; }
-        a:hover { text-decoration: underline; }
-        .info-cards { display: flex; gap: 20px; margin-bottom: 30px; flex-wrap: wrap; }
-        .card { flex: 1; min-width: 300px; background: #fdfdfd; border: 1px solid #e1e4e8; padding: 15px 20px; border-radius: 6px; box-shadow: 0 1px 5px rgba(0,0,0,0.05); }
-        .card h2 { margin-top: 0; border-bottom: 1px solid #eee; padding-bottom: 10px; font-size: 1.2em; color: #333; }
+        a:hover { text-decoration: underline; color: #0056b3; }
+        p { margin-top: 0; }
+        img.item-icon {
+            width: 24px;
+            height: 24px;
+            vertical-align: middle;
+            margin-right: 8px;
+            image-rendering: pixelated;
+        }
+
+        /* --- Header & Navigation --- */
+        .header-info {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 16px;
+            margin-bottom: 24px;
+            border-bottom: 1px solid #e9ecef;
+            padding-bottom: 16px;
+        }
+        .header-info p { margin: 0; color: #6c757d; }
+        .main-nav { display: flex; gap: 8px; align-items: center; }
+        .main-nav a, .main-nav strong {
+            font-weight: 500;
+            padding: 8px 12px;
+            border-radius: 6px;
+            font-size: 1.1em;
+            text-decoration: none;
+            color: #007bff;
+            transition: background-color 0.2s ease;
+        }
+        .main-nav a:hover {
+            background-color: #e9ecef;
+            text-decoration: none;
+        }
+        .main-nav strong {
+            color: #ffffff;
+            background-color: #007bff;
+        }
+
+        /* --- Tables --- */
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 24px;
+        }
+        th, td {
+            padding: 12px 16px;
+            text-align: left;
+            border-bottom: 1px solid #e9ecef;
+            vertical-align: middle;
+        }
+        th {
+            background-color: #f8f9fa;
+            font-weight: 600;
+            color: #495057;
+            white-space: nowrap;
+        }
+        tr:hover { background-color: #f1f3f5; }
+        td a { font-weight: 500; }
+        .unavailable { opacity: 0.65; }
+
+        /* --- Page-Specific: History --- */
+        .info-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 20px; margin: 24px 0; }
+        .card { background: #f8f9fa; border: 1px solid #dee2e6; padding: 16px 20px; border-radius: 6px; }
+        .card h2, .card h3 { margin-top: 0; border-bottom: 1px solid #e9ecef; padding-bottom: 10px; font-size: 1.2em; color: #495057; }
         .card p, .card li { margin: 8px 0; font-size: 0.95em; }
-        .card strong { color: #555; display: inline-block; width: 80px; }
+        .card strong { color: #495057; display: inline-block; width: 90px; }
+        .card pre { white-space: pre-wrap; word-wrap: break-word; font-family: monospace; font-size: 0.9em; background-color: #e9ecef; padding: 10px; border-radius: 4px; }
         #min-price-card h2 { color: #28a745; }
         #max-price-card h2 { color: #dc3545; }
-        .overall-summary { background: #f8f9fa; border: 1px solid #dee2e6; padding: 15px 20px; border-radius: 6px; margin-bottom: 30px; text-align: center; }
-        .overall-summary p { margin: 0; font-size: 1.1em; color: #495057; }
-        .overall-summary strong { font-weight: 600; }
-        #min-price-val, #max-price-val { font-weight: 700; font-size: 1.2em; }
-        #min-price-val { color: #28a745; }
-        #max-price-val { color: #dc3545; }
-        .item-details-box { display: flex; gap: 20px; background: #f8f9fa; border: 1px solid #dee2e6; padding: 20px; border-radius: 6px; margin-bottom: 30px; align-items: center; }
+        .item-details-box { display: flex; gap: 20px; background: #f8f9fa; border: 1px solid #dee2e6; padding: 20px; border-radius: 6px; margin: 24px 0; align-items: flex-start; }
         .item-details-box img { flex-shrink: 0; width: 64px; height: 64px; border-radius: 4px; background: #fff; padding: 5px; border: 1px solid #ddd; image-rendering: pixelated; }
-        .item-details-box p { margin: 0; font-style: italic; color: #6c757d; }
-        .drop-info { margin-bottom: 30px; }
-        .drop-info table { width: 100%; border-collapse: collapse; }
-        .drop-info th, .drop-info td { padding: 10px; text-align: left; border-bottom: 1px solid #ddd; }
-        .drop-info th { background-color: #f8f8f8; font-weight: 600; }
-        .drop-info tr:hover { background-color: #f1f1f1; }
-        .drop-info ul { padding-left: 20px; margin: 0; }
-        .listings-history { margin-top: 40px; }
-        .listings-history table { width: 100%; border-collapse: collapse; }
-        .listings-history th, .listings-history td { padding: 12px; text-align: left; border-bottom: 1px solid #ddd; word-wrap: break-word; }
-        .listings-history th { background-color: #f8f8f8; font-weight: 600; }
-        .listings-history tr:hover { background-color: #f1f1f1; }
-        .unavailable { opacity: 0.6; }
-        .unavailable a { color: #666; }
+        .item-details-box p { margin: 0; font-style: italic; color: #6c757d; line-height: 1.5; }
+        .overall-summary { text-align: center; padding: 16px; background: #e9ecef; border-radius: 6px; margin-bottom: 24px; }
+        .overall-summary p { margin: 0; font-size: 1.1em; color: #495057; }
+        .text-success { color: #28a745; font-weight: bold; }
+        .text-danger { color: #dc3545; font-weight: bold; }
+
     </style>
 </head>
 <body>
@@ -60,22 +127,18 @@
                 <a href="/activity">Activity</a>
             </nav>
         </div>
-        <div style="margin-top: 1.5rem;">
-             <a href="javascript:history.back()">&larr; Back</a>
-        </div>
-        <h1 style="margin-top: 1rem;">Price History for: <strong>{{.ItemName}}</strong></h1>
+        
+        <h2 style="margin-top: 1.5rem;">Price History: <strong>{{.ItemName}}</strong></h2>
 
         {{if .ItemDetails}}
         <div class="item-details-box">
-            {{if .ItemDetails.ImageURL}}
-            <img src="{{.ItemDetails.ImageURL}}" alt="{{.ItemName}}">
-            {{end}}
+            <img src="{{.ItemDetails.ImageURL}}" alt="{{.ItemName}}" class="item-icon">
             <p>{{.ItemDetails.Description}}</p>
         </div>
         
-        <div class="info-cards" style="margin-bottom: 30px; align-items: flex-start;">
+        <div class="info-cards">
             <div class="card">
-                <h2>Item Properties</h2>
+                <h3>Item Properties</h3>
                 <p><strong>Type:</strong> {{.ItemDetails.Type}}</p>
                 <p><strong>Class:</strong> {{.ItemDetails.Class}}</p>
                 <p><strong>Buy:</strong> {{.ItemDetails.Buy}}</p>
@@ -85,75 +148,41 @@
             </div>
             {{if .ItemDetails.Script}}
             <div class="card">
-                <h2>Item Script</h2>
-                <pre style="white-space: pre-wrap; word-wrap: break-word; font-family: monospace; font-size: 0.9em;"><code>{{.ItemDetails.Script}}</code></pre>
+                <h3>Item Script</h3>
+                <pre><code>{{.ItemDetails.Script}}</code></pre>
             </div>
             {{end}}
         </div>
-
-        <!-- {{if .ItemDetails.DroppedBy}} -->
-        <!-- <div class="drop-info"> -->
-        <!--     <h3 id="drop-header" style="cursor: pointer; user-select: none;">Dropped By <span id="drop-indicator">[+]</span></h3> -->
-        <!--     <table id="drop-table" style="display: none;"> -->
-        <!--         <thead> -->
-        <!--             <tr> -->
-        <!--                 <th>Monster</th> -->
-        <!--                 <th>Rate</th> -->
-        <!--             </tr> -->
-        <!--         </thead> -->
-        <!--         <tbody> -->
-        <!--             {{range .ItemDetails.DroppedBy}} -->
-        <!--             <tr> -->
-        <!--                 <td>{{.Monster}}</td> -->
-        <!--                 <td>{{.Rate}}</td> -->
-        <!--             </tr> -->
-        <!--             {{end}} -->
-        <!--         </tbody> -->
-        <!--     </table> -->
-        <!-- </div> -->
-        <!-- {{end}} -->
-        <!---->
-        <!-- {{if .ItemDetails.ObtainableFrom}} -->
-        <!-- <div class="drop-info"> -->
-        <!--      <h3>Obtainable From</h3> -->
-        <!--      <ul> -->
-        <!--          {{range .ItemDetails.ObtainableFrom}} -->
-        <!--          <li>{{.}}</li> -->
-        <!--          {{end}} -->
-        <!--      </ul> -->
-        <!-- </div> -->
-        <!-- {{end}} -->
-        <!---->
-        <!-- {{else}} -->
-        <!-- <p>No detailed item information could be found.</p> -->
-        <!-- {{end}} -->
+        {{else}}
+        <p>No detailed item information could be found.</p>
+        {{end}}
 
         <div class="overall-summary">
             <p>
                 All-Time Price Range: 
-                <strong id="overall-min-display" style="color: #28a745;">N/A</strong> &mdash; 
-                <strong id="overall-max-display" style="color: #dc3545;">N/A</strong>
+                <strong id="overall-min-display" class="text-success">N/A</strong> &mdash; 
+                <strong id="overall-max-display" class="text-danger">N/A</strong>
             </p>
         </div>
 
         <div class="info-cards">
             <div class="card" id="min-price-card">
                 <h2>Lowest Current Price</h2>
-                <p><strong>Price:</strong> <span id="min-price-val"></span></p>
-                <p><strong>Quantity:</strong> <span id="min-quantity-val"></span></p>
-                <p><strong>Store:</strong> <span id="min-store-val"></span></p>
-                <p><strong>Seller:</strong> <span id="min-seller-val"></span></p>
-                <p><strong>Location:</strong> <span id="min-location-val"></span></p>
-                <p><strong>Date:</strong> <span id="min-date-val"></span></p>
+                <p><strong>Price:</strong> <span id="min-price-val" class="text-success">N/A</span></p>
+                <p><strong>Quantity:</strong> <span id="min-quantity-val">N/A</span></p>
+                <p><strong>Store:</strong> <span id="min-store-val">N/A</span></p>
+                <p><strong>Seller:</strong> <span id="min-seller-val">N/A</span></p>
+                <p><strong>Location:</strong> <span id="min-location-val">N/A</span></p>
+                <p><strong>Date:</strong> <span id="min-date-val">N/A</span></p>
             </div>
             <div class="card" id="max-price-card">
                 <h2>Highest Current Price</h2>
-                <p><strong>Price:</strong> <span id="max-price-val"></span></p>
-                <p><strong>Quantity:</strong> <span id="max-quantity-val"></span></p>
-                <p><strong>Store:</strong> <span id="max-store-val"></span></p>
-                <p><strong>Seller:</strong> <span id="max-seller-val"></span></p>
-                <p><strong>Location:</strong> <span id="max-location-val"></span></p>
-                <p><strong>Date:</strong> <span id="max-date-val"></span></p>
+                <p><strong>Price:</strong> <span id="max-price-val" class="text-danger">N/A</span></p>
+                <p><strong>Quantity:</strong> <span id="max-quantity-val">N/A</span></p>
+                <p><strong>Store:</strong> <span id="max-store-val">N/A</span></p>
+                <p><strong>Seller:</strong> <span id="max-seller-val">N/A</span></p>
+                <p><strong>Location:</strong> <span id="max-location-val">N/A</span></p>
+                <p><strong>Date:</strong> <span id="max-date-val">N/A</span></p>
             </div>
         </div>
 
@@ -185,9 +214,9 @@
                         <td>{{.Timestamp}}</td>
                         <td>
                             {{if .IsAvailable}}
-                                <span style="color: #28a745; font-weight: bold;">Yes</span>
+                                <span class="text-success">Yes</span>
                             {{else}}
-                                <span style="color: #dc3545;">No</span>
+                                <span class="text-danger">No</span>
                             {{end}}
                         </td>
                     </tr>
@@ -230,7 +259,6 @@
                 }, 1500);
             }).catch(err => {
                 console.error('Failed to copy command: ', err);
-                alert('Could not copy the /navi command to your clipboard.');
             });
         }
         
@@ -291,7 +319,7 @@
                     y: {
                         beginAtZero: false,
                         ticks: {
-                            callback: function(value, index, values) {
+                            callback: function(value) {
                                 return value.toLocaleString() + 'z';
                             }
                         }
@@ -300,21 +328,25 @@
                 plugins: {
                     tooltip: {
                         callbacks: {
+                            label: function(context) {
+                                let label = context.dataset.label || '';
+                                if (label) {
+                                    label += ': ';
+                                }
+                                if (context.parsed.y !== null) {
+                                    label += context.parsed.y.toLocaleString() + 'z';
+                                }
+                                return label;
+                            },
                             afterLabel: function(context) {
                                 const dataPoint = priceHistoryData[context.dataIndex];
                                 if (!dataPoint) return '';
 
                                 let details = [];
                                 if (context.dataset.label === 'Minimum Price') {
-                                    details.push(`  Quantity: ${dataPoint.MinQuantity.toLocaleString()}`);
-                                    details.push(`  Store: ${dataPoint.MinStoreName}`);
-                                    details.push(`  Seller: ${dataPoint.MinSellerName}`);
-                                    details.push(`  Map: ${dataPoint.MinMapName} (${dataPoint.MinMapCoords})`);
+                                    details.push(`  Qty: ${dataPoint.MinQuantity.toLocaleString()}, Seller: ${dataPoint.MinSellerName}`);
                                 } else if (context.dataset.label === 'Maximum Price') {
-                                    details.push(`  Quantity: ${dataPoint.MaxQuantity.toLocaleString()}`);
-                                    details.push(`  Store: ${dataPoint.MaxStoreName}`);
-                                    details.push(`  Seller: ${dataPoint.MaxSellerName}`);
-                                    details.push(`  Map: ${dataPoint.MaxMapName} (${dataPoint.MaxMapCoords})`);
+                                    details.push(`  Qty: ${dataPoint.MaxQuantity.toLocaleString()}, Seller: ${dataPoint.MaxSellerName}`);
                                 }
                                 return details;
                             }
@@ -323,40 +355,21 @@
                 }
             }
         });
-
-        // --- Collapsible "Dropped By" section logic ---
-        const dropHeader = document.getElementById('drop-header');
-        if (dropHeader) {
-            const dropTable = document.getElementById('drop-table');
-            const dropIndicator = document.getElementById('drop-indicator');
-
-            dropHeader.addEventListener('click', () => {
-                const isCollapsed = dropTable.style.display === 'none';
-                dropTable.style.display = isCollapsed ? '' : 'none'; // Use '' to reset to default display
-                dropIndicator.textContent = isCollapsed ? '[-]' : '[+]';
-            });
-        }
         
-        // --- Dynamic time calculation ---
         document.addEventListener('DOMContentLoaded', () => {
             const timeAgoSpan = document.getElementById('time-ago');
             const lastUpdateElement = document.querySelector('[data-timestamp]');
-
             if (!lastUpdateElement) return;
-
             const timestampStr = lastUpdateElement.dataset.timestamp;
-
             if (!timestampStr || timestampStr === 'Never') {
                 timeAgoSpan.textContent = '(never updated)';
                 return;
             }
-            
             const lastUpdateDate = new Date(timestampStr);
 
             function updateTimeAgo() {
                 const now = new Date();
                 const secondsPast = Math.floor((now.getTime() - lastUpdateDate.getTime()) / 1000);
-
                 if (secondsPast < 60) {
                     timeAgoSpan.textContent = `(${secondsPast} second${secondsPast !== 1 ? 's' : ''} ago)`;
                 } else if (secondsPast < 3600) {
@@ -371,7 +384,7 @@
                 }
             }
             updateTimeAgo();
-            setInterval(updateTimeAgo, 1000);
+            setInterval(updateTimeAgo, 30000);
         });
     </script>
 </body>

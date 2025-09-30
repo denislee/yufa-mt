@@ -5,35 +5,141 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Yufa Market Tracker</title>
     <style>
-        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; line-height: 1.6; background-color: #f4f4f9; color: #333; margin: 0; padding: 20px; }
-        .container { max-width: 1200px; margin: auto; background: #fff; padding: 20px; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
-        h1, h2 { color: #333; }
-        h1 { margin-bottom: 0; }
-        .header-info { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; margin-bottom: 20px; border-bottom: 1px solid #eee; padding-bottom: 15px; }
-        .header-info p { margin: 0; }
-        .main-nav { display: flex; gap: 15px; align-items: center; }
-        .main-nav a, .main-nav strong { font-weight: 500; padding: 5px 10px; border-radius: 4px; font-size: 1.1em; text-decoration: none; }
-        .main-nav a:hover { background-color: #f1f1f1; text-decoration: none; }
-        .main-nav strong { color: #333; }
+        /* --- General & Typography --- */
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            line-height: 1.6;
+            background-color: #f8f9fa;
+            color: #212529;
+            margin: 0;
+            padding: 24px;
+        }
+        .container {
+            max-width: 1200px;
+            margin: auto;
+            background: #ffffff;
+            padding: 24px;
+            border-radius: 8px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);
+            border: 1px solid #dee2e6;
+        }
+        h1, h2, h3 {
+            color: #343a40;
+            margin-top: 0;
+        }
+        h1 { font-size: 2em; margin-bottom: 0.25em; }
+        h2 { font-size: 1.5em; margin-bottom: 1em; border-bottom: 1px solid #e9ecef; padding-bottom: 0.5em; }
+        h3 { font-size: 1.25em; margin-bottom: 0.75em; }
         a { color: #007bff; text-decoration: none; }
-        a:hover { text-decoration: underline; }
-        table { width: 100%; border-collapse: collapse; margin-top: 20px; }
-        th, td { padding: 12px; text-align: left; border-bottom: 1px solid #ddd; }
-        th { background-color: #f8f8f8; }
-        tr:hover { background-color: #f1f1f1; }
-        td a { color: #007bff; font-weight: 500; }
-        .price-min { color: #28a745; font-weight: bold; }
-        .price-max { color: #dc3545; font-weight: bold; }
-        .filter-form { display: flex; gap: 15px; margin-bottom: 20px; align-items: center; }
-        .filter-form input[type="text"] { padding: 8px; border-radius: 4px; border: 1px solid #ddd; flex-grow: 1; }
-        .filter-form button { padding: 8px 15px; border: none; background-color: #007bff; color: white; border-radius: 4px; cursor: pointer; }
-        .filter-form button:hover { background-color: #0056b3; }
-        .filter-form label { display: flex; align-items: center; gap: 5px; cursor: pointer; }
+        a:hover { text-decoration: underline; color: #0056b3; }
+        p { margin-top: 0; }
+        img.item-icon {
+            width: 24px;
+            height: 24px;
+            vertical-align: middle;
+            margin-right: 8px;
+            image-rendering: pixelated;
+        }
+
+        /* --- Header & Navigation --- */
+        .header-info {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 16px;
+            margin-bottom: 24px;
+            border-bottom: 1px solid #e9ecef;
+            padding-bottom: 16px;
+        }
+        .header-info p { margin: 0; color: #6c757d; }
+        .main-nav { display: flex; gap: 8px; align-items: center; }
+        .main-nav a, .main-nav strong {
+            font-weight: 500;
+            padding: 8px 12px;
+            border-radius: 6px;
+            font-size: 1.1em;
+            text-decoration: none;
+            color: #007bff;
+            transition: background-color 0.2s ease;
+        }
+        .main-nav a:hover {
+            background-color: #e9ecef;
+            text-decoration: none;
+        }
+        .main-nav strong {
+            color: #ffffff;
+            background-color: #007bff;
+        }
+
+        /* --- Forms & Controls --- */
+        .filter-controls {
+            display: flex;
+            gap: 16px;
+            margin-bottom: 24px;
+            align-items: center;
+            flex-wrap: wrap;
+            padding: 16px;
+            background-color: #f8f9fa;
+            border-radius: 6px;
+            border: 1px solid #dee2e6;
+        }
+        .filter-controls input[type="text"] {
+            padding: 10px 12px;
+            border-radius: 6px;
+            border: 1px solid #ced4da;
+            flex-grow: 1;
+            min-width: 200px;
+            font-size: 1em;
+        }
+        .filter-controls button {
+            padding: 10px 16px;
+            border: none;
+            background-color: #007bff;
+            color: white;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 1em;
+            font-weight: 500;
+            transition: background-color 0.2s ease;
+        }
+        .filter-controls button:hover { background-color: #0056b3; }
+        .filter-controls label {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            cursor: pointer;
+            user-select: none;
+        }
+
+        /* --- Tables --- */
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 24px;
+        }
+        th, td {
+            padding: 12px 16px;
+            text-align: left;
+            border-bottom: 1px solid #e9ecef;
+            vertical-align: middle;
+        }
+        th {
+            background-color: #f8f9fa;
+            font-weight: 600;
+            color: #495057;
+            white-space: nowrap;
+        }
+        tr:hover { background-color: #f1f3f5; }
+        td a { font-weight: 500; }
         th a { color: inherit; text-decoration: none; display: block; }
         th.sorted-asc a::after { content: ' ▲'; font-size: 0.8em; }
         th.sorted-desc a::after { content: ' ▼'; font-size: 0.8em; }
-        .unavailable { opacity: 0.6; }
-        .unavailable a { color: #666; }
+        .unavailable { opacity: 0.65; }
+
+        /* --- Utility Classes --- */
+        .text-success { color: #28a745; font-weight: bold; }
+        .text-danger { color: #dc3545; font-weight: bold; }
     </style>
 </head>
 <body>
@@ -50,9 +156,7 @@
             </nav>
         </div>
 
-        <p>Showing <strong>{{ len .Items }}</strong> items.</p>
-
-        <form action="/" method="GET" class="filter-form">
+        <form action="/" method="GET" class="filter-controls">
             <input type="text" name="query" placeholder="Search for an item..." value="{{.SearchQuery}}">
             <label>
                 <input type="checkbox" name="only_available" value="true" {{if not .ShowAll}}checked{{end}}>
@@ -60,6 +164,8 @@
             </label>
             <button type="submit">Search</button>
         </form>
+
+        <p>Showing <strong>{{ len .Items }}</strong> unique items.</p>
 
         <table>
             <thead>
@@ -77,7 +183,7 @@
                         <a href="/?query={{$query}}{{if not $showAll}}&only_available=true{{end}}&sort_by=item_id&order={{if eq $currentSort "item_id"}}{{$revOrder}}{{else}}ASC{{end}}">Item ID</a>
                     </th>
                     <th class="{{if eq $currentSort "listings"}}sorted-{{$currentOrder | lower}}{{end}}">
-                        <a href="/?query={{$query}}{{if not $showAll}}&only_available=true{{end}}&sort_by=listings&order={{if eq $currentSort "listings"}}{{$revOrder}}{{else}}DESC{{end}}">Available Listings</a>
+                        <a href="/?query={{$query}}{{if not $showAll}}&only_available=true{{end}}&sort_by=listings&order={{if eq $currentSort "listings"}}{{$revOrder}}{{else}}DESC{{end}}">Available</a>
                     </th>
                     <th class="{{if eq $currentSort "min_price"}}sorted-{{$currentOrder | lower}}{{end}}">
                         <a href="/?query={{$query}}{{if not $showAll}}&only_available=true{{end}}&sort_by=min_price&order={{if eq $currentSort "min_price"}}{{$revOrder}}{{else}}ASC{{end}}">Lowest Price</a>
@@ -91,18 +197,18 @@
                 {{range .Items}}
                 <tr {{if eq .ListingCount 0}}class="unavailable" title="This item has no available listings"{{end}}>
                     <td>
-                        <img src="https://static.divine-pride.net/images/items/item/{{.ItemID}}.png" alt="" width="24" height="24" style="vertical-align: middle; margin-right: 5px;">
+                        <img src="https://static.divine-pride.net/images/items/item/{{.ItemID}}.png" alt="" class="item-icon">
                         <a href="/item?name={{.Name | urlquery}}">{{.Name}}</a>
                     </td>
                     <td>{{.ItemID}}</td>
                     <td>{{.ListingCount}}</td>
                     {{if .MinPrice.Valid}}
-                        <td class="price-min" data-price="{{.MinPrice.Int64}}"></td>
+                        <td class="text-success" data-price="{{.MinPrice.Int64}}"></td>
                     {{else}}
                         <td>N/A</td>
                     {{end}}
                     {{if .MaxPrice.Valid}}
-                         <td class="price-max" data-price="{{.MaxPrice.Int64}}"></td>
+                         <td class="text-danger" data-price="{{.MaxPrice.Int64}}"></td>
                     {{else}}
                         <td>N/A</td>
                     {{end}}
@@ -113,7 +219,6 @@
     </div>
     <script>
         document.addEventListener('DOMContentLoaded', () => {
-            // Format prices with commas
             document.querySelectorAll('[data-price]').forEach(elem => {
                 const price = parseInt(elem.dataset.price, 10);
                 if (!isNaN(price)) {
@@ -121,25 +226,19 @@
                 }
             });
 
-            // --- Dynamic time calculation ---
             const timeAgoSpan = document.getElementById('time-ago');
             const lastUpdateElement = document.querySelector('[data-timestamp]');
-
             if (!lastUpdateElement) return;
-
             const timestampStr = lastUpdateElement.dataset.timestamp;
-
             if (!timestampStr || timestampStr === 'Never') {
                 timeAgoSpan.textContent = '(never updated)';
                 return;
             }
-            
             const lastUpdateDate = new Date(timestampStr);
 
             function updateTimeAgo() {
                 const now = new Date();
                 const secondsPast = Math.floor((now.getTime() - lastUpdateDate.getTime()) / 1000);
-
                 if (secondsPast < 60) {
                     timeAgoSpan.textContent = `(${secondsPast} second${secondsPast !== 1 ? 's' : ''} ago)`;
                 } else if (secondsPast < 3600) {
@@ -154,7 +253,7 @@
                 }
             }
             updateTimeAgo();
-            setInterval(updateTimeAgo, 1000);
+            setInterval(updateTimeAgo, 30000);
         });
     </script>
 </body>
