@@ -197,24 +197,25 @@
                 <tr>
                     {{$params := .ColumnParams}}
                     {{$query := .SearchQuery}}
+                    {{$storeName := .StoreNameQuery}}
                     {{$showAll := .ShowAll}}
                     {{$currentSort := .SortBy}}
                     {{$currentOrder := .Order}}
                     {{$revOrder := "ASC"}}{{if eq $currentOrder "ASC"}}{{$revOrder = "DESC"}}{{end}}
 
-                    <th class="{{if eq $currentSort "name"}}sorted-{{$currentOrder | lower}}{{end}}"><a href="/full-list?query={{$query}}&sort_by=name&order={{if eq $currentSort "name"}}{{$revOrder}}{{else}}ASC{{end}}{{if not $showAll}}&only_available=true{{end}}&{{$params}}">Item Name</a></th>
+                    <th class="{{if eq $currentSort "name"}}sorted-{{$currentOrder | lower}}{{end}}"><a href="/full-list?query={{$query}}&sort_by=name&order={{if eq $currentSort "name"}}{{$revOrder}}{{else}}ASC{{end}}{{if not $showAll}}&only_available=true{{end}}{{if $storeName}}&store_name={{$storeName | urlquery}}{{end}}&{{$params}}">Item Name</a></th>
                     
-                    {{if index .VisibleColumns "item_id"}}<th class="{{if eq $currentSort "item_id"}}sorted-{{$currentOrder | lower}}{{end}}"><a href="/full-list?query={{$query}}&sort_by=item_id&order={{if eq $currentSort "item_id"}}{{$revOrder}}{{else}}ASC{{end}}{{if not $showAll}}&only_available=true{{end}}&{{$params}}">Item ID</a></th>{{end}}
-                    {{if index .VisibleColumns "quantity"}}<th class="{{if eq $currentSort "quantity"}}sorted-{{$currentOrder | lower}}{{end}}"><a href="/full-list?query={{$query}}&sort_by=quantity&order={{if eq $currentSort "quantity"}}{{$revOrder}}{{else}}ASC{{end}}{{if not $showAll}}&only_available=true{{end}}&{{$params}}">Qty</a></th>{{end}}
+                    {{if index .VisibleColumns "item_id"}}<th class="{{if eq $currentSort "item_id"}}sorted-{{$currentOrder | lower}}{{end}}"><a href="/full-list?query={{$query}}&sort_by=item_id&order={{if eq $currentSort "item_id"}}{{$revOrder}}{{else}}ASC{{end}}{{if not $showAll}}&only_available=true{{end}}{{if $storeName}}&store_name={{$storeName | urlquery}}{{end}}&{{$params}}">Item ID</a></th>{{end}}
+                    {{if index .VisibleColumns "quantity"}}<th class="{{if eq $currentSort "quantity"}}sorted-{{$currentOrder | lower}}{{end}}"><a href="/full-list?query={{$query}}&sort_by=quantity&order={{if eq $currentSort "quantity"}}{{$revOrder}}{{else}}ASC{{end}}{{if not $showAll}}&only_available=true{{end}}{{if $storeName}}&store_name={{$storeName | urlquery}}{{end}}&{{$params}}">Qty</a></th>{{end}}
                     
-                    <th class="{{if eq $currentSort "price"}}sorted-{{$currentOrder | lower}}{{end}}"><a href="/full-list?query={{$query}}&sort_by=price&order={{if eq $currentSort "price"}}{{$revOrder}}{{else}}ASC{{end}}{{if not $showAll}}&only_available=true{{end}}&{{$params}}">Price</a></th>
+                    <th class="{{if eq $currentSort "price"}}sorted-{{$currentOrder | lower}}{{end}}"><a href="/full-list?query={{$query}}&sort_by=price&order={{if eq $currentSort "price"}}{{$revOrder}}{{else}}ASC{{end}}{{if not $showAll}}&only_available=true{{end}}{{if $storeName}}&store_name={{$storeName | urlquery}}{{end}}&{{$params}}">Price</a></th>
                     
-                    {{if index .VisibleColumns "store_name"}}<th class="{{if eq $currentSort "store_name"}}sorted-{{$currentOrder | lower}}{{end}}"><a href="/full-list?query={{$query}}&sort_by=store_name&order={{if eq $currentSort "store_name"}}{{$revOrder}}{{else}}ASC{{end}}{{if not $showAll}}&only_available=true{{end}}&{{$params}}">Store</a></th>{{end}}
-                    {{if index .VisibleColumns "seller_name"}}<th class="{{if eq $currentSort "seller"}}sorted-{{$currentOrder | lower}}{{end}}"><a href="/full-list?query={{$query}}&sort_by=seller&order={{if eq $currentSort "seller"}}{{$revOrder}}{{else}}ASC{{end}}{{if not $showAll}}&only_available=true{{end}}&{{$params}}">Seller</a></th>{{end}}
+                    {{if index .VisibleColumns "store_name"}}<th class="{{if eq $currentSort "store_name"}}sorted-{{$currentOrder | lower}}{{end}}"><a href="/full-list?query={{$query}}&sort_by=store_name&order={{if eq $currentSort "store_name"}}{{$revOrder}}{{else}}ASC{{end}}{{if not $showAll}}&only_available=true{{end}}{{if $storeName}}&store_name={{$storeName | urlquery}}{{end}}&{{$params}}">Store</a></th>{{end}}
+                    {{if index .VisibleColumns "seller_name"}}<th class="{{if eq $currentSort "seller"}}sorted-{{$currentOrder | lower}}{{end}}"><a href="/full-list?query={{$query}}&sort_by=seller&order={{if eq $currentSort "seller"}}{{$revOrder}}{{else}}ASC{{end}}{{if not $showAll}}&only_available=true{{end}}{{if $storeName}}&store_name={{$storeName | urlquery}}{{end}}&{{$params}}">Seller</a></th>{{end}}
                     {{if index .VisibleColumns "map_name"}}<th>Map</th>{{end}}
                     {{if index .VisibleColumns "map_coordinates"}}<th>Coords</th>{{end}}
-                    {{if index .VisibleColumns "retrieved"}}<th class="{{if eq $currentSort "retrieved"}}sorted-{{$currentOrder | lower}}{{end}}"><a href="/full-list?query={{$query}}&sort_by=retrieved&order={{if eq $currentSort "retrieved"}}{{$revOrder}}{{else}}ASC{{end}}{{if not $showAll}}&only_available=true{{end}}&{{$params}}">Scanned</a></th>{{end}}
-                    {{if index .VisibleColumns "availability"}}<th class="{{if eq $currentSort "availability"}}sorted-{{$currentOrder | lower}}{{end}}"><a href="/full-list?query={{$query}}&sort_by=availability&order={{if eq $currentSort "availability"}}{{$revOrder}}{{else}}ASC{{end}}{{if not $showAll}}&only_available=true{{end}}&{{$params}}">Available</a></th>{{end}}
+                    {{if index .VisibleColumns "retrieved"}}<th class="{{if eq $currentSort "retrieved"}}sorted-{{$currentOrder | lower}}{{end}}"><a href="/full-list?query={{$query}}&sort_by=retrieved&order={{if eq $currentSort "retrieved"}}{{$revOrder}}{{else}}ASC{{end}}{{if not $showAll}}&only_available=true{{end}}{{if $storeName}}&store_name={{$storeName | urlquery}}{{end}}&{{$params}}">Scanned</a></th>{{end}}
+                    {{if index .VisibleColumns "availability"}}<th class="{{if eq $currentSort "availability"}}sorted-{{$currentOrder | lower}}{{end}}"><a href="/full-list?query={{$query}}&sort_by=availability&order={{if eq $currentSort "availability"}}{{$revOrder}}{{else}}ASC{{end}}{{if not $showAll}}&only_available=true{{end}}{{if $storeName}}&store_name={{$storeName | urlquery}}{{end}}&{{$params}}">Available</a></th>{{end}}
                 </tr>
             </thead>
             <tbody>
@@ -225,7 +226,7 @@
                     {{if index $.VisibleColumns "item_id"}}<td>{{.ItemID}}</td>{{end}}
                     {{if index $.VisibleColumns "quantity"}}<td>{{.Quantity}}</td>{{end}}
                     <td>{{.Price}}</td>
-                    {{if index $.VisibleColumns "store_name"}}<td><span class="truncate" title="{{.StoreName}}">{{.StoreName}}</span></td>{{end}}
+                    {{if index $.VisibleColumns "store_name"}}<td><a href="/full-list?only_available=true&store_name={{.StoreName | urlquery}}" class="truncate" title="{{.StoreName}}">{{.StoreName}}</a></td>{{end}}
                     {{if index $.VisibleColumns "seller_name"}}<td>{{.SellerName}}</td>{{end}}
                     {{if index $.VisibleColumns "map_name"}}<td>{{.MapName}}</td>{{end}}
                     {{if index $.VisibleColumns "map_coordinates"}}<td><a href="#" onclick="copyNavi(event, '{{.MapName}}', '{{.MapCoordinates}}')" title="Click to copy /navi command">{{.MapCoordinates}}</a></td>{{end}}

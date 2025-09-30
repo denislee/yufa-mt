@@ -171,7 +171,7 @@
                 <h2>Lowest Current Price</h2>
                 <p><strong>Price:</strong> <span id="lowest-price-val" class="text-success">N/A</span></p>
                 <p><strong>Quantity:</strong> <span id="lowest-quantity-val">N/A</span></p>
-                <p><strong>Store:</strong> <span id="lowest-store-val" class="truncate">N/A</span></p>
+                <p><strong>Store:</strong> <a id="lowest-store-val" class="truncate" href="#">N/A</a></p>
                 <p><strong>Seller:</strong> <span id="lowest-seller-val">N/A</span></p>
                 <p><strong>Location:</strong> <span id="lowest-location-val">N/A</span></p>
                 <p><strong>Date:</strong> <span id="lowest-date-val">N/A</span></p>
@@ -180,7 +180,7 @@
                 <h2>Highest Current Price</h2>
                 <p><strong>Price:</strong> <span id="highest-price-val" class="text-danger">N/A</span></p>
                 <p><strong>Quantity:</strong> <span id="highest-quantity-val">N/A</span></p>
-                <p><strong>Store:</strong> <span id="highest-store-val" class="truncate">N/A</span></p>
+                <p><strong>Store:</strong> <a id="highest-store-val" class="truncate" href="#">N/A</a></p>
                 <p><strong>Seller:</strong> <span id="highest-seller-val">N/A</span></p>
                 <p><strong>Location:</strong> <span id="highest-location-val">N/A</span></p>
                 <p><strong>Date:</strong> <span id="highest-date-val">N/A</span></p>
@@ -209,7 +209,7 @@
                     <tr {{if not .IsAvailable}}class="unavailable" title="This specific listing is no longer available"{{end}}>
                         <td>{{.Price}}</td>
                         <td>{{.Quantity}}</td>
-                        <td><span class="truncate" title="{{.StoreName}}">{{.StoreName}}</span></td>
+                        <td><a href="/full-list?only_available=true&store_name={{.StoreName | urlquery}}" class="truncate" title="{{.StoreName}}">{{.StoreName}}</a></td>
                         <td>{{.SellerName}}</td>
                         <td><a href="#" onclick="copyNavi(event, '{{.MapName}}', '{{.MapCoordinates}}')" title="Click to copy /navi command">{{.MapName}} {{.MapCoordinates}}</a></td>
                         <td>{{.Timestamp}}</td>
@@ -266,12 +266,13 @@
         if (currentLowestData) {
             const mapName = currentLowestData.MapName;
             const mapCoords = currentLowestData.MapCoordinates;
-            const lowestStoreSpan = document.getElementById('lowest-store-val');
+            const lowestStoreLink = document.getElementById('lowest-store-val');
             
             document.getElementById('lowest-price-val').textContent = `${currentLowestData.Price.toLocaleString()}z`;
             document.getElementById('lowest-quantity-val').textContent = currentLowestData.Quantity.toLocaleString();
-            lowestStoreSpan.textContent = currentLowestData.StoreName;
-            lowestStoreSpan.title = currentLowestData.StoreName;
+            lowestStoreLink.textContent = currentLowestData.StoreName;
+            lowestStoreLink.title = currentLowestData.StoreName;
+            lowestStoreLink.href = `/full-list?only_available=true&store_name=${encodeURIComponent(currentLowestData.StoreName)}`;
             document.getElementById('lowest-seller-val').textContent = currentLowestData.SellerName;
             document.getElementById('lowest-location-val').innerHTML = `<a href="#" onclick="copyNavi(event, '${mapName.replace(/'/g, "\\'")}', '${mapCoords.replace(/'/g, "\\'")}')" title="Click to copy /navi command">${mapName} ${mapCoords}</a>`;
             document.getElementById('lowest-date-val').textContent = currentLowestData.Timestamp;
@@ -280,12 +281,13 @@
         if (currentHighestData) {
             const mapName = currentHighestData.MapName;
             const mapCoords = currentHighestData.MapCoordinates;
-            const highestStoreSpan = document.getElementById('highest-store-val');
+            const highestStoreLink = document.getElementById('highest-store-val');
 
             document.getElementById('highest-price-val').textContent = `${currentHighestData.Price.toLocaleString()}z`;
             document.getElementById('highest-quantity-val').textContent = currentHighestData.Quantity.toLocaleString();
-            highestStoreSpan.textContent = currentHighestData.StoreName;
-            highestStoreSpan.title = currentHighestData.StoreName;
+            highestStoreLink.textContent = currentHighestData.StoreName;
+            highestStoreLink.title = currentHighestData.StoreName;
+            highestStoreLink.href = `/full-list?only_available=true&store_name=${encodeURIComponent(currentHighestData.StoreName)}`;
             document.getElementById('highest-seller-val').textContent = currentHighestData.SellerName;
             document.getElementById('highest-location-val').innerHTML = `<a href="#" onclick="copyNavi(event, '${mapName.replace(/'/g, "\\'")}', '${mapCoords.replace(/'/g, "\\'")}')" title="Click to copy /navi command">${mapName} ${mapCoords}</a>`;
             document.getElementById('highest-date-val').textContent = currentHighestData.Timestamp;
@@ -351,8 +353,10 @@
 
                                 let details = [];
                                 if (context.dataset.label === 'Lowest Price') {
+                                    details.push(`  Store: ${dataPoint.LowestStoreName}`);
                                     details.push(`  Qty: ${dataPoint.LowestQuantity.toLocaleString()}, Seller: ${dataPoint.LowestSellerName}`);
                                 } else if (context.dataset.label === 'Highest Price') {
+                                    details.push(`  Store: ${dataPoint.HighestStoreName}`);
                                     details.push(`  Qty: ${dataPoint.HighestQuantity.toLocaleString()}, Seller: ${dataPoint.HighestSellerName}`);
                                 }
                                 return details;

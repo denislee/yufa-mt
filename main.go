@@ -69,6 +69,7 @@ type MarketEvent struct {
 type PageData struct {
 	Items          []Item
 	SearchQuery    string
+	StoreNameQuery string
 	SortBy         string
 	Order          string
 	ShowAll        bool
@@ -779,6 +780,7 @@ func fullListHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	searchQuery := r.FormValue("query")
+	storeNameQuery := r.FormValue("store_name")
 	sortBy := r.FormValue("sort_by")
 	order := r.FormValue("order")
 	selectedCols := r.Form["cols"]
@@ -835,10 +837,22 @@ func fullListHandler(w http.ResponseWriter, r *http.Request) {
 		order = "ASC"
 	}
 
-	whereClause := "WHERE name_of_the_item LIKE ?"
-	if !showAll {
-		whereClause += " AND is_available = 1"
+	var whereConditions []string
+	var queryParams []interface{}
+
+	whereConditions = append(whereConditions, "name_of_the_item LIKE ?")
+	queryParams = append(queryParams, "%"+searchQuery+"%")
+
+	if storeNameQuery != "" {
+		whereConditions = append(whereConditions, "store_name LIKE ?")
+		queryParams = append(queryParams, "%"+storeNameQuery+"%")
 	}
+
+	if !showAll {
+		whereConditions = append(whereConditions, "is_available = 1")
+	}
+
+	whereClause := "WHERE " + strings.Join(whereConditions, " AND ")
 
 	query := fmt.Sprintf(`
 		SELECT id, name_of_the_item, item_id, quantity, price, store_name, seller_name, date_and_time_retrieved, map_name, map_coordinates, is_available
@@ -846,7 +860,7 @@ func fullListHandler(w http.ResponseWriter, r *http.Request) {
 		%s 
 		ORDER BY %s %s;`, whereClause, orderByClause, order)
 
-	rows, err := db.Query(query, "%"+searchQuery+"%")
+	rows, err := db.Query(query, queryParams...)
 	if err != nil {
 		http.Error(w, "Database query failed", http.StatusInternalServerError)
 		log.Printf("❌ Database query error: %v", err)
@@ -885,6 +899,7 @@ func fullListHandler(w http.ResponseWriter, r *http.Request) {
 	data := PageData{
 		Items:          items,
 		SearchQuery:    searchQuery,
+		StoreNameQuery: storeNameQuery,
 		SortBy:         sortBy,
 		Order:          order,
 		ShowAll:        showAll,
