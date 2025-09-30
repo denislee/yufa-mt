@@ -171,7 +171,7 @@
         
         <form action="/full-list" method="get" class="filter-controls">
             <div class="main-filters">
-                <input type="text" name="query" placeholder="Filter by item name..." value="{{ .SearchQuery }}">
+                <input type="text" name="query" placeholder="Search for an item..." value="{{.SearchQuery}}">
                 <label>
                     <input type="checkbox" name="only_available" value="true" {{if not .ShowAll}}checked{{end}}>
                     Show only available
