@@ -82,7 +82,7 @@
         }
         .filter-controls .main-filters {
             display: flex;
-            gap: 16px;
+            gap: 12px; /* Adjusted gap */
             align-items: center;
             flex-wrap: wrap;
         }
@@ -112,6 +112,23 @@
             gap: 6px;
             cursor: pointer;
             user-select: none;
+        }
+        .clear-filter-button {
+            padding: 10px 12px;
+            border: 1px solid #ced4da;
+            background-color: #e9ecef;
+            color: #495057;
+            border-radius: 6px;
+            text-decoration: none;
+            font-size: 0.9em;
+            font-weight: 500;
+            transition: background-color 0.2s ease, border-color 0.2s ease;
+            white-space: nowrap;
+        }
+        .clear-filter-button:hover {
+            background-color: #dee2e6;
+            border-color: #adb5bd;
+            text-decoration: none;
         }
         .column-selector {
             display: flex;
@@ -178,6 +195,11 @@
                     <option value="{{.}}">
                     {{end}}
                 </datalist>
+
+                {{if .StoreNameQuery}}
+                    <a href="/full-list?query={{.SearchQuery}}&sort_by={{.SortBy}}&order={{.Order}}{{if not .ShowAll}}&only_available=true{{end}}&{{.ColumnParams}}" class="clear-filter-button" title="Clear store filter">Clear Store</a>
+                {{end}}
+
                 <label>
                     <input type="checkbox" name="only_available" value="true" {{if not .ShowAll}}checked{{end}}>
                     Show only available
