@@ -772,6 +772,7 @@ func historyHandler(w http.ResponseWriter, r *http.Request) {
 
 // ---- END: MODIFIED historyHandler ----
 
+// ---- START: MODIFIED fullListHandler ----
 // fullListHandler shows the complete, detailed market list
 func fullListHandler(w http.ResponseWriter, r *http.Request) {
 	if err := r.ParseForm(); err != nil {
@@ -844,8 +845,10 @@ func fullListHandler(w http.ResponseWriter, r *http.Request) {
 	queryParams = append(queryParams, "%"+searchQuery+"%")
 
 	if storeNameQuery != "" {
-		whereConditions = append(whereConditions, "store_name LIKE ?")
-		queryParams = append(queryParams, "%"+storeNameQuery+"%")
+		// Changed from LIKE to = for an exact, case-sensitive match.
+		whereConditions = append(whereConditions, "store_name = ?")
+		// Removed wildcards from the parameter for the exact match.
+		queryParams = append(queryParams, storeNameQuery)
 	}
 
 	if !showAll {
@@ -910,6 +913,8 @@ func fullListHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	tmpl.Execute(w, data)
 }
+
+// ---- END: MODIFIED fullListHandler ----
 
 func startBackgroundScraper() {
 	ticker := time.NewTicker(5 * time.Minute)
@@ -1381,3 +1386,4 @@ func populateMissingCachesOnStartup() {
 }
 
 // ---- END: NEW STARTUP FUNCTION ----
+
