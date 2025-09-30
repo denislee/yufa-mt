@@ -19,7 +19,7 @@
         .info-cards { display: flex; gap: 20px; margin-bottom: 30px; flex-wrap: wrap; }
         .card { flex: 1; min-width: 300px; background: #fdfdfd; border: 1px solid #e1e4e8; padding: 15px 20px; border-radius: 6px; box-shadow: 0 1px 5px rgba(0,0,0,0.05); }
         .card h2 { margin-top: 0; border-bottom: 1px solid #eee; padding-bottom: 10px; font-size: 1.2em; color: #333; }
-        .card p { margin: 8px 0; font-size: 0.95em; }
+        .card p, .card li { margin: 8px 0; font-size: 0.95em; }
         .card strong { color: #555; display: inline-block; width: 80px; }
         #min-price-card h2 { color: #28a745; }
         #max-price-card h2 { color: #dc3545; }
@@ -30,13 +30,14 @@
         #min-price-val { color: #28a745; }
         #max-price-val { color: #dc3545; }
         .item-details-box { display: flex; gap: 20px; background: #f8f9fa; border: 1px solid #dee2e6; padding: 20px; border-radius: 6px; margin-bottom: 30px; align-items: center; }
-        .item-details-box img { flex-shrink: 0; width: 64px; height: 64px; border-radius: 4px; background: #fff; padding: 5px; border: 1px solid #ddd; }
+        .item-details-box img { flex-shrink: 0; width: 64px; height: 64px; border-radius: 4px; background: #fff; padding: 5px; border: 1px solid #ddd; image-rendering: pixelated; }
         .item-details-box p { margin: 0; font-style: italic; color: #6c757d; }
         .drop-info { margin-bottom: 30px; }
         .drop-info table { width: 100%; border-collapse: collapse; }
         .drop-info th, .drop-info td { padding: 10px; text-align: left; border-bottom: 1px solid #ddd; }
         .drop-info th { background-color: #f8f8f8; font-weight: 600; }
         .drop-info tr:hover { background-color: #f1f1f1; }
+        .drop-info ul { padding-left: 20px; margin: 0; }
         .listings-history { margin-top: 40px; }
         .listings-history table { width: 100%; border-collapse: collapse; }
         .listings-history th, .listings-history td { padding: 12px; text-align: left; border-bottom: 1px solid #ddd; word-wrap: break-word; }
@@ -67,12 +68,30 @@
         {{if .ItemDetails}}
         <div class="item-details-box">
             {{if .ItemDetails.ImageURL}}
-            <img src="https://divine-pride.net/img/items/collection/iRO/{{.ItemDetails.ID}}" alt="{{.ItemName}}">
+            <img src="{{.ItemDetails.ImageURL}}" alt="{{.ItemName}}">
             {{end}}
             <p>{{.ItemDetails.Description}}</p>
         </div>
+        
+        <div class="info-cards" style="margin-bottom: 30px; align-items: flex-start;">
+            <div class="card">
+                <h2>Item Properties</h2>
+                <p><strong>Type:</strong> {{.ItemDetails.Type}}</p>
+                <p><strong>Class:</strong> {{.ItemDetails.Class}}</p>
+                <p><strong>Buy:</strong> {{.ItemDetails.Buy}}</p>
+                <p><strong>Sell:</strong> {{.ItemDetails.Sell}}</p>
+                <p><strong>Weight:</strong> {{.ItemDetails.Weight}}</p>
+                <p><strong>Prefix:</strong> {{.ItemDetails.Prefix}}</p>
+            </div>
+            {{if .ItemDetails.Script}}
+            <div class="card">
+                <h2>Item Script</h2>
+                <pre style="white-space: pre-wrap; word-wrap: break-word; font-family: monospace; font-size: 0.9em;"><code>{{.ItemDetails.Script}}</code></pre>
+            </div>
+            {{end}}
+        </div>
 
-        {{if .ItemDetails.DropRates}}
+        {{if .ItemDetails.DroppedBy}}
         <div class="drop-info">
             <h3 id="drop-header" style="cursor: pointer; user-select: none;">Dropped By <span id="drop-indicator">[+]</span></h3>
             <table id="drop-table" style="display: none;">
@@ -80,27 +99,33 @@
                     <tr>
                         <th>Monster</th>
                         <th>Rate</th>
-                        <th>Highest Spawn</th>
-                        <th>Element</th>
-                        <th>Flee</th>
-                        <th>Hit</th>
                     </tr>
                 </thead>
                 <tbody>
-                    {{range .ItemDetails.DropRates}}
+                    {{range .ItemDetails.DroppedBy}}
                     <tr>
                         <td>{{.Monster}}</td>
                         <td>{{.Rate}}</td>
-                        <td>{{.HighestSpawn}}</td>
-                        <td>{{.Element}}</td>
-                        <td>{{.Flee}}</td>
-                        <td>{{.Hit}}</td>
                     </tr>
                     {{end}}
                 </tbody>
             </table>
         </div>
         {{end}}
+
+        {{if .ItemDetails.ObtainableFrom}}
+        <div class="drop-info">
+             <h3>Obtainable From</h3>
+             <ul>
+                 {{range .ItemDetails.ObtainableFrom}}
+                 <li>{{.}}</li>
+                 {{end}}
+             </ul>
+        </div>
+        {{end}}
+        
+        {{else}}
+        <p>No detailed item information could be found.</p>
         {{end}}
 
         <div class="overall-summary">

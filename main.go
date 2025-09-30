@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"html/template"
-	"io"
 	"log"
 	"net/http"
 	"net/url"
@@ -22,7 +21,7 @@ import (
 
 var db *sql.DB
 
-// (The rest of your structs remain the same: Item, comparableItem, Column, etc.)
+// (Structs like Item, comparableItem, Column, etc., remain the same)
 // ...
 
 type Item struct {
@@ -131,44 +130,27 @@ type ItemListing struct {
 	Timestamp      string `json:"Timestamp"`
 }
 
-// RagnaItem holds the detailed information fetched from RagnaAPI.
-type RagnaItem struct {
-	ID          int        `json:"id"`
-	Name        string     `json:"name"`
-	Description string     `json:"description"`
-	ImageURL    string     `json:"img"`
-	DropRates   []DropRate `json:"drop_rate"`
+// RMSItem holds the detailed information scraped from RateMyServer.
+type RMSItem struct {
+	ID             int
+	Name           string
+	ImageURL       string
+	Type           string
+	Class          string
+	Buy            string
+	Sell           string
+	Weight         string
+	Prefix         string
+	Description    string
+	Script         string
+	DroppedBy      []RMSDrop
+	ObtainableFrom []string
 }
 
-// UnmarshalJSON is a custom unmarshaler for RagnaItem to handle inconsistent "drop_rate" types.
-func (r *RagnaItem) UnmarshalJSON(data []byte) error {
-	type Alias RagnaItem
-	aux := &struct {
-		DropRates json.RawMessage `json:"drop_rate"`
-		*Alias
-	}{
-		Alias: (*Alias)(r),
-	}
-	if err := json.Unmarshal(data, &aux); err != nil {
-		return err
-	}
-	var dropRates []DropRate
-	if err := json.Unmarshal(aux.DropRates, &dropRates); err == nil {
-		r.DropRates = dropRates
-	} else {
-		r.DropRates = nil
-	}
-	return nil
-}
-
-// DropRate holds monster drop information.
-type DropRate struct {
-	Monster      string `json:"monster"`
-	Rate         string `json:"rate"`
-	HighestSpawn string `json:"highest_spawn"`
-	Element      string `json:"element"`
-	Flee         string `json:"flee"`
-	Hit          string `json:"hit"`
+// RMSDrop holds monster drop information from RateMyServer.
+type RMSDrop struct {
+	Monster string
+	Rate    string
 }
 
 type HistoryPageData struct {
@@ -178,7 +160,7 @@ type HistoryPageData struct {
 	OverallMax     int
 	CurrentMinJSON template.JS
 	CurrentMaxJSON template.JS
-	ItemDetails    *RagnaItem
+	ItemDetails    *RMSItem
 	AllListings    []Item
 	LastScrapeTime string
 }
@@ -374,6 +356,86 @@ func activityHandler(w http.ResponseWriter, r *http.Request) {
 	tmpl.Execute(w, data)
 }
 
+func scrapeRMSItemDetails(itemID int) (*RMSItem, error) {
+	url := fmt.Sprintf("https://ratemyserver.net/item_db.php?item_id=%d", itemID)
+	// Use a client with a timeout
+	client := http.Client{Timeout: 10 * time.Second}
+	res, err := client.Get(url)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get URL: %w", err)
+	}
+	defer res.Body.Close()
+	if res.StatusCode != 200 {
+		return nil, fmt.Errorf("status code error: %d %s", res.StatusCode, res.Status)
+	}
+
+	doc, err := goquery.NewDocumentFromReader(res.Body)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse HTML: %w", err)
+	}
+
+	item := &RMSItem{
+		ID:       itemID,
+		ImageURL: fmt.Sprintf("https://file5s.ratemyserver.net/items/large/%d.gif", itemID),
+	}
+
+	// Get Item Name
+	item.Name = strings.TrimSpace(doc.Find("div.main_block b").First().Text())
+
+	// Get Item Properties from the info grid
+	doc.Find(".info_grid_item").Each(func(i int, s *goquery.Selection) {
+		label := strings.TrimSpace(s.Text())
+		var value string
+		if next := s.Next(); next.Length() > 0 {
+			value = strings.TrimSpace(next.Text())
+		}
+
+		switch label {
+		case "Type":
+			item.Type = value
+		case "Class":
+			item.Class = value
+		case "Buy":
+			item.Buy = value
+		case "Sell":
+			item.Sell = value
+		case "Weight":
+			item.Weight = value
+		case "Pre/Suffix":
+			item.Prefix = value
+		}
+	})
+
+	// Get Description
+	item.Description = strings.TrimSpace(doc.Find("th:contains('Description')").Next().Find("div.longtext").Text())
+	if item.Description == "" { // Fallback for items without a longtext div
+		item.Description = strings.TrimSpace(doc.Find("th:contains('Description')").Next().Text())
+	}
+
+	// Get Item Script
+	item.Script = strings.TrimSpace(doc.Find("th:contains('Item Script')").Next().Find("div.db_script_txt").Text())
+
+	// Get Dropped By
+	reDrop := regexp.MustCompile(`(.+)\s+\(([\d.]+%)\)`)
+	doc.Find("th:contains('Dropped By')").Next().Find("a.nbu_m").Each(func(i int, s *goquery.Selection) {
+		text := s.Text()
+		matches := reDrop.FindStringSubmatch(text)
+		if len(matches) == 3 {
+			item.DroppedBy = append(item.DroppedBy, RMSDrop{
+				Monster: strings.TrimSpace(matches[1]),
+				Rate:    matches[2],
+			})
+		}
+	})
+
+	// Get Obtainable From
+	doc.Find("th:contains('Obtainable From')").Next().Find("a").Each(func(i int, s *goquery.Selection) {
+		item.ObtainableFrom = append(item.ObtainableFrom, strings.TrimSpace(s.Text()))
+	})
+
+	return item, nil
+}
+
 func historyHandler(w http.ResponseWriter, r *http.Request) {
 	itemName := r.FormValue("name")
 	if itemName == "" {
@@ -387,30 +449,13 @@ func historyHandler(w http.ResponseWriter, r *http.Request) {
 		log.Printf("⚠️ Could not find a valid ItemID for '%s' in the database: %v", itemName, err)
 	}
 
-	var ragnaItemDetails *RagnaItem
+	var rmsItemDetails *RMSItem
 	if itemID > 0 {
-		apiURL := fmt.Sprintf("https://ragnapi.com/api/v1/old-times/items/%d", itemID)
-		client := http.Client{Timeout: 10 * time.Second}
-		resp, err := client.Get(apiURL)
+		itemDetails, err := scrapeRMSItemDetails(itemID)
 		if err != nil {
-			log.Printf("❌ Failed to call RagnaAPI for item ID %d: %v", itemID, err)
+			log.Printf("⚠️ Failed to scrape RateMyServer for item ID %d: %v", itemID, err)
 		} else {
-			defer resp.Body.Close()
-			if resp.StatusCode == http.StatusOK {
-				body, err := io.ReadAll(resp.Body)
-				if err != nil {
-					log.Printf("❌ Failed to read RagnaAPI response body for item ID %d: %v", itemID, err)
-				} else {
-					var itemDetails RagnaItem
-					if err := json.Unmarshal(body, &itemDetails); err != nil {
-						log.Printf("❌ Failed to unmarshal RagnaAPI JSON for item ID %d: %v", itemID, err)
-					} else {
-						ragnaItemDetails = &itemDetails
-					}
-				}
-			} else {
-				log.Printf("⚠️ RagnaAPI returned non-OK status for item ID %d: %s", itemID, resp.Status)
-			}
+			rmsItemDetails = itemDetails
 		}
 	}
 
@@ -632,7 +677,7 @@ func historyHandler(w http.ResponseWriter, r *http.Request) {
 		OverallMax:     int(overallMax.Int64),
 		CurrentMinJSON: template.JS(currentMinJSON),
 		CurrentMaxJSON: template.JS(currentMaxJSON),
-		ItemDetails:    ragnaItemDetails,
+		ItemDetails:    rmsItemDetails,
 		AllListings:    allListings,
 		LastScrapeTime: getLastScrapeTime(),
 	}
@@ -1101,4 +1146,3 @@ func initDB(filepath string) (*sql.DB, error) {
 	}
 	return db, nil
 }
-
