@@ -436,6 +436,72 @@ func scrapeRMSItemDetails(itemID int) (*RMSItem, error) {
 	return item, nil
 }
 
+// ---- START: NEW CACHING FUNCTIONS ----
+
+// getItemDetailsFromCache tries to fetch item details from the local DB cache.
+func getItemDetailsFromCache(itemID int) (*RMSItem, error) {
+	row := db.QueryRow(`
+		SELECT name, image_url, item_type, item_class, buy, sell, weight, prefix, description, script, dropped_by_json, obtainable_from_json
+		FROM rms_item_cache WHERE item_id = ?`, itemID)
+
+	var item RMSItem
+	item.ID = itemID
+	var droppedByJSON, obtainableFromJSON string
+
+	err := row.Scan(
+		&item.Name, &item.ImageURL, &item.Type, &item.Class, &item.Buy, &item.Sell,
+		&item.Weight, &item.Prefix, &item.Description, &item.Script,
+		&droppedByJSON, &obtainableFromJSON,
+	)
+	if err != nil {
+		// This is a normal cache miss, not necessarily an application error.
+		if err == sql.ErrNoRows {
+			return nil, fmt.Errorf("item %d not found in cache", itemID)
+		}
+		// Any other error is a real problem.
+		return nil, fmt.Errorf("error querying cache for item %d: %w", itemID, err)
+	}
+
+	// Deserialize JSON fields back into slices
+	if err := json.Unmarshal([]byte(droppedByJSON), &item.DroppedBy); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal DroppedBy from cache for item %d: %w", itemID, err)
+	}
+	if err := json.Unmarshal([]byte(obtainableFromJSON), &item.ObtainableFrom); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal ObtainableFrom from cache for item %d: %w", itemID, err)
+	}
+
+	return &item, nil
+}
+
+// saveItemDetailsToCache saves a successfully scraped item to the local DB cache.
+func saveItemDetailsToCache(item *RMSItem) error {
+	droppedByJSON, err := json.Marshal(item.DroppedBy)
+	if err != nil {
+		return fmt.Errorf("failed to marshal DroppedBy for caching item %d: %w", item.ID, err)
+	}
+	obtainableFromJSON, err := json.Marshal(item.ObtainableFrom)
+	if err != nil {
+		return fmt.Errorf("failed to marshal ObtainableFrom for caching item %d: %w", item.ID, err)
+	}
+
+	// Use INSERT OR REPLACE to either create a new entry or update an existing one.
+	_, err = db.Exec(`
+		INSERT OR REPLACE INTO rms_item_cache
+		(item_id, name, image_url, item_type, item_class, buy, sell, weight, prefix, description, script, dropped_by_json, obtainable_from_json, last_checked)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		item.ID, item.Name, item.ImageURL, item.Type, item.Class, item.Buy, item.Sell,
+		item.Weight, item.Prefix, item.Description, item.Script,
+		string(droppedByJSON), string(obtainableFromJSON), time.Now().Format(time.RFC3339),
+	)
+	if err != nil {
+		return fmt.Errorf("failed to execute insert/replace for item %d in cache: %w", item.ID, err)
+	}
+	return nil
+}
+
+// ---- END: NEW CACHING FUNCTIONS ----
+
+// ---- START: MODIFIED historyHandler ----
 func historyHandler(w http.ResponseWriter, r *http.Request) {
 	itemName := r.FormValue("name")
 	if itemName == "" {
@@ -451,13 +517,30 @@ func historyHandler(w http.ResponseWriter, r *http.Request) {
 
 	var rmsItemDetails *RMSItem
 	if itemID > 0 {
-		itemDetails, err := scrapeRMSItemDetails(itemID)
-		if err != nil {
-			log.Printf("⚠️ Failed to scrape RateMyServer for item ID %d: %v", itemID, err)
+		// 1. Try to get details from the cache first.
+		cachedItem, err := getItemDetailsFromCache(itemID)
+		if err == nil {
+			log.Printf("✅ Cache HIT for item ID %d (%s)", itemID, itemName)
+			rmsItemDetails = cachedItem
 		} else {
-			rmsItemDetails = itemDetails
+			// 2. If cache miss, scrape from the source.
+			log.Printf("ℹ️ Cache MISS for item ID %d (%s). Scraping RMS... Error: %v", itemID, itemName, err)
+			scrapedItem, scrapeErr := scrapeRMSItemDetails(itemID)
+			if scrapeErr != nil {
+				log.Printf("⚠️ Failed to scrape RateMyServer for item ID %d: %v", itemID, scrapeErr)
+			} else {
+				rmsItemDetails = scrapedItem
+				// 3. Save the newly scraped data to the cache for future requests.
+				if saveErr := saveItemDetailsToCache(rmsItemDetails); saveErr != nil {
+					log.Printf("⚠️ Failed to save item ID %d to cache: %v", itemID, saveErr)
+				} else {
+					log.Printf("✅ Saved item ID %d (%s) to cache.", itemID, itemName)
+				}
+			}
 		}
 	}
+	// The rest of the function proceeds normally with `rmsItemDetails`
+	// whether it came from the cache or a fresh scrape.
 
 	currentListingsQuery := `
 		SELECT
@@ -683,6 +766,8 @@ func historyHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	tmpl.Execute(w, data)
 }
+
+// ---- END: MODIFIED historyHandler ----
 
 // fullListHandler shows the complete, detailed market list
 func fullListHandler(w http.ResponseWriter, r *http.Request) {
@@ -1101,6 +1186,7 @@ func scrapeData() {
 	log.Printf("✅ Scrape complete. Unchanged: %d groups. Updated: %d groups. Newly Added: %d groups. Removed: %d groups.", itemsUnchanged, itemsUpdated, itemsAdded, itemsRemoved)
 }
 
+// ---- START: MODIFIED initDB ----
 func initDB(filepath string) (*sql.DB, error) {
 	db, err := sql.Open("sqlite3", filepath)
 	if err != nil {
@@ -1144,6 +1230,31 @@ func initDB(filepath string) (*sql.DB, error) {
 	if _, err = db.Exec(createHistoryTableSQL); err != nil {
 		return nil, fmt.Errorf("could not create scrape_history table: %w", err)
 	}
+
+	// NEW: Create the cache table for RateMyServer data.
+	createRMSCacheTableSQL := `
+	CREATE TABLE IF NOT EXISTS rms_item_cache (
+		"item_id" INTEGER NOT NULL PRIMARY KEY,
+		"name" TEXT,
+		"image_url" TEXT,
+		"item_type" TEXT,
+		"item_class" TEXT,
+		"buy" TEXT,
+		"sell" TEXT,
+		"weight" TEXT,
+		"prefix" TEXT,
+		"description" TEXT,
+		"script" TEXT,
+		"dropped_by_json" TEXT,
+		"obtainable_from_json" TEXT,
+		"last_checked" TEXT
+	);`
+	if _, err = db.Exec(createRMSCacheTableSQL); err != nil {
+		return nil, fmt.Errorf("could not create rms_item_cache table: %w", err)
+	}
+
 	return db, nil
 }
+
+// ---- END: MODIFIED initDB ----
 
