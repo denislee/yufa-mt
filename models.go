@@ -1,0 +1,154 @@
+package main
+
+import (
+	"database/sql"
+	"html/template"
+)
+
+// Item represents a single listing scraped from the market.
+type Item struct {
+	ID             int
+	Name           string
+	ItemID         int
+	Quantity       int
+	Price          string
+	StoreName      string
+	SellerName     string
+	Timestamp      string
+	MapName        string
+	MapCoordinates string
+	IsAvailable    bool
+}
+
+// comparableItem is a version of Item used for checking for differences without considering the ID or Timestamp.
+type comparableItem struct {
+	Name           string
+	ItemID         int
+	Quantity       int
+	Price          string
+	StoreName      string
+	SellerName     string
+	MapName        string
+	MapCoordinates string
+}
+
+// Column defines a toggleable column in the full list view.
+type Column struct {
+	ID          string
+	DisplayName string
+}
+
+// MarketEvent logs a change in the market, such as an item being added or removed.
+type MarketEvent struct {
+	Timestamp string
+	EventType string
+	ItemName  string
+	ItemID    int
+	Details   map[string]interface{}
+}
+
+// ItemSummary aggregates data for an item for the main page view.
+type ItemSummary struct {
+	Name         string
+	ItemID       int
+	LowestPrice  sql.NullInt64 // Handles cases with no available listings.
+	HighestPrice sql.NullInt64
+	ListingCount int
+}
+
+// ItemListing holds details for a single current listing, used for the info cards on the history page.
+type ItemListing struct {
+	Price          int    `json:"Price"`
+	Quantity       int    `json:"Quantity"`
+	StoreName      string `json:"StoreName"`
+	SellerName     string `json:"SellerName"`
+	MapName        string `json:"MapName"`
+	MapCoordinates string `json:"MapCoordinates"`
+	Timestamp      string `json:"Timestamp"`
+}
+
+// PricePointDetails captures the state of an item's price at a specific point in time for the history chart.
+type PricePointDetails struct {
+	Timestamp         string `json:"Timestamp"`
+	LowestPrice       int    `json:"LowestPrice"`
+	LowestQuantity    int    `json:"LowestQuantity"`
+	LowestStoreName   string `json:"LowestStoreName"`
+	LowestSellerName  string `json:"LowestSellerName"`
+	LowestMapName     string `json:"LowestMapName"`
+	LowestMapCoords   string `json:"LowestMapCoords"`
+	HighestPrice      int    `json:"HighestPrice"`
+	HighestQuantity   int    `json:"HighestQuantity"`
+	HighestStoreName  string `json:"HighestStoreName"`
+	HighestSellerName string `json:"HighestSellerName"`
+	HighestMapName    string `json:"HighestMapName"`
+	HighestMapCoords  string `json:"HighestMapCoords"`
+}
+
+// RMSItem holds detailed information scraped from RateMyServer.
+type RMSItem struct {
+	ID             int
+	Name           string
+	ImageURL       string
+	Type           string
+	Class          string
+	Buy            string
+	Sell           string
+	Weight         string
+	Prefix         string
+	Description    string
+	Script         string
+	DroppedBy      []RMSDrop
+	ObtainableFrom []string
+}
+
+// RMSDrop holds monster drop information from RateMyServer.
+type RMSDrop struct {
+	Monster string `json:"Monster"`
+	Rate    string `json:"Rate"`
+}
+
+// --- Page Data Structs for HTML Templates ---
+
+// SummaryPageData holds all data needed for the main summary page template.
+type SummaryPageData struct {
+	Items          []ItemSummary
+	SearchQuery    string
+	SortBy         string
+	Order          string
+	ShowAll        bool
+	LastScrapeTime string
+}
+
+// PageData holds data for the detailed full list view template.
+type PageData struct {
+	Items          []Item
+	SearchQuery    string
+	StoreNameQuery string
+	AllStoreNames  []string
+	SortBy         string
+	Order          string
+	ShowAll        bool
+	LastScrapeTime string
+	VisibleColumns map[string]bool
+	AllColumns     []Column
+	ColumnParams   template.URL
+}
+
+// ActivityPageData holds data for the market activity page template.
+type ActivityPageData struct {
+	MarketEvents   []MarketEvent
+	LastScrapeTime string
+}
+
+// HistoryPageData holds data for the item history page template.
+type HistoryPageData struct {
+	ItemName           string
+	PriceDataJSON      template.JS
+	OverallLowest      int
+	OverallHighest     int
+	CurrentLowestJSON  template.JS
+	CurrentHighestJSON template.JS
+	ItemDetails        *RMSItem
+	AllListings        []Item
+	LastScrapeTime     string
+}
