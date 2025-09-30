@@ -173,6 +173,8 @@ func main() {
 	}
 	defer db.Close()
 
+	go populateMissingCachesOnStartup()
+
 	go startBackgroundScraper()
 
 	http.HandleFunc("/", viewHandler)              // Now serves the summary page
@@ -1126,6 +1128,8 @@ func scrapeData() {
 				if err != nil {
 					log.Printf("❌ Failed to log ADDED event for %s: %v", itemName, err)
 				}
+
+				go scrapeAndCacheItemIfNotExists(firstItem.ItemID, itemName)
 			}
 
 			var historicalMinPrice sql.NullInt64
@@ -1260,3 +1264,105 @@ func initDB(filepath string) (*sql.DB, error) {
 }
 
 // ---- END: MODIFIED initDB ----
+
+// scrapeAndCacheItemIfNotExists checks if an item is cached, and if not, scrapes and saves its details.
+func scrapeAndCacheItemIfNotExists(itemID int, itemName string) {
+	if itemID <= 0 {
+		return // Don't process invalid item IDs
+	}
+
+	// First, check if the item already exists in the cache.
+	_, err := getItemDetailsFromCache(itemID)
+	if err == nil {
+		// Cache hit, nothing to do.
+		return
+	}
+
+	// Cache miss, proceed to scrape.
+	log.Printf("ℹ️ Caching details for new/missing item: %s (ID: %d)", itemName, itemID)
+	scrapedItem, scrapeErr := scrapeRMSItemDetails(itemID)
+	if scrapeErr != nil {
+		log.Printf("⚠️ Failed to scrape RateMyServer for item ID %d (%s): %v", itemID, itemName, scrapeErr)
+		return // Stop if scraping fails
+	}
+
+	// Save the newly scraped data to the cache.
+	if saveErr := saveItemDetailsToCache(scrapedItem); saveErr != nil {
+		log.Printf("⚠️ Failed to save item ID %d (%s) to cache: %v", itemID, itemName, saveErr)
+	} else {
+		log.Printf("✅ Successfully cached details for item ID %d (%s).", itemID, itemName)
+	}
+}
+
+// ---- START: NEW STARTUP FUNCTION ----
+
+// populateMissingCachesOnStartup verifies that all unique items in the database have a cache entry.
+func populateMissingCachesOnStartup() {
+	log.Println("🛠️ Starting background task: Verifying RMS item cache...")
+
+	// 1. Get all unique item IDs from the main items table.
+	rows, err := db.Query("SELECT DISTINCT item_id, name_of_the_item FROM items WHERE item_id > 0")
+	if err != nil {
+		log.Printf("❌ [Cache Verification] Failed to query for all items: %v", err)
+		return
+	}
+	defer rows.Close()
+
+	type dbItem struct {
+		ID   int
+		Name string
+	}
+	var allDBItems []dbItem
+	for rows.Next() {
+		var item dbItem
+		if err := rows.Scan(&item.ID, &item.Name); err != nil {
+			log.Printf("⚠️ [Cache Verification] Failed to scan item: %v", err)
+			continue
+		}
+		allDBItems = append(allDBItems, item)
+	}
+
+	// 2. Get all item IDs that are already in the cache.
+	cacheRows, err := db.Query("SELECT item_id FROM rms_item_cache")
+	if err != nil {
+		log.Printf("❌ [Cache Verification] Failed to query for cached items: %v", err)
+		return
+	}
+	defer cacheRows.Close()
+
+	cachedIDs := make(map[int]bool)
+	for cacheRows.Next() {
+		var id int
+		if err := cacheRows.Scan(&id); err != nil {
+			continue
+		}
+		cachedIDs[id] = true
+	}
+
+	// 3. Determine which items are missing from the cache.
+	var itemsToCache []dbItem
+	for _, item := range allDBItems {
+		if !cachedIDs[item.ID] {
+			itemsToCache = append(itemsToCache, item)
+		}
+	}
+
+	if len(itemsToCache) == 0 {
+		log.Println("✅ [Cache Verification] All items are already cached. No work to do.")
+		return
+	}
+
+	log.Printf("ℹ️ [Cache Verification] Found %d item(s) missing from the RMS cache. Populating now...", len(itemsToCache))
+
+	// 4. Scrape and cache the missing items, with a delay to be polite.
+	for i, item := range itemsToCache {
+		log.Printf("    -> Caching %d/%d: %s (ID: %d)", i+1, len(itemsToCache), item.Name, item.ID)
+		scrapeAndCacheItemIfNotExists(item.ID, item.Name)
+		// Be a good citizen and don't spam the server.
+		time.Sleep(1 * time.Second)
+	}
+
+	log.Println("✅ [Cache Verification] Finished populating missing cache entries.")
+}
+
+// ---- END: NEW STARTUP FUNCTION ----
