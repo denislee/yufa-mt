@@ -102,8 +102,8 @@
         .card p, .card li { margin: 8px 0; font-size: 0.95em; }
         .card strong { color: #495057; display: inline-block; width: 90px; }
         .card pre { white-space: pre-wrap; word-wrap: break-word; font-family: monospace; font-size: 0.9em; background-color: #e9ecef; padding: 10px; border-radius: 4px; }
-        #min-price-card h2 { color: #28a745; }
-        #max-price-card h2 { color: #dc3545; }
+        #lowest-price-card h2 { color: #28a745; }
+        #highest-price-card h2 { color: #dc3545; }
         .item-details-box { display: flex; gap: 20px; background: #f8f9fa; border: 1px solid #dee2e6; padding: 20px; border-radius: 6px; margin: 24px 0; align-items: flex-start; }
         .item-details-box img { flex-shrink: 0; width: 64px; height: 64px; border-radius: 4px; background: #fff; padding: 5px; border: 1px solid #ddd; image-rendering: pixelated; }
         .item-details-box p { margin: 0; font-style: italic; color: #6c757d; line-height: 1.5; }
@@ -160,29 +160,29 @@
         <div class="overall-summary">
             <p>
                 All-Time Price Range: 
-                <strong id="overall-min-display" class="text-success">N/A</strong> &mdash; 
-                <strong id="overall-max-display" class="text-danger">N/A</strong>
+                <strong id="overall-lowest-display" class="text-success">N/A</strong> &mdash; 
+                <strong id="overall-highest-display" class="text-danger">N/A</strong>
             </p>
         </div>
 
         <div class="info-cards">
-            <div class="card" id="min-price-card">
+            <div class="card" id="lowest-price-card">
                 <h2>Lowest Current Price</h2>
-                <p><strong>Price:</strong> <span id="min-price-val" class="text-success">N/A</span></p>
-                <p><strong>Quantity:</strong> <span id="min-quantity-val">N/A</span></p>
-                <p><strong>Store:</strong> <span id="min-store-val">N/A</span></p>
-                <p><strong>Seller:</strong> <span id="min-seller-val">N/A</span></p>
-                <p><strong>Location:</strong> <span id="min-location-val">N/A</span></p>
-                <p><strong>Date:</strong> <span id="min-date-val">N/A</span></p>
+                <p><strong>Price:</strong> <span id="lowest-price-val" class="text-success">N/A</span></p>
+                <p><strong>Quantity:</strong> <span id="lowest-quantity-val">N/A</span></p>
+                <p><strong>Store:</strong> <span id="lowest-store-val">N/A</span></p>
+                <p><strong>Seller:</strong> <span id="lowest-seller-val">N/A</span></p>
+                <p><strong>Location:</strong> <span id="lowest-location-val">N/A</span></p>
+                <p><strong>Date:</strong> <span id="lowest-date-val">N/A</span></p>
             </div>
-            <div class="card" id="max-price-card">
+            <div class="card" id="highest-price-card">
                 <h2>Highest Current Price</h2>
-                <p><strong>Price:</strong> <span id="max-price-val" class="text-danger">N/A</span></p>
-                <p><strong>Quantity:</strong> <span id="max-quantity-val">N/A</span></p>
-                <p><strong>Store:</strong> <span id="max-store-val">N/A</span></p>
-                <p><strong>Seller:</strong> <span id="max-seller-val">N/A</span></p>
-                <p><strong>Location:</strong> <span id="max-location-val">N/A</span></p>
-                <p><strong>Date:</strong> <span id="max-date-val">N/A</span></p>
+                <p><strong>Price:</strong> <span id="highest-price-val" class="text-danger">N/A</span></p>
+                <p><strong>Quantity:</strong> <span id="highest-quantity-val">N/A</span></p>
+                <p><strong>Store:</strong> <span id="highest-store-val">N/A</span></p>
+                <p><strong>Seller:</strong> <span id="highest-seller-val">N/A</span></p>
+                <p><strong>Location:</strong> <span id="highest-location-val">N/A</span></p>
+                <p><strong>Date:</strong> <span id="highest-date-val">N/A</span></p>
             </div>
         </div>
 
@@ -230,16 +230,16 @@
 
     <script>
         const priceHistoryData = {{.PriceDataJSON}};
-        const currentMinData = {{.CurrentMinJSON}};
-        const currentMaxData = {{.CurrentMaxJSON}};
-        const overallMin = {{.OverallMin}};
-        const overallMax = {{.OverallMax}};
+        const currentLowestData = {{.CurrentLowestJSON}};
+        const currentHighestData = {{.CurrentHighestJSON}};
+        const overallLowest = {{.OverallLowest}};
+        const overallHighest = {{.OverallHighest}};
 
-        if (overallMin > 0) {
-            document.getElementById('overall-min-display').textContent = `${overallMin.toLocaleString()}z`;
+        if (overallLowest > 0) {
+            document.getElementById('overall-lowest-display').textContent = `${overallLowest.toLocaleString()}z`;
         }
-        if (overallMax > 0) {
-            document.getElementById('overall-max-display').textContent = `${overallMax.toLocaleString()}z`;
+        if (overallHighest > 0) {
+            document.getElementById('overall-highest-display').textContent = `${overallHighest.toLocaleString()}z`;
         }
 
         function copyNavi(event, mapName, coordinates) {
@@ -262,31 +262,31 @@
             });
         }
         
-        if (currentMinData) {
-            const mapName = currentMinData.MapName;
-            const mapCoords = currentMinData.MapCoordinates;
-            document.getElementById('min-price-val').textContent = `${currentMinData.Price.toLocaleString()}z`;
-            document.getElementById('min-quantity-val').textContent = currentMinData.Quantity.toLocaleString();
-            document.getElementById('min-store-val').textContent = currentMinData.StoreName;
-            document.getElementById('min-seller-val').textContent = currentMinData.SellerName;
-            document.getElementById('min-location-val').innerHTML = `<a href="#" onclick="copyNavi(event, '${mapName.replace(/'/g, "\\'")}', '${mapCoords.replace(/'/g, "\\'")}')" title="Click to copy /navi command">${mapName} ${mapCoords}</a>`;
-            document.getElementById('min-date-val').textContent = currentMinData.Timestamp;
+        if (currentLowestData) {
+            const mapName = currentLowestData.MapName;
+            const mapCoords = currentLowestData.MapCoordinates;
+            document.getElementById('lowest-price-val').textContent = `${currentLowestData.Price.toLocaleString()}z`;
+            document.getElementById('lowest-quantity-val').textContent = currentLowestData.Quantity.toLocaleString();
+            document.getElementById('lowest-store-val').textContent = currentLowestData.StoreName;
+            document.getElementById('lowest-seller-val').textContent = currentLowestData.SellerName;
+            document.getElementById('lowest-location-val').innerHTML = `<a href="#" onclick="copyNavi(event, '${mapName.replace(/'/g, "\\'")}', '${mapCoords.replace(/'/g, "\\'")}')" title="Click to copy /navi command">${mapName} ${mapCoords}</a>`;
+            document.getElementById('lowest-date-val').textContent = currentLowestData.Timestamp;
         }
 
-        if (currentMaxData) {
-            const mapName = currentMaxData.MapName;
-            const mapCoords = currentMaxData.MapCoordinates;
-            document.getElementById('max-price-val').textContent = `${currentMaxData.Price.toLocaleString()}z`;
-            document.getElementById('max-quantity-val').textContent = currentMaxData.Quantity.toLocaleString();
-            document.getElementById('max-store-val').textContent = currentMaxData.StoreName;
-            document.getElementById('max-seller-val').textContent = currentMaxData.SellerName;
-            document.getElementById('max-location-val').innerHTML = `<a href="#" onclick="copyNavi(event, '${mapName.replace(/'/g, "\\'")}', '${mapCoords.replace(/'/g, "\\'")}')" title="Click to copy /navi command">${mapName} ${mapCoords}</a>`;
-            document.getElementById('max-date-val').textContent = currentMaxData.Timestamp;
+        if (currentHighestData) {
+            const mapName = currentHighestData.MapName;
+            const mapCoords = currentHighestData.MapCoordinates;
+            document.getElementById('highest-price-val').textContent = `${currentHighestData.Price.toLocaleString()}z`;
+            document.getElementById('highest-quantity-val').textContent = currentHighestData.Quantity.toLocaleString();
+            document.getElementById('highest-store-val').textContent = currentHighestData.StoreName;
+            document.getElementById('highest-seller-val').textContent = currentHighestData.SellerName;
+            document.getElementById('highest-location-val').innerHTML = `<a href="#" onclick="copyNavi(event, '${mapName.replace(/'/g, "\\'")}', '${mapCoords.replace(/'/g, "\\'")}')" title="Click to copy /navi command">${mapName} ${mapCoords}</a>`;
+            document.getElementById('highest-date-val').textContent = currentHighestData.Timestamp;
         }
 
         const labels = priceHistoryData.map(p => p.Timestamp);
-        const minPrices = priceHistoryData.map(p => p.MinPrice);
-        const maxPrices = priceHistoryData.map(p => p.MaxPrice);
+        const lowestPrices = priceHistoryData.map(p => p.LowestPrice);
+        const highestPrices = priceHistoryData.map(p => p.HighestPrice);
 
         const ctx = document.getElementById('priceChart').getContext('2d');
         const priceChart = new Chart(ctx, {
@@ -295,8 +295,8 @@
                 labels: labels,
                 datasets: [
                     {
-                        label: 'Minimum Price',
-                        data: minPrices,
+                        label: 'Lowest Price',
+                        data: lowestPrices,
                         borderColor: 'rgba(40, 167, 69, 1)',
                         backgroundColor: 'rgba(40, 167, 69, 0.2)',
                         borderWidth: 2,
@@ -304,8 +304,8 @@
                         tension: 0.1
                     },
                     {
-                        label: 'Maximum Price',
-                        data: maxPrices,
+                        label: 'Highest Price',
+                        data: highestPrices,
                         borderColor: 'rgba(220, 53, 69, 1)',
                         backgroundColor: 'rgba(220, 53, 69, 0.2)',
                         borderWidth: 2,
@@ -343,10 +343,10 @@
                                 if (!dataPoint) return '';
 
                                 let details = [];
-                                if (context.dataset.label === 'Minimum Price') {
-                                    details.push(`  Qty: ${dataPoint.MinQuantity.toLocaleString()}, Seller: ${dataPoint.MinSellerName}`);
-                                } else if (context.dataset.label === 'Maximum Price') {
-                                    details.push(`  Qty: ${dataPoint.MaxQuantity.toLocaleString()}, Seller: ${dataPoint.MaxSellerName}`);
+                                if (context.dataset.label === 'Lowest Price') {
+                                    details.push(`  Qty: ${dataPoint.LowestQuantity.toLocaleString()}, Seller: ${dataPoint.LowestSellerName}`);
+                                } else if (context.dataset.label === 'Highest Price') {
+                                    details.push(`  Qty: ${dataPoint.HighestQuantity.toLocaleString()}, Seller: ${dataPoint.HighestSellerName}`);
                                 }
                                 return details;
                             }

@@ -185,11 +185,11 @@
                     <th class="{{if eq $currentSort "listings"}}sorted-{{$currentOrder | lower}}{{end}}">
                         <a href="/?query={{$query}}{{if not $showAll}}&only_available=true{{end}}&sort_by=listings&order={{if eq $currentSort "listings"}}{{$revOrder}}{{else}}DESC{{end}}">Available</a>
                     </th>
-                    <th class="{{if eq $currentSort "min_price"}}sorted-{{$currentOrder | lower}}{{end}}">
-                        <a href="/?query={{$query}}{{if not $showAll}}&only_available=true{{end}}&sort_by=min_price&order={{if eq $currentSort "min_price"}}{{$revOrder}}{{else}}ASC{{end}}">Lowest Price</a>
+                    <th class="{{if eq $currentSort "lowest_price"}}sorted-{{$currentOrder | lower}}{{end}}">
+                        <a href="/?query={{$query}}{{if not $showAll}}&only_available=true{{end}}&sort_by=lowest_price&order={{if eq $currentSort "lowest_price"}}{{$revOrder}}{{else}}ASC{{end}}">Lowest Price</a>
                     </th>
-                    <th class="{{if eq $currentSort "max_price"}}sorted-{{$currentOrder | lower}}{{end}}">
-                        <a href="/?query={{$query}}{{if not $showAll}}&only_available=true{{end}}&sort_by=max_price&order={{if eq $currentSort "max_price"}}{{$revOrder}}{{else}}DESC{{end}}">Highest Price</a>
+                    <th class="{{if eq $currentSort "highest_price"}}sorted-{{$currentOrder | lower}}{{end}}">
+                        <a href="/?query={{$query}}{{if not $showAll}}&only_available=true{{end}}&sort_by=highest_price&order={{if eq $currentSort "highest_price"}}{{$revOrder}}{{else}}DESC{{end}}">Highest Price</a>
                     </th>
                 </tr>
             </thead>
@@ -202,13 +202,13 @@
                     </td>
                     <td>{{.ItemID}}</td>
                     <td>{{.ListingCount}}</td>
-                    {{if .MinPrice.Valid}}
-                        <td class="text-success" data-price="{{.MinPrice.Int64}}"></td>
+                    {{if .LowestPrice.Valid}}
+                        <td class="text-success" data-price="{{.LowestPrice.Int64}}"></td>
                     {{else}}
                         <td>N/A</td>
                     {{end}}
-                    {{if .MaxPrice.Valid}}
-                         <td class="text-danger" data-price="{{.MaxPrice.Int64}}"></td>
+                    {{if .HighestPrice.Valid}}
+                         <td class="text-danger" data-price="{{.HighestPrice.Int64}}"></td>
                     {{else}}
                         <td>N/A</td>
                     {{end}}

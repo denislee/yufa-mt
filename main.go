@@ -88,8 +88,8 @@ type ActivityPageData struct {
 type ItemSummary struct {
 	Name         string
 	ItemID       int
-	MinPrice     sql.NullInt64 // Use sql.NullInt64 to handle cases with no available listings
-	MaxPrice     sql.NullInt64 // Use sql.NullInt64
+	LowestPrice  sql.NullInt64 // Use sql.NullInt64 to handle cases with no available listings
+	HighestPrice sql.NullInt64 // Use sql.NullInt64
 	ListingCount int
 }
 
@@ -104,19 +104,19 @@ type SummaryPageData struct {
 }
 
 type PricePointDetails struct {
-	Timestamp     string `json:"Timestamp"`
-	MinPrice      int    `json:"MinPrice"`
-	MinQuantity   int    `json:"MinQuantity"`
-	MinStoreName  string `json:"MinStoreName"`
-	MinSellerName string `json:"MinSellerName"`
-	MinMapName    string `json:"MinMapName"`
-	MinMapCoords  string `json:"MinMapCoords"`
-	MaxPrice      int    `json:"MaxPrice"`
-	MaxQuantity   int    `json:"MaxQuantity"`
-	MaxStoreName  string `json:"MaxStoreName"`
-	MaxSellerName string `json:"MaxSellerName"`
-	MaxMapName    string `json:"MaxMapName"`
-	MaxMapCoords  string `json:"MaxMapCoords"`
+	Timestamp         string `json:"Timestamp"`
+	LowestPrice       int    `json:"LowestPrice"`
+	LowestQuantity    int    `json:"LowestQuantity"`
+	LowestStoreName   string `json:"LowestStoreName"`
+	LowestSellerName  string `json:"LowestSellerName"`
+	LowestMapName     string `json:"LowestMapName"`
+	LowestMapCoords   string `json:"LowestMapCoords"`
+	HighestPrice      int    `json:"HighestPrice"`
+	HighestQuantity   int    `json:"HighestQuantity"`
+	HighestStoreName  string `json:"HighestStoreName"`
+	HighestSellerName string `json:"HighestSellerName"`
+	HighestMapName    string `json:"HighestMapName"`
+	HighestMapCoords  string `json:"HighestMapCoords"`
 }
 
 // ItemListing holds details for a single current listing for the info cards.
@@ -154,15 +154,15 @@ type RMSDrop struct {
 }
 
 type HistoryPageData struct {
-	ItemName       string
-	PriceDataJSON  template.JS
-	OverallMin     int
-	OverallMax     int
-	CurrentMinJSON template.JS
-	CurrentMaxJSON template.JS
-	ItemDetails    *RMSItem
-	AllListings    []Item
-	LastScrapeTime string
+	ItemName           string
+	PriceDataJSON      template.JS
+	OverallLowest      int
+	OverallHighest     int
+	CurrentLowestJSON  template.JS
+	CurrentHighestJSON template.JS
+	ItemDetails        *RMSItem
+	AllListings        []Item
+	LastScrapeTime     string
 }
 
 func main() {
@@ -189,7 +189,7 @@ func main() {
 	}
 }
 
-// (The rest of your functions remain the same: getLastScrapeTime, viewHandler, etc.)
+// (The rest of your functions remain the same: getLastScrapeTime, etc.)
 // ...
 // getLastScrapeTime is a helper function to get the most recent scrape time.
 func getLastScrapeTime() string {
@@ -228,13 +228,13 @@ func viewHandler(w http.ResponseWriter, r *http.Request) {
 	// 2. Build the query dynamically
 	params := []interface{}{"%" + searchQuery + "%"}
 
-	// Base query with conditional aggregation for min/max price and a sum for available count
+	// Base query with conditional aggregation for lowest/highest price and a sum for available count
 	baseQuery := `
         SELECT
             name_of_the_item,
             MIN(item_id) as item_id,
-            MIN(CASE WHEN is_available = 1 THEN CAST(REPLACE(price, ',', '') AS INTEGER) ELSE NULL END) as min_price,
-            MAX(CASE WHEN is_available = 1 THEN CAST(REPLACE(price, ',', '') AS INTEGER) ELSE NULL END) as max_price,
+            MIN(CASE WHEN is_available = 1 THEN CAST(REPLACE(price, ',', '') AS INTEGER) ELSE NULL END) as lowest_price,
+            MAX(CASE WHEN is_available = 1 THEN CAST(REPLACE(price, ',', '') AS INTEGER) ELSE NULL END) as highest_price,
             SUM(CASE WHEN is_available = 1 THEN 1 ELSE 0 END) as listing_count
         FROM items
         WHERE name_of_the_item LIKE ?
@@ -247,11 +247,11 @@ func viewHandler(w http.ResponseWriter, r *http.Request) {
 
 	// 3. Handle sorting securely
 	allowedSorts := map[string]string{
-		"name":      "name_of_the_item",
-		"item_id":   "item_id",
-		"listings":  "listing_count",
-		"min_price": "min_price",
-		"max_price": "max_price",
+		"name":          "name_of_the_item",
+		"item_id":       "item_id",
+		"listings":      "listing_count",
+		"lowest_price":  "lowest_price",
+		"highest_price": "highest_price",
 	}
 	orderByClause, ok := allowedSorts[sortBy]
 	if !ok {
@@ -276,7 +276,7 @@ func viewHandler(w http.ResponseWriter, r *http.Request) {
 	for rows.Next() {
 		var item ItemSummary
 		// Scan into the new struct with sql.NullInt64 for prices
-		if err := rows.Scan(&item.Name, &item.ItemID, &item.MinPrice, &item.MaxPrice, &item.ListingCount); err != nil {
+		if err := rows.Scan(&item.Name, &item.ItemID, &item.LowestPrice, &item.HighestPrice, &item.ListingCount); err != nil {
 			log.Printf("⚠️ Failed to scan summary row: %v", err)
 			continue
 		}
@@ -582,18 +582,18 @@ func historyHandler(w http.ResponseWriter, r *http.Request) {
 		currentListings = append(currentListings, listing)
 	}
 
-	var currentMin, currentMax *ItemListing
+	var currentLowest, currentHighest *ItemListing
 	if len(currentListings) > 0 {
-		minListing := currentListings[0]
-		currentMin = &minListing
-		maxListing := currentListings[len(currentListings)-1]
-		currentMax = &maxListing
+		lowestListing := currentListings[0]
+		currentLowest = &lowestListing
+		highestListing := currentListings[len(currentListings)-1]
+		currentHighest = &highestListing
 	}
 
-	currentMinJSON, _ := json.Marshal(currentMin)
-	currentMaxJSON, _ := json.Marshal(currentMax)
+	currentLowestJSON, _ := json.Marshal(currentLowest)
+	currentHighestJSON, _ := json.Marshal(currentHighest)
 
-	var overallMin, overallMax sql.NullInt64
+	var overallLowest, overallHighest sql.NullInt64
 	overallStatsQuery := `
         SELECT
             MIN(CAST(REPLACE(price, ',', '') AS INTEGER)),
@@ -601,7 +601,7 @@ func historyHandler(w http.ResponseWriter, r *http.Request) {
         FROM items
         WHERE name_of_the_item = ?;
     `
-	err = db.QueryRow(overallStatsQuery, itemName).Scan(&overallMin, &overallMax)
+	err = db.QueryRow(overallStatsQuery, itemName).Scan(&overallLowest, &overallHighest)
 	if err != nil {
 		log.Printf("❌ Overall stats query error for '%s': %v", itemName, err)
 	}
@@ -622,17 +622,17 @@ func historyHandler(w http.ResponseWriter, r *http.Request) {
 			WHERE name_of_the_item = ?
 		)
 		SELECT
-			t_min.date_and_time_retrieved,
-			t_min.price_int, t_min.quantity, t_min.store_name, t_min.seller_name, t_min.map_name, t_min.map_coordinates,
-			t_max.price_int, t_max.quantity, t_max.store_name, t_max.seller_name, t_max.map_name, t_max.map_coordinates
+			t_lowest.date_and_time_retrieved,
+			t_lowest.price_int, t_lowest.quantity, t_lowest.store_name, t_lowest.seller_name, t_lowest.map_name, t_lowest.map_coordinates,
+			t_highest.price_int, t_highest.quantity, t_highest.store_name, t_highest.seller_name, t_highest.map_name, t_highest.map_coordinates
 		FROM
-			(SELECT * FROM RankedItems WHERE rn_asc = 1) AS t_min
+			(SELECT * FROM RankedItems WHERE rn_asc = 1) AS t_lowest
 		JOIN
-			(SELECT * FROM RankedItems WHERE rn_desc = 1) AS t_max
+			(SELECT * FROM RankedItems WHERE rn_desc = 1) AS t_highest
 		ON
-			t_min.date_and_time_retrieved = t_max.date_and_time_retrieved
+			t_lowest.date_and_time_retrieved = t_highest.date_and_time_retrieved
 		ORDER BY
-			t_min.date_and_time_retrieved ASC;
+			t_lowest.date_and_time_retrieved ASC;
     `
 	rows, err := db.Query(priceChangeQuery, itemName)
 	if err != nil {
@@ -648,8 +648,8 @@ func historyHandler(w http.ResponseWriter, r *http.Request) {
 		var timestampStr string
 		err := rows.Scan(
 			&timestampStr,
-			&p.MinPrice, &p.MinQuantity, &p.MinStoreName, &p.MinSellerName, &p.MinMapName, &p.MinMapCoords,
-			&p.MaxPrice, &p.MaxQuantity, &p.MaxStoreName, &p.MaxSellerName, &p.MaxMapName, &p.MaxMapCoords,
+			&p.LowestPrice, &p.LowestQuantity, &p.LowestStoreName, &p.LowestSellerName, &p.LowestMapName, &p.LowestMapCoords,
+			&p.HighestPrice, &p.HighestQuantity, &p.HighestStoreName, &p.HighestSellerName, &p.HighestMapName, &p.HighestMapCoords,
 		)
 		if err != nil {
 			log.Printf("⚠️ Failed to scan history row: %v", err)
@@ -698,7 +698,7 @@ func historyHandler(w http.ResponseWriter, r *http.Request) {
 		for i := 1; i < len(fullPriceHistory); i++ {
 			prev := finalPriceHistory[len(finalPriceHistory)-1]
 			curr := fullPriceHistory[i]
-			if prev.MinPrice != curr.MinPrice || prev.MaxPrice != curr.MaxPrice {
+			if prev.LowestPrice != curr.LowestPrice || prev.HighestPrice != curr.HighestPrice {
 				finalPriceHistory = append(finalPriceHistory, curr)
 			}
 		}
@@ -756,15 +756,15 @@ func historyHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	data := HistoryPageData{
-		ItemName:       itemName,
-		PriceDataJSON:  template.JS(priceHistoryJSON),
-		OverallMin:     int(overallMin.Int64),
-		OverallMax:     int(overallMax.Int64),
-		CurrentMinJSON: template.JS(currentMinJSON),
-		CurrentMaxJSON: template.JS(currentMaxJSON),
-		ItemDetails:    rmsItemDetails,
-		AllListings:    allListings,
-		LastScrapeTime: getLastScrapeTime(),
+		ItemName:           itemName,
+		PriceDataJSON:      template.JS(priceHistoryJSON),
+		OverallLowest:      int(overallLowest.Int64),
+		OverallHighest:     int(overallHighest.Int64),
+		CurrentLowestJSON:  template.JS(currentLowestJSON),
+		CurrentHighestJSON: template.JS(currentHighestJSON),
+		ItemDetails:        rmsItemDetails,
+		AllListings:        allListings,
+		LastScrapeTime:     getLastScrapeTime(),
 	}
 	tmpl.Execute(w, data)
 }
@@ -1132,29 +1132,29 @@ func scrapeData() {
 				go scrapeAndCacheItemIfNotExists(firstItem.ItemID, itemName)
 			}
 
-			var historicalMinPrice sql.NullInt64
-			err := tx.QueryRow(`SELECT MIN(CAST(REPLACE(price, ',', '') AS INTEGER)) FROM items WHERE name_of_the_item = ?`, itemName).Scan(&historicalMinPrice)
+			var historicalLowestPrice sql.NullInt64
+			err := tx.QueryRow(`SELECT MIN(CAST(REPLACE(price, ',', '') AS INTEGER)) FROM items WHERE name_of_the_item = ?`, itemName).Scan(&historicalLowestPrice)
 			if err != nil && err != sql.ErrNoRows {
-				log.Printf("⚠️ Could not get historical min price for %s: %v", itemName, err)
+				log.Printf("⚠️ Could not get historical lowest price for %s: %v", itemName, err)
 			}
 
-			var minPriceListingInBatch Item
-			minPriceInBatch := -1
+			var lowestPriceListingInBatch Item
+			lowestPriceInBatch := -1
 			for _, item := range currentScrapedItems {
 				priceStr := strings.ReplaceAll(item.Price, ",", "")
 				currentPrice, convErr := strconv.Atoi(priceStr)
 				if convErr != nil {
 					continue
 				}
-				if minPriceInBatch == -1 || currentPrice < minPriceInBatch {
-					minPriceInBatch = currentPrice
-					minPriceListingInBatch = item
+				if lowestPriceInBatch == -1 || currentPrice < lowestPriceInBatch {
+					lowestPriceInBatch = currentPrice
+					lowestPriceListingInBatch = item
 				}
 			}
 
-			if minPriceInBatch != -1 && (!historicalMinPrice.Valid || int64(minPriceInBatch) < historicalMinPrice.Int64) {
-				details, _ := json.Marshal(map[string]interface{}{"price": minPriceListingInBatch.Price, "quantity": minPriceListingInBatch.Quantity, "seller": minPriceListingInBatch.SellerName})
-				_, err := tx.Exec(`INSERT INTO market_events (event_timestamp, event_type, item_name, item_id, details) VALUES (?, 'NEW_LOW', ?, ?, ?)`, retrievalTime, itemName, minPriceListingInBatch.ItemID, string(details))
+			if lowestPriceInBatch != -1 && (!historicalLowestPrice.Valid || int64(lowestPriceInBatch) < historicalLowestPrice.Int64) {
+				details, _ := json.Marshal(map[string]interface{}{"price": lowestPriceListingInBatch.Price, "quantity": lowestPriceListingInBatch.Quantity, "seller": lowestPriceListingInBatch.SellerName})
+				_, err := tx.Exec(`INSERT INTO market_events (event_timestamp, event_type, item_name, item_id, details) VALUES (?, 'NEW_LOW', ?, ?, ?)`, retrievalTime, itemName, lowestPriceListingInBatch.ItemID, string(details))
 				if err != nil {
 					log.Printf("❌ Failed to log NEW_LOW event for %s: %v", itemName, err)
 				}
