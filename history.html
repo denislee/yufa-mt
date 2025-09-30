@@ -68,7 +68,7 @@
         {{if .ItemDetails}}
         <div class="item-details-box">
             {{if .ItemDetails.ImageURL}}
-            <img src="https://divine-pride.net/img/items/collection/iRO/{{.ItemDetails.ID}}" alt="{{.ItemName}}">
+            <img src="{{.ItemDetails.ImageURL}}" alt="{{.ItemName}}">
             {{end}}
             <p>{{.ItemDetails.Description}}</p>
         </div>
@@ -91,42 +91,42 @@
             {{end}}
         </div>
 
-        {{if .ItemDetails.DroppedBy}}
-        <div class="drop-info">
-            <h3 id="drop-header" style="cursor: pointer; user-select: none;">Dropped By <span id="drop-indicator">[+]</span></h3>
-            <table id="drop-table" style="display: none;">
-                <thead>
-                    <tr>
-                        <th>Monster</th>
-                        <th>Rate</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {{range .ItemDetails.DroppedBy}}
-                    <tr>
-                        <td>{{.Monster}}</td>
-                        <td>{{.Rate}}</td>
-                    </tr>
-                    {{end}}
-                </tbody>
-            </table>
-        </div>
-        {{end}}
-
-        {{if .ItemDetails.ObtainableFrom}}
-        <div class="drop-info">
-             <h3>Obtainable From</h3>
-             <ul>
-                 {{range .ItemDetails.ObtainableFrom}}
-                 <li>{{.}}</li>
-                 {{end}}
-             </ul>
-        </div>
-        {{end}}
-        
-        {{else}}
-        <p>No detailed item information could be found.</p>
-        {{end}}
+        <!-- {{if .ItemDetails.DroppedBy}} -->
+        <!-- <div class="drop-info"> -->
+        <!--     <h3 id="drop-header" style="cursor: pointer; user-select: none;">Dropped By <span id="drop-indicator">[+]</span></h3> -->
+        <!--     <table id="drop-table" style="display: none;"> -->
+        <!--         <thead> -->
+        <!--             <tr> -->
+        <!--                 <th>Monster</th> -->
+        <!--                 <th>Rate</th> -->
+        <!--             </tr> -->
+        <!--         </thead> -->
+        <!--         <tbody> -->
+        <!--             {{range .ItemDetails.DroppedBy}} -->
+        <!--             <tr> -->
+        <!--                 <td>{{.Monster}}</td> -->
+        <!--                 <td>{{.Rate}}</td> -->
+        <!--             </tr> -->
+        <!--             {{end}} -->
+        <!--         </tbody> -->
+        <!--     </table> -->
+        <!-- </div> -->
+        <!-- {{end}} -->
+        <!---->
+        <!-- {{if .ItemDetails.ObtainableFrom}} -->
+        <!-- <div class="drop-info"> -->
+        <!--      <h3>Obtainable From</h3> -->
+        <!--      <ul> -->
+        <!--          {{range .ItemDetails.ObtainableFrom}} -->
+        <!--          <li>{{.}}</li> -->
+        <!--          {{end}} -->
+        <!--      </ul> -->
+        <!-- </div> -->
+        <!-- {{end}} -->
+        <!---->
+        <!-- {{else}} -->
+        <!-- <p>No detailed item information could be found.</p> -->
+        <!-- {{end}} -->
 
         <div class="overall-summary">
             <p>
