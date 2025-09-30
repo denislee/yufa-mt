@@ -189,15 +189,18 @@
         <form action="/full-list" method="get" class="filter-controls">
             <div class="main-filters">
                 <input type="text" name="query" placeholder="Search for an item..." value="{{.SearchQuery}}">
-                <input list="store-names" name="store_name" placeholder="Filter by store name..." value="{{.StoreNameQuery}}">
-                <datalist id="store-names">
-                    {{range .AllStoreNames}}
-                    <option value="{{.}}">
-                    {{end}}
-                </datalist>
 
                 {{if .StoreNameQuery}}
+
+                    <input list="store-names" name="store_name" placeholder="Filter by store name..." value="{{.StoreNameQuery}}">
+                    <datalist id="store-names">
+                        {{range .AllStoreNames}}
+                        <option value="{{.}}">
+                        {{end}}
+                    </datalist>
+
                     <a href="/full-list?query={{.SearchQuery}}&sort_by={{.SortBy}}&order={{.Order}}{{if not .ShowAll}}&only_available=true{{end}}&{{.ColumnParams}}" class="clear-filter-button" title="Clear store filter">Clear Store</a>
+
                 {{end}}
 
                 <label>
