@@ -72,6 +72,32 @@
             background-color: #007bff;
         }
 
+        /* --- Tabs --- */
+        .item-type-tabs {
+            display: flex;
+            flex-wrap: wrap;
+            border-bottom: 2px solid #dee2e6;
+            margin-bottom: 24px;
+        }
+        .item-type-tabs a {
+            padding: 8px 12px;
+            color: #495057;
+            text-decoration: none;
+            border-bottom: 3px solid transparent;
+            margin-bottom: -2px;
+            font-weight: 500;
+            font-size: 0.9em;
+            transition: color 0.2s ease, border-color 0.2s ease;
+        }
+        .item-type-tabs a:hover {
+            color: #007bff;
+            text-decoration: none;
+        }
+        .item-type-tabs a.active {
+            color: #007bff;
+            border-bottom-color: #007bff;
+        }
+
         /* --- Forms & Controls --- */
         .filter-controls {
             padding: 16px;
@@ -134,12 +160,14 @@
             display: flex;
             flex-wrap: wrap;
             align-items: center;
-            gap: 16px;
-            padding-top: 16px;
-            margin-top: 16px;
+            gap: 12px;
+            padding-top: 12px;
+            margin-top: 12px;
             border-top: 1px solid #dee2e6;
         }
-        .column-selector strong { font-weight: 500; }
+        .column-selector strong, .column-selector label {
+            font-size: 0.9em;
+        }
 
         /* --- Tables --- */
         table {
@@ -185,8 +213,9 @@
                 <a href="/activity">Activity</a>
             </nav>
         </div>
-        
+
         <form action="/full-list" method="get" class="filter-controls">
+            <input type="hidden" name="type" value="{{.SelectedType}}">
             <div class="main-filters">
                 <input type="text" name="query" placeholder="Search for an item..." value="{{.SearchQuery}}">
 
@@ -199,8 +228,15 @@
                         {{end}}
                     </datalist>
 
-                    <a href="/full-list?query={{.SearchQuery}}&sort_by={{.SortBy}}&order={{.Order}}{{if not .ShowAll}}&only_available=true{{end}}&{{.ColumnParams}}" class="clear-filter-button" title="Clear store filter">Clear Store</a>
+                    <a href="/full-list?query={{.SearchQuery}}&sort_by={{.SortBy}}&order={{.Order}}{{if not .ShowAll}}&only_available=true{{end}}&{{.ColumnParams}}&type={{.SelectedType | urlquery}}" class="clear-filter-button" title="Clear store filter">Clear Store</a>
 
+                {{else}}
+                    <input list="store-names" name="store_name" placeholder="Filter by store name..." value="">
+                    <datalist id="store-names">
+                        {{range .AllStoreNames}}
+                        <option value="{{.}}">
+                        {{end}}
+                    </datalist>
                 {{end}}
 
                 <label>
@@ -221,6 +257,20 @@
             </div>
         </form>
 
+        <div class="item-type-tabs">
+            {{$currentType := .SelectedType}}
+            {{$q := .SearchQuery}}
+            {{$sort := .SortBy}}
+            {{$order := .Order}}
+            {{$showAll := .ShowAll}}
+            {{$storeName := .StoreNameQuery}}
+            {{$params := .ColumnParams}}
+            <a href="/full-list?query={{$q}}&sort_by={{$sort}}&order={{$order}}{{if not $showAll}}&only_available=true{{end}}&store_name={{$storeName | urlquery}}&{{$params}}" class="{{if eq $currentType ""}}active{{end}}">All Items</a>
+            {{range .ItemTypes}}
+                <a href="/full-list?query={{$q}}&sort_by={{$sort}}&order={{$order}}{{if not $showAll}}&only_available=true{{end}}&store_name={{$storeName | urlquery}}&{{$params}}&type={{. | urlquery}}" class="{{if eq . $currentType}}active{{end}}">{{.}}</a>
+            {{end}}
+        </div>
+
         <p>Showing <strong>{{ len .Items }}</strong> individual listings.</p>
 
         <table>
@@ -232,21 +282,22 @@
                     {{$showAll := .ShowAll}}
                     {{$currentSort := .SortBy}}
                     {{$currentOrder := .Order}}
+                    {{$selectedType := .SelectedType}}
                     {{$revOrder := "ASC"}}{{if eq $currentOrder "ASC"}}{{$revOrder = "DESC"}}{{end}}
 
-                    <th class="{{if eq $currentSort "name"}}sorted-{{$currentOrder | lower}}{{end}}"><a href="/full-list?query={{$query}}&sort_by=name&order={{if eq $currentSort "name"}}{{$revOrder}}{{else}}ASC{{end}}{{if not $showAll}}&only_available=true{{end}}{{if $storeName}}&store_name={{$storeName | urlquery}}{{end}}&{{$params}}">Item Name</a></th>
+                    <th class="{{if eq $currentSort "name"}}sorted-{{$currentOrder | lower}}{{end}}"><a href="/full-list?query={{$query}}&sort_by=name&order={{if eq $currentSort "name"}}{{$revOrder}}{{else}}ASC{{end}}{{if not $showAll}}&only_available=true{{end}}{{if $storeName}}&store_name={{$storeName | urlquery}}{{end}}&{{$params}}&type={{$selectedType | urlquery}}">Item Name</a></th>
                     
-                    {{if index .VisibleColumns "item_id"}}<th class="{{if eq $currentSort "item_id"}}sorted-{{$currentOrder | lower}}{{end}}"><a href="/full-list?query={{$query}}&sort_by=item_id&order={{if eq $currentSort "item_id"}}{{$revOrder}}{{else}}ASC{{end}}{{if not $showAll}}&only_available=true{{end}}{{if $storeName}}&store_name={{$storeName | urlquery}}{{end}}&{{$params}}">Item ID</a></th>{{end}}
-                    {{if index .VisibleColumns "quantity"}}<th class="{{if eq $currentSort "quantity"}}sorted-{{$currentOrder | lower}}{{end}}"><a href="/full-list?query={{$query}}&sort_by=quantity&order={{if eq $currentSort "quantity"}}{{$revOrder}}{{else}}ASC{{end}}{{if not $showAll}}&only_available=true{{end}}{{if $storeName}}&store_name={{$storeName | urlquery}}{{end}}&{{$params}}">Qty</a></th>{{end}}
+                    {{if index .VisibleColumns "item_id"}}<th class="{{if eq $currentSort "item_id"}}sorted-{{$currentOrder | lower}}{{end}}"><a href="/full-list?query={{$query}}&sort_by=item_id&order={{if eq $currentSort "item_id"}}{{$revOrder}}{{else}}ASC{{end}}{{if not $showAll}}&only_available=true{{end}}{{if $storeName}}&store_name={{$storeName | urlquery}}{{end}}&{{$params}}&type={{$selectedType | urlquery}}">Item ID</a></th>{{end}}
+                    {{if index .VisibleColumns "quantity"}}<th class="{{if eq $currentSort "quantity"}}sorted-{{$currentOrder | lower}}{{end}}"><a href="/full-list?query={{$query}}&sort_by=quantity&order={{if eq $currentSort "quantity"}}{{$revOrder}}{{else}}ASC{{end}}{{if not $showAll}}&only_available=true{{end}}{{if $storeName}}&store_name={{$storeName | urlquery}}{{end}}&{{$params}}&type={{$selectedType | urlquery}}">Qty</a></th>{{end}}
                     
-                    <th class="{{if eq $currentSort "price"}}sorted-{{$currentOrder | lower}}{{end}}"><a href="/full-list?query={{$query}}&sort_by=price&order={{if eq $currentSort "price"}}{{$revOrder}}{{else}}ASC{{end}}{{if not $showAll}}&only_available=true{{end}}{{if $storeName}}&store_name={{$storeName | urlquery}}{{end}}&{{$params}}">Price</a></th>
+                    <th class="{{if eq $currentSort "price"}}sorted-{{$currentOrder | lower}}{{end}}"><a href="/full-list?query={{$query}}&sort_by=price&order={{if eq $currentSort "price"}}{{$revOrder}}{{else}}ASC{{end}}{{if not $showAll}}&only_available=true{{end}}{{if $storeName}}&store_name={{$storeName | urlquery}}{{end}}&{{$params}}&type={{$selectedType | urlquery}}">Price</a></th>
                     
-                    {{if index .VisibleColumns "store_name"}}<th class="{{if eq $currentSort "store_name"}}sorted-{{$currentOrder | lower}}{{end}}"><a href="/full-list?query={{$query}}&sort_by=store_name&order={{if eq $currentSort "store_name"}}{{$revOrder}}{{else}}ASC{{end}}{{if not $showAll}}&only_available=true{{end}}{{if $storeName}}&store_name={{$storeName | urlquery}}{{end}}&{{$params}}">Store</a></th>{{end}}
-                    {{if index .VisibleColumns "seller_name"}}<th class="{{if eq $currentSort "seller"}}sorted-{{$currentOrder | lower}}{{end}}"><a href="/full-list?query={{$query}}&sort_by=seller&order={{if eq $currentSort "seller"}}{{$revOrder}}{{else}}ASC{{end}}{{if not $showAll}}&only_available=true{{end}}{{if $storeName}}&store_name={{$storeName | urlquery}}{{end}}&{{$params}}">Seller</a></th>{{end}}
+                    {{if index .VisibleColumns "store_name"}}<th class="{{if eq $currentSort "store_name"}}sorted-{{$currentOrder | lower}}{{end}}"><a href="/full-list?query={{$query}}&sort_by=store_name&order={{if eq $currentSort "store_name"}}{{$revOrder}}{{else}}ASC{{end}}{{if not $showAll}}&only_available=true{{end}}{{if $storeName}}&store_name={{$storeName | urlquery}}{{end}}&{{$params}}&type={{$selectedType | urlquery}}">Store</a></th>{{end}}
+                    {{if index .VisibleColumns "seller_name"}}<th class="{{if eq $currentSort "seller"}}sorted-{{$currentOrder | lower}}{{end}}"><a href="/full-list?query={{$query}}&sort_by=seller&order={{if eq $currentSort "seller"}}{{$revOrder}}{{else}}ASC{{end}}{{if not $showAll}}&only_available=true{{end}}{{if $storeName}}&store_name={{$storeName | urlquery}}{{end}}&{{$params}}&type={{$selectedType | urlquery}}">Seller</a></th>{{end}}
                     {{if index .VisibleColumns "map_name"}}<th>Map</th>{{end}}
                     {{if index .VisibleColumns "map_coordinates"}}<th>Coords</th>{{end}}
-                    {{if index .VisibleColumns "retrieved"}}<th class="{{if eq $currentSort "retrieved"}}sorted-{{$currentOrder | lower}}{{end}}"><a href="/full-list?query={{$query}}&sort_by=retrieved&order={{if eq $currentSort "retrieved"}}{{$revOrder}}{{else}}ASC{{end}}{{if not $showAll}}&only_available=true{{end}}{{if $storeName}}&store_name={{$storeName | urlquery}}{{end}}&{{$params}}">Scanned</a></th>{{end}}
-                    {{if index .VisibleColumns "availability"}}<th class="{{if eq $currentSort "availability"}}sorted-{{$currentOrder | lower}}{{end}}"><a href="/full-list?query={{$query}}&sort_by=availability&order={{if eq $currentSort "availability"}}{{$revOrder}}{{else}}ASC{{end}}{{if not $showAll}}&only_available=true{{end}}{{if $storeName}}&store_name={{$storeName | urlquery}}{{end}}&{{$params}}">Available</a></th>{{end}}
+                    {{if index .VisibleColumns "retrieved"}}<th class="{{if eq $currentSort "retrieved"}}sorted-{{$currentOrder | lower}}{{end}}"><a href="/full-list?query={{$query}}&sort_by=retrieved&order={{if eq $currentSort "retrieved"}}{{$revOrder}}{{else}}ASC{{end}}{{if not $showAll}}&only_available=true{{end}}{{if $storeName}}&store_name={{$storeName | urlquery}}{{end}}&{{$params}}&type={{$selectedType | urlquery}}">Scanned</a></th>{{end}}
+                    {{if index .VisibleColumns "availability"}}<th class="{{if eq $currentSort "availability"}}sorted-{{$currentOrder | lower}}{{end}}"><a href="/full-list?query={{$query}}&sort_by=availability&order={{if eq $currentSort "availability"}}{{$revOrder}}{{else}}ASC{{end}}{{if not $showAll}}&only_available=true{{end}}{{if $storeName}}&store_name={{$storeName | urlquery}}{{end}}&{{$params}}&type={{$selectedType | urlquery}}">Available</a></th>{{end}}
                 </tr>
             </thead>
             <tbody>

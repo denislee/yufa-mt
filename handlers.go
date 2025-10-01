@@ -161,12 +161,30 @@ func fullListHandler(w http.ResponseWriter, r *http.Request) {
 	sortBy := r.FormValue("sort_by")
 	order := r.FormValue("order")
 	selectedCols := r.Form["cols"]
+	selectedType := r.FormValue("type")
 
 	// Default to "only available" unless a form was submitted with the box unchecked.
 	formSubmitted := len(r.Form) > 0
 	showAll := false
 	if formSubmitted && r.FormValue("only_available") != "true" {
 		showAll = true
+	}
+
+	// Get all unique item types for the tabs
+	var itemTypes []string
+	typeRows, err := db.Query("SELECT DISTINCT item_type FROM rms_item_cache WHERE item_type IS NOT NULL AND item_type != '' ORDER BY item_type ASC")
+	if err != nil {
+		log.Printf("⚠️ Could not query for item types: %v", err)
+	} else {
+		defer typeRows.Close()
+		for typeRows.Next() {
+			var itemType string
+			if err := typeRows.Scan(&itemType); err != nil {
+				log.Printf("⚠️ Failed to scan item type: %v", err)
+				continue
+			}
+			itemTypes = append(itemTypes, itemType)
+		}
 	}
 
 	// Get all unique store names for the dropdown
@@ -212,21 +230,21 @@ func fullListHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	allowedSorts := map[string]string{
-		"name":         "name_of_the_item",
-		"item_id":      "item_id",
-		"quantity":     "quantity",
-		"price":        "CAST(REPLACE(price, ',', '') AS INTEGER)",
-		"store":        "store_name",
-		"seller":       "seller_name",
-		"retrieved":    "date_and_time_retrieved",
-		"store_name":   "store_name",
-		"map_name":     "map_name",
-		"availability": "is_available",
+		"name":         "i.name_of_the_item",
+		"item_id":      "i.item_id",
+		"quantity":     "i.quantity",
+		"price":        "CAST(REPLACE(i.price, ',', '') AS INTEGER)",
+		"store":        "i.store_name",
+		"seller":       "i.seller_name",
+		"retrieved":    "i.date_and_time_retrieved",
+		"store_name":   "i.store_name",
+		"map_name":     "i.map_name",
+		"availability": "i.is_available",
 	}
 
 	orderByClause, ok := allowedSorts[sortBy]
 	if !ok {
-		orderByClause, sortBy = "name_of_the_item", "name"
+		orderByClause, sortBy = "i.name_of_the_item", "name"
 	}
 	if strings.ToUpper(order) != "DESC" {
 		order = "ASC"
@@ -235,27 +253,38 @@ func fullListHandler(w http.ResponseWriter, r *http.Request) {
 	var whereConditions []string
 	var queryParams []interface{}
 
-	whereConditions = append(whereConditions, "name_of_the_item LIKE ?")
-	queryParams = append(queryParams, "%"+searchQuery+"%")
+	if searchQuery != "" {
+		whereConditions = append(whereConditions, "i.name_of_the_item LIKE ?")
+		queryParams = append(queryParams, "%"+searchQuery+"%")
+	}
 
 	if storeNameQuery != "" {
 		// Changed from LIKE to = for an exact, case-sensitive match.
-		whereConditions = append(whereConditions, "store_name = ?")
+		whereConditions = append(whereConditions, "i.store_name = ?")
 		// Removed wildcards from the parameter for the exact match.
 		queryParams = append(queryParams, storeNameQuery)
 	}
 
-	if !showAll {
-		whereConditions = append(whereConditions, "is_available = 1")
+	if selectedType != "" {
+		whereConditions = append(whereConditions, "rms.item_type = ?")
+		queryParams = append(queryParams, selectedType)
 	}
 
-	whereClause := "WHERE " + strings.Join(whereConditions, " AND ")
+	if !showAll {
+		whereConditions = append(whereConditions, "i.is_available = 1")
+	}
 
-	query := fmt.Sprintf(`
-		SELECT id, name_of_the_item, item_id, quantity, price, store_name, seller_name, date_and_time_retrieved, map_name, map_coordinates, is_available
-		FROM items 
-		%s 
-		ORDER BY %s %s;`, whereClause, orderByClause, order)
+	baseQuery := `
+		SELECT i.id, i.name_of_the_item, i.item_id, i.quantity, i.price, i.store_name, i.seller_name, i.date_and_time_retrieved, i.map_name, i.map_coordinates, i.is_available
+		FROM items i 
+		LEFT JOIN rms_item_cache rms ON i.item_id = rms.item_id
+	`
+	whereClause := ""
+	if len(whereConditions) > 0 {
+		whereClause = "WHERE " + strings.Join(whereConditions, " AND ")
+	}
+
+	query := fmt.Sprintf(`%s %s ORDER BY %s %s;`, baseQuery, whereClause, orderByClause, order)
 
 	rows, err := db.Query(query, queryParams...)
 	if err != nil {
@@ -305,6 +334,8 @@ func fullListHandler(w http.ResponseWriter, r *http.Request) {
 		VisibleColumns: visibleColumns,
 		AllColumns:     allCols,
 		ColumnParams:   template.URL(columnParams.Encode()),
+		ItemTypes:      itemTypes,
+		SelectedType:   selectedType,
 	}
 	tmpl.Execute(w, data)
 }

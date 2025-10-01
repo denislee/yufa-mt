@@ -134,6 +134,8 @@ type PageData struct {
 	VisibleColumns map[string]bool
 	AllColumns     []Column
 	ColumnParams   template.URL
+	ItemTypes      []string
+	SelectedType   string
 }
 
 // ActivityPageData holds data for the market activity page template.
