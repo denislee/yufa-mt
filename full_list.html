@@ -40,6 +40,11 @@
             margin-right: 8px;
             image-rendering: pixelated;
         }
+        img.tab-icon {
+            width: 20px;
+            height: 20px;
+            image-rendering: pixelated;
+        }
 
         /* --- Header & Navigation --- */
         .header-info {
@@ -78,19 +83,25 @@
             flex-wrap: wrap;
             border-bottom: 2px solid #dee2e6;
             margin-bottom: 24px;
+            gap: 4px;
         }
         .item-type-tabs a {
-            padding: 8px 12px;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 6px 10px;
             color: #495057;
             text-decoration: none;
             border-bottom: 3px solid transparent;
             margin-bottom: -2px;
             font-weight: 500;
             font-size: 0.9em;
-            transition: color 0.2s ease, border-color 0.2s ease;
+            transition: color 0.2s ease, border-color 0.2s ease, background-color 0.2s ease;
+            border-radius: 4px 4px 0 0;
         }
         .item-type-tabs a:hover {
             color: #007bff;
+            background-color: #e9ecef;
             text-decoration: none;
         }
         .item-type-tabs a.active {
@@ -268,7 +279,10 @@
             {{$params := .ColumnParams}}
             <a href="/full-list?query={{$q}}&sort_by={{$sort}}&order={{$order}}{{if not $showAll}}&only_available=true{{end}}&store_name={{$storeName | urlquery}}&{{$params}}" class="{{if eq $currentType ""}}active{{end}}">All Items</a>
             {{range .ItemTypes}}
-                <a href="/full-list?query={{$q}}&sort_by={{$sort}}&order={{$order}}{{if not $showAll}}&only_available=true{{end}}&store_name={{$storeName | urlquery}}&{{$params}}&type={{. | urlquery}}" class="{{if eq . $currentType}}active{{end}}">{{.}}</a>
+                <a href="/full-list?query={{$q}}&sort_by={{$sort}}&order={{$order}}{{if not $showAll}}&only_available=true{{end}}&store_name={{$storeName | urlquery}}&{{$params}}&type={{.FullName | urlquery}}" class="{{if eq .FullName $currentType}}active{{end}}">
+                    <img src="https://static.divine-pride.net/images/items/item/{{.IconItemID}}.png" alt="" class="tab-icon">
+                    {{.ShortName}}
+                </a>
             {{end}}
         </div>
 

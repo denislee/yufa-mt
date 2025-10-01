@@ -116,6 +116,13 @@ type EventDefinition struct {
 	Days      []time.Weekday
 }
 
+// ItemTypeTab defines the data for a category tab.
+type ItemTypeTab struct {
+	FullName   string
+	ShortName  string
+	IconItemID int
+}
+
 // --- Page Data Structs for HTML Templates ---
 
 // SummaryPageData holds all data needed for the main summary page template.
@@ -126,7 +133,7 @@ type SummaryPageData struct {
 	Order          string
 	ShowAll        bool
 	LastScrapeTime string
-	ItemTypes      []string
+	ItemTypes      []ItemTypeTab
 	SelectedType   string
 }
 
@@ -143,7 +150,7 @@ type PageData struct {
 	VisibleColumns map[string]bool
 	AllColumns     []Column
 	ColumnParams   template.URL
-	ItemTypes      []string
+	ItemTypes      []ItemTypeTab
 	SelectedType   string
 }
 
@@ -181,3 +188,4 @@ type PlayerCountPageData struct {
 	SelectedInterval string
 	EventDataJSON    template.JS
 }
+

@@ -82,6 +82,47 @@ func generateEventIntervals(viewStart, viewEnd time.Time, events []EventDefiniti
 	return intervals
 }
 
+// mapItemTypeToTabData converts a full item type name to a struct with a short name and icon ID.
+func mapItemTypeToTabData(typeName string) ItemTypeTab {
+	tab := ItemTypeTab{FullName: typeName, ShortName: typeName, IconItemID: 909} // Default to Jellopy
+	switch typeName {
+	case "Ammunition":
+		tab.ShortName = "Ammo"
+		tab.IconItemID = 1750 // Arrow
+	case "Armor":
+		tab.ShortName = "Armor"
+		tab.IconItemID = 2301 // Cotton Shirt
+	case "Card":
+		tab.ShortName = "Cards"
+		tab.IconItemID = 4133 // Poring Card
+	case "Delayed-Consumable":
+		tab.ShortName = "Consume"
+		tab.IconItemID = 610 // Blue Potion
+	case "Healing Item":
+		tab.ShortName = "Healing"
+		tab.IconItemID = 501 // Red Potion
+	case "Miscellaneous":
+		tab.ShortName = "Misc"
+		tab.IconItemID = 909 // Jellopy
+	case "Monster Egg":
+		tab.ShortName = "Eggs"
+		tab.IconItemID = 9001 // Poring Egg
+	case "Pet Armor":
+		tab.ShortName = "Pet Gear"
+		tab.IconItemID = 5183 // B.B. Cap
+	case "Taming Item":
+		tab.ShortName = "Taming"
+		tab.IconItemID = 602 // Unripe Apple
+	case "Usable Item":
+		tab.ShortName = "Usable"
+		tab.IconItemID = 601 // Fly Wing
+	case "Weapon":
+		tab.ShortName = "Weapons"
+		tab.IconItemID = 1201 // Main Gauche
+	}
+	return tab
+}
+
 // summaryHandler serves the main summary page (renamed from viewHandler)
 func summaryHandler(w http.ResponseWriter, r *http.Request) {
 	if err := r.ParseForm(); err != nil {
@@ -102,7 +143,7 @@ func summaryHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Get all unique item types for the tabs
-	var itemTypes []string
+	var itemTypes []ItemTypeTab
 	typeRows, err := db.Query("SELECT DISTINCT item_type FROM rms_item_cache WHERE item_type IS NOT NULL AND item_type != '' ORDER BY item_type ASC")
 	if err != nil {
 		log.Printf("⚠️ Could not query for item types: %v", err)
@@ -114,7 +155,7 @@ func summaryHandler(w http.ResponseWriter, r *http.Request) {
 				log.Printf("⚠️ Failed to scan item type: %v", err)
 				continue
 			}
-			itemTypes = append(itemTypes, itemType)
+			itemTypes = append(itemTypes, mapItemTypeToTabData(itemType))
 		}
 	}
 
@@ -241,7 +282,7 @@ func fullListHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Get all unique item types for the tabs
-	var itemTypes []string
+	var itemTypes []ItemTypeTab
 	typeRows, err := db.Query("SELECT DISTINCT item_type FROM rms_item_cache WHERE item_type IS NOT NULL AND item_type != '' ORDER BY item_type ASC")
 	if err != nil {
 		log.Printf("⚠️ Could not query for item types: %v", err)
@@ -253,7 +294,7 @@ func fullListHandler(w http.ResponseWriter, r *http.Request) {
 				log.Printf("⚠️ Failed to scan item type: %v", err)
 				continue
 			}
-			itemTypes = append(itemTypes, itemType)
+			itemTypes = append(itemTypes, mapItemTypeToTabData(itemType))
 		}
 	}
 
