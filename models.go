@@ -117,6 +117,8 @@ type SummaryPageData struct {
 	Order          string
 	ShowAll        bool
 	LastScrapeTime string
+	ItemTypes      []string
+	SelectedType   string
 }
 
 // PageData holds data for the detailed full list view template.

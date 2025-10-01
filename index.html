@@ -72,6 +72,31 @@
             background-color: #007bff;
         }
 
+        /* --- Tabs --- */
+        .item-type-tabs {
+            display: flex;
+            flex-wrap: wrap;
+            border-bottom: 2px solid #dee2e6;
+            margin-bottom: 24px;
+        }
+        .item-type-tabs a {
+            padding: 10px 16px;
+            color: #495057;
+            text-decoration: none;
+            border-bottom: 3px solid transparent;
+            margin-bottom: -2px;
+            font-weight: 500;
+            transition: color 0.2s ease, border-color 0.2s ease;
+        }
+        .item-type-tabs a:hover {
+            color: #007bff;
+            text-decoration: none;
+        }
+        .item-type-tabs a.active {
+            color: #007bff;
+            border-bottom-color: #007bff;
+        }
+
         /* --- Forms & Controls --- */
         .filter-controls {
             display: flex;
@@ -157,6 +182,7 @@
         </div>
 
         <form action="/" method="GET" class="filter-controls">
+            <input type="hidden" name="type" value="{{.SelectedType}}">
             <input type="text" name="query" placeholder="Search for an item..." value="{{.SearchQuery}}">
             <label>
                 <input type="checkbox" name="only_available" value="true" {{if not .ShowAll}}checked{{end}}>
@@ -167,6 +193,18 @@
 
         <p>Showing <strong>{{ len .Items }}</strong> unique items.</p>
 
+        <div class="item-type-tabs">
+            {{$currentType := .SelectedType}}
+            {{$q := .SearchQuery}}
+            {{$sort := .SortBy}}
+            {{$order := .Order}}
+            {{$showAll := .ShowAll}}
+            <a href="/?query={{$q}}&sort_by={{$sort}}&order={{$order}}{{if not $showAll}}&only_available=true{{end}}" class="{{if eq $currentType ""}}active{{end}}">All Items</a>
+            {{range .ItemTypes}}
+                <a href="/?query={{$q}}&sort_by={{$sort}}&order={{$order}}{{if not $showAll}}&only_available=true{{end}}&type={{. | urlquery}}" class="{{if eq . $currentType}}active{{end}}">{{.}}</a>
+            {{end}}
+        </div>
+
         <table>
             <thead>
                 <tr>
@@ -174,22 +212,23 @@
                     {{$showAll := .ShowAll}}
                     {{$currentSort := .SortBy}}
                     {{$currentOrder := .Order}}
+                    {{$selectedType := .SelectedType}}
                     {{$revOrder := "ASC"}}{{if eq $currentOrder "ASC"}}{{$revOrder = "DESC"}}{{end}}
                     
                     <th class="{{if eq $currentSort "name"}}sorted-{{$currentOrder | lower}}{{end}}">
-                        <a href="/?query={{$query}}{{if not $showAll}}&only_available=true{{end}}&sort_by=name&order={{if eq $currentSort "name"}}{{$revOrder}}{{else}}ASC{{end}}">Item Name</a>
+                        <a href="/?query={{$query}}{{if not $showAll}}&only_available=true{{end}}&sort_by=name&order={{if eq $currentSort "name"}}{{$revOrder}}{{else}}ASC{{end}}&type={{$selectedType | urlquery}}">Item Name</a>
                     </th>
                     <th class="{{if eq $currentSort "item_id"}}sorted-{{$currentOrder | lower}}{{end}}">
-                        <a href="/?query={{$query}}{{if not $showAll}}&only_available=true{{end}}&sort_by=item_id&order={{if eq $currentSort "item_id"}}{{$revOrder}}{{else}}ASC{{end}}">Item ID</a>
+                        <a href="/?query={{$query}}{{if not $showAll}}&only_available=true{{end}}&sort_by=item_id&order={{if eq $currentSort "item_id"}}{{$revOrder}}{{else}}ASC{{end}}&type={{$selectedType | urlquery}}">Item ID</a>
                     </th>
                     <th class="{{if eq $currentSort "listings"}}sorted-{{$currentOrder | lower}}{{end}}">
-                        <a href="/?query={{$query}}{{if not $showAll}}&only_available=true{{end}}&sort_by=listings&order={{if eq $currentSort "listings"}}{{$revOrder}}{{else}}DESC{{end}}">Available</a>
+                        <a href="/?query={{$query}}{{if not $showAll}}&only_available=true{{end}}&sort_by=listings&order={{if eq $currentSort "listings"}}{{$revOrder}}{{else}}DESC{{end}}&type={{$selectedType | urlquery}}">Available</a>
                     </th>
                     <th class="{{if eq $currentSort "lowest_price"}}sorted-{{$currentOrder | lower}}{{end}}">
-                        <a href="/?query={{$query}}{{if not $showAll}}&only_available=true{{end}}&sort_by=lowest_price&order={{if eq $currentSort "lowest_price"}}{{$revOrder}}{{else}}ASC{{end}}">Lowest Price</a>
+                        <a href="/?query={{$query}}{{if not $showAll}}&only_available=true{{end}}&sort_by=lowest_price&order={{if eq $currentSort "lowest_price"}}{{$revOrder}}{{else}}ASC{{end}}&type={{$selectedType | urlquery}}">Lowest Price</a>
                     </th>
                     <th class="{{if eq $currentSort "highest_price"}}sorted-{{$currentOrder | lower}}{{end}}">
-                        <a href="/?query={{$query}}{{if not $showAll}}&only_available=true{{end}}&sort_by=highest_price&order={{if eq $currentSort "highest_price"}}{{$revOrder}}{{else}}DESC{{end}}">Highest Price</a>
+                        <a href="/?query={{$query}}{{if not $showAll}}&only_available=true{{end}}&sort_by=highest_price&order={{if eq $currentSort "highest_price"}}{{$revOrder}}{{else}}DESC{{end}}&type={{$selectedType | urlquery}}">Highest Price</a>
                     </th>
                 </tr>
             </thead>

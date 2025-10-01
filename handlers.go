@@ -22,6 +22,7 @@ func summaryHandler(w http.ResponseWriter, r *http.Request) {
 	searchQuery := r.FormValue("query")
 	sortBy := r.FormValue("sort_by")
 	order := r.FormValue("order")
+	selectedType := r.FormValue("type")
 
 	// Default to "only available" unless a form was submitted with the box unchecked.
 	formSubmitted := len(r.Form) > 0
@@ -30,29 +31,62 @@ func summaryHandler(w http.ResponseWriter, r *http.Request) {
 		showAll = true
 	}
 
-	// 2. Build the query dynamically
-	params := []interface{}{"%" + searchQuery + "%"}
+	// Get all unique item types for the tabs
+	var itemTypes []string
+	typeRows, err := db.Query("SELECT DISTINCT item_type FROM rms_item_cache WHERE item_type IS NOT NULL AND item_type != '' ORDER BY item_type ASC")
+	if err != nil {
+		log.Printf("⚠️ Could not query for item types: %v", err)
+	} else {
+		defer typeRows.Close()
+		for typeRows.Next() {
+			var itemType string
+			if err := typeRows.Scan(&itemType); err != nil {
+				log.Printf("⚠️ Failed to scan item type: %v", err)
+				continue
+			}
+			itemTypes = append(itemTypes, itemType)
+		}
+	}
 
-	// Base query with conditional aggregation for lowest/highest price and a sum for available count
+	// 2. Build the query dynamically
+	params := []interface{}{}
 	baseQuery := `
         SELECT
-            name_of_the_item,
-            MIN(item_id) as item_id,
-            MIN(CASE WHEN is_available = 1 THEN CAST(REPLACE(price, ',', '') AS INTEGER) ELSE NULL END) as lowest_price,
-            MAX(CASE WHEN is_available = 1 THEN CAST(REPLACE(price, ',', '') AS INTEGER) ELSE NULL END) as highest_price,
-            SUM(CASE WHEN is_available = 1 THEN 1 ELSE 0 END) as listing_count
-        FROM items
-        WHERE name_of_the_item LIKE ?
-        GROUP BY name_of_the_item
+            i.name_of_the_item,
+            MIN(i.item_id) as item_id,
+            MIN(CASE WHEN i.is_available = 1 THEN CAST(REPLACE(i.price, ',', '') AS INTEGER) ELSE NULL END) as lowest_price,
+            MAX(CASE WHEN i.is_available = 1 THEN CAST(REPLACE(i.price, ',', '') AS INTEGER) ELSE NULL END) as highest_price,
+            SUM(CASE WHEN i.is_available = 1 THEN 1 ELSE 0 END) as listing_count
+        FROM items i
+        LEFT JOIN rms_item_cache rms ON i.item_id = rms.item_id
     `
-	// Add HAVING clause if we only want to show items with available listings
+
+	var whereConditions []string
+	if searchQuery != "" {
+		whereConditions = append(whereConditions, "i.name_of_the_item LIKE ?")
+		params = append(params, "%"+searchQuery+"%")
+	}
+
+	if selectedType != "" {
+		whereConditions = append(whereConditions, "rms.item_type = ?")
+		params = append(params, selectedType)
+	}
+
+	whereClause := ""
+	if len(whereConditions) > 0 {
+		whereClause = "WHERE " + strings.Join(whereConditions, " AND ")
+	}
+
+	groupByClause := " GROUP BY i.name_of_the_item"
+
+	havingClause := ""
 	if !showAll {
-		baseQuery += " HAVING listing_count > 0"
+		havingClause = " HAVING listing_count > 0"
 	}
 
 	// 3. Handle sorting securely
 	allowedSorts := map[string]string{
-		"name":          "name_of_the_item",
+		"name":          "i.name_of_the_item",
 		"item_id":       "item_id",
 		"listings":      "listing_count",
 		"lowest_price":  "lowest_price",
@@ -60,19 +94,19 @@ func summaryHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	orderByClause, ok := allowedSorts[sortBy]
 	if !ok {
-		orderByClause, sortBy = "name_of_the_item", "name" // Default sort
+		orderByClause, sortBy = "i.name_of_the_item", "name" // Default sort
 	}
 	if strings.ToUpper(order) != "DESC" {
 		order = "ASC"
 	}
 
 	// Append ORDER BY to the query, with a secondary sort for stability
-	query := fmt.Sprintf("%s ORDER BY %s %s, name_of_the_item ASC;", baseQuery, orderByClause, order)
+	query := fmt.Sprintf("%s %s %s %s ORDER BY %s %s, i.name_of_the_item ASC;", baseQuery, whereClause, groupByClause, havingClause, orderByClause, order)
 
 	rows, err := db.Query(query, params...)
 	if err != nil {
 		http.Error(w, "Database query for summary failed", http.StatusInternalServerError)
-		log.Printf("❌ Summary query error: %v", err)
+		log.Printf("❌ Summary query error: %v, Query: %s, Params: %v", err, query, params)
 		return
 	}
 	defer rows.Close()
@@ -109,6 +143,8 @@ func summaryHandler(w http.ResponseWriter, r *http.Request) {
 		Order:          order,
 		ShowAll:        showAll,
 		LastScrapeTime: getLastScrapeTime(),
+		ItemTypes:      itemTypes,
+		SelectedType:   selectedType,
 	}
 	tmpl.Execute(w, data)
 }
