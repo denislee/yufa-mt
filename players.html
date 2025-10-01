@@ -104,6 +104,9 @@
             gap: 6px;
             font-size: 0.9em;
         }
+        .view-options label {
+            margin-right: 8px;
+        }
     </style>
 </head>
 <body>
@@ -131,6 +134,12 @@
                 <a href="/players?interval=30d" class="{{if eq .SelectedInterval "30d"}}active{{end}}">Last 30 Days</a>
             </div>
              <div class="view-options">
+                <input type="checkbox" id="togglePlayers" checked>
+                <label for="togglePlayers">Online Players</label>
+                <input type="checkbox" id="toggleSellers" checked>
+                <label for="toggleSellers">Unique Sellers</label>
+                <input type="checkbox" id="toggleDelta">
+                <label for="toggleDelta">Active Players (Delta)</label>
                 <input type="checkbox" id="toggleEvents" checked>
                 <label for="toggleEvents">Show Events</label>
             </div>
@@ -145,7 +154,18 @@
         const eventData = {{.EventDataJSON}};
 
         const labels = playerData.map(p => p.Timestamp);
-        const counts = playerData.map(p => p.Count);
+        const playerCounts = playerData.map(p => p.Count);
+        const sellerCounts = playerData.map(p => p.SellerCount);
+        const deltaCounts = playerData.map(p => p.Delta);
+
+        // --- Calculate a fixed Y-axis range based on all data ---
+        const allCounts = [...playerCounts, ...sellerCounts, ...deltaCounts].filter(c => c !== null);
+        const maxDataValue = allCounts.length > 0 ? Math.max(...allCounts) : 0;
+        const minDataValue = allCounts.length > 0 ? Math.min(...allCounts) : 0;
+
+        // Add 5% padding and round to a "nice" number (nearest 10)
+        const chartMaxY = Math.ceil((maxDataValue * 1.05) / 10) * 10;
+        const chartMinY = Math.floor((minDataValue * 0.95) / 10) * 10;
 
         // --- Event Annotation Logic ---
         const eventColors = {
@@ -184,23 +204,46 @@
                 labels: labels,
                 datasets: [{
                     label: 'Online Players',
-                    data: counts,
+                    data: playerCounts,
                     borderColor: 'rgba(0, 123, 255, 1)',
                     backgroundColor: 'rgba(0, 123, 255, 0.2)',
                     borderWidth: 2,
                     fill: true,
                     tension: 0.1,
                     pointRadius: 2,
-                    pointHoverRadius: 5
+                    pointHoverRadius: 5,
+                },
+                {
+                    label: 'Unique Sellers',
+                    data: sellerCounts,
+                    borderColor: 'rgba(40, 167, 69, 1)',
+                    backgroundColor: 'rgba(40, 167, 69, 0.2)',
+                    borderWidth: 2,
+                    fill: true,
+                    tension: 0.1,
+                    pointRadius: 2,
+                    pointHoverRadius: 5,
+                },
+                {
+                    label: 'Active Players (Delta)',
+                    data: deltaCounts,
+                    borderColor: 'rgba(255, 193, 7, 1)',
+                    backgroundColor: 'rgba(255, 193, 7, 0.2)',
+                    borderWidth: 2,
+                    fill: true,
+                    tension: 0.1,
+                    pointRadius: 2,
+                    pointHoverRadius: 5,
                 }]
             },
             options: {
                 scales: {
                     y: {
-                        beginAtZero: false,
+                        min: chartMinY, // Set the fixed minimum for the Y-axis
+                        max: chartMaxY, // Set the fixed maximum for the Y-axis
                         title: {
                             display: true,
-                            text: 'Player Count'
+                            text: 'Count'
                         }
                     },
                     x: {
@@ -212,11 +255,8 @@
                 },
                 plugins: {
                     tooltip: {
-                        callbacks: {
-                            label: function(context) {
-                                return ` Players: ${context.parsed.y}`;
-                            }
-                        }
+                       mode: 'index',
+                       intersect: false,
                     },
                     annotation: {
                         annotations: initialAnnotations
@@ -226,7 +266,30 @@
         });
 
         // --- Event Listeners ---
-        document.getElementById('toggleEvents').addEventListener('change', (e) => {
+        const togglePlayers = document.getElementById('togglePlayers');
+        const toggleSellers = document.getElementById('toggleSellers');
+        const toggleEvents = document.getElementById('toggleEvents');
+        const toggleDelta = document.getElementById('toggleDelta');
+
+        function updateChartVisibility() {
+            const playersVisible = togglePlayers.checked;
+            const sellersVisible = toggleSellers.checked;
+            const deltaVisible = toggleDelta.checked;
+
+            playerChart.setDatasetVisibility(0, playersVisible); // Player dataset is at index 0
+            playerChart.setDatasetVisibility(1, sellersVisible); // Seller dataset is at index 1
+            playerChart.setDatasetVisibility(2, deltaVisible); // Delta dataset is at index 2
+            
+            playerChart.options.scales.y.display = playersVisible || sellersVisible || deltaVisible;
+
+            playerChart.update();
+        }
+        
+        togglePlayers.addEventListener('change', updateChartVisibility);
+        toggleSellers.addEventListener('change', updateChartVisibility);
+        toggleDelta.addEventListener('change', updateChartVisibility);
+
+        toggleEvents.addEventListener('change', (e) => {
             if (e.target.checked) {
                 playerChart.options.plugins.annotation.annotations = createAnnotations(eventData);
             } else {
@@ -234,6 +297,9 @@
             }
             playerChart.update();
         });
+
+        // Initially hide the delta dataset
+        updateChartVisibility();
 
 
         // Time ago script for the header

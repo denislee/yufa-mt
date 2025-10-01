@@ -777,7 +777,7 @@ func playerCountHandler(w http.ResponseWriter, r *http.Request) {
 	whereClause = "WHERE timestamp >= ?"
 	params = append(params, viewStart.Format(time.RFC3339))
 
-	query := fmt.Sprintf("SELECT timestamp, count FROM player_history %s ORDER BY timestamp ASC", whereClause)
+	query := fmt.Sprintf("SELECT timestamp, count, seller_count FROM player_history %s ORDER BY timestamp ASC", whereClause)
 	rows, err := db.Query(query, params...)
 	if err != nil {
 		http.Error(w, "Could not query for player history", http.StatusInternalServerError)
@@ -793,14 +793,16 @@ func playerCountHandler(w http.ResponseWriter, r *http.Request) {
 	for rows.Next() {
 		var point PlayerCountPoint
 		var timestampStr string
-		if err := rows.Scan(&timestampStr, &point.Count); err != nil {
+		if err := rows.Scan(&timestampStr, &point.Count, &point.SellerCount); err != nil {
 			log.Printf("⚠️ Failed to scan player history row: %v", err)
 			continue
 		}
+		// Calculate the delta between total players and sellers.
+		point.Delta = point.Count - point.SellerCount
+
 		parsedTime, err := time.Parse(time.RFC3339, timestampStr)
 		if err == nil {
 			point.Timestamp = parsedTime.Format("2006-01-02 15:04")
-			// Add the date part of the timestamp to our set.
 			datePart := parsedTime.Format("2006-01-02")
 			activeDatesWithData[datePart] = struct{}{}
 		} else {
@@ -838,4 +840,3 @@ func playerCountHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	tmpl.Execute(w, data)
 }
-

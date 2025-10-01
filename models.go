@@ -168,8 +168,10 @@ type HistoryPageData struct {
 
 // PlayerCountPoint represents a single data point for the player history chart.
 type PlayerCountPoint struct {
-	Timestamp string `json:"Timestamp"`
-	Count     int    `json:"Count"`
+	Timestamp   string `json:"Timestamp"`
+	Count       int    `json:"Count"`
+	SellerCount int    `json:"SellerCount"`
+	Delta       int    `json:"Delta"` // Added this field
 }
 
 // PlayerCountPageData holds data for the player count history page template.
@@ -179,4 +181,3 @@ type PlayerCountPageData struct {
 	SelectedInterval string
 	EventDataJSON    template.JS
 }
-

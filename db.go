@@ -86,7 +86,8 @@ func initDB(filepath string) (*sql.DB, error) {
 	createPlayerHistoryTableSQL := `
 	CREATE TABLE IF NOT EXISTS player_history (
 		"timestamp" TEXT NOT NULL PRIMARY KEY,
-		"count" INTEGER NOT NULL
+		"count" INTEGER NOT NULL,
+		"seller_count" INTEGER
 	);`
 	if _, err = db.Exec(createPlayerHistoryTableSQL); err != nil {
 		return nil, fmt.Errorf("could not create player_history table: %w", err)
@@ -94,3 +95,4 @@ func initDB(filepath string) (*sql.DB, error) {
 
 	return db, nil
 }
+

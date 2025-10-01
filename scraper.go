@@ -17,11 +17,9 @@ import (
 
 // In scraper.go
 
-// In scraper.go
-
-// scrapeAndStorePlayerCount fetches the online player count and saves it if it has changed.
+// scrapeAndStorePlayerCount fetches the online player count, queries for the unique seller count, and saves them.
 func scrapeAndStorePlayerCount() {
-	log.Println("📊 Checking player count...")
+	log.Println("📊 Checking player and seller count...")
 
 	ctx, cancel := chromedp.NewContext(context.Background())
 	defer cancel()
@@ -30,12 +28,7 @@ func scrapeAndStorePlayerCount() {
 
 	var htmlContent string
 	err := chromedp.Run(ctx,
-		//chromedp.Navigate("https://projetoyufa.com/info"),
 		chromedp.Navigate("https://projetoyufa.com/download"),
-		// This is the key change: Wait for the "Loading..." overlay to disappear.
-		// This is a much more reliable signal that the page is ready.
-		// The selector targets the main div of the loading screen.
-		//		chromedp.WaitNotVisible(`div.fixed.z-50`),
 		chromedp.OuterHTML("html", &htmlContent),
 	)
 
@@ -43,9 +36,6 @@ func scrapeAndStorePlayerCount() {
 		log.Printf("❌ Failed to get player info page: %v", err)
 		return
 	}
-
-	// For debugging, you can uncomment this to see the final HTML
-	//log.Printf("DEBUG: Retrieved HTML:\n%s\n", htmlContent)
 
 	doc, err := goquery.NewDocumentFromReader(strings.NewReader(htmlContent))
 	if err != nil {
@@ -56,14 +46,11 @@ func scrapeAndStorePlayerCount() {
 	var onlineCount int
 	var found bool
 
-	// This selector correctly finds the <p> tag containing "Online".
-	// The .Text() method automatically handles the HTML comment.
 	selection := doc.Find("p:contains('Online')")
-
 	if selection.Length() > 0 {
-		fullText := selection.First().Text() // e.g., "Online 120"
+		fullText := selection.First().Text()
 		re := regexp.MustCompile(`\d+`)
-		numStr := re.FindString(fullText) // "120"
+		numStr := re.FindString(fullText)
 		if num, err := strconv.Atoi(numStr); err == nil {
 			onlineCount = num
 			found = true
@@ -75,25 +62,37 @@ func scrapeAndStorePlayerCount() {
 		return
 	}
 
-	var lastCount int
-	err = db.QueryRow("SELECT count FROM player_history ORDER BY timestamp DESC LIMIT 1").Scan(&lastCount)
+	// Get the number of unique sellers with available items directly from the database.
+	var sellerCount int
+	err = db.QueryRow("SELECT COUNT(DISTINCT seller_name) FROM items WHERE is_available = 1").Scan(&sellerCount)
+	if err != nil {
+		log.Printf("⚠️ Could not query for unique seller count: %v", err)
+		// Don't return, as we can still store the player count. Default sellerCount to 0.
+		sellerCount = 0
+	}
+
+	// Check if the latest counts are different from the new ones to avoid duplicate entries.
+	var lastPlayerCount int
+	var lastSellerCount sql.NullInt64
+	err = db.QueryRow("SELECT count, seller_count FROM player_history ORDER BY timestamp DESC LIMIT 1").Scan(&lastPlayerCount, &lastSellerCount)
 	if err != nil && err != sql.ErrNoRows {
-		log.Printf("⚠️ Could not query for last player count: %v", err)
+		log.Printf("⚠️ Could not query for last player/seller count: %v", err)
 		return
 	}
 
-	if onlineCount == lastCount {
+	// If both counts are the same as the last record, do nothing.
+	if err != sql.ErrNoRows && onlineCount == lastPlayerCount && lastSellerCount.Valid && sellerCount == int(lastSellerCount.Int64) {
 		return
 	}
 
 	retrievalTime := time.Now().Format(time.RFC3339)
-	_, err = db.Exec("INSERT INTO player_history (timestamp, count) VALUES (?, ?)", retrievalTime, onlineCount)
+	_, err = db.Exec("INSERT INTO player_history (timestamp, count, seller_count) VALUES (?, ?, ?)", retrievalTime, onlineCount, sellerCount)
 	if err != nil {
-		log.Printf("❌ Failed to insert new player count: %v", err)
+		log.Printf("❌ Failed to insert new player/seller count: %v", err)
 		return
 	}
 
-	log.Printf("✅ Player count changed. New count: %d", onlineCount)
+	log.Printf("✅ Player/seller count updated. New values: %d players, %d sellers", onlineCount, sellerCount)
 }
 
 // startBackgroundJobs starts all recurring background tasks.
