@@ -3,7 +3,8 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Yufa Market Tracker / Activity</title>
+    <title>Yufa Market Tracker / Player Count</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
         /* --- General & Typography --- */
         body {
@@ -23,23 +24,14 @@
             box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);
             border: 1px solid #dee2e6;
         }
-        h1, h2, h3 {
+        h1, h2 {
             color: #343a40;
             margin-top: 0;
         }
         h1 { font-size: 2em; margin-bottom: 0.25em; }
         h2 { font-size: 1.5em; margin-bottom: 1em; border-bottom: 1px solid #e9ecef; padding-bottom: 0.5em; }
-        h3 { font-size: 1.25em; margin-bottom: 0.75em; }
         a { color: #007bff; text-decoration: none; }
         a:hover { text-decoration: underline; color: #0056b3; }
-        p { margin-top: 0; }
-        img.item-icon {
-            width: 24px;
-            height: 24px;
-            vertical-align: middle;
-            margin-right: 8px;
-            image-rendering: pixelated;
-        }
 
         /* --- Header & Navigation --- */
         .header-info {
@@ -71,19 +63,6 @@
             color: #ffffff;
             background-color: #007bff;
         }
-
-        /* --- Page-Specific: Activity --- */
-        .activity-log ul { list-style-type: none; padding: 0; margin: 0; }
-        .activity-log li { padding: 12px 8px; border-bottom: 1px solid #e9ecef; display: flex; align-items: center; gap: 16px; font-size: 1em; }
-        .activity-log li:last-child { border-bottom: none; }
-        .log-timestamp { font-size: 0.9em; color: #6c757d; width: 120px; flex-shrink: 0; }
-        .log-event { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
-        .log-event strong a { font-weight: 600; color: #343a40; }
-        .log-event small { color: #6c757d; }
-        .log-added { color: #28a745; }
-        .log-removed { color: #6c757d; }
-        .log-new-low { color: #fd7e14; }
-        .log-new-low .highlight { font-weight: bold; background-color: #fff3cd; padding: 2px 5px; border-radius: 3px; }
     </style>
 </head>
 <body>
@@ -91,47 +70,72 @@
         <div class="header-info">
             <div>
                 <h1>Yufa Market Tracker</h1>
-                <p>Last updated: <strong data-timestamp="{{.LastScrapeTime}}">{{.LastScrapeTime}}</strong> <span id="time-ago"></span></p>
+                <p>Last market update: <strong data-timestamp="{{.LastScrapeTime}}">{{.LastScrapeTime}}</strong> <span id="time-ago"></span></p>
             </div>
             <nav class="main-nav">
                 <a href="/">Summary</a>
                 <a href="/full-list">Full List</a>
-                <strong>Activity</strong>
-                <a href="/players">Players</a>
+                <a href="/activity">Activity</a>
+                <strong>Players</strong>
             </nav>
         </div>
-        <h2>Recent Market Activity</h2>
+        <h2>Online Player History</h2>
 
-        {{if .MarketEvents}}
-        <div class="activity-log">
-            <ul>
-                {{range .MarketEvents}}
-                <li>
-                    <span class="log-timestamp">{{.Timestamp}}</span>
-                    {{if eq .EventType "ADDED"}}
-                        <span class="log-event log-added">
-                            ➕ <strong><img src="https://static.divine-pride.net/images/items/item/{{.ItemID}}.png" alt="" class="item-icon"> <a href="/item?name={{.ItemName | urlquery}}">{{.ItemName}}</a></strong> was added for sale.
-                            <small>({{.Details.price}} zeny, Qty: {{printf "%.0f" .Details.quantity}} by {{.Details.seller}})</small>
-                        </span>
-                    {{else if eq .EventType "REMOVED"}}
-                        <span class="log-event log-removed">
-                            ➖ <strong><img src="https://static.divine-pride.net/images/items/item/{{.ItemID}}.png" alt="" class="item-icon"> <a href="/item?name={{.ItemName | urlquery}}">{{.ItemName}}</a></strong> is no longer for sale.
-                        </span>
-                    {{else if eq .EventType "NEW_LOW"}}
-                         <span class="log-event log-new-low">
-                            🏆 <span class="highlight">New historical low</span> for <strong><img src="https://static.divine-pride.net/images/items/item/{{.ItemID}}.png" alt="" class="item-icon"> <a href="/item?name={{.ItemName | urlquery}}">{{.ItemName}}</a></strong>!
-                            <small>({{.Details.price}} zeny, Qty: {{printf "%.0f" .Details.quantity}} by {{.Details.seller}})</small>
-                        </span>
-                    {{end}}
-                </li>
-                {{end}}
-            </ul>
-        </div>
-        {{else}}
-        <p>No market activity has been recorded yet.</p>
-        {{end}}
+        <canvas id="playerChart"></canvas>
     </div>
+
     <script>
+        const playerData = {{.PlayerDataJSON}};
+
+        const labels = playerData.map(p => p.Timestamp);
+        const counts = playerData.map(p => p.Count);
+
+        const ctx = document.getElementById('playerChart').getContext('2d');
+        const playerChart = new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: labels,
+                datasets: [{
+                    label: 'Online Players',
+                    data: counts,
+                    borderColor: 'rgba(0, 123, 255, 1)',
+                    backgroundColor: 'rgba(0, 123, 255, 0.2)',
+                    borderWidth: 2,
+                    fill: true,
+                    tension: 0.1,
+                    pointRadius: 2,
+                    pointHoverRadius: 5
+                }]
+            },
+            options: {
+                scales: {
+                    y: {
+                        beginAtZero: false,
+                        title: {
+                            display: true,
+                            text: 'Player Count'
+                        }
+                    },
+                    x: {
+                         title: {
+                            display: true,
+                            text: 'Date & Time'
+                        }
+                    }
+                },
+                plugins: {
+                    tooltip: {
+                        callbacks: {
+                            label: function(context) {
+                                return ` Players: ${context.parsed.y}`;
+                            }
+                        }
+                    }
+                }
+            }
+        });
+
+        // Time ago script for the header
         document.addEventListener('DOMContentLoaded', () => {
             const timeAgoSpan = document.getElementById('time-ago');
             const lastUpdateElement = document.querySelector('[data-timestamp]');

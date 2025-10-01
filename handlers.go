@@ -672,3 +672,54 @@ func getLastScrapeTime() string {
 	}
 	return "Never"
 }
+
+// In handlers.go
+
+// ... add this new handler function ...
+
+// playerCountHandler serves the page with a graph of online player history.
+func playerCountHandler(w http.ResponseWriter, r *http.Request) {
+	rows, err := db.Query("SELECT timestamp, count FROM player_history ORDER BY timestamp ASC")
+	if err != nil {
+		http.Error(w, "Could not query for player history", http.StatusInternalServerError)
+		log.Printf("❌ Could not query for player history: %v", err)
+		return
+	}
+	defer rows.Close()
+
+	var playerHistory []PlayerCountPoint
+	for rows.Next() {
+		var point PlayerCountPoint
+		var timestampStr string
+		if err := rows.Scan(&timestampStr, &point.Count); err != nil {
+			log.Printf("⚠️ Failed to scan player history row: %v", err)
+			continue
+		}
+		parsedTime, err := time.Parse(time.RFC3339, timestampStr)
+		if err == nil {
+			point.Timestamp = parsedTime.Format("2006-01-02 15:04")
+		} else {
+			point.Timestamp = timestampStr
+		}
+		playerHistory = append(playerHistory, point)
+	}
+
+	playerHistoryJSON, err := json.Marshal(playerHistory)
+	if err != nil {
+		http.Error(w, "Failed to create chart data", http.StatusInternalServerError)
+		return
+	}
+
+	tmpl, err := template.ParseFiles("players.html")
+	if err != nil {
+		http.Error(w, "Could not load players template", http.StatusInternalServerError)
+		log.Printf("❌ Could not load players.html template: %v", err)
+		return
+	}
+
+	data := PlayerCountPageData{
+		PlayerDataJSON: template.JS(playerHistoryJSON),
+		LastScrapeTime: getLastScrapeTime(),
+	}
+	tmpl.Execute(w, data)
+}

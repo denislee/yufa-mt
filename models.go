@@ -156,3 +156,15 @@ type HistoryPageData struct {
 	AllListings        []Item
 	LastScrapeTime     string
 }
+
+// PlayerCountPoint represents a single data point for the player history chart.
+type PlayerCountPoint struct {
+	Timestamp string `json:"Timestamp"`
+	Count     int    `json:"Count"`
+}
+
+// PlayerCountPageData holds data for the player count history page template.
+type PlayerCountPageData struct {
+	PlayerDataJSON template.JS
+	LastScrapeTime string
+}

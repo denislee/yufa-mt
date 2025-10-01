@@ -15,16 +15,112 @@ import (
 	"github.com/chromedp/chromedp"
 )
 
-// startBackgroundScraper starts a ticker to scrape data at a fixed interval.
-func startBackgroundScraper() {
-	ticker := time.NewTicker(5 * time.Minute)
-	defer ticker.Stop()
-	go scrapeData()
-	for {
-		log.Printf("🕒 Waiting for the next 5-minute schedule...")
-		<-ticker.C
-		scrapeData()
+// In scraper.go
+
+// In scraper.go
+
+// scrapeAndStorePlayerCount fetches the online player count and saves it if it has changed.
+func scrapeAndStorePlayerCount() {
+	log.Println("📊 Checking player count...")
+
+	ctx, cancel := chromedp.NewContext(context.Background())
+	defer cancel()
+	ctx, cancel = context.WithTimeout(ctx, 30*time.Second) // 30-second timeout
+	defer cancel()
+
+	var htmlContent string
+	err := chromedp.Run(ctx,
+		//chromedp.Navigate("https://projetoyufa.com/info"),
+		chromedp.Navigate("https://projetoyufa.com/download"),
+		// This is the key change: Wait for the "Loading..." overlay to disappear.
+		// This is a much more reliable signal that the page is ready.
+		// The selector targets the main div of the loading screen.
+		//		chromedp.WaitNotVisible(`div.fixed.z-50`),
+		chromedp.OuterHTML("html", &htmlContent),
+	)
+
+	if err != nil {
+		log.Printf("❌ Failed to get player info page: %v", err)
+		return
 	}
+
+	// For debugging, you can uncomment this to see the final HTML
+	//log.Printf("DEBUG: Retrieved HTML:\n%s\n", htmlContent)
+
+	doc, err := goquery.NewDocumentFromReader(strings.NewReader(htmlContent))
+	if err != nil {
+		log.Printf("❌ Failed to parse player info HTML: %v", err)
+		return
+	}
+
+	var onlineCount int
+	var found bool
+
+	// This selector correctly finds the <p> tag containing "Online".
+	// The .Text() method automatically handles the HTML comment.
+	selection := doc.Find("p:contains('Online')")
+
+	if selection.Length() > 0 {
+		fullText := selection.First().Text() // e.g., "Online 120"
+		re := regexp.MustCompile(`\d+`)
+		numStr := re.FindString(fullText) // "120"
+		if num, err := strconv.Atoi(numStr); err == nil {
+			onlineCount = num
+			found = true
+		}
+	}
+
+	if !found {
+		log.Println("⚠️ Could not find player count on the info page after successful load.")
+		return
+	}
+
+	var lastCount int
+	err = db.QueryRow("SELECT count FROM player_history ORDER BY timestamp DESC LIMIT 1").Scan(&lastCount)
+	if err != nil && err != sql.ErrNoRows {
+		log.Printf("⚠️ Could not query for last player count: %v", err)
+		return
+	}
+
+	if onlineCount == lastCount {
+		return
+	}
+
+	retrievalTime := time.Now().Format(time.RFC3339)
+	_, err = db.Exec("INSERT INTO player_history (timestamp, count) VALUES (?, ?)", retrievalTime, onlineCount)
+	if err != nil {
+		log.Printf("❌ Failed to insert new player count: %v", err)
+		return
+	}
+
+	log.Printf("✅ Player count changed. New count: %d", onlineCount)
+}
+
+// startBackgroundJobs starts all recurring background tasks.
+func startBackgroundJobs() {
+	// --- Market Scraper ---
+	go func() {
+		ticker := time.NewTicker(5 * time.Minute)
+		defer ticker.Stop()
+		scrapeData() // Run once immediately on start
+		for {
+			log.Printf("🕒 Waiting for the next 5-minute market scrape schedule...")
+			<-ticker.C
+			scrapeData()
+		}
+	}()
+
+	// --- Player Count Scraper ---
+	go func() {
+		ticker := time.NewTicker(1 * time.Minute)
+		defer ticker.Stop()
+		scrapeAndStorePlayerCount() // Run once immediately on start
+		for {
+			log.Printf("🕒 Waiting for the next 1-minute player count schedule...")
+			<-ticker.C
+			scrapeAndStorePlayerCount()
+		}
+	}()
 }
 
 // scrapeData performs a single scrape of the market data.

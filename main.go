@@ -16,13 +16,14 @@ func main() {
 
 	// Start background tasks.
 	go populateMissingCachesOnStartup() // Verifies and populates the item details cache on startup.
-	go startBackgroundScraper()         // Starts the recurring market data scraper.
+	go startBackgroundJobs()            // Starts all recurring scrapers.
 
 	// Register all HTTP routes to their handler functions.
-	http.HandleFunc("/", summaryHandler)           // Main page showing item summaries.
-	http.HandleFunc("/full-list", fullListHandler) // Detailed view of all market listings.
-	http.HandleFunc("/item", itemHistoryHandler)   // Historical price chart and details for a single item.
-	http.HandleFunc("/activity", activityHandler)  // Log of recent market events (items added/removed).
+	http.HandleFunc("/", summaryHandler)            // Main page showing item summaries.
+	http.HandleFunc("/full-list", fullListHandler)  // Detailed view of all market listings.
+	http.HandleFunc("/item", itemHistoryHandler)    // Historical price chart and details for a single item.
+	http.HandleFunc("/activity", activityHandler)   // Log of recent market events (items added/removed).
+	http.HandleFunc("/players", playerCountHandler) // Shows a graph of online player counts over time.
 
 	// Start the web server.
 	port := "8080"

@@ -82,5 +82,15 @@ func initDB(filepath string) (*sql.DB, error) {
 		return nil, fmt.Errorf("could not create rms_item_cache table: %w", err)
 	}
 
+	// SQL statement to create the 'player_history' table.
+	createPlayerHistoryTableSQL := `
+	CREATE TABLE IF NOT EXISTS player_history (
+		"timestamp" TEXT NOT NULL PRIMARY KEY,
+		"count" INTEGER NOT NULL
+	);`
+	if _, err = db.Exec(createPlayerHistoryTableSQL); err != nil {
+		return nil, fmt.Errorf("could not create player_history table: %w", err)
+	}
+
 	return db, nil
 }
