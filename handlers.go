@@ -12,6 +12,76 @@ import (
 	"time"
 )
 
+// Define recurring server events.
+var definedEvents = []EventDefinition{
+	{
+		Name:      "Battlegrounds",
+		StartTime: "20:00",
+		EndTime:   "21:00",
+		Days:      []time.Weekday{time.Monday, time.Tuesday, time.Wednesday, time.Thursday, time.Friday, time.Saturday, time.Sunday},
+	},
+	{
+		Name:      "War of Emperium",
+		StartTime: "22:00",
+		EndTime:   "22:00",
+		Days:      []time.Weekday{time.Sunday},
+	},
+}
+
+// generateEventIntervals creates a list of event occurrences within a given time window,
+// but only for days that have corresponding data points.
+func generateEventIntervals(viewStart, viewEnd time.Time, events []EventDefinition, activeDates map[string]struct{}) []map[string]interface{} {
+	var intervals []map[string]interface{}
+	// Normalize to the start of the day to ensure the loop includes the first day.
+	loc := viewStart.Location()
+	currentDay := time.Date(viewStart.Year(), viewStart.Month(), viewStart.Day(), 0, 0, 0, 0, loc)
+
+	for currentDay.Before(viewEnd) {
+		// Check if the current day has any player data before generating event overlays.
+		dateStr := currentDay.Format("2006-01-02")
+		if _, exists := activeDates[dateStr]; !exists {
+			// Move to the next day if no data exists for the current one.
+			currentDay = currentDay.Add(24 * time.Hour)
+			continue
+		}
+
+		for _, event := range events {
+			isEventDay := false
+			for _, dayOfWeek := range event.Days {
+				if currentDay.Weekday() == dayOfWeek {
+					isEventDay = true
+					break
+				}
+			}
+
+			if isEventDay {
+				// Parse the event's start and end times for the current day.
+				eventStartStr := fmt.Sprintf("%s %s", currentDay.Format("2006-01-02"), event.StartTime)
+				eventEndStr := fmt.Sprintf("%s %s", currentDay.Format("2006-01-02"), event.EndTime)
+
+				eventStart, err1 := time.ParseInLocation("2006-01-02 15:04", eventStartStr, loc)
+				eventEnd, err2 := time.ParseInLocation("2006-01-02 15:04", eventEndStr, loc)
+
+				if err1 != nil || err2 != nil {
+					continue // Skip if times are invalid
+				}
+
+				// Add the event only if it overlaps with the user's selected view window.
+				if eventStart.Before(viewEnd) && eventEnd.After(viewStart) {
+					intervals = append(intervals, map[string]interface{}{
+						"name":  event.Name,
+						"start": eventStart.Format("2006-01-02 15:04"),
+						"end":   eventEnd.Format("2006-01-02 15:04"),
+					})
+				}
+			}
+		}
+		// Move to the next day.
+		currentDay = currentDay.Add(24 * time.Hour)
+	}
+	return intervals
+}
+
 // summaryHandler serves the main summary page (renamed from viewHandler)
 func summaryHandler(w http.ResponseWriter, r *http.Request) {
 	if err := r.ParseForm(); err != nil {
@@ -686,24 +756,26 @@ func playerCountHandler(w http.ResponseWriter, r *http.Request) {
 
 	var whereClause string
 	var params []interface{}
+	now := time.Now()
+	var viewStart time.Time
+
 	switch interval {
 	case "30m":
-		whereClause = "WHERE timestamp >= ?"
-		params = append(params, time.Now().Add(-30*time.Minute).Format(time.RFC3339))
+		viewStart = now.Add(-30 * time.Minute)
 	case "6h":
-		whereClause = "WHERE timestamp >= ?"
-		params = append(params, time.Now().Add(-6*time.Hour).Format(time.RFC3339))
+		viewStart = now.Add(-6 * time.Hour)
+	case "24h":
+		viewStart = now.Add(-24 * time.Hour)
 	case "7d":
-		whereClause = "WHERE timestamp >= ?"
-		params = append(params, time.Now().Add(-7*24*time.Hour).Format(time.RFC3339))
+		viewStart = now.Add(-7 * 24 * time.Hour)
 	case "30d":
-		whereClause = "WHERE timestamp >= ?"
-		params = append(params, time.Now().Add(-30*24*time.Hour).Format(time.RFC3339))
+		viewStart = now.Add(-30 * 24 * time.Hour)
 	default:
 		interval = "7d" // Fallback to default if an invalid value is passed
-		whereClause = "WHERE timestamp >= ?"
-		params = append(params, time.Now().Add(-7*24*time.Hour).Format(time.RFC3339))
+		viewStart = now.Add(-7 * 24 * time.Hour)
 	}
+	whereClause = "WHERE timestamp >= ?"
+	params = append(params, viewStart.Format(time.RFC3339))
 
 	query := fmt.Sprintf("SELECT timestamp, count FROM player_history %s ORDER BY timestamp ASC", whereClause)
 	rows, err := db.Query(query, params...)
@@ -715,6 +787,9 @@ func playerCountHandler(w http.ResponseWriter, r *http.Request) {
 	defer rows.Close()
 
 	var playerHistory []PlayerCountPoint
+	// Create a set of dates that have player data to filter event generation.
+	activeDatesWithData := make(map[string]struct{})
+
 	for rows.Next() {
 		var point PlayerCountPoint
 		var timestampStr string
@@ -725,6 +800,9 @@ func playerCountHandler(w http.ResponseWriter, r *http.Request) {
 		parsedTime, err := time.Parse(time.RFC3339, timestampStr)
 		if err == nil {
 			point.Timestamp = parsedTime.Format("2006-01-02 15:04")
+			// Add the date part of the timestamp to our set.
+			datePart := parsedTime.Format("2006-01-02")
+			activeDatesWithData[datePart] = struct{}{}
 		} else {
 			point.Timestamp = timestampStr
 		}
@@ -734,6 +812,14 @@ func playerCountHandler(w http.ResponseWriter, r *http.Request) {
 	playerHistoryJSON, err := json.Marshal(playerHistory)
 	if err != nil {
 		http.Error(w, "Failed to create chart data", http.StatusInternalServerError)
+		return
+	}
+
+	// Generate event intervals for the selected view, filtered by days with actual player data.
+	eventIntervals := generateEventIntervals(viewStart, now, definedEvents, activeDatesWithData)
+	eventIntervalsJSON, err := json.Marshal(eventIntervals)
+	if err != nil {
+		http.Error(w, "Failed to create event data", http.StatusInternalServerError)
 		return
 	}
 
@@ -748,6 +834,7 @@ func playerCountHandler(w http.ResponseWriter, r *http.Request) {
 		PlayerDataJSON:   template.JS(playerHistoryJSON),
 		LastScrapeTime:   getLastScrapeTime(),
 		SelectedInterval: interval,
+		EventDataJSON:    template.JS(eventIntervalsJSON),
 	}
 	tmpl.Execute(w, data)
 }

@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Yufa Market Tracker / Player Count</title>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-annotation@3.0.1/dist/chartjs-plugin-annotation.min.js"></script>
     <style>
         /* --- General & Typography --- */
         body {
@@ -63,12 +64,20 @@
             color: #ffffff;
             background-color: #007bff;
         }
-        /* --- Time Filters --- */
+        /* --- Filters & Options --- */
+         .filters-and-options {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 16px;
+            flex-wrap: wrap;
+            gap: 10px;
+        }
         .time-filters {
             display: flex;
             gap: 8px;
-            margin-bottom: 16px;
             justify-content: center;
+            flex-grow: 1;
         }
         .time-filters a {
             background-color: #e9ecef;
@@ -89,6 +98,12 @@
             color: #ffffff;
             border-color: #0056b3;
         }
+        .view-options {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 0.9em;
+        }
     </style>
 </head>
 <body>
@@ -107,22 +122,61 @@
         </div>
         <h2>Online Player History</h2>
 
-        <div class="time-filters">
-            <a href="/players?interval=30m" class="{{if eq .SelectedInterval "30m"}}active{{end}}">Last 30 Mins</a>
-            <a href="/players?interval=6h" class="{{if eq .SelectedInterval "6h"}}active{{end}}">Last 6 Hours</a>
-            <a href="/players?interval=7d" class="{{if eq .SelectedInterval "7d"}}active{{end}}">Last 7 Days</a>
-            <a href="/players?interval=30d" class="{{if eq .SelectedInterval "30d"}}active{{end}}">Last 30 Days</a>
+        <div class="filters-and-options">
+            <div class="time-filters">
+                <a href="/players?interval=30m" class="{{if eq .SelectedInterval "30m"}}active{{end}}">Last 30 Mins</a>
+                <a href="/players?interval=6h" class="{{if eq .SelectedInterval "6h"}}active{{end}}">Last 6 Hours</a>
+                <a href="/players?interval=24h" class="{{if eq .SelectedInterval "24h"}}active{{end}}">Last 24 Hours</a>
+                <a href="/players?interval=7d" class="{{if eq .SelectedInterval "7d"}}active{{end}}">Last 7 Days</a>
+                <a href="/players?interval=30d" class="{{if eq .SelectedInterval "30d"}}active{{end}}">Last 30 Days</a>
+            </div>
+             <div class="view-options">
+                <input type="checkbox" id="toggleEvents" checked>
+                <label for="toggleEvents">Show Events</label>
+            </div>
         </div>
+
 
         <canvas id="playerChart"></canvas>
     </div>
 
     <script>
         const playerData = {{.PlayerDataJSON}};
+        const eventData = {{.EventDataJSON}};
 
         const labels = playerData.map(p => p.Timestamp);
         const counts = playerData.map(p => p.Count);
 
+        // --- Event Annotation Logic ---
+        const eventColors = {
+            'Battlegrounds': 'rgba(255, 159, 64, 0.2)', // Orange
+            'War of Emperium': 'rgba(255, 99, 132, 0.2)', // Red
+            'Default': 'rgba(153, 102, 255, 0.2)' // Purple
+        };
+
+        function createAnnotations(events) {
+            if (!events) return {};
+            return events.map(event => ({
+                type: 'box',
+                xMin: event.start,
+                xMax: event.end,
+                backgroundColor: eventColors[event.name] || eventColors['Default'],
+                borderWidth: 0,
+                label: {
+                    content: event.name,
+                    display: true,
+                    position: 'start',
+                    color: 'rgba(0,0,0,0.6)',
+                    font: {
+                        size: 10
+                    }
+                }
+            }));
+        }
+
+        const initialAnnotations = createAnnotations(eventData);
+
+        // --- Chart Configuration ---
         const ctx = document.getElementById('playerChart').getContext('2d');
         const playerChart = new Chart(ctx, {
             type: 'line',
@@ -163,10 +217,24 @@
                                 return ` Players: ${context.parsed.y}`;
                             }
                         }
+                    },
+                    annotation: {
+                        annotations: initialAnnotations
                     }
                 }
             }
         });
+
+        // --- Event Listeners ---
+        document.getElementById('toggleEvents').addEventListener('change', (e) => {
+            if (e.target.checked) {
+                playerChart.options.plugins.annotation.annotations = createAnnotations(eventData);
+            } else {
+                playerChart.options.plugins.annotation.annotations = {};
+            }
+            playerChart.update();
+        });
+
 
         // Time ago script for the header
         document.addEventListener('DOMContentLoaded', () => {

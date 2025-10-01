@@ -3,6 +3,7 @@ package main
 import (
 	"database/sql"
 	"html/template"
+	"time"
 )
 
 // Item represents a single listing scraped from the market.
@@ -107,6 +108,14 @@ type RMSDrop struct {
 	Rate    string `json:"Rate"`
 }
 
+// EventDefinition defines a recurring event with a name, time, and days of the week.
+type EventDefinition struct {
+	Name      string
+	StartTime string // "HH:MM"
+	EndTime   string // "HH:MM"
+	Days      []time.Weekday
+}
+
 // --- Page Data Structs for HTML Templates ---
 
 // SummaryPageData holds all data needed for the main summary page template.
@@ -168,5 +177,6 @@ type PlayerCountPageData struct {
 	PlayerDataJSON   template.JS
 	LastScrapeTime   string
 	SelectedInterval string
+	EventDataJSON    template.JS
 }
 
