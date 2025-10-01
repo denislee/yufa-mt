@@ -153,155 +153,202 @@
         const playerData = {{.PlayerDataJSON}};
         const eventData = {{.EventDataJSON}};
 
-        const labels = playerData.map(p => p.Timestamp);
-        const playerCounts = playerData.map(p => p.Count);
-        const sellerCounts = playerData.map(p => p.SellerCount);
-        const deltaCounts = playerData.map(p => p.Delta);
-
-        // --- Calculate a fixed Y-axis range based on all data ---
-        const allCounts = [...playerCounts, ...sellerCounts, ...deltaCounts].filter(c => c !== null);
-        const maxDataValue = allCounts.length > 0 ? Math.max(...allCounts) : 0;
-
-        // Add 5% padding and round to a "nice" number (nearest 10)
-        const chartMaxY = Math.ceil((maxDataValue * 1.05) / 10) * 10;
-
-        // --- Event Annotation Logic ---
-        const eventColors = {
-            'Battlegrounds': 'rgba(255, 159, 64, 0.2)', // Orange
-            'War of Emperium': 'rgba(255, 99, 132, 0.2)', // Red
-            'Default': 'rgba(153, 102, 255, 0.2)' // Purple
-        };
-
-        function createAnnotations(events) {
-            if (!events) return {};
-            return events.map(event => ({
-                type: 'box',
-                xMin: event.start,
-                xMax: event.end,
-                backgroundColor: eventColors[event.name] || eventColors['Default'],
-                borderWidth: 0,
-                label: {
-                    content: event.name,
-                    display: true,
-                    position: 'start',
-                    color: 'rgba(0,0,0,0.6)',
-                    font: {
-                        size: 10
-                    }
-                }
-            }));
-        }
-
-        const initialAnnotations = createAnnotations(eventData);
-
-        // --- Chart Configuration ---
-        const ctx = document.getElementById('playerChart').getContext('2d');
-        const playerChart = new Chart(ctx, {
-            type: 'line',
-            data: {
-                labels: labels,
-                datasets: [{
-                    label: 'Online Players',
-                    data: playerCounts,
-                    borderColor: 'rgba(0, 123, 255, 1)',
-                    backgroundColor: 'rgba(0, 123, 255, 0.2)',
-                    borderWidth: 2,
-                    fill: true,
-                    tension: 0.1,
-                    pointRadius: 2,
-                    pointHoverRadius: 5,
-                },
-                {
-                    label: 'Sellers',
-                    data: sellerCounts,
-                    borderColor: 'rgba(40, 167, 69, 1)',
-                    backgroundColor: 'rgba(40, 167, 69, 0.2)',
-                    borderWidth: 2,
-                    fill: true,
-                    tension: 0.1,
-                    pointRadius: 2,
-                    pointHoverRadius: 5,
-                },
-                {
-                    label: 'Active Players (Delta)',
-                    data: deltaCounts,
-                    borderColor: 'rgba(255, 193, 7, 1)',
-                    backgroundColor: 'rgba(255, 193, 7, 0.2)',
-                    borderWidth: 2,
-                    fill: true,
-                    tension: 0.1,
-                    pointRadius: 2,
-                    pointHoverRadius: 5,
-                }]
-            },
-            options: {
-                scales: {
-                    y: {
-                        min: 0, // Set the fixed minimum for the Y-axis
-                        max: chartMaxY, // Set the fixed maximum for the Y-axis
-                        title: {
-                            display: true,
-                            text: 'Count'
-                        }
-                    },
-                    x: {
-                         title: {
-                            display: true,
-                            text: 'Date & Time'
-                        }
-                    }
-                },
-                plugins: {
-                    tooltip: {
-                       mode: 'index',
-                       intersect: false,
-                    },
-                    annotation: {
-                        annotations: initialAnnotations
-                    }
-                }
-            }
-        });
-
-        // --- Event Listeners ---
-        const togglePlayers = document.getElementById('togglePlayers');
-        const toggleSellers = document.getElementById('toggleSellers');
-        const toggleEvents = document.getElementById('toggleEvents');
-        const toggleDelta = document.getElementById('toggleDelta');
-
-        function updateChartVisibility() {
-            const playersVisible = togglePlayers.checked;
-            const sellersVisible = toggleSellers.checked;
-            const deltaVisible = toggleDelta.checked;
-
-            playerChart.setDatasetVisibility(0, playersVisible); // Player dataset is at index 0
-            playerChart.setDatasetVisibility(1, sellersVisible); // Seller dataset is at index 1
-            playerChart.setDatasetVisibility(2, deltaVisible); // Delta dataset is at index 2
-            
-            playerChart.options.scales.y.display = playersVisible || sellersVisible || deltaVisible;
-
-            playerChart.update();
-        }
-        
-        togglePlayers.addEventListener('change', updateChartVisibility);
-        toggleSellers.addEventListener('change', updateChartVisibility);
-        toggleDelta.addEventListener('change', updateChartVisibility);
-
-        toggleEvents.addEventListener('change', (e) => {
-            if (e.target.checked) {
-                playerChart.options.plugins.annotation.annotations = createAnnotations(eventData);
-            } else {
-                playerChart.options.plugins.annotation.annotations = {};
-            }
-            playerChart.update();
-        });
-
-        // Initially hide the delta dataset
-        updateChartVisibility();
-
-
-        // Time ago script for the header
         document.addEventListener('DOMContentLoaded', () => {
+            const togglePlayers = document.getElementById('togglePlayers');
+            const toggleSellers = document.getElementById('toggleSellers');
+            const toggleDelta = document.getElementById('toggleDelta');
+            const toggleEvents = document.getElementById('toggleEvents');
+
+            // --- Set checkbox states from URL parameters on page load ---
+            const urlParams = new URLSearchParams(window.location.search);
+            const hasViewParams = urlParams.has('showPlayers') || urlParams.has('showSellers') || urlParams.has('showDelta') || urlParams.has('showEvents');
+
+            if (hasViewParams) {
+                // If view params are present, they become the source of truth.
+                // Any parameter not present is considered false.
+                togglePlayers.checked = urlParams.has('showPlayers');
+                toggleSellers.checked = urlParams.has('showSellers');
+                toggleDelta.checked = urlParams.has('showDelta');
+                toggleEvents.checked = urlParams.has('showEvents');
+            }
+
+            // --- Update time-interval links whenever a view filter checkbox changes ---
+            function updateFilterLinks() {
+                const viewParams = new URLSearchParams();
+                if (togglePlayers.checked) viewParams.set('showPlayers', '1');
+                if (toggleSellers.checked) viewParams.set('showSellers', '1');
+                if (toggleDelta.checked) viewParams.set('showDelta', '1');
+                if (toggleEvents.checked) viewParams.set('showEvents', '1');
+
+                document.querySelectorAll('.time-filters a').forEach(link => {
+                    // Use the link's href as a base to construct the new URL
+                    const linkUrl = new URL(link.href, window.location.origin);
+                    const interval = linkUrl.searchParams.get('interval');
+                    
+                    const newParams = new URLSearchParams();
+                    if (interval) {
+                        newParams.set('interval', interval);
+                    }
+
+                    // Append the current view filter states to the interval links
+                    for (const [key, value] of viewParams.entries()) {
+                        newParams.set(key, value);
+                    }
+                    
+                    link.href = `${linkUrl.pathname}?${newParams.toString()}`;
+                });
+            }
+
+            // Attach event listeners to all filter checkboxes
+            togglePlayers.addEventListener('change', updateFilterLinks);
+            toggleSellers.addEventListener('change', updateFilterLinks);
+            toggleDelta.addEventListener('change', updateFilterLinks);
+            toggleEvents.addEventListener('change', updateFilterLinks);
+
+            // Initial call to set the hrefs correctly on page load
+            updateFilterLinks();
+
+
+            // --- Chart Configuration (and remaining original script) ---
+            const labels = playerData.map(p => p.Timestamp);
+            const playerCounts = playerData.map(p => p.Count);
+            const sellerCounts = playerData.map(p => p.SellerCount);
+            const deltaCounts = playerData.map(p => p.Delta);
+
+            // --- Calculate a fixed Y-axis range based on all data ---
+            const allCounts = [...playerCounts, ...sellerCounts, ...deltaCounts].filter(c => c !== null);
+            const maxDataValue = allCounts.length > 0 ? Math.max(...allCounts) : 0;
+            const chartMaxY = Math.ceil((maxDataValue * 1.05) / 10) * 10;
+
+            // --- Event Annotation Logic ---
+            const eventColors = {
+                'Battlegrounds': 'rgba(255, 159, 64, 0.2)', // Orange
+                'War of Emperium': 'rgba(255, 99, 132, 0.2)', // Red
+                'Default': 'rgba(153, 102, 255, 0.2)' // Purple
+            };
+
+            function createAnnotations(events) {
+                if (!events) return {};
+                return events.map(event => ({
+                    type: 'box',
+                    xMin: event.start,
+                    xMax: event.end,
+                    backgroundColor: eventColors[event.name] || eventColors['Default'],
+                    borderWidth: 0,
+                    label: {
+                        content: event.name,
+                        display: true,
+                        position: 'start',
+                        color: 'rgba(0,0,0,0.6)',
+                        font: {
+                            size: 10
+                        }
+                    }
+                }));
+            }
+
+            // Set initial annotations based on the (potentially modified) checkbox state
+            const initialAnnotations = toggleEvents.checked ? createAnnotations(eventData) : {};
+
+            const ctx = document.getElementById('playerChart').getContext('2d');
+            const playerChart = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: labels,
+                    datasets: [{
+                        label: 'Online Players',
+                        data: playerCounts,
+                        borderColor: 'rgba(0, 123, 255, 1)',
+                        backgroundColor: 'rgba(0, 123, 255, 0.2)',
+                        borderWidth: 2,
+                        fill: true,
+                        tension: 0.1,
+                        pointRadius: 2,
+                        pointHoverRadius: 5,
+                    },
+                    {
+                        label: 'Sellers',
+                        data: sellerCounts,
+                        borderColor: 'rgba(40, 167, 69, 1)',
+                        backgroundColor: 'rgba(40, 167, 69, 0.2)',
+                        borderWidth: 2,
+                        fill: true,
+                        tension: 0.1,
+                        pointRadius: 2,
+                        pointHoverRadius: 5,
+                    },
+                    {
+                        label: 'Active Players (Delta)',
+                        data: deltaCounts,
+                        borderColor: 'rgba(255, 193, 7, 1)',
+                        backgroundColor: 'rgba(255, 193, 7, 0.2)',
+                        borderWidth: 2,
+                        fill: true,
+                        tension: 0.1,
+                        pointRadius: 2,
+                        pointHoverRadius: 5,
+                    }]
+                },
+                options: {
+                    scales: {
+                        y: {
+                            min: 0,
+                            max: chartMaxY,
+                            title: {
+                                display: true,
+                                text: 'Count'
+                            }
+                        },
+                        x: {
+                             title: {
+                                display: true,
+                                text: 'Date & Time'
+                            }
+                        }
+                    },
+                    plugins: {
+                        tooltip: {
+                           mode: 'index',
+                           intersect: false,
+                        },
+                        annotation: {
+                            annotations: initialAnnotations
+                        }
+                    }
+                }
+            });
+
+            function updateChartVisibility() {
+                const playersVisible = togglePlayers.checked;
+                const sellersVisible = toggleSellers.checked;
+                const deltaVisible = toggleDelta.checked;
+
+                playerChart.setDatasetVisibility(0, playersVisible); // Player dataset is at index 0
+                playerChart.setDatasetVisibility(1, sellersVisible); // Seller dataset is at index 1
+                playerChart.setDatasetVisibility(2, deltaVisible); // Delta dataset is at index 2
+                
+                playerChart.options.scales.y.display = playersVisible || sellersVisible || deltaVisible;
+
+                playerChart.update();
+            }
+            
+            togglePlayers.addEventListener('change', updateChartVisibility);
+            toggleSellers.addEventListener('change', updateChartVisibility);
+            toggleDelta.addEventListener('change', updateChartVisibility);
+
+            toggleEvents.addEventListener('change', (e) => {
+                if (e.target.checked) {
+                    playerChart.options.plugins.annotation.annotations = createAnnotations(eventData);
+                } else {
+                    playerChart.options.plugins.annotation.annotations = {};
+                }
+                playerChart.update();
+            });
+
+            // Set initial chart visibility based on (potentially modified) checkbox states
+            updateChartVisibility();
+
+            // Time ago script for the header
             const timeAgoSpan = document.getElementById('time-ago');
             const lastUpdateElement = document.querySelector('[data-timestamp]');
             if (!lastUpdateElement) return;
