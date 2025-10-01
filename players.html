@@ -101,11 +101,15 @@
         .view-options {
             display: flex;
             align-items: center;
-            gap: 6px;
+            gap: 12px;
             font-size: 0.9em;
         }
         .view-options label {
-            margin-right: 8px;
+            display: flex;
+            align-items: center;
+            gap: 5px;
+            cursor: pointer;
+            user-select: none;
         }
     </style>
 </head>
@@ -134,14 +138,23 @@
                 <a href="/players?interval=30d" class="{{if eq .SelectedInterval "30d"}}active{{end}}">Last 30 Days</a>
             </div>
              <div class="view-options">
-                <input type="checkbox" id="togglePlayers">
-                <label for="togglePlayers">Online Players</label>
-                <input type="checkbox" id="toggleSellers">
-                <label for="toggleSellers">Sellers</label>
-                <input type="checkbox" id="toggleDelta" checked>
-                <label for="toggleDelta">Active Players (Delta)</label>
-                <input type="checkbox" id="toggleEvents" checked>
-                <label for="toggleEvents">Show Events</label>
+                <strong>Show:</strong>
+                <label>
+                    <input type="checkbox" id="togglePlayers">
+                    Players
+                </label>
+                <label>
+                    <input type="checkbox" id="toggleSellers">
+                    Sellers
+                </label>
+                <label>
+                    <input type="checkbox" id="toggleDelta" checked>
+                    Active (Δ)
+                </label>
+                <label>
+                    <input type="checkbox" id="toggleEvents" checked>
+                    Events
+                </label>
             </div>
         </div>
 
