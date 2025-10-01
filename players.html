@@ -63,6 +63,32 @@
             color: #ffffff;
             background-color: #007bff;
         }
+        /* --- Time Filters --- */
+        .time-filters {
+            display: flex;
+            gap: 8px;
+            margin-bottom: 16px;
+            justify-content: center;
+        }
+        .time-filters a {
+            background-color: #e9ecef;
+            padding: 6px 12px;
+            border-radius: 16px;
+            color: #495057;
+            font-size: 0.9em;
+            font-weight: 500;
+            border: 1px solid transparent;
+            transition: all 0.2s ease;
+        }
+        .time-filters a:hover {
+            background-color: #dee2e6;
+            text-decoration: none;
+        }
+        .time-filters a.active {
+            background-color: #007bff;
+            color: #ffffff;
+            border-color: #0056b3;
+        }
     </style>
 </head>
 <body>
@@ -80,6 +106,13 @@
             </nav>
         </div>
         <h2>Online Player History</h2>
+
+        <div class="time-filters">
+            <a href="/players?interval=30m" class="{{if eq .SelectedInterval "30m"}}active{{end}}">Last 30 Mins</a>
+            <a href="/players?interval=6h" class="{{if eq .SelectedInterval "6h"}}active{{end}}">Last 6 Hours</a>
+            <a href="/players?interval=7d" class="{{if eq .SelectedInterval "7d"}}active{{end}}">Last 7 Days</a>
+            <a href="/players?interval=30d" class="{{if eq .SelectedInterval "30d"}}active{{end}}">Last 30 Days</a>
+        </div>
 
         <canvas id="playerChart"></canvas>
     </div>

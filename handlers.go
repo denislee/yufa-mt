@@ -679,7 +679,34 @@ func getLastScrapeTime() string {
 
 // playerCountHandler serves the page with a graph of online player history.
 func playerCountHandler(w http.ResponseWriter, r *http.Request) {
-	rows, err := db.Query("SELECT timestamp, count FROM player_history ORDER BY timestamp ASC")
+	interval := r.URL.Query().Get("interval")
+	if interval == "" {
+		interval = "7d" // Default to 7 days
+	}
+
+	var whereClause string
+	var params []interface{}
+	switch interval {
+	case "30m":
+		whereClause = "WHERE timestamp >= ?"
+		params = append(params, time.Now().Add(-30*time.Minute).Format(time.RFC3339))
+	case "6h":
+		whereClause = "WHERE timestamp >= ?"
+		params = append(params, time.Now().Add(-6*time.Hour).Format(time.RFC3339))
+	case "7d":
+		whereClause = "WHERE timestamp >= ?"
+		params = append(params, time.Now().Add(-7*24*time.Hour).Format(time.RFC3339))
+	case "30d":
+		whereClause = "WHERE timestamp >= ?"
+		params = append(params, time.Now().Add(-30*24*time.Hour).Format(time.RFC3339))
+	default:
+		interval = "7d" // Fallback to default if an invalid value is passed
+		whereClause = "WHERE timestamp >= ?"
+		params = append(params, time.Now().Add(-7*24*time.Hour).Format(time.RFC3339))
+	}
+
+	query := fmt.Sprintf("SELECT timestamp, count FROM player_history %s ORDER BY timestamp ASC", whereClause)
+	rows, err := db.Query(query, params...)
 	if err != nil {
 		http.Error(w, "Could not query for player history", http.StatusInternalServerError)
 		log.Printf("❌ Could not query for player history: %v", err)
@@ -718,8 +745,10 @@ func playerCountHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	data := PlayerCountPageData{
-		PlayerDataJSON: template.JS(playerHistoryJSON),
-		LastScrapeTime: getLastScrapeTime(),
+		PlayerDataJSON:   template.JS(playerHistoryJSON),
+		LastScrapeTime:   getLastScrapeTime(),
+		SelectedInterval: interval,
 	}
 	tmpl.Execute(w, data)
 }
+
