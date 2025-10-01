@@ -161,11 +161,9 @@
         // --- Calculate a fixed Y-axis range based on all data ---
         const allCounts = [...playerCounts, ...sellerCounts, ...deltaCounts].filter(c => c !== null);
         const maxDataValue = allCounts.length > 0 ? Math.max(...allCounts) : 0;
-        const minDataValue = allCounts.length > 0 ? Math.min(...allCounts) : 0;
 
         // Add 5% padding and round to a "nice" number (nearest 10)
         const chartMaxY = Math.ceil((maxDataValue * 1.05) / 10) * 10;
-        const chartMinY = Math.floor((minDataValue * 0.95) / 10) * 10;
 
         // --- Event Annotation Logic ---
         const eventColors = {
@@ -239,7 +237,7 @@
             options: {
                 scales: {
                     y: {
-                        min: chartMinY, // Set the fixed minimum for the Y-axis
+                        min: 0, // Set the fixed minimum for the Y-axis
                         max: chartMaxY, // Set the fixed maximum for the Y-axis
                         title: {
                             display: true,
