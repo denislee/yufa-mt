@@ -112,7 +112,7 @@ func mapItemTypeToTabData(typeName string) ItemTypeTab {
 		tab.IconItemID = 5183 // B.B. Cap
 	case "Taming Item":
 		tab.ShortName = "Taming"
-		tab.IconItemID = 602 // Unripe Apple
+		tab.IconItemID = 632 // Unripe Apple
 	case "Usable Item":
 		tab.ShortName = "Usable"
 		tab.IconItemID = 601 // Fly Wing
@@ -324,7 +324,7 @@ func fullListHandler(w http.ResponseWriter, r *http.Request) {
 		{ID: "map_name", DisplayName: "Map Name"},
 		{ID: "map_coordinates", DisplayName: "Map Coords"},
 		{ID: "retrieved", DisplayName: "Date Retrieved"},
-		{ID: "availability", DisplayName: "Availability"},
+		//		{ID: "availability", DisplayName: "Availability"},
 	}
 	visibleColumns := make(map[string]bool)
 	columnParams := url.Values{}
