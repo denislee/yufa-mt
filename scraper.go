@@ -93,11 +93,11 @@ func scrapeAndStorePlayerCount() {
 	log.Printf("✅ Player/seller count updated. New values: %d players, %d sellers", onlineCount, sellerCount)
 }
 
-// scrapePlayerRankings scrapes player ranking data from all pages with enhanced logging and reliability.
-func scrapePlayerRankings() {
-	log.Println("🏆 [Rankings] Starting player rankings scrape...")
+// scrapePlayerCharacters scrapes player character data from all pages with enhanced logging and reliability.
+func scrapePlayerCharacters() {
+	log.Println("🏆 [Characters] Starting player character scrape...")
 
-	var allPlayers []PlayerRanking
+	var allPlayers []PlayerCharacter
 	const maxRetries = 3 // Maximum number of retries for a single page
 
 	allocOpts := append(chromedp.DefaultExecAllocatorOptions[:],
@@ -121,7 +121,7 @@ func scrapePlayerRankings() {
 			defer cancelTimeout()
 
 			url := fmt.Sprintf("https://projetoyufa.com/rankings?page=%d", page)
-			log.Printf("🏆 [Rankings] Scraping page %d (Attempt %d/%d)...", page, attempt, maxRetries)
+			log.Printf("🏆 [Characters] Scraping page %d (Attempt %d/%d)...", page, attempt, maxRetries)
 
 			err := chromedp.Run(taskCtx,
 				chromedp.Navigate(url),
@@ -136,33 +136,33 @@ func scrapePlayerRankings() {
 			}
 
 			// Error: Log the failure and decide whether to retry.
-			log.Printf("❌ [Rankings] Error on page %d, attempt %d/%d: %v", page, attempt, maxRetries, err)
+			log.Printf("❌ [Characters] Error on page %d, attempt %d/%d: %v", page, attempt, maxRetries, err)
 			if attempt < maxRetries {
-				log.Printf("🕒 [Rankings] Waiting 30 seconds before retrying...")
+				log.Printf("🕒 [Characters] Waiting 30 seconds before retrying...")
 				time.Sleep(30 * time.Second)
 			}
 		}
 
 		if !pageScrapedSuccessfully {
-			log.Printf("❌ [Rankings] All %d attempts failed for page %d. Aborting rankings scrape.", maxRetries, page)
+			log.Printf("❌ [Characters] All %d attempts failed for page %d. Aborting characters scrape.", maxRetries, page)
 			break // Exit the main page loop
 		}
 
 		doc, err := goquery.NewDocumentFromReader(strings.NewReader(htmlContent))
 		if err != nil {
-			log.Printf("❌ [Rankings] Failed to parse HTML for page %d: %v", page, err)
+			log.Printf("❌ [Characters] Failed to parse HTML for page %d: %v", page, err)
 			break
 		}
 
 		rows := doc.Find(`tbody[data-slot="table-body"] tr[data-slot="table-row"]`)
 		if rows.Length() == 0 {
-			log.Println("✅ [Rankings] No more player rows found on the page. Concluding scrape.")
+			log.Println("✅ [Characters] No more player rows found on the page. Concluding scrape.")
 			break // End of pages
 		}
-		log.Printf("🔎 [Rankings] Found %d player rows on page %d. Processing...", rows.Length(), page)
+		log.Printf("🔎 [Characters] Found %d player rows on page %d. Processing...", rows.Length(), page)
 
 		rows.Each(func(i int, s *goquery.Selection) {
-			var player PlayerRanking
+			var player PlayerCharacter
 			var parseErr error
 
 			cells := s.Find(`td[data-slot="table-cell"]`)
@@ -224,23 +224,23 @@ func scrapePlayerRankings() {
 	}
 
 	if len(allPlayers) == 0 {
-		log.Println("⚠️ [Rankings] Scrape finished with 0 total players found. Database will not be updated.")
+		log.Println("⚠️ [Characters] Scrape finished with 0 total players found. Database will not be updated.")
 		return
 	}
 
-	log.Printf("💾 [DB] Preparing to save %d player ranking records to the database...", len(allPlayers))
+	log.Printf("💾 [DB] Preparing to save %d player character records to the database...", len(allPlayers))
 
 	// Fetch existing player data for comparison.
 	log.Println("    -> [DB] Fetching existing player data for activity comparison...")
-	existingPlayers := make(map[string]PlayerRanking)
-	rows, err := db.Query("SELECT name, experience, last_active FROM rankings")
+	existingPlayers := make(map[string]PlayerCharacter)
+	rows, err := db.Query("SELECT name, experience, last_active FROM characters")
 	if err != nil {
-		log.Printf("❌ [DB] Failed to query existing rankings for comparison: %v", err)
+		log.Printf("❌ [DB] Failed to query existing characters for comparison: %v", err)
 		// Proceed with the assumption that all are new if the query fails.
 	} else {
 		defer rows.Close()
 		for rows.Next() {
-			var p PlayerRanking
+			var p PlayerCharacter
 			if err := rows.Scan(&p.Name, &p.Experience, &p.LastActive); err != nil {
 				log.Printf("    -> [DB] WARN: Failed to scan existing player row: %v", err)
 				continue
@@ -252,20 +252,20 @@ func scrapePlayerRankings() {
 
 	tx, err := db.Begin()
 	if err != nil {
-		log.Printf("❌ [DB] Failed to begin transaction for rankings: %v", err)
+		log.Printf("❌ [DB] Failed to begin transaction for characters: %v", err)
 		return
 	}
 	defer tx.Rollback()
 
-	log.Println("    -> [DB] Clearing existing rankings table...")
-	if _, err := tx.Exec("DELETE FROM rankings"); err != nil {
-		log.Printf("❌ [DB] Failed to clear rankings table: %v", err)
+	log.Println("    -> [DB] Clearing existing characters table...")
+	if _, err := tx.Exec("DELETE FROM characters"); err != nil {
+		log.Printf("❌ [DB] Failed to clear characters table: %v", err)
 		return
 	}
 
-	stmt, err := tx.Prepare(`INSERT INTO rankings (rank, name, base_level, job_level, experience, class, last_updated, last_active) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`)
+	stmt, err := tx.Prepare(`INSERT INTO characters (rank, name, base_level, job_level, experience, class, last_updated, last_active) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`)
 	if err != nil {
-		log.Printf("❌ [DB] Failed to prepare rankings insert statement: %v", err)
+		log.Printf("❌ [DB] Failed to prepare characters insert statement: %v", err)
 		return
 	}
 	defer stmt.Close()
@@ -281,16 +281,16 @@ func scrapePlayerRankings() {
 		}
 
 		if _, err := stmt.Exec(p.Rank, p.Name, p.BaseLevel, p.JobLevel, p.Experience, p.Class, updateTime, lastActiveTime); err != nil {
-			log.Printf("    -> [DB] WARN: Failed to insert ranking for player %s: %v", p.Name, err)
+			log.Printf("    -> [DB] WARN: Failed to insert character for player %s: %v", p.Name, err)
 		}
 	}
 
 	if err := tx.Commit(); err != nil {
-		log.Printf("❌ [DB] Failed to commit rankings transaction: %v", err)
+		log.Printf("❌ [DB] Failed to commit characters transaction: %v", err)
 		return
 	}
 
-	log.Printf("✅ [Rankings] Scrape and update complete. Saved %d player records.", len(allPlayers))
+	log.Printf("✅ [Characters] Scrape and update complete. Saved %d player records.", len(allPlayers))
 }
 
 // startBackgroundJobs starts all recurring background tasks.
@@ -319,15 +319,15 @@ func startBackgroundJobs() {
 		}
 	}()
 
-	// --- Player Rankings Scraper ---
+	// --- Player Characters Scraper ---
 	go func() {
 		ticker := time.NewTicker(30 * time.Minute)
 		defer ticker.Stop()
-		scrapePlayerRankings() // Run once immediately on start
+		scrapePlayerCharacters() // Run once immediately on start
 		for {
-			log.Printf("🕒 Waiting for the next 30-minute player ranking schedule...")
+			log.Printf("🕒 Waiting for the next 30-minute player character schedule...")
 			<-ticker.C
-			scrapePlayerRankings()
+			scrapePlayerCharacters()
 		}
 	}()
 }

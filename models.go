@@ -123,8 +123,8 @@ type ItemTypeTab struct {
 	IconItemID int
 }
 
-// PlayerRanking represents a single player's data from the rankings page.
-type PlayerRanking struct {
+// PlayerCharacter represents a single player's data from the characters page.
+type PlayerCharacter struct {
 	Rank       int
 	Name       string
 	BaseLevel  int
@@ -200,8 +200,8 @@ type PlayerCountPageData struct {
 	EventDataJSON    template.JS
 }
 
-type RankingsPageData struct {
-	Players        []PlayerRanking
+type CharacterPageData struct {
+	Players        []PlayerCharacter
 	LastScrapeTime string
 	// Search and Filter
 	SearchName    string
@@ -216,3 +216,4 @@ type RankingsPageData struct {
 	HasPrevPage  bool
 	HasNextPage  bool
 }
+

@@ -19,12 +19,12 @@ func main() {
 	go startBackgroundJobs()            // Starts all recurring scrapers.
 
 	// Register all HTTP routes to their handler functions.
-	http.HandleFunc("/", summaryHandler)            // Main page showing item summaries.
-	http.HandleFunc("/full-list", fullListHandler)  // Detailed view of all market listings.
-	http.HandleFunc("/item", itemHistoryHandler)    // Historical price chart and details for a single item.
-	http.HandleFunc("/activity", activityHandler)   // Log of recent market events (items added/removed).
-	http.HandleFunc("/players", playerCountHandler) // Shows a graph of online player counts over time.
-	http.HandleFunc("/rankings", rankingsHandler)   // Shows player rankings.
+	http.HandleFunc("/", summaryHandler)             // Main page showing item summaries.
+	http.HandleFunc("/full-list", fullListHandler)   // Detailed view of all market listings.
+	http.HandleFunc("/item", itemHistoryHandler)     // Historical price chart and details for a single item.
+	http.HandleFunc("/activity", activityHandler)    // Log of recent market events (items added/removed).
+	http.HandleFunc("/players", playerCountHandler)  // Shows a graph of online player counts over time.
+	http.HandleFunc("/characters", characterHandler) // Shows player characters.
 
 	// Start the web server.
 	port := "8080"
@@ -33,4 +33,3 @@ func main() {
 		log.Fatalf("❌ Failed to start web server: %v", err)
 	}
 }
-

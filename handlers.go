@@ -880,8 +880,8 @@ func playerCountHandler(w http.ResponseWriter, r *http.Request) {
 	tmpl.Execute(w, data)
 }
 
-// rankingsHandler serves the new player rankings page.
-func rankingsHandler(w http.ResponseWriter, r *http.Request) {
+// characterHandler serves the new player characters page.
+func characterHandler(w http.ResponseWriter, r *http.Request) {
 	// --- 1. Get query parameters for filtering and pagination ---
 	searchName := r.URL.Query().Get("name_query")
 	selectedClass := r.URL.Query().Get("class_filter")
@@ -894,7 +894,7 @@ func rankingsHandler(w http.ResponseWriter, r *http.Request) {
 
 	// --- 2. Get all unique classes for the filter dropdown ---
 	var allClasses []string
-	classRows, err := db.Query("SELECT DISTINCT class FROM rankings ORDER BY class ASC")
+	classRows, err := db.Query("SELECT DISTINCT class FROM characters ORDER BY class ASC")
 	if err != nil {
 		log.Printf("⚠️ Could not query for unique player classes: %v", err)
 	} else {
@@ -925,11 +925,11 @@ func rankingsHandler(w http.ResponseWriter, r *http.Request) {
 
 	// --- 4. Get the total count of matching players for pagination ---
 	var totalPlayers int
-	countQuery := fmt.Sprintf("SELECT COUNT(*) FROM rankings %s", whereClause)
+	countQuery := fmt.Sprintf("SELECT COUNT(*) FROM characters %s", whereClause)
 	err = db.QueryRow(countQuery, params...).Scan(&totalPlayers)
 	if err != nil {
-		http.Error(w, "Could not count player rankings", http.StatusInternalServerError)
-		log.Printf("❌ Could not count player rankings: %v", err)
+		http.Error(w, "Could not count player characters", http.StatusInternalServerError)
+		log.Printf("❌ Could not count player characters: %v", err)
 		return
 	}
 
@@ -946,7 +946,7 @@ func rankingsHandler(w http.ResponseWriter, r *http.Request) {
 	// --- 6. Fetch the paginated player data ---
 	query := fmt.Sprintf(`
 		SELECT rank, name, base_level, job_level, experience, class
-		FROM rankings
+		FROM characters
 		%s
 		ORDER BY rank ASC
 		LIMIT ? OFFSET ?
@@ -955,31 +955,31 @@ func rankingsHandler(w http.ResponseWriter, r *http.Request) {
 
 	rows, err := db.Query(query, finalParams...)
 	if err != nil {
-		http.Error(w, "Could not query for player rankings", http.StatusInternalServerError)
-		log.Printf("❌ Could not query for player rankings: %v", err)
+		http.Error(w, "Could not query for player characters", http.StatusInternalServerError)
+		log.Printf("❌ Could not query for player characters: %v", err)
 		return
 	}
 	defer rows.Close()
 
-	var players []PlayerRanking
+	var players []PlayerCharacter
 	for rows.Next() {
-		var p PlayerRanking
+		var p PlayerCharacter
 		if err := rows.Scan(&p.Rank, &p.Name, &p.BaseLevel, &p.JobLevel, &p.Experience, &p.Class); err != nil {
-			log.Printf("⚠️ Failed to scan player ranking row: %v", err)
+			log.Printf("⚠️ Failed to scan player character row: %v", err)
 			continue
 		}
 		players = append(players, p)
 	}
 
 	// --- 7. Load template and send data ---
-	tmpl, err := template.ParseFiles("rankings.html")
+	tmpl, err := template.ParseFiles("characters.html")
 	if err != nil {
-		http.Error(w, "Could not load rankings template", http.StatusInternalServerError)
-		log.Printf("❌ Could not load rankings.html template: %v", err)
+		http.Error(w, "Could not load characters template", http.StatusInternalServerError)
+		log.Printf("❌ Could not load characters.html template: %v", err)
 		return
 	}
 
-	data := RankingsPageData{
+	data := CharacterPageData{
 		Players:        players,
 		LastScrapeTime: getLastScrapeTime(),
 		SearchName:     searchName,
@@ -995,3 +995,4 @@ func rankingsHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	tmpl.Execute(w, data)
 }
+
