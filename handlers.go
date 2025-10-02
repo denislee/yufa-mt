@@ -816,8 +816,47 @@ func playerCountHandler(w http.ResponseWriter, r *http.Request) {
 	whereClause = "WHERE timestamp >= ?"
 	params = append(params, viewStart.Format(time.RFC3339))
 
-	query := fmt.Sprintf("SELECT timestamp, count, seller_count FROM player_history %s ORDER BY timestamp ASC", whereClause)
-	rows, err := db.Query(query, params...)
+	const maxGraphDataPoints = 720 // Set a reasonable limit for data points on the graph
+	var query string
+	var rows *sql.Rows
+	var err error
+
+	duration := now.Sub(viewStart)
+	// Only downsample if the total number of minutes in the interval exceeds our desired max data points.
+	// This prevents downsampling on short intervals like 30m or 6h.
+	if duration.Minutes() > maxGraphDataPoints {
+		// Calculate the size of each time bucket in seconds.
+		// We divide the total duration by the number of points we want.
+		// Ensure the bucket is at least 60s (our scrape interval) to make sense.
+		bucketSizeInSeconds := int(duration.Seconds()) / maxGraphDataPoints
+		if bucketSizeInSeconds < 60 {
+			bucketSizeInSeconds = 60
+		}
+
+		log.Printf("📊 Player graph: Downsampling data for '%s' interval. Bucket size: %d seconds.", interval, bucketSizeInSeconds)
+
+		// This query groups data into time buckets.
+		// It takes the average player/seller count within each bucket.
+		// The timestamp for the bucket is the earliest timestamp that falls into it.
+		// `unixepoch(timestamp) / %d` creates the grouping key for the time buckets.
+		query = fmt.Sprintf(`
+			SELECT
+				MIN(timestamp),
+				CAST(AVG(count) AS INTEGER),
+				CAST(AVG(seller_count) AS INTEGER)
+			FROM player_history
+			%s
+			GROUP BY CAST(unixepoch(timestamp) / %d AS INTEGER)
+			ORDER BY 1 ASC`, whereClause, bucketSizeInSeconds)
+		rows, err = db.Query(query, params...)
+
+	} else {
+		// If we don't need to downsample, use the original query to get all data points.
+		log.Printf("📊 Player graph: Fetching all data points for '%s' interval.", interval)
+		query = fmt.Sprintf("SELECT timestamp, count, seller_count FROM player_history %s ORDER BY timestamp ASC", whereClause)
+		rows, err = db.Query(query, params...)
+	}
+
 	if err != nil {
 		http.Error(w, "Could not query for player history", http.StatusInternalServerError)
 		log.Printf("❌ Could not query for player history: %v", err)
@@ -1089,4 +1128,3 @@ func guildHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	tmpl.Execute(w, data)
 }
-
