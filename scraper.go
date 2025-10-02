@@ -94,7 +94,6 @@ func scrapeAndStorePlayerCount() {
 	log.Printf("✅ Player/seller count updated. New values: %d players, %d sellers", onlineCount, sellerCount)
 }
 
-// scrapePlayerCharacters scrapes player character data in parallel batches for increased speed.
 func scrapePlayerCharacters() {
 	log.Println("🏆 [Characters] Starting player character scrape...")
 
@@ -124,6 +123,7 @@ func scrapePlayerCharacters() {
 	updateTime := time.Now().Format(time.RFC3339)
 
 	allocOpts := append(chromedp.DefaultExecAllocatorOptions[:],
+		chromedp.UserAgent(`Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36`),
 		chromedp.Flag("headless", true),
 		chromedp.Flag("disable-gpu", true),
 		chromedp.Flag("no-sandbox", true),
@@ -199,8 +199,10 @@ func scrapePlayerCharacters() {
 					}
 					rankStr := strings.TrimSpace(cells.Eq(0).Text())
 					nameStr := strings.TrimSpace(cells.Eq(1).Text())
-					levelStrRaw := cells.Eq(2).Find("span").First().Text()
-					expStrRaw := cells.Eq(2).Find("span").Last().Text()
+					// --- MODIFICATION START: Correctly target level and experience ---
+					levelStrRaw := cells.Eq(2).Find("div.mb-1.flex.justify-between.text-xs > span").Text()
+					expStrRaw := cells.Eq(2).Find("div.absolute.inset-0.flex.items-center.justify-center > span").Text()
+					// --- MODIFICATION END ---
 					classStr := cells.Eq(3).Find("span").Last().Text()
 
 					player.Name = nameStr
@@ -283,11 +285,15 @@ func scrapePlayerCharacters() {
 			if oldPlayer, exists := existingPlayers[p.Name]; exists {
 				if oldPlayer.Experience == p.Experience {
 					lastActiveTime = oldPlayer.LastActive
+				} else {
+					log.Printf("    -> [Activity] Player '%s' experience changed from %.2f%% to %.2f%%. Updating last_active.", p.Name, oldPlayer.Experience, p.Experience)
 				}
 			}
 
 			if _, err := stmt.Exec(p.Rank, p.Name, p.BaseLevel, p.JobLevel, p.Experience, p.Class, updateTime, lastActiveTime); err != nil {
 				log.Printf("    -> [DB] WARN: Failed to upsert character for player %s: %v", p.Name, err)
+			} else {
+				log.Printf("    -> [DB] Upserted: Name: %s, Rank: %d, Lvl: %d/%d, Class: %s, Exp: %.2f%%", p.Name, p.Rank, p.BaseLevel, p.JobLevel, p.Class, p.Experience)
 			}
 		}
 		stmt.Close()
