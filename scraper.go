@@ -15,8 +15,6 @@ import (
 	"github.com/chromedp/chromedp"
 )
 
-// In scraper.go
-
 // scrapeAndStorePlayerCount fetches the online player count, queries for the unique seller count, and saves them.
 func scrapeAndStorePlayerCount() {
 	log.Println("📊 Checking player and seller count...")
@@ -95,6 +93,206 @@ func scrapeAndStorePlayerCount() {
 	log.Printf("✅ Player/seller count updated. New values: %d players, %d sellers", onlineCount, sellerCount)
 }
 
+// scrapePlayerRankings scrapes player ranking data from all pages with enhanced logging and reliability.
+func scrapePlayerRankings() {
+	log.Println("🏆 [Rankings] Starting player rankings scrape...")
+
+	var allPlayers []PlayerRanking
+	const maxRetries = 3 // Maximum number of retries for a single page
+
+	allocOpts := append(chromedp.DefaultExecAllocatorOptions[:],
+		chromedp.Flag("headless", true),
+		chromedp.Flag("disable-gpu", true),
+		chromedp.Flag("no-sandbox", true),
+	)
+	allocCtx, cancel := chromedp.NewExecAllocator(context.Background(), allocOpts...)
+	defer cancel()
+
+	// Loop through pages until there's no more data
+	for page := 1; ; page++ {
+		var htmlContent string
+		var pageScrapedSuccessfully bool
+
+		// --- Retry Loop for the current page ---
+		for attempt := 1; attempt <= maxRetries; attempt++ {
+			taskCtx, cancelCtx := chromedp.NewContext(allocCtx)
+			defer cancelCtx()
+			taskCtx, cancelTimeout := context.WithTimeout(taskCtx, 60*time.Second)
+			defer cancelTimeout()
+
+			url := fmt.Sprintf("https://projetoyufa.com/rankings?page=%d", page)
+			log.Printf("🏆 [Rankings] Scraping page %d (Attempt %d/%d)...", page, attempt, maxRetries)
+
+			err := chromedp.Run(taskCtx,
+				chromedp.Navigate(url),
+				chromedp.WaitVisible(`tbody[data-slot="table-body"] tr[data-slot="table-row"]`),
+				chromedp.OuterHTML("html", &htmlContent),
+			)
+
+			if err == nil {
+				// Success: Page was fetched without a connection/retrieval error.
+				pageScrapedSuccessfully = true
+				break // Exit the retry loop and proceed to parsing.
+			}
+
+			// Error: Log the failure and decide whether to retry.
+			log.Printf("❌ [Rankings] Error on page %d, attempt %d/%d: %v", page, attempt, maxRetries, err)
+			if attempt < maxRetries {
+				log.Printf("🕒 [Rankings] Waiting 30 seconds before retrying...")
+				time.Sleep(30 * time.Second)
+			}
+		}
+
+		if !pageScrapedSuccessfully {
+			log.Printf("❌ [Rankings] All %d attempts failed for page %d. Aborting rankings scrape.", maxRetries, page)
+			break // Exit the main page loop
+		}
+
+		doc, err := goquery.NewDocumentFromReader(strings.NewReader(htmlContent))
+		if err != nil {
+			log.Printf("❌ [Rankings] Failed to parse HTML for page %d: %v", page, err)
+			break
+		}
+
+		rows := doc.Find(`tbody[data-slot="table-body"] tr[data-slot="table-row"]`)
+		if rows.Length() == 0 {
+			log.Println("✅ [Rankings] No more player rows found on the page. Concluding scrape.")
+			break // End of pages
+		}
+		log.Printf("🔎 [Rankings] Found %d player rows on page %d. Processing...", rows.Length(), page)
+
+		rows.Each(func(i int, s *goquery.Selection) {
+			var player PlayerRanking
+			var parseErr error
+
+			cells := s.Find(`td[data-slot="table-cell"]`)
+			if cells.Length() < 4 {
+				log.Printf("    -> [Parser] WARN: Row %d has less than 4 cells, skipping.", i)
+				return
+			}
+
+			rankStr := strings.TrimSpace(cells.Eq(0).Text())
+			nameStr := strings.TrimSpace(cells.Eq(1).Text())
+			levelStrRaw := cells.Eq(2).Find("span").First().Text()
+			expStrRaw := cells.Eq(2).Find("span").Last().Text()
+			classStr := cells.Eq(3).Find("span").Last().Text()
+
+			log.Printf("    -> [Parser] Processing Row %d: Rank='%s', Name='%s', LevelInfo='%s', ExpInfo='%s', Class='%s'", i, rankStr, nameStr, levelStrRaw, expStrRaw, classStr)
+
+			player.Name = nameStr
+			player.Class = classStr
+
+			player.Rank, parseErr = strconv.Atoi(rankStr)
+			if parseErr != nil {
+				log.Printf("        -> [Parser] ERROR: Could not parse RANK for '%s' from value '%s'. Skipping row. Error: %v", nameStr, rankStr, parseErr)
+				return
+			}
+
+			levelStrClean := strings.TrimSpace(strings.TrimPrefix(levelStrRaw, "Nv."))
+			levelParts := strings.Split(levelStrClean, "/")
+			if len(levelParts) == 2 {
+				baseLevelStr := strings.TrimSpace(levelParts[0])
+				jobLevelStr := strings.TrimSpace(levelParts[1])
+				player.BaseLevel, parseErr = strconv.Atoi(baseLevelStr)
+				if parseErr != nil {
+					log.Printf("        -> [Parser] ERROR: Could not parse BASE LEVEL for '%s' from value '%s'. Skipping row. Error: %v", nameStr, baseLevelStr, parseErr)
+					return
+				}
+				player.JobLevel, parseErr = strconv.Atoi(jobLevelStr)
+				if parseErr != nil {
+					log.Printf("        -> [Parser] ERROR: Could not parse JOB LEVEL for '%s' from value '%s'. Skipping row. Error: %v", nameStr, jobLevelStr, parseErr)
+					return
+				}
+			} else {
+				log.Printf("        -> [Parser] ERROR: Level string for '%s' has unexpected format: '%s'. Skipping row.", nameStr, levelStrRaw)
+				return
+			}
+
+			expStr := strings.TrimSuffix(strings.TrimSpace(expStrRaw), "%")
+			player.Experience, parseErr = strconv.ParseFloat(expStr, 64)
+			if parseErr != nil {
+				log.Printf("        -> [Parser] WARN: Could not parse EXPERIENCE for '%s' from value '%s'. Defaulting to 0. Error: %v", nameStr, expStr, parseErr)
+				player.Experience = 0.0
+			}
+
+			log.Printf("    -> [Parser] SUCCESS: Parsed player %s (Rank: %d, Class: %s, Level: %d/%d)", player.Name, player.Rank, player.Class, player.BaseLevel, player.JobLevel)
+			allPlayers = append(allPlayers, player)
+		})
+
+		// Wait for a short time after a SUCCESSFUL page scrape to be polite to the server.
+		time.Sleep(2 * time.Second)
+	}
+
+	if len(allPlayers) == 0 {
+		log.Println("⚠️ [Rankings] Scrape finished with 0 total players found. Database will not be updated.")
+		return
+	}
+
+	log.Printf("💾 [DB] Preparing to save %d player ranking records to the database...", len(allPlayers))
+
+	// Fetch existing player data for comparison.
+	log.Println("    -> [DB] Fetching existing player data for activity comparison...")
+	existingPlayers := make(map[string]PlayerRanking)
+	rows, err := db.Query("SELECT name, experience, last_active FROM rankings")
+	if err != nil {
+		log.Printf("❌ [DB] Failed to query existing rankings for comparison: %v", err)
+		// Proceed with the assumption that all are new if the query fails.
+	} else {
+		defer rows.Close()
+		for rows.Next() {
+			var p PlayerRanking
+			if err := rows.Scan(&p.Name, &p.Experience, &p.LastActive); err != nil {
+				log.Printf("    -> [DB] WARN: Failed to scan existing player row: %v", err)
+				continue
+			}
+			existingPlayers[p.Name] = p
+		}
+		log.Printf("    -> [DB] Found %d existing player records for comparison.", len(existingPlayers))
+	}
+
+	tx, err := db.Begin()
+	if err != nil {
+		log.Printf("❌ [DB] Failed to begin transaction for rankings: %v", err)
+		return
+	}
+	defer tx.Rollback()
+
+	log.Println("    -> [DB] Clearing existing rankings table...")
+	if _, err := tx.Exec("DELETE FROM rankings"); err != nil {
+		log.Printf("❌ [DB] Failed to clear rankings table: %v", err)
+		return
+	}
+
+	stmt, err := tx.Prepare(`INSERT INTO rankings (rank, name, base_level, job_level, experience, class, last_updated, last_active) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`)
+	if err != nil {
+		log.Printf("❌ [DB] Failed to prepare rankings insert statement: %v", err)
+		return
+	}
+	defer stmt.Close()
+
+	updateTime := time.Now().Format(time.RFC3339)
+	for _, p := range allPlayers {
+		lastActiveTime := updateTime // Default to now for new or changed players.
+		if oldPlayer, exists := existingPlayers[p.Name]; exists {
+			// If the player existed and their experience is unchanged, keep the old 'last_active' time.
+			if oldPlayer.Experience == p.Experience {
+				lastActiveTime = oldPlayer.LastActive
+			}
+		}
+
+		if _, err := stmt.Exec(p.Rank, p.Name, p.BaseLevel, p.JobLevel, p.Experience, p.Class, updateTime, lastActiveTime); err != nil {
+			log.Printf("    -> [DB] WARN: Failed to insert ranking for player %s: %v", p.Name, err)
+		}
+	}
+
+	if err := tx.Commit(); err != nil {
+		log.Printf("❌ [DB] Failed to commit rankings transaction: %v", err)
+		return
+	}
+
+	log.Printf("✅ [Rankings] Scrape and update complete. Saved %d player records.", len(allPlayers))
+}
+
 // startBackgroundJobs starts all recurring background tasks.
 func startBackgroundJobs() {
 	// --- Market Scraper ---
@@ -118,6 +316,18 @@ func startBackgroundJobs() {
 			log.Printf("🕒 Waiting for the next 1-minute player count schedule...")
 			<-ticker.C
 			scrapeAndStorePlayerCount()
+		}
+	}()
+
+	// --- Player Rankings Scraper ---
+	go func() {
+		ticker := time.NewTicker(30 * time.Minute)
+		defer ticker.Stop()
+		scrapePlayerRankings() // Run once immediately on start
+		for {
+			log.Printf("🕒 Waiting for the next 30-minute player ranking schedule...")
+			<-ticker.C
+			scrapePlayerRankings()
 		}
 	}()
 }
@@ -240,6 +450,8 @@ func scrapeData() {
 		return
 	}
 
+	// --- FIX IS HERE ---
+	// Changed '=' to ':=' to correctly declare the 'rows' variable.
 	rows, err := tx.Query("SELECT DISTINCT name_of_the_item FROM items WHERE is_available = 1")
 	if err != nil {
 		log.Printf("❌ Could not get list of available items: %v", err)
@@ -348,13 +560,15 @@ func scrapeData() {
 	itemsRemoved := 0
 	for name := range dbAvailableNames {
 		if _, foundInScrape := scrapedItemsByName[name]; !foundInScrape {
-			var itemID int
+			// --- FIX START ---
+			var itemID int // Declare itemID
 			err := tx.QueryRow("SELECT item_id FROM items WHERE name_of_the_item = ? AND item_id > 0 LIMIT 1", name).Scan(&itemID)
 			if err != nil {
+				// If no ID is found, log it but default to 0 so the event can still be created.
 				log.Printf("⚠️ Could not find item_id for removed item '%s', logging event with item_id 0: %v", name, err)
 				itemID = 0
 			}
-
+			// --- FIX END ---
 			_, err = tx.Exec(`INSERT INTO market_events (event_timestamp, event_type, item_name, item_id, details) VALUES (?, 'REMOVED', ?, ?, '{}')`, retrievalTime, name, itemID)
 			if err != nil {
 				log.Printf("❌ Failed to log REMOVED event for %s: %v", name, err)
@@ -384,7 +598,7 @@ func areItemSetsIdentical(setA, setB []Item) bool {
 		for i, item := range items {
 			comp[i] = comparableItem{
 				Name:           item.Name,
-				ItemID:         item.ItemID,
+				ItemID:         item.ID,
 				Quantity:       item.Quantity,
 				Price:          item.Price,
 				StoreName:      item.StoreName,
@@ -409,3 +623,4 @@ func areItemSetsIdentical(setA, setB []Item) bool {
 	}
 	return true
 }
+

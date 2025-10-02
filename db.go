@@ -93,6 +93,22 @@ func initDB(filepath string) (*sql.DB, error) {
 		return nil, fmt.Errorf("could not create player_history table: %w", err)
 	}
 
+	// SQL statement to create the 'rankings' table.
+	createRankingsTableSQL := `
+	CREATE TABLE IF NOT EXISTS rankings (
+		"rank" INTEGER NOT NULL,
+		"name" TEXT NOT NULL PRIMARY KEY,
+		"base_level" INTEGER NOT NULL,
+		"job_level" INTEGER NOT NULL,
+		"experience" REAL NOT NULL,
+		"class" TEXT NOT NULL,
+		"last_updated" TEXT NOT NULL,
+		"last_active" TEXT NOT NULL
+	);`
+	if _, err = db.Exec(createRankingsTableSQL); err != nil {
+		return nil, fmt.Errorf("could not create rankings table: %w", err)
+	}
+
 	return db, nil
 }
 

@@ -123,6 +123,17 @@ type ItemTypeTab struct {
 	IconItemID int
 }
 
+// PlayerRanking represents a single player's data from the rankings page.
+type PlayerRanking struct {
+	Rank       int
+	Name       string
+	BaseLevel  int
+	JobLevel   int
+	Experience float64
+	Class      string
+	LastActive string
+}
+
 // --- Page Data Structs for HTML Templates ---
 
 // SummaryPageData holds all data needed for the main summary page template.
@@ -189,3 +200,19 @@ type PlayerCountPageData struct {
 	EventDataJSON    template.JS
 }
 
+type RankingsPageData struct {
+	Players        []PlayerRanking
+	LastScrapeTime string
+	// Search and Filter
+	SearchName    string
+	SelectedClass string
+	AllClasses    []string
+	// Pagination
+	CurrentPage  int
+	TotalPages   int
+	PrevPage     int
+	NextPage     int
+	TotalPlayers int
+	HasPrevPage  bool
+	HasNextPage  bool
+}

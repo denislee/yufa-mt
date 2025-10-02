@@ -6,8 +6,10 @@ import (
 	"fmt"
 	"html/template"
 	"log"
+	"math"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -784,10 +786,6 @@ func getLastScrapeTime() string {
 	return "Never"
 }
 
-// In handlers.go
-
-// ... add this new handler function ...
-
 // playerCountHandler serves the page with a graph of online player history.
 func playerCountHandler(w http.ResponseWriter, r *http.Request) {
 	interval := r.URL.Query().Get("interval")
@@ -878,6 +876,122 @@ func playerCountHandler(w http.ResponseWriter, r *http.Request) {
 		LastScrapeTime:   getLastScrapeTime(),
 		SelectedInterval: interval,
 		EventDataJSON:    template.JS(eventIntervalsJSON),
+	}
+	tmpl.Execute(w, data)
+}
+
+// rankingsHandler serves the new player rankings page.
+func rankingsHandler(w http.ResponseWriter, r *http.Request) {
+	// --- 1. Get query parameters for filtering and pagination ---
+	searchName := r.URL.Query().Get("name_query")
+	selectedClass := r.URL.Query().Get("class_filter")
+	pageStr := r.URL.Query().Get("page")
+	page, err := strconv.Atoi(pageStr)
+	if err != nil || page < 1 {
+		page = 1
+	}
+	const playersPerPage = 50 // Set how many players to show per page
+
+	// --- 2. Get all unique classes for the filter dropdown ---
+	var allClasses []string
+	classRows, err := db.Query("SELECT DISTINCT class FROM rankings ORDER BY class ASC")
+	if err != nil {
+		log.Printf("⚠️ Could not query for unique player classes: %v", err)
+	} else {
+		defer classRows.Close()
+		for classRows.Next() {
+			var className string
+			if err := classRows.Scan(&className); err == nil {
+				allClasses = append(allClasses, className)
+			}
+		}
+	}
+
+	// --- 3. Build dynamic WHERE clause and parameters ---
+	var whereConditions []string
+	var params []interface{}
+	if searchName != "" {
+		whereConditions = append(whereConditions, "name LIKE ?")
+		params = append(params, "%"+searchName+"%")
+	}
+	if selectedClass != "" {
+		whereConditions = append(whereConditions, "class = ?")
+		params = append(params, selectedClass)
+	}
+	whereClause := ""
+	if len(whereConditions) > 0 {
+		whereClause = "WHERE " + strings.Join(whereConditions, " AND ")
+	}
+
+	// --- 4. Get the total count of matching players for pagination ---
+	var totalPlayers int
+	countQuery := fmt.Sprintf("SELECT COUNT(*) FROM rankings %s", whereClause)
+	err = db.QueryRow(countQuery, params...).Scan(&totalPlayers)
+	if err != nil {
+		http.Error(w, "Could not count player rankings", http.StatusInternalServerError)
+		log.Printf("❌ Could not count player rankings: %v", err)
+		return
+	}
+
+	// --- 5. Calculate pagination details ---
+	totalPages := int(math.Ceil(float64(totalPlayers) / float64(playersPerPage)))
+	if page > totalPages {
+		page = totalPages
+	}
+	if page < 1 {
+		page = 1
+	}
+	offset := (page - 1) * playersPerPage
+
+	// --- 6. Fetch the paginated player data ---
+	query := fmt.Sprintf(`
+		SELECT rank, name, base_level, job_level, experience, class
+		FROM rankings
+		%s
+		ORDER BY rank ASC
+		LIMIT ? OFFSET ?
+	`, whereClause)
+	finalParams := append(params, playersPerPage, offset)
+
+	rows, err := db.Query(query, finalParams...)
+	if err != nil {
+		http.Error(w, "Could not query for player rankings", http.StatusInternalServerError)
+		log.Printf("❌ Could not query for player rankings: %v", err)
+		return
+	}
+	defer rows.Close()
+
+	var players []PlayerRanking
+	for rows.Next() {
+		var p PlayerRanking
+		if err := rows.Scan(&p.Rank, &p.Name, &p.BaseLevel, &p.JobLevel, &p.Experience, &p.Class); err != nil {
+			log.Printf("⚠️ Failed to scan player ranking row: %v", err)
+			continue
+		}
+		players = append(players, p)
+	}
+
+	// --- 7. Load template and send data ---
+	tmpl, err := template.ParseFiles("rankings.html")
+	if err != nil {
+		http.Error(w, "Could not load rankings template", http.StatusInternalServerError)
+		log.Printf("❌ Could not load rankings.html template: %v", err)
+		return
+	}
+
+	data := RankingsPageData{
+		Players:        players,
+		LastScrapeTime: getLastScrapeTime(),
+		SearchName:     searchName,
+		SelectedClass:  selectedClass,
+		AllClasses:     allClasses,
+		CurrentPage:    page,
+		TotalPages:     totalPages,
+		PrevPage:       page - 1,
+		NextPage:       page + 1,
+		HasPrevPage:    page > 1,
+		HasNextPage:    page < totalPages,
+		TotalPlayers:   totalPlayers,
 	}
 	tmpl.Execute(w, data)
 }

@@ -24,6 +24,7 @@ func main() {
 	http.HandleFunc("/item", itemHistoryHandler)    // Historical price chart and details for a single item.
 	http.HandleFunc("/activity", activityHandler)   // Log of recent market events (items added/removed).
 	http.HandleFunc("/players", playerCountHandler) // Shows a graph of online player counts over time.
+	http.HandleFunc("/rankings", rankingsHandler)   // Shows player rankings.
 
 	// Start the web server.
 	port := "8080"
@@ -32,3 +33,4 @@ func main() {
 		log.Fatalf("❌ Failed to start web server: %v", err)
 	}
 }
+
