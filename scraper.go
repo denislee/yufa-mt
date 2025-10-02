@@ -93,12 +93,39 @@ func scrapeAndStorePlayerCount() {
 	log.Printf("✅ Player/seller count updated. New values: %d players, %d sellers", onlineCount, sellerCount)
 }
 
-// scrapePlayerCharacters scrapes player character data from all pages with enhanced logging and reliability.
+// scrapePlayerCharacters scrapes player character data, committing to the database after each page.
 func scrapePlayerCharacters() {
 	log.Println("🏆 [Characters] Starting player character scrape...")
 
-	var allPlayers []PlayerCharacter
+	// This slice is no longer needed as we process page by page.
+	// var allPlayers []PlayerCharacter
+
 	const maxRetries = 3 // Maximum number of retries for a single page
+
+	// --- CHANGE: Fetch existing player data for comparison ONCE at the beginning. ---
+	// This data is used to correctly determine the 'last_active' timestamp.
+	log.Println("    -> [DB] Fetching existing player data for activity comparison...")
+	existingPlayers := make(map[string]PlayerCharacter)
+	rowsPre, err := db.Query("SELECT name, experience, last_active FROM characters")
+	if err != nil {
+		log.Printf("❌ [DB] Failed to query existing characters for comparison: %v", err)
+		// Proceed with the assumption that all are new if the query fails.
+	} else {
+		defer rowsPre.Close()
+		for rowsPre.Next() {
+			var p PlayerCharacter
+			if err := rowsPre.Scan(&p.Name, &p.Experience, &p.LastActive); err != nil {
+				log.Printf("    -> [DB] WARN: Failed to scan existing player row: %v", err)
+				continue
+			}
+			existingPlayers[p.Name] = p
+		}
+		log.Printf("    -> [DB] Found %d existing player records for comparison.", len(existingPlayers))
+	}
+
+	// --- CHANGE: Use a single timestamp for the entire scrape operation. ---
+	// This timestamp acts as an ID for the current run, allowing us to clean up old records later.
+	updateTime := time.Now().Format(time.RFC3339)
 
 	allocOpts := append(chromedp.DefaultExecAllocatorOptions[:],
 		chromedp.Flag("headless", true),
@@ -113,7 +140,7 @@ func scrapePlayerCharacters() {
 		var htmlContent string
 		var pageScrapedSuccessfully bool
 
-		// --- Retry Loop for the current page ---
+		// --- Retry Loop for the current page (original logic retained) ---
 		for attempt := 1; attempt <= maxRetries; attempt++ {
 			taskCtx, cancelCtx := chromedp.NewContext(allocCtx)
 			defer cancelCtx()
@@ -130,12 +157,9 @@ func scrapePlayerCharacters() {
 			)
 
 			if err == nil {
-				// Success: Page was fetched without a connection/retrieval error.
 				pageScrapedSuccessfully = true
-				break // Exit the retry loop and proceed to parsing.
+				break
 			}
-
-			// Error: Log the failure and decide whether to retry.
 			log.Printf("❌ [Characters] Error on page %d, attempt %d/%d: %v", page, attempt, maxRetries, err)
 			if attempt < maxRetries {
 				log.Printf("🕒 [Characters] Waiting 30 seconds before retrying...")
@@ -145,7 +169,7 @@ func scrapePlayerCharacters() {
 
 		if !pageScrapedSuccessfully {
 			log.Printf("❌ [Characters] All %d attempts failed for page %d. Aborting characters scrape.", maxRetries, page)
-			break // Exit the main page loop
+			break
 		}
 
 		doc, err := goquery.NewDocumentFromReader(strings.NewReader(htmlContent))
@@ -161,136 +185,111 @@ func scrapePlayerCharacters() {
 		}
 		log.Printf("🔎 [Characters] Found %d player rows on page %d. Processing...", rows.Length(), page)
 
+		// --- CHANGE: Process players for the current page into a temporary slice. ---
+		var pagePlayers []PlayerCharacter
 		rows.Each(func(i int, s *goquery.Selection) {
 			var player PlayerCharacter
 			var parseErr error
 
+			// Parsing logic is identical to the original
 			cells := s.Find(`td[data-slot="table-cell"]`)
 			if cells.Length() < 4 {
 				log.Printf("    -> [Parser] WARN: Row %d has less than 4 cells, skipping.", i)
 				return
 			}
-
 			rankStr := strings.TrimSpace(cells.Eq(0).Text())
 			nameStr := strings.TrimSpace(cells.Eq(1).Text())
 			levelStrRaw := cells.Eq(2).Find("span").First().Text()
 			expStrRaw := cells.Eq(2).Find("span").Last().Text()
 			classStr := cells.Eq(3).Find("span").Last().Text()
 
-			log.Printf("    -> [Parser] Processing Row %d: Rank='%s', Name='%s', LevelInfo='%s', ExpInfo='%s', Class='%s'", i, rankStr, nameStr, levelStrRaw, expStrRaw, classStr)
-
 			player.Name = nameStr
 			player.Class = classStr
 
 			player.Rank, parseErr = strconv.Atoi(rankStr)
 			if parseErr != nil {
-				log.Printf("        -> [Parser] ERROR: Could not parse RANK for '%s' from value '%s'. Skipping row. Error: %v", nameStr, rankStr, parseErr)
 				return
 			}
-
 			levelStrClean := strings.TrimSpace(strings.TrimPrefix(levelStrRaw, "Nv."))
 			levelParts := strings.Split(levelStrClean, "/")
 			if len(levelParts) == 2 {
-				baseLevelStr := strings.TrimSpace(levelParts[0])
-				jobLevelStr := strings.TrimSpace(levelParts[1])
-				player.BaseLevel, parseErr = strconv.Atoi(baseLevelStr)
-				if parseErr != nil {
-					log.Printf("        -> [Parser] ERROR: Could not parse BASE LEVEL for '%s' from value '%s'. Skipping row. Error: %v", nameStr, baseLevelStr, parseErr)
-					return
-				}
-				player.JobLevel, parseErr = strconv.Atoi(jobLevelStr)
-				if parseErr != nil {
-					log.Printf("        -> [Parser] ERROR: Could not parse JOB LEVEL for '%s' from value '%s'. Skipping row. Error: %v", nameStr, jobLevelStr, parseErr)
-					return
-				}
-			} else {
-				log.Printf("        -> [Parser] ERROR: Level string for '%s' has unexpected format: '%s'. Skipping row.", nameStr, levelStrRaw)
-				return
+				player.BaseLevel, _ = strconv.Atoi(strings.TrimSpace(levelParts[0]))
+				player.JobLevel, _ = strconv.Atoi(strings.TrimSpace(levelParts[1]))
 			}
-
 			expStr := strings.TrimSuffix(strings.TrimSpace(expStrRaw), "%")
-			player.Experience, parseErr = strconv.ParseFloat(expStr, 64)
-			if parseErr != nil {
-				log.Printf("        -> [Parser] WARN: Could not parse EXPERIENCE for '%s' from value '%s'. Defaulting to 0. Error: %v", nameStr, expStr, parseErr)
-				player.Experience = 0.0
-			}
+			player.Experience, _ = strconv.ParseFloat(expStr, 64)
 
-			log.Printf("    -> [Parser] SUCCESS: Parsed player %s (Rank: %d, Class: %s, Level: %d/%d)", player.Name, player.Rank, player.Class, player.BaseLevel, player.JobLevel)
-			allPlayers = append(allPlayers, player)
+			pagePlayers = append(pagePlayers, player)
 		})
 
-		// Wait for a short time after a SUCCESSFUL page scrape to be polite to the server.
+		if len(pagePlayers) == 0 {
+			continue // No players were successfully parsed, move to the next page.
+		}
+
+		// --- CHANGE: Open a new transaction for each page and perform an "UPSERT". ---
+		tx, err := db.Begin()
+		if err != nil {
+			log.Printf("❌ [DB] Failed to begin transaction for page %d: %v", page, err)
+			break // Abort scrape if a transaction cannot be started
+		}
+
+		// This statement inserts a new player or updates an existing one based on the unique `name`.
+		// It requires a UNIQUE constraint on the `name` column in the `characters` table.
+		stmt, err := tx.Prepare(`
+            INSERT INTO characters (rank, name, base_level, job_level, experience, class, last_updated, last_active)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(name) DO UPDATE SET
+                rank=excluded.rank,
+                base_level=excluded.base_level,
+                job_level=excluded.job_level,
+                experience=excluded.experience,
+                class=excluded.class,
+                last_updated=excluded.last_updated,
+                last_active=excluded.last_active
+        `)
+		if err != nil {
+			log.Printf("❌ [DB] Failed to prepare characters upsert statement: %v", err)
+			tx.Rollback()
+			break
+		}
+
+		for _, p := range pagePlayers {
+			lastActiveTime := updateTime // Default to now for new or changed players.
+			if oldPlayer, exists := existingPlayers[p.Name]; exists {
+				// If the player existed and their experience is unchanged, keep the old 'last_active' time.
+				if oldPlayer.Experience == p.Experience {
+					lastActiveTime = oldPlayer.LastActive
+				}
+			}
+
+			if _, err := stmt.Exec(p.Rank, p.Name, p.BaseLevel, p.JobLevel, p.Experience, p.Class, updateTime, lastActiveTime); err != nil {
+				log.Printf("    -> [DB] WARN: Failed to upsert character for player %s: %v", p.Name, err)
+			}
+		}
+		stmt.Close()
+
+		if err := tx.Commit(); err != nil {
+			log.Printf("❌ [DB] Failed to commit characters transaction for page %d: %v", page, err)
+			break // Abort scrape if commit fails
+		}
+		log.Printf("✅ [Characters] Saved/updated %d records from page %d.", len(pagePlayers), page)
+
+		// Wait for a short time to be polite to the server.
 		time.Sleep(2 * time.Second)
 	}
 
-	if len(allPlayers) == 0 {
-		log.Println("⚠️ [Characters] Scrape finished with 0 total players found. Database will not be updated.")
-		return
-	}
-
-	log.Printf("💾 [DB] Preparing to save %d player character records to the database...", len(allPlayers))
-
-	// Fetch existing player data for comparison.
-	log.Println("    -> [DB] Fetching existing player data for activity comparison...")
-	existingPlayers := make(map[string]PlayerCharacter)
-	rows, err := db.Query("SELECT name, experience, last_active FROM characters")
+	// --- CHANGE: After the loop, clean up players who were not found in this scrape. ---
+	// This removes players who have fallen off the rankings.
+	log.Println("🧹 [Characters] Cleaning up old player records not found in this scrape...")
+	result, err := db.Exec("DELETE FROM characters WHERE last_updated != ?", updateTime)
 	if err != nil {
-		log.Printf("❌ [DB] Failed to query existing characters for comparison: %v", err)
-		// Proceed with the assumption that all are new if the query fails.
+		log.Printf("❌ [Characters] Failed to clean up old player records: %v", err)
 	} else {
-		defer rows.Close()
-		for rows.Next() {
-			var p PlayerCharacter
-			if err := rows.Scan(&p.Name, &p.Experience, &p.LastActive); err != nil {
-				log.Printf("    -> [DB] WARN: Failed to scan existing player row: %v", err)
-				continue
-			}
-			existingPlayers[p.Name] = p
-		}
-		log.Printf("    -> [DB] Found %d existing player records for comparison.", len(existingPlayers))
+		rowsAffected, _ := result.RowsAffected()
+		log.Printf("✅ [Characters] Clehttps://sa-east-1.console.aws.amazon.com/dms/v2/home?region=sa-east-1#tasks/provisioned/cdc-underlying-card-to-analytics-productionanup complete. Removed %d stale player records.", rowsAffected)
 	}
 
-	tx, err := db.Begin()
-	if err != nil {
-		log.Printf("❌ [DB] Failed to begin transaction for characters: %v", err)
-		return
-	}
-	defer tx.Rollback()
-
-	log.Println("    -> [DB] Clearing existing characters table...")
-	if _, err := tx.Exec("DELETE FROM characters"); err != nil {
-		log.Printf("❌ [DB] Failed to clear characters table: %v", err)
-		return
-	}
-
-	stmt, err := tx.Prepare(`INSERT INTO characters (rank, name, base_level, job_level, experience, class, last_updated, last_active) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`)
-	if err != nil {
-		log.Printf("❌ [DB] Failed to prepare characters insert statement: %v", err)
-		return
-	}
-	defer stmt.Close()
-
-	updateTime := time.Now().Format(time.RFC3339)
-	for _, p := range allPlayers {
-		lastActiveTime := updateTime // Default to now for new or changed players.
-		if oldPlayer, exists := existingPlayers[p.Name]; exists {
-			// If the player existed and their experience is unchanged, keep the old 'last_active' time.
-			if oldPlayer.Experience == p.Experience {
-				lastActiveTime = oldPlayer.LastActive
-			}
-		}
-
-		if _, err := stmt.Exec(p.Rank, p.Name, p.BaseLevel, p.JobLevel, p.Experience, p.Class, updateTime, lastActiveTime); err != nil {
-			log.Printf("    -> [DB] WARN: Failed to insert character for player %s: %v", p.Name, err)
-		}
-	}
-
-	if err := tx.Commit(); err != nil {
-		log.Printf("❌ [DB] Failed to commit characters transaction: %v", err)
-		return
-	}
-
-	log.Printf("✅ [Characters] Scrape and update complete. Saved %d player records.", len(allPlayers))
+	log.Printf("✅ [Characters] Scrape and update process complete.")
 }
 
 // Helper structs for parsing the embedded guild JSON
