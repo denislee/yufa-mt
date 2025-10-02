@@ -293,6 +293,167 @@ func scrapePlayerCharacters() {
 	log.Printf("✅ [Characters] Scrape and update complete. Saved %d player records.", len(allPlayers))
 }
 
+// Helper structs for parsing the embedded guild JSON
+type GuildMemberJSON struct {
+	Name string `json:"name"`
+}
+
+type GuildJSON struct {
+	Name    string            `json:"name"`
+	Level   int               `json:"guild_lv"`
+	Master  string            `json:"master"`
+	Members []GuildMemberJSON `json:"members"`
+}
+
+// scrapeGuilds scrapes guild data by parsing the HTML table from the rankings pages.
+func scrapeGuilds() {
+	log.Println("🏰 [Guilds] Starting guild scrape...")
+	var allGuilds []Guild
+	const maxRetries = 3
+
+	allocOpts := append(chromedp.DefaultExecAllocatorOptions[:],
+		chromedp.Flag("headless", true),
+		chromedp.Flag("disable-gpu", true),
+		chromedp.Flag("no-sandbox", true),
+	)
+	allocCtx, cancel := chromedp.NewExecAllocator(context.Background(), allocOpts...)
+	defer cancel()
+
+	// Loop through pages until there's no more data
+	for page := 1; ; page++ {
+		var htmlContent string
+		var pageScrapedSuccessfully bool
+		url := fmt.Sprintf("https://projetoyufa.com/rankings/guild?page=%d", page)
+
+		for attempt := 1; attempt <= maxRetries; attempt++ {
+			taskCtx, cancelCtx := chromedp.NewContext(allocCtx)
+			defer cancelCtx()
+			taskCtx, cancelTimeout := context.WithTimeout(taskCtx, 60*time.Second)
+			defer cancelTimeout()
+
+			log.Printf("🏰 [Guilds] Scraping page %d (Attempt %d/%d)...", page, attempt, maxRetries)
+
+			err := chromedp.Run(taskCtx,
+				chromedp.Navigate(url),
+				chromedp.WaitVisible(`tbody[data-slot="table-body"] tr[data-slot="table-row"]`),
+				chromedp.OuterHTML("html", &htmlContent),
+			)
+
+			if err == nil {
+				pageScrapedSuccessfully = true
+				break
+			}
+			log.Printf("❌ [Guilds] Error on page %d, attempt %d/%d: %v", page, attempt, maxRetries, err)
+			if attempt < maxRetries {
+				time.Sleep(30 * time.Second)
+			}
+		}
+
+		if !pageScrapedSuccessfully {
+			log.Printf("❌ [Guilds] All %d attempts failed for page %d. Aborting guild scrape.", maxRetries, page)
+			break
+		}
+
+		doc, err := goquery.NewDocumentFromReader(strings.NewReader(htmlContent))
+		if err != nil {
+			log.Printf("❌ [Guilds] Failed to parse HTML for page %d: %v", page, err)
+			break
+		}
+
+		rows := doc.Find(`tbody[data-slot="table-body"] tr[data-slot="table-row"]`)
+		if rows.Length() == 0 {
+			log.Println("✅ [Guilds] No more guild rows found on the page. Concluding scrape.")
+			break // End of pages
+		}
+		log.Printf("🔎 [Guilds] Found %d guild rows on page %d. Processing...", rows.Length(), page)
+
+		rows.Each(func(i int, s *goquery.Selection) {
+			var guild Guild
+			var parseErr error
+
+			cells := s.Find(`td[data-slot="table-cell"]`)
+			if cells.Length() < 4 {
+				log.Printf("    -> [Parser] WARN: Row %d has less than 4 cells, skipping.", i)
+				return
+			}
+
+			// Extract data from cells based on their order in the table row
+			rankStr := strings.TrimSpace(cells.Eq(0).Text())
+			nameStr := strings.TrimSpace(cells.Eq(1).Text())
+			// --- MODIFICATION START ---
+			// Target the first span within the cell to get just the name.
+			masterStr := strings.TrimSpace(cells.Eq(2).Find("span").First().Text())
+			// --- MODIFICATION END ---
+			levelStr := strings.TrimSpace(strings.TrimPrefix(cells.Eq(3).Text(), "Nv. "))
+
+			guild.Name = nameStr
+			guild.Master = masterStr
+
+			guild.Rank, parseErr = strconv.Atoi(rankStr)
+			if parseErr != nil {
+				log.Printf("        -> [Parser] ERROR: Could not parse RANK for '%s' from value '%s'. Skipping row. Error: %v", nameStr, rankStr, parseErr)
+				return
+			}
+
+			guild.Level, parseErr = strconv.Atoi(levelStr)
+			if parseErr != nil {
+				log.Printf("        -> [Parser] ERROR: Could not parse LEVEL for '%s' from value '%s'. Skipping row. Error: %v", nameStr, levelStr, parseErr)
+				return
+			}
+
+			// Experience and Emblem URL are not available from this source
+			guild.Experience = 0
+			guild.EmblemURL = ""
+
+			log.Printf("    -> [Parser] SUCCESS: Parsed guild %s (Rank: %d, Level: %d, Master: %s)", guild.Name, guild.Rank, guild.Level, guild.Master)
+			allGuilds = append(allGuilds, guild)
+		})
+
+		// Be polite to the server
+		time.Sleep(2 * time.Second)
+	}
+
+	if len(allGuilds) == 0 {
+		log.Println("⚠️ [Guilds] Scrape finished with 0 total guilds found. Guild table will not be updated.")
+		return
+	}
+
+	// Begin a transaction to update the guilds table
+	tx, err := db.Begin()
+	if err != nil {
+		log.Printf("❌ [Guilds] Failed to begin transaction for guilds table: %v", err)
+		return
+	}
+	defer tx.Rollback()
+
+	log.Println("    -> [DB] Clearing and repopulating guilds table...")
+	if _, err := tx.Exec("DELETE FROM guilds"); err != nil {
+		log.Printf("❌ [DB] Failed to clear guilds table: %v", err)
+		return
+	}
+
+	stmt, err := tx.Prepare(`INSERT INTO guilds (rank, name, level, experience, master, emblem_url, last_updated) VALUES (?, ?, ?, ?, ?, ?, ?)`)
+	if err != nil {
+		log.Printf("❌ [DB] Failed to prepare guilds insert statement: %v", err)
+		return
+	}
+	defer stmt.Close()
+
+	updateTime := time.Now().Format(time.RFC3339)
+	for _, g := range allGuilds {
+		if _, err := stmt.Exec(g.Rank, g.Name, g.Level, g.Experience, g.Master, g.EmblemURL, updateTime); err != nil {
+			log.Printf("    -> [DB] WARN: Failed to insert guild %s: %v", g.Name, err)
+		}
+	}
+
+	if err := tx.Commit(); err != nil {
+		log.Printf("❌ [DB] Failed to commit guilds transaction: %v", err)
+		return
+	}
+
+	log.Printf("✅ [Guilds] Scrape and update complete. Saved %d guild records.", len(allGuilds))
+}
+
 // startBackgroundJobs starts all recurring background tasks.
 func startBackgroundJobs() {
 	// --- Market Scraper ---
@@ -319,15 +480,22 @@ func startBackgroundJobs() {
 		}
 	}()
 
-	// --- Player Characters Scraper ---
+	// --- Player Characters & Guilds Scraper ---
 	go func() {
 		ticker := time.NewTicker(30 * time.Minute)
 		defer ticker.Stop()
-		scrapePlayerCharacters() // Run once immediately on start
+
+		// Run jobs immediately on start, in the correct order.
+		scrapePlayerCharacters()
+		time.Sleep(30 * time.Second) // Short pause between jobs to be safe.
+		scrapeGuilds()
+
 		for {
-			log.Printf("🕒 Waiting for the next 30-minute player character schedule...")
+			log.Printf("🕒 Waiting for the next 30-minute character & guild schedule...")
 			<-ticker.C
 			scrapePlayerCharacters()
+			time.Sleep(30 * time.Second) // Short pause between jobs to be safe.
+			scrapeGuilds()
 		}
 	}()
 }
@@ -623,4 +791,3 @@ func areItemSetsIdentical(setA, setB []Item) bool {
 	}
 	return true
 }
-

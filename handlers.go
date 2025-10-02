@@ -945,7 +945,7 @@ func characterHandler(w http.ResponseWriter, r *http.Request) {
 
 	// --- 6. Fetch the paginated player data ---
 	query := fmt.Sprintf(`
-		SELECT rank, name, base_level, job_level, experience, class
+		SELECT rank, name, base_level, job_level, experience, class, guild_name
 		FROM characters
 		%s
 		ORDER BY rank ASC
@@ -964,7 +964,7 @@ func characterHandler(w http.ResponseWriter, r *http.Request) {
 	var players []PlayerCharacter
 	for rows.Next() {
 		var p PlayerCharacter
-		if err := rows.Scan(&p.Rank, &p.Name, &p.BaseLevel, &p.JobLevel, &p.Experience, &p.Class); err != nil {
+		if err := rows.Scan(&p.Rank, &p.Name, &p.BaseLevel, &p.JobLevel, &p.Experience, &p.Class, &p.GuildName); err != nil {
 			log.Printf("⚠️ Failed to scan player character row: %v", err)
 			continue
 		}
@@ -992,6 +992,100 @@ func characterHandler(w http.ResponseWriter, r *http.Request) {
 		HasPrevPage:    page > 1,
 		HasNextPage:    page < totalPages,
 		TotalPlayers:   totalPlayers,
+	}
+	tmpl.Execute(w, data)
+}
+
+// guildHandler serves the new player guilds page.
+func guildHandler(w http.ResponseWriter, r *http.Request) {
+	// --- 1. Get query parameters for filtering and pagination ---
+	searchName := r.URL.Query().Get("name_query")
+	pageStr := r.URL.Query().Get("page")
+	page, err := strconv.Atoi(pageStr)
+	if err != nil || page < 1 {
+		page = 1
+	}
+	const guildsPerPage = 50
+
+	// --- 2. Build dynamic WHERE clause and parameters ---
+	var whereConditions []string
+	var params []interface{}
+	if searchName != "" {
+		whereConditions = append(whereConditions, "name LIKE ?")
+		params = append(params, "%"+searchName+"%")
+	}
+	whereClause := ""
+	if len(whereConditions) > 0 {
+		whereClause = "WHERE " + strings.Join(whereConditions, " AND ")
+	}
+
+	// --- 3. Get the total count of matching guilds for pagination ---
+	var totalGuilds int
+	countQuery := fmt.Sprintf("SELECT COUNT(*) FROM guilds %s", whereClause)
+	err = db.QueryRow(countQuery, params...).Scan(&totalGuilds)
+	if err != nil {
+		http.Error(w, "Could not count guilds", http.StatusInternalServerError)
+		log.Printf("❌ Could not count guilds: %v", err)
+		return
+	}
+
+	// --- 4. Calculate pagination details ---
+	totalPages := int(math.Ceil(float64(totalGuilds) / float64(guildsPerPage)))
+	if page > totalPages {
+		page = totalPages
+	}
+	if page < 1 {
+		page = 1
+	}
+	offset := (page - 1) * guildsPerPage
+
+	// --- 5. Fetch the paginated guild data ---
+	query := fmt.Sprintf(`
+		SELECT rank, name, level, experience, master, emblem_url
+		FROM guilds
+		%s
+		ORDER BY rank ASC
+		LIMIT ? OFFSET ?
+	`, whereClause)
+	finalParams := append(params, guildsPerPage, offset)
+
+	rows, err := db.Query(query, finalParams...)
+	if err != nil {
+		http.Error(w, "Could not query for guilds", http.StatusInternalServerError)
+		log.Printf("❌ Could not query for guilds: %v", err)
+		return
+	}
+	defer rows.Close()
+
+	var guilds []Guild
+	for rows.Next() {
+		var g Guild
+		if err := rows.Scan(&g.Rank, &g.Name, &g.Level, &g.Experience, &g.Master, &g.EmblemURL); err != nil {
+			log.Printf("⚠️ Failed to scan guild row: %v", err)
+			continue
+		}
+		guilds = append(guilds, g)
+	}
+
+	// --- 6. Load template and send data ---
+	tmpl, err := template.ParseFiles("guilds.html")
+	if err != nil {
+		http.Error(w, "Could not load guilds template", http.StatusInternalServerError)
+		log.Printf("❌ Could not load guilds.html template: %v", err)
+		return
+	}
+
+	data := GuildPageData{
+		Guilds:         guilds,
+		LastScrapeTime: getLastScrapeTime(),
+		SearchName:     searchName,
+		CurrentPage:    page,
+		TotalPages:     totalPages,
+		PrevPage:       page - 1,
+		NextPage:       page + 1,
+		HasPrevPage:    page > 1,
+		HasNextPage:    page < totalPages,
+		TotalGuilds:    totalGuilds,
 	}
 	tmpl.Execute(w, data)
 }

@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Player Characters</title>
+    <title>Guild Rankings</title>
     <script src="https://cdn.tailwindcss.com"></script>
 </head>
 <body class="bg-gray-100 text-gray-800">
@@ -17,8 +17,8 @@
                     <a href="/full-list" class="text-gray-600 hover:text-blue-500">Full Market List</a>
                     <a href="/activity" class="text-gray-600 hover:text-blue-500">Market Activity</a>
                     <a href="/players" class="text-gray-600 hover:text-blue-500">Player Count</a>
-                    <a href="/characters" class="text-blue-500 font-bold">Player Characters</a>
-                    <a href="/guilds" class="text-gray-600 hover:text-blue-500">Guild Rankings</a>
+                    <a href="/characters" class="text-gray-600 hover:text-blue-500">Player Characters</a>
+                    <a href="/guilds" class="text-blue-500 font-bold">Guild Rankings</a>
                 </div>
             </div>
         </div>
@@ -26,24 +26,15 @@
 
     <div class="container mx-auto px-6 py-8">
         <div class="flex justify-between items-center mb-4">
-            <h1 class="text-2xl font-bold text-gray-800">Player Characters</h1>
+            <h1 class="text-2xl font-bold text-gray-800">Guild Rankings</h1>
             <p class="text-sm text-gray-500">Last Market Update: {{.LastScrapeTime}}</p>
         </div>
 
         <div class="bg-white p-4 rounded-lg shadow mb-6">
-            <form action="/characters" method="GET" class="grid grid-cols-1 md:grid-cols-4 gap-4 items-end">
-                <div class="md:col-span-2">
-                    <label for="name_query" class="block text-sm font-medium text-gray-700">Search by Name</label>
+            <form action="/guilds" method="GET" class="grid grid-cols-1 md:grid-cols-4 gap-4 items-end">
+                <div class="md:col-span-3">
+                    <label for="name_query" class="block text-sm font-medium text-gray-700">Search by Guild Name</label>
                     <input type="text" name="name_query" id="name_query" value="{{.SearchName}}" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-300 focus:ring focus:ring-indigo-200 focus:ring-opacity-50">
-                </div>
-                <div>
-                    <label for="class_filter" class="block text-sm font-medium text-gray-700">Filter by Class</label>
-                    <select name="class_filter" id="class_filter" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-300 focus:ring focus:ring-indigo-200 focus:ring-opacity-50">
-                        <option value="">All Classes</option>
-                        {{range .AllClasses}}
-                        <option value="{{.}}" {{if eq . $.SelectedClass}}selected{{end}}>{{.}}</option>
-                        {{end}}
-                    </select>
                 </div>
                 <div>
                     <button type="submit" class="w-full bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-md">Apply</button>
@@ -59,27 +50,32 @@
                         <tr class="border-b-2 border-gray-200 bg-gray-50 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
                             <th class="px-5 py-3">Rank</th>
                             <th class="px-5 py-3">Name</th>
-                            <th class="px-5 py-3">Base Level</th>
-                            <th class="px-5 py-3">Job Level</th>
+                            <th class="px-5 py-3">Level</th>
                             <th class="px-5 py-3">Experience %</th>
-                            <th class="px-5 py-3">Class</th>
-                            <th class="px-5 py-3">Guild</th>
+                            <th class="px-5 py-3">Master</th>
                         </tr>
                     </thead>
                     <tbody class="text-gray-700">
-                        {{range .Players}}
+                        {{range .Guilds}}
                         <tr class="border-b border-gray-200 hover:bg-gray-50">
                             <td class="px-5 py-4 text-sm">{{.Rank}}</td>
-                            <td class="px-5 py-4 text-sm font-semibold">{{.Name}}</td>
-                            <td class="px-5 py-4 text-sm">{{.BaseLevel}}</td>
-                            <td class="px-5 py-4 text-sm">{{.JobLevel}}</td>
-                            <td class="px-5 py-4 text-sm">{{printf "%.2f" .Experience}}%</td>
-                            <td class="px-5 py-4 text-sm">{{.Class}}</td>
-                            <td class="px-5 py-4 text-sm">{{.GuildName.String}}</td>
+                            <td class="px-5 py-4 text-sm font-semibold">
+                                <div class="flex items-center">
+                                    {{if .EmblemURL}}
+                                    <img src="{{.EmblemURL}}" alt="Emblem" class="w-6 h-6 mr-3">
+                                    {{else}}
+                                    <div class="w-6 h-6 mr-3 bg-gray-200 rounded-sm"></div>
+                                    {{end}}
+                                    <span>{{.Name}}</span>
+                                </div>
+                            </td>
+                            <td class="px-5 py-4 text-sm">{{.Level}}</td>
+                            <td class="px-5 py-4 text-sm">{{.Experience}}%</td>
+                            <td class="px-5 py-4 text-sm">{{.Master}}</td>
                         </tr>
                         {{else}}
                         <tr>
-                            <td colspan="7" class="text-center py-10 text-gray-500">No players found matching your criteria.</td>
+                            <td colspan="5" class="text-center py-10 text-gray-500">No guilds found matching your criteria.</td>
                         </tr>
                         {{end}}
                     </tbody>
@@ -89,11 +85,11 @@
              {{if gt .TotalPages 1}}
             <div class="px-5 py-5 bg-white border-t flex flex-col xs:flex-row items-center xs:justify-between">
                 <span class="text-xs xs:text-sm text-gray-900">
-                    Showing page {{.CurrentPage}} of {{.TotalPages}} ({{.TotalPlayers}} total players)
+                    Showing page {{.CurrentPage}} of {{.TotalPages}} ({{.TotalGuilds}} total guilds)
                 </span>
                 <div class="inline-flex mt-2 xs:mt-0">
                     {{if .HasPrevPage}}
-                        <a href="/characters?page={{.PrevPage}}&name_query={{.SearchName}}&class_filter={{.SelectedClass}}" class="text-sm bg-gray-300 hover:bg-gray-400 text-gray-800 font-semibold py-2 px-4 rounded-l">
+                        <a href="/guilds?page={{.PrevPage}}&name_query={{.SearchName}}" class="text-sm bg-gray-300 hover:bg-gray-400 text-gray-800 font-semibold py-2 px-4 rounded-l">
                             Prev
                         </a>
                     {{else}}
@@ -103,7 +99,7 @@
                     {{end}}
 
                     {{if .HasNextPage}}
-                        <a href="/characters?page={{.NextPage}}&name_query={{.SearchName}}&class_filter={{.SelectedClass}}" class="text-sm bg-gray-300 hover:bg-gray-400 text-gray-800 font-semibold py-2 px-4 rounded-r">
+                        <a href="/guilds?page={{.NextPage}}&name_query={{.SearchName}}" class="text-sm bg-gray-300 hover:bg-gray-400 text-gray-800 font-semibold py-2 px-4 rounded-r">
                             Next
                         </a>
                     {{else}}

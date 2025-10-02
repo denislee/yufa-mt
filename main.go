@@ -25,6 +25,7 @@ func main() {
 	http.HandleFunc("/activity", activityHandler)    // Log of recent market events (items added/removed).
 	http.HandleFunc("/players", playerCountHandler)  // Shows a graph of online player counts over time.
 	http.HandleFunc("/characters", characterHandler) // Shows player characters.
+	http.HandleFunc("/guilds", guildHandler)         // Shows guild rankings.
 
 	// Start the web server.
 	port := "8080"
@@ -33,3 +34,4 @@ func main() {
 		log.Fatalf("❌ Failed to start web server: %v", err)
 	}
 }
+

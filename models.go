@@ -131,7 +131,18 @@ type PlayerCharacter struct {
 	JobLevel   int
 	Experience float64
 	Class      string
+	GuildName  sql.NullString // Use sql.NullString to handle players without a guild.
 	LastActive string
+}
+
+// Guild represents a single guild's data from the rankings.
+type Guild struct {
+	Rank       int
+	Name       string
+	Level      int
+	Experience int
+	Master     string
+	EmblemURL  string
 }
 
 // --- Page Data Structs for HTML Templates ---
@@ -215,5 +226,21 @@ type CharacterPageData struct {
 	TotalPlayers int
 	HasPrevPage  bool
 	HasNextPage  bool
+}
+
+// GuildPageData holds data for the guild listing page template.
+type GuildPageData struct {
+	Guilds         []Guild
+	LastScrapeTime string
+	// Search and Filter
+	SearchName string
+	// Pagination
+	CurrentPage int
+	TotalPages  int
+	PrevPage    int
+	NextPage    int
+	TotalGuilds int
+	HasPrevPage bool
+	HasNextPage bool
 }
 
