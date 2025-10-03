@@ -40,7 +40,7 @@ func newOptimizedAllocator() (context.Context, context.CancelFunc) {
 
 // scrapeAndStorePlayerCount fetches the online player count, queries for the unique seller count, and saves them.
 func scrapeAndStorePlayerCount() {
-	log.Println("📊 Checking player and seller count...")
+	log.Println("📊 [Counter] Checking player and seller count...")
 
 	// Use the optimized allocator
 	allocCtx, cancel := newOptimizedAllocator()
@@ -59,7 +59,7 @@ func scrapeAndStorePlayerCount() {
 	)
 
 	if err != nil {
-		log.Printf("❌ Failed to get player info: %v", err)
+		log.Printf("❌ [Counter] Failed to get player info: %v", err)
 		return
 	}
 
@@ -76,7 +76,7 @@ func scrapeAndStorePlayerCount() {
 	}
 
 	if !found {
-		log.Println("⚠️ Could not find player count on the info page after successful load.")
+		log.Println("⚠️ [Counter] Could not find player count on the info page after successful load.")
 		return
 	}
 
@@ -84,7 +84,7 @@ func scrapeAndStorePlayerCount() {
 	var sellerCount int
 	err = db.QueryRow("SELECT COUNT(DISTINCT seller_name) FROM items WHERE is_available = 1").Scan(&sellerCount)
 	if err != nil {
-		log.Printf("⚠️ Could not query for unique seller count: %v", err)
+		log.Printf("⚠️ [Counter] Could not query for unique seller count: %v", err)
 		// Don't return, as we can still store the player count. Default sellerCount to 0.
 		sellerCount = 0
 	}
@@ -94,14 +94,14 @@ func scrapeAndStorePlayerCount() {
 	var lastSellerCount sql.NullInt64
 	err = db.QueryRow("SELECT count, seller_count FROM player_history ORDER BY timestamp DESC LIMIT 1").Scan(&lastPlayerCount, &lastSellerCount)
 	if err != nil && err != sql.ErrNoRows {
-		log.Printf("⚠️ Could not query for last player/seller count: %v", err)
+		log.Printf("⚠️ [Counter] Could not query for last player/seller count: %v", err)
 		return
 	}
 
 	// If both counts are the same as the last record, do nothing.
 	if err != sql.ErrNoRows && onlineCount == lastPlayerCount && lastSellerCount.Valid && sellerCount == int(lastSellerCount.Int64) {
 		if enablePlayerCountDebugLogs {
-			log.Printf("Player/seller count unchanged (%d players, %d sellers). No update needed.", onlineCount, sellerCount)
+			log.Printf("[Counter] Player/seller count unchanged (%d players, %d sellers). No update needed.", onlineCount, sellerCount)
 		}
 		return
 	}
@@ -109,11 +109,11 @@ func scrapeAndStorePlayerCount() {
 	retrievalTime := time.Now().Format(time.RFC3339)
 	_, err = db.Exec("INSERT INTO player_history (timestamp, count, seller_count) VALUES (?, ?, ?)", retrievalTime, onlineCount, sellerCount)
 	if err != nil {
-		log.Printf("❌ Failed to insert new player/seller count: %v", err)
+		log.Printf("❌ [Counter] Failed to insert new player/seller count: %v", err)
 		return
 	}
 
-	log.Printf("✅ Player/seller count updated. New values: %d players, %d sellers", onlineCount, sellerCount)
+	log.Printf("✅ [Counter] Player/seller count updated. New values: %d players, %d sellers", onlineCount, sellerCount)
 }
 
 func scrapePlayerCharacters() {
