@@ -122,6 +122,47 @@ func scrapePlayerCharacters() {
 	const maxRetries = 3
 	const batchSize = 1 // Number of pages to scrape in parallel
 
+	// Use the optimized allocator for the entire job
+	allocCtx, cancel := newOptimizedAllocator()
+	defer cancel()
+
+	// --- NEW: Find the last page number first ---
+	var lastPage = 1 // Default to 1 page
+	log.Println("🏆 [Characters] Determining total number of pages...")
+	firstPageCtx, cancelFirstPage := chromedp.NewContext(allocCtx)
+	defer cancelFirstPage()
+	firstPageCtx, cancelTimeout := context.WithTimeout(firstPageCtx, 60*time.Second)
+	defer cancelTimeout()
+
+	var initialHtmlContent string
+	err := chromedp.Run(firstPageCtx,
+		chromedp.Navigate("https://projetoyufa.com/rankings?page=1"),
+		chromedp.WaitVisible(`nav[aria-label="pagination"]`), // Wait for the pagination nav bar
+		chromedp.OuterHTML("html", &initialHtmlContent),
+	)
+
+	if err != nil {
+		log.Printf("⚠️ [Characters] Could not find pagination on page 1. Assuming only one page. Error: %v", err)
+	} else {
+		doc, _ := goquery.NewDocumentFromReader(strings.NewReader(initialHtmlContent))
+		pageRegex := regexp.MustCompile(`page=(\d+)`)
+		// Find all links within the pagination bar
+		doc.Find(`nav[aria-label="pagination"] a[href*="?page="]`).Each(func(i int, s *goquery.Selection) {
+			if href, exists := s.Attr("href"); exists {
+				matches := pageRegex.FindStringSubmatch(href)
+				if len(matches) > 1 {
+					if p, err := strconv.Atoi(matches[1]); err == nil {
+						if p > lastPage {
+							lastPage = p // Keep track of the highest page number found
+						}
+					}
+				}
+			}
+		})
+	}
+	log.Printf("✅ [Characters] Found %d total pages to scrape.", lastPage)
+	// --- END of finding last page ---
+
 	// Fetch existing player data for comparison ONCE at the beginning.
 	if enableCharacterScraperDebugLogs {
 		log.Println("    -> [DB] Fetching existing player data for activity comparison...")
@@ -148,22 +189,23 @@ func scrapePlayerCharacters() {
 	// Use a single timestamp for the entire scrape operation.
 	updateTime := time.Now().Format(time.RFC3339)
 
-	// Use the optimized allocator for the entire job
-	allocCtx, cancel := newOptimizedAllocator()
-	defer cancel()
-
-	// Loop through pages in batches until there's no more data
-	for startPage := 1; ; startPage += batchSize {
+	// --- MODIFIED LOOP: Loop from page 1 to the determined last page ---
+	for startPage := 1; startPage <= lastPage; startPage += batchSize {
 		var wg sync.WaitGroup
 		playerChan := make(chan []PlayerCharacter, batchSize)
 
-		log.Printf("🏆 [Characters] Scraping batch of %d pages starting from page %d...", batchSize, startPage)
+		log.Printf("🏆 [Characters] Scraping batch of up to %d pages starting from page %d (Total: %d)...", batchSize, startPage, lastPage)
 
 		// Launch a goroutine for each page in the batch
 		for i := 0; i < batchSize; i++ {
 			currentPage := startPage + i
-			wg.Add(1)
 
+			// --- NEW: Ensure we don't try to scrape pages that don't exist ---
+			if currentPage > lastPage {
+				continue
+			}
+
+			wg.Add(1)
 			go func(page int) {
 				defer wg.Done()
 				var htmlContent string
@@ -252,22 +294,13 @@ func scrapePlayerCharacters() {
 
 		// Consolidate results from the channel
 		var batchPlayers []PlayerCharacter
-		emptyPagesInBatch := 0
 		for players := range playerChan {
-			if players != nil { // A nil value indicates a scrape error for that page
+			if players != nil {
 				batchPlayers = append(batchPlayers, players...)
-				if len(players) == 0 {
-					emptyPagesInBatch++
-				}
 			}
 		}
 
-		// If the entire batch consisted of pages that returned no players, we are done.
-		if emptyPagesInBatch == batchSize {
-			log.Println("✅ [Characters] Concluding scrape: Batch contained only empty pages.")
-			break
-		}
-
+		// If no players were found in this batch, something might be wrong, but we continue
 		if len(batchPlayers) == 0 {
 			log.Println("⚠️ [Characters] No players found in this batch. Continuing to next batch.")
 			continue
