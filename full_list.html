@@ -37,31 +37,16 @@
         </div>
 
         <div class="bg-white p-3 rounded-lg shadow mb-4">
-            <form action="/full-list" method="get">
+            <form action="/full-list" method="get" class="flex flex-wrap items-center gap-3">
                 <input type="hidden" name="type" value="{{.SelectedType}}">
-                <div class="grid grid-cols-1 md:grid-cols-4 gap-3 items-end">
-                    <div class="md:col-span-2">
-                        <label for="query" class="block text-sm font-medium text-gray-700">Search Item</label>
-                        <input type="text" name="query" id="query" placeholder="e.g., Jellopy, Mace [4]" value="{{.SearchQuery}}" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-300 focus:ring focus:ring-indigo-200 focus:ring-opacity-50 text-sm">
-                    </div>
-                    <div>
-                         <label for="store_name" class="block text-sm font-medium text-gray-700">Search Store</label>
-                        <input list="store-names" name="store_name" id="store_name" placeholder="e.g., My Cool Shop" value="{{.StoreNameQuery}}" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-300 focus:ring focus:ring-indigo-200 focus:ring-opacity-50 text-sm">
-                        <datalist id="store-names">
-                            {{range .AllStoreNames}}<option value="{{.}}">{{end}}
-                        </datalist>
-                    </div>
-                    <div class="flex items-center space-x-4">
-                        <button type="submit" class="w-full bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-md">Apply</button>
-                        {{if .StoreNameQuery}}<a href="/full-list?query={{.SearchQuery}}&sort_by={{.SortBy}}&order={{.Order}}{{if not .ShowAll}}&only_available=true{{end}}&{{.ColumnParams}}&type={{.SelectedType | urlquery}}" class="text-sm text-gray-500 hover:text-gray-700">Clear</a>{{end}}
-                    </div>
-                </div>
-                 <div class="border-t border-gray-200 mt-3 pt-3">
+
+                        <input type="text" name="query" placeholder="Search for an item..." value="{{.SearchQuery}}" class="flex-grow mt-1 block w-full md:w-auto rounded-md border-gray-300 shadow-sm focus:border-indigo-300 focus:ring focus:ring-indigo-200 focus:ring-opacity-50 text-sm">
+                        <label class="flex items-center space-x-2 text-sm text-gray-700">
+                            <input type="checkbox" name="only_available" value="true" {{if not .ShowAll}}checked{{end}} class="rounded border-gray-300 text-indigo-600 shadow-sm focus:border-indigo-300 focus:ring focus:ring-offset-0 focus:ring-indigo-200 focus:ring-opacity-50">
+                            <span>Show only available</span>
+                        </label>
+                        <button type="submit" class="w-full md:w-auto bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-md">Search</button>
                     <div class="flex flex-wrap items-center gap-x-4 gap-y-1">
-                         <div class="flex items-center">
-                            <input type="checkbox" name="only_available" value="true" id="only_available" {{if not .ShowAll}}checked{{end}} class="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500">
-                            <label for="only_available" class="ml-2 block text-sm text-gray-900">Show only available</label>
-                        </div>
                         <div class="text-sm font-medium text-gray-700">Show Columns:</div>
                          {{range .AllColumns}}
                         <div class="flex items-center">
@@ -70,7 +55,15 @@
                         </div>
                         {{end}}
                     </div>
-                </div>
+                    {{if .StoreNameQuery}}
+                    <div class="border-t border-gray-200 mt-3 pt-3">
+                        <div class="text-sm">
+                            Filtering by Store: <span class="font-semibold bg-blue-100 text-blue-800 py-0.5 px-2 rounded-full">{{.StoreNameQuery}}</span>
+                            <a href="/full-list?query={{.SearchQuery}}&sort_by={{.SortBy}}&order={{.Order}}{{if not .ShowAll}}&only_available=true{{end}}&{{.ColumnParams}}&type={{.SelectedType | urlquery}}" class="ml-2 text-red-500 hover:underline text-xs">[Clear Filter]</a>
+                        </div>
+                    </div>
+                    <input type="hidden" name="store_name" value="{{.StoreNameQuery}}">
+                    {{end}}
             </form>
         </div>
 
