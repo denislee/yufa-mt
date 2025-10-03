@@ -329,10 +329,9 @@ type GuildJSON struct {
 	Members []GuildMemberJSON `json:"members"`
 }
 
-// scrapeGuilds scrapes guild data by parsing the HTML table from the rankings pages.
+// scrapeGuilds scrapes guild data, including members, and updates both the guilds and characters tables.
 func scrapeGuilds() {
-	log.Println("🏰 [Guilds] Starting guild scrape...")
-	var allGuilds []Guild
+	log.Println("🏰 [Guilds] Starting guild and character-guild association scrape...")
 	const maxRetries = 3
 
 	allocOpts := append(chromedp.DefaultExecAllocatorOptions[:],
@@ -343,8 +342,50 @@ func scrapeGuilds() {
 	allocCtx, cancel := chromedp.NewExecAllocator(context.Background(), allocOpts...)
 	defer cancel()
 
-	// Loop through pages until there's no more data
-	for page := 1; ; page++ {
+	// --- NEW: Find the last page number first ---
+	var lastPage = 1 // Default to 1 page
+	log.Println("🏰 [Guilds] Determining total number of pages...")
+
+	// Create a new context just for this initial task
+	firstPageCtx, cancelFirstPage := chromedp.NewContext(allocCtx)
+	defer cancelFirstPage()
+	firstPageCtx, cancelTimeout := context.WithTimeout(firstPageCtx, 60*time.Second)
+	defer cancelTimeout()
+
+	var initialHtmlContent string
+	err := chromedp.Run(firstPageCtx,
+		chromedp.Navigate("https://projetoyufa.com/rankings/guild?page=1"),
+		chromedp.WaitVisible(`nav[aria-label="pagination"]`), // Wait for the pagination nav bar
+		chromedp.OuterHTML("html", &initialHtmlContent),
+	)
+
+	if err != nil {
+		log.Printf("⚠️ [Guilds] Could not find pagination on page 1. Assuming only one page. Error: %v", err)
+	} else {
+		doc, _ := goquery.NewDocumentFromReader(strings.NewReader(initialHtmlContent))
+		pageRegex := regexp.MustCompile(`page=(\d+)`)
+		// Find all links within the pagination bar
+		doc.Find(`nav[aria-label="pagination"] a[href*="?page="]`).Each(func(i int, s *goquery.Selection) {
+			if href, exists := s.Attr("href"); exists {
+				matches := pageRegex.FindStringSubmatch(href)
+				if len(matches) > 1 {
+					if p, err := strconv.Atoi(matches[1]); err == nil {
+						if p > lastPage {
+							lastPage = p // Keep track of the highest page number found
+						}
+					}
+				}
+			}
+		})
+		log.Printf("✅ [Guilds] Found %d total pages to scrape.", lastPage)
+	}
+	// --- END of finding last page ---
+
+	allGuilds := make(map[string]Guild)
+	allMembers := make(map[string]string) // Map character name to guild name
+
+	// --- MODIFIED LOOP: Loop from 1 to the last page found ---
+	for page := 1; page <= lastPage; page++ {
 		var htmlContent string
 		var pageScrapedSuccessfully bool
 		url := fmt.Sprintf("https://projetoyufa.com/rankings/guild?page=%d", page)
@@ -352,14 +393,15 @@ func scrapeGuilds() {
 		for attempt := 1; attempt <= maxRetries; attempt++ {
 			taskCtx, cancelCtx := chromedp.NewContext(allocCtx)
 			defer cancelCtx()
-			taskCtx, cancelTimeout := context.WithTimeout(taskCtx, 60*time.Second)
-			defer cancelTimeout()
+			taskCtx, cancelTimeoutLoop := context.WithTimeout(taskCtx, 60*time.Second)
+			defer cancelTimeoutLoop()
 
-			log.Printf("🏰 [Guilds] Scraping page %d (Attempt %d/%d)...", page, attempt, maxRetries)
+			log.Printf("🏰 [Guilds] Scraping page %d of %d (Attempt %d/%d)...", page, lastPage, attempt, maxRetries)
 
 			err := chromedp.Run(taskCtx,
 				chromedp.Navigate(url),
-				chromedp.WaitVisible(`tbody[data-slot="table-body"] tr[data-slot="table-row"]`),
+				chromedp.WaitVisible(`tbody[data-slot="table-body"] tr:has(td:nth-of-type(2))`),
+				chromedp.WaitVisible(`div.group h3`),
 				chromedp.OuterHTML("html", &htmlContent),
 			)
 
@@ -369,113 +411,147 @@ func scrapeGuilds() {
 			}
 			log.Printf("❌ [Guilds] Error on page %d, attempt %d/%d: %v", page, attempt, maxRetries, err)
 			if attempt < maxRetries {
-				time.Sleep(30 * time.Second)
+				time.Sleep(20 * time.Second)
 			}
 		}
 
 		if !pageScrapedSuccessfully {
-			log.Printf("❌ [Guilds] All %d attempts failed for page %d. Aborting guild scrape.", maxRetries, page)
-			break
+			log.Printf("❌ [Guilds] All %d attempts failed for page %d. Skipping this page.", maxRetries, page)
+			continue // Skip to the next page in the loop
 		}
 
 		doc, err := goquery.NewDocumentFromReader(strings.NewReader(htmlContent))
 		if err != nil {
 			log.Printf("❌ [Guilds] Failed to parse HTML for page %d: %v", page, err)
-			break
+			continue
 		}
 
-		rows := doc.Find(`tbody[data-slot="table-body"] tr[data-slot="table-row"]`)
-		if rows.Length() == 0 {
-			log.Println("✅ [Guilds] No more guild rows found on the page. Concluding scrape.")
-			break // End of pages
-		}
-		log.Printf("🔎 [Guilds] Found %d guild rows on page %d. Processing...", rows.Length(), page)
+		guildRows := doc.Find(`tbody[data-slot="table-body"] > tr:not(:has(td[colspan="4"]))`)
+		log.Printf("🔎 [Guilds] Found %d guild rows on page %d. Processing...", guildRows.Length(), page)
 
-		rows.Each(func(i int, s *goquery.Selection) {
+		guildRows.Each(func(i int, s *goquery.Selection) {
 			var guild Guild
 			var parseErr error
 
 			cells := s.Find(`td[data-slot="table-cell"]`)
 			if cells.Length() < 4 {
-				log.Printf("    -> [Parser] WARN: Row %d has less than 4 cells, skipping.", i)
+				log.Printf("    -> [Parser] WARN: Skipping row %d, expected at least 4 cells, got %d.", i, cells.Length())
 				return
 			}
 
-			// Extract data from cells based on their order in the table row
 			rankStr := strings.TrimSpace(cells.Eq(0).Text())
-			nameStr := strings.TrimSpace(cells.Eq(1).Text())
-			// --- MODIFICATION START ---
-			// Target the first span within the cell to get just the name.
-			masterStr := strings.TrimSpace(cells.Eq(2).Find("span").First().Text())
-			// --- MODIFICATION END ---
-			levelStr := strings.TrimSpace(strings.TrimPrefix(cells.Eq(3).Text(), "Nv. "))
+			nameStr := strings.TrimSpace(cells.Eq(1).Find("span").Text())
+			levelStr := strings.TrimSpace(cells.Eq(2).Text())
+
+			memberRow := s.Next()
+			if memberRow.Length() == 0 {
+				log.Printf("    -> [Parser] WARN: Could not find member detail row for guild '%s'.", nameStr)
+				return
+			}
+
+			masterStr := ""
+			memberRow.Find("div.group").Each(func(_ int, memberCard *goquery.Selection) {
+				if strings.Contains(memberCard.Text(), "Líder") {
+					masterStr = strings.TrimSpace(memberCard.Find("h3").Text())
+				}
+			})
+
+			memberRow.Find("div.group h3").Each(func(_ int, memberNameTag *goquery.Selection) {
+				memberName := strings.TrimSpace(memberNameTag.Text())
+				if memberName != "" {
+					allMembers[memberName] = nameStr
+				}
+			})
 
 			guild.Name = nameStr
 			guild.Master = masterStr
-
 			guild.Rank, parseErr = strconv.Atoi(rankStr)
 			if parseErr != nil {
-				log.Printf("        -> [Parser] ERROR: Could not parse RANK for '%s' from value '%s'. Skipping row. Error: %v", nameStr, rankStr, parseErr)
+				log.Printf("    -> [Parser] ERROR: Could not parse RANK for '%s' from value '%s'. Error: %v", nameStr, rankStr, parseErr)
 				return
 			}
-
 			guild.Level, parseErr = strconv.Atoi(levelStr)
 			if parseErr != nil {
-				log.Printf("        -> [Parser] ERROR: Could not parse LEVEL for '%s' from value '%s'. Skipping row. Error: %v", nameStr, levelStr, parseErr)
+				log.Printf("    -> [Parser] ERROR: Could not parse LEVEL for '%s' from value '%s'. Error: %v", nameStr, levelStr, parseErr)
 				return
 			}
 
-			// Experience and Emblem URL are not available from this source
 			guild.Experience = 0
 			guild.EmblemURL = ""
 
-			log.Printf("    -> [Parser] SUCCESS: Parsed guild %s (Rank: %d, Level: %d, Master: %s)", guild.Name, guild.Rank, guild.Level, guild.Master)
-			allGuilds = append(allGuilds, guild)
+			log.Printf("    -> [Parser] SUCCESS: Parsed guild '%s' (Rank: %d, Level: %d, Master: '%s')", guild.Name, guild.Rank, guild.Level, guild.Master)
+			allGuilds[guild.Name] = guild
 		})
 
-		// Be polite to the server
 		time.Sleep(2 * time.Second)
 	}
 
 	if len(allGuilds) == 0 {
-		log.Println("⚠️ [Guilds] Scrape finished with 0 total guilds found. Guild table will not be updated.")
+		log.Println("⚠️ [Guilds] Scrape finished with 0 total guilds found. Guild/character tables will not be updated.")
 		return
 	}
 
-	// Begin a transaction to update the guilds table
-	tx, err := db.Begin()
-	if err != nil {
-		log.Printf("❌ [Guilds] Failed to begin transaction for guilds table: %v", err)
+	tx, errDb := db.Begin()
+	if errDb != nil {
+		log.Printf("❌ [DB] Failed to begin transaction for guilds update: %v", errDb)
 		return
 	}
 	defer tx.Rollback()
 
-	log.Println("    -> [DB] Clearing and repopulating guilds table...")
+	log.Println("    -> [DB] Clearing and repopulating 'guilds' table...")
 	if _, err := tx.Exec("DELETE FROM guilds"); err != nil {
 		log.Printf("❌ [DB] Failed to clear guilds table: %v", err)
 		return
 	}
 
-	stmt, err := tx.Prepare(`INSERT INTO guilds (rank, name, level, experience, master, emblem_url, last_updated) VALUES (?, ?, ?, ?, ?, ?, ?)`)
+	guildStmt, err := tx.Prepare(`INSERT INTO guilds (rank, name, level, experience, master, emblem_url, last_updated) VALUES (?, ?, ?, ?, ?, ?, ?)`)
 	if err != nil {
 		log.Printf("❌ [DB] Failed to prepare guilds insert statement: %v", err)
 		return
 	}
-	defer stmt.Close()
+	defer guildStmt.Close()
 
 	updateTime := time.Now().Format(time.RFC3339)
 	for _, g := range allGuilds {
-		if _, err := stmt.Exec(g.Rank, g.Name, g.Level, g.Experience, g.Master, g.EmblemURL, updateTime); err != nil {
-			log.Printf("    -> [DB] WARN: Failed to insert guild %s: %v", g.Name, err)
+		if _, err := guildStmt.Exec(g.Rank, g.Name, g.Level, g.Experience, g.Master, g.EmblemURL, updateTime); err != nil {
+			log.Printf("    -> [DB] WARN: Failed to insert guild '%s': %v", g.Name, err)
 		}
 	}
 
-	if err := tx.Commit(); err != nil {
-		log.Printf("❌ [DB] Failed to commit guilds transaction: %v", err)
+	log.Printf("    -> [DB] Updating 'characters' table with guild associations for %d members...", len(allMembers))
+
+	if _, err := tx.Exec("UPDATE characters SET guild_name = NULL"); err != nil {
+		log.Printf("❌ [DB] Failed to clear existing guild names from characters table: %v", err)
 		return
 	}
 
-	log.Printf("✅ [Guilds] Scrape and update complete. Saved %d guild records.", len(allGuilds))
+	charStmt, err := tx.Prepare("UPDATE characters SET guild_name = ? WHERE name = ?")
+	if err != nil {
+		log.Printf("❌ [DB] Failed to prepare character guild update statement: %v", err)
+		return
+	}
+	defer charStmt.Close()
+
+	updateCount := 0
+	for charName, guildName := range allMembers {
+		res, err := charStmt.Exec(guildName, charName)
+		if err != nil {
+			log.Printf("    -> [DB] WARN: Failed to update guild for character '%s': %v", charName, err)
+		} else {
+			rowsAffected, _ := res.RowsAffected()
+			if rowsAffected > 0 {
+				updateCount++
+			}
+		}
+	}
+	log.Printf("    -> [DB] Successfully associated %d characters with their guilds.", updateCount)
+
+	if err := tx.Commit(); err != nil {
+		log.Printf("❌ [DB] Failed to commit guilds and characters transaction: %v", err)
+		return
+	}
+
+	log.Printf("✅ [Guilds] Scrape and update complete. Saved %d guild records and updated character associations.", len(allGuilds))
 }
 
 // startBackgroundJobs starts all recurring background tasks.
@@ -504,24 +580,18 @@ func startBackgroundJobs() {
 		}
 	}()
 
-	// --- Player Characters ---
-	// go func() {
-	// 	ticker := time.NewTicker(30 * time.Minute)
-	// 	defer ticker.Stop()
-	//
-	// 	// Run jobs immediately on start, in the correct order.
-	// 	scrapePlayerCharacters()
-	// 	time.Sleep(30 * time.Second) // Short pause between jobs to be safe.
-	// 	scrapeGuilds()
-	//
-	// 	for {
-	// 		log.Printf("🕒 Waiting for the next 30-minute character & guild schedule...")
-	// 		<-ticker.C
-	// 		scrapePlayerCharacters()
-	// 		time.Sleep(30 * time.Second) // Short pause between jobs to be safe.
-	// 		scrapeGuilds()
-	// 	}
-	// }()
+	//--- Player Characters ---
+	go func() {
+		ticker := time.NewTicker(30 * time.Minute)
+		defer ticker.Stop()
+		scrapePlayerCharacters()
+
+		for {
+			log.Printf("🕒 Waiting for the next 30-minute character & guild schedule...")
+			<-ticker.C
+			scrapePlayerCharacters()
+		}
+	}()
 
 	// --- Guilds Scraper ---
 	go func() {
