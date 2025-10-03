@@ -120,7 +120,7 @@ func scrapePlayerCharacters() {
 	log.Println("🏆 [Characters] Starting player character scrape...")
 
 	const maxRetries = 3
-	const batchSize = 2 // Number of pages to scrape in parallel
+	const batchSize = 1 // Number of pages to scrape in parallel
 
 	// Fetch existing player data for comparison ONCE at the beginning.
 	if enableCharacterScraperDebugLogs {
@@ -357,12 +357,14 @@ type GuildJSON struct {
 // scrapeGuilds scrapes guild data, including members, and updates both the guilds and characters tables.
 func scrapeGuilds() {
 	log.Println("🏰 [Guilds] Starting guild and character-guild association scrape...")
-	const maxRetries = 12
+	const maxRetries = 16
 
 	allocOpts := append(chromedp.DefaultExecAllocatorOptions[:],
 		chromedp.Flag("headless", true),
 		chromedp.Flag("disable-gpu", true),
 		chromedp.Flag("no-sandbox", true),
+		chromedp.Flag("disable-extensions", true), // Disable extensions
+		//		chromedp.Flag("blink-settings", "imagesEnabled=false"), // Disable images
 	)
 	allocCtx, cancel := chromedp.NewExecAllocator(context.Background(), allocOpts...)
 	defer cancel()
