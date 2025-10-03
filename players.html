@@ -2,9 +2,13 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale-1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Yufa Market Tracker / Player Count</title>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+    <script src="https://cdn.jsdelivr.net/npm/date-fns@3/index.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
+    
     <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-annotation@3.0.1/dist/chartjs-plugin-annotation.min.js"></script>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
@@ -104,12 +108,12 @@
             [togglePlayers, toggleSellers, toggleDelta, toggleEvents].forEach(el => el.addEventListener('change', updateFilterLinks));
             updateFilterLinks();
 
-            const labels = playerData.map(p => p.Timestamp);
-            const playerCounts = playerData.map(p => p.Count);
-            const sellerCounts = playerData.map(p => p.SellerCount);
-            const deltaCounts = playerData.map(p => p.Delta);
+            // --- MODIFIED: Transform data for time-series axis ---
+            const chartDataPlayers = playerData.map(p => ({ x: new Date(p.Timestamp), y: p.Count }));
+            const chartDataSellers = playerData.map(p => ({ x: new Date(p.Timestamp), y: p.SellerCount }));
+            const chartDataDelta = playerData.map(p => ({ x: new Date(p.Timestamp), y: p.Delta }));
 
-            const allCounts = [...playerCounts, ...sellerCounts, ...deltaCounts].filter(c => c !== null);
+            const allCounts = playerData.flatMap(p => [p.Count, p.SellerCount, p.Delta]).filter(c => c !== null);
             const maxDataValue = allCounts.length > 0 ? Math.max(...allCounts) : 0;
             const chartMaxY = Math.ceil((maxDataValue * 1.05) / 10) * 10;
 
@@ -133,22 +137,34 @@
             const playerChart = new Chart(ctx, {
                 type: 'line',
                 data: {
-                    labels: labels,
+                    // MODIFIED: No separate 'labels' array needed
                     datasets: [{
-                        label: 'Online Players', data: playerCounts, borderColor: 'rgba(0, 123, 255, 1)', backgroundColor: 'rgba(0, 123, 255, 0.2)',
+                        label: 'Online Players', data: chartDataPlayers, borderColor: 'rgba(0, 123, 255, 1)', backgroundColor: 'rgba(0, 123, 255, 0.2)',
                         borderWidth: 2, fill: true, tension: 0.1, pointRadius: 2, pointHoverRadius: 5,
                     }, {
-                        label: 'Sellers', data: sellerCounts, borderColor: 'rgba(40, 167, 69, 1)', backgroundColor: 'rgba(40, 167, 69, 0.2)',
+                        label: 'Sellers', data: chartDataSellers, borderColor: 'rgba(40, 167, 69, 1)', backgroundColor: 'rgba(40, 167, 69, 0.2)',
                         borderWidth: 2, fill: true, tension: 0.1, pointRadius: 2, pointHoverRadius: 5,
                     }, {
-                        label: 'Active Players (Delta)', data: deltaCounts, borderColor: 'rgba(255, 193, 7, 1)', backgroundColor: 'rgba(255, 193, 7, 0.2)',
+                        label: 'Active Players (Delta)', data: chartDataDelta, borderColor: 'rgba(255, 193, 7, 1)', backgroundColor: 'rgba(255, 193, 7, 0.2)',
                         borderWidth: 2, fill: true, tension: 0.1, pointRadius: 2, pointHoverRadius: 5,
                     }]
                 },
                 options: {
                     scales: {
                         y: { min: 0, max: chartMaxY, title: { display: true, text: 'Count' } },
-                        x: { title: { display: true, text: 'Date & Time' } }
+                        // --- MODIFIED: Configure x-axis for time series ---
+                        x: {
+                            type: 'time',
+                            title: { display: true, text: 'Date & Time' },
+                            time: {
+                                unit: 'day',
+                                tooltipFormat: 'yyyy-MM-dd HH:mm',
+                                displayFormats: {
+                                    hour: 'HH:mm',
+                                    day: 'MMM d'
+                                }
+                            }
+                        }
                     },
                     plugins: { tooltip: { mode: 'index', intersect: false, }, annotation: { annotations: initialAnnotations } }
                 }

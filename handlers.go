@@ -25,7 +25,7 @@ var definedEvents = []EventDefinition{
 	{
 		Name:      "War of Emperium",
 		StartTime: "22:00",
-		EndTime:   "22:00",
+		EndTime:   "23:00",
 		Days:      []time.Weekday{time.Sunday},
 	},
 }
@@ -39,6 +39,7 @@ func generateEventIntervals(viewStart, viewEnd time.Time, events []EventDefiniti
 	currentDay := time.Date(viewStart.Year(), viewStart.Month(), viewStart.Day(), 0, 0, 0, 0, loc)
 
 	for currentDay.Before(viewEnd) {
+		// --- THIS CHECK IS NOW RESTORED ---
 		// Check if the current day has any player data before generating event overlays.
 		dateStr := currentDay.Format("2006-01-02")
 		if _, exists := activeDates[dateStr]; !exists {
@@ -46,6 +47,7 @@ func generateEventIntervals(viewStart, viewEnd time.Time, events []EventDefiniti
 			currentDay = currentDay.Add(24 * time.Hour)
 			continue
 		}
+		// --- END OF RESTORED CHECK ---
 
 		for _, event := range events {
 			isEventDay := false
@@ -1229,4 +1231,3 @@ func guildHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	tmpl.Execute(w, data)
 }
-
