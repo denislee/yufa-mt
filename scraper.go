@@ -98,7 +98,7 @@ func scrapePlayerCharacters() {
 	log.Println("🏆 [Characters] Starting player character scrape...")
 
 	const maxRetries = 3
-	const batchSize = 5 // Number of pages to scrape in parallel
+	const batchSize = 1 // Number of pages to scrape in parallel
 
 	// Fetch existing player data for comparison ONCE at the beginning.
 	log.Println("    -> [DB] Fetching existing player data for activity comparison...")
@@ -580,35 +580,30 @@ func startBackgroundJobs() {
 		}
 	}()
 
-	// --- Combined Character and Guild Scraper ---
+	// --- Guild Scraper ---
 	go func() {
 		ticker := time.NewTicker(30 * time.Minute)
 		defer ticker.Stop()
-
-		runParallelScrapes := func() {
-			var wg sync.WaitGroup
-			wg.Add(2)
-			go func() {
-				defer wg.Done()
-				scrapePlayerCharacters()
-			}()
-			go func() {
-				defer wg.Done()
-				scrapeGuilds()
-			}()
-			wg.Wait()
-		}
-
-		// Run both tasks in parallel immediately on start.
-		runParallelScrapes()
-
-		// Then, run them in parallel on each tick.
+		scrapeGuilds()
 		for {
-			log.Printf("🕒 Waiting for the next 30-minute character and guild scrape schedule...")
+			log.Printf("🕒 Waiting for the next 30-minute guild schedule...")
 			<-ticker.C
-			runParallelScrapes()
+			scrapeGuilds()
 		}
 	}()
+
+	// --- Player Character Scraper ---
+	go func() {
+		ticker := time.NewTicker(30 * time.Minute)
+		defer ticker.Stop()
+		scrapePlayerCharacters()
+		for {
+			log.Printf("🕒 Waiting for the next 30-minute player character schedule...")
+			<-ticker.C
+			scrapePlayerCharacters()
+		}
+	}()
+
 }
 
 // scrapeData performs a single scrape of the market data.
@@ -902,4 +897,3 @@ func areItemSetsIdentical(setA, setB []Item) bool {
 	}
 	return true
 }
-
