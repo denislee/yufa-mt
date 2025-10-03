@@ -357,7 +357,7 @@ type GuildJSON struct {
 // scrapeGuilds scrapes guild data, including members, and updates both the guilds and characters tables.
 func scrapeGuilds() {
 	log.Println("🏰 [Guilds] Starting guild and character-guild association scrape...")
-	const maxRetries = 6
+	const maxRetries = 12
 
 	allocOpts := append(chromedp.DefaultExecAllocatorOptions[:],
 		chromedp.Flag("headless", true),
@@ -876,7 +876,7 @@ func startBackgroundJobs() {
 		defer ticker.Stop()
 		scrapeData() // Run once immediately on start
 		for {
-			log.Printf("🕒 Waiting for the next 5-minute market scrape schedule...")
+			log.Printf("🕒 [Job] Waiting for the next 5-minute market scrape schedule...")
 			<-ticker.C
 			scrapeData()
 		}
@@ -888,7 +888,7 @@ func startBackgroundJobs() {
 		defer ticker.Stop()
 		scrapeAndStorePlayerCount() // Run once immediately on start
 		for {
-			log.Printf("🕒 Waiting for the next 1-minute player count schedule...")
+			log.Printf("🕒 [Job] Waiting for the next 1-minute player count schedule...")
 			<-ticker.C
 			scrapeAndStorePlayerCount()
 		}
@@ -900,7 +900,7 @@ func startBackgroundJobs() {
 		defer ticker.Stop()
 		scrapeGuilds()
 		for {
-			log.Printf("🕒 Waiting for the next 30-minute guild schedule...")
+			log.Printf("🕒 [Job] Waiting for the next 30-minute guild schedule...")
 			<-ticker.C
 			scrapeGuilds()
 		}
@@ -912,7 +912,7 @@ func startBackgroundJobs() {
 		defer ticker.Stop()
 		// scrapePlayerCharacters()
 		for {
-			log.Printf("🕒 Waiting for the next 60-minute player character schedule...")
+			log.Printf("🕒 [Job] Waiting for the next 60-minute player character schedule...")
 			<-ticker.C
 			scrapePlayerCharacters()
 		}
