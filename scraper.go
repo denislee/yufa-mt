@@ -357,7 +357,7 @@ type GuildJSON struct {
 // scrapeGuilds scrapes guild data, including members, and updates both the guilds and characters tables.
 func scrapeGuilds() {
 	log.Println("🏰 [Guilds] Starting guild and character-guild association scrape...")
-	const maxRetries = 3
+	const maxRetries = 6
 
 	allocOpts := append(chromedp.DefaultExecAllocatorOptions[:],
 		chromedp.Flag("headless", true),
@@ -518,20 +518,20 @@ func scrapeGuilds() {
 
 	tx, errDb := db.Begin()
 	if errDb != nil {
-		log.Printf("❌ [DB] Failed to begin transaction for guilds update: %v", errDb)
+		log.Printf("❌ [Guilds][DB] Failed to begin transaction for guilds update: %v", errDb)
 		return
 	}
 	defer tx.Rollback()
 
 	log.Println("    -> [DB] Clearing and repopulating 'guilds' table...")
 	if _, err := tx.Exec("DELETE FROM guilds"); err != nil {
-		log.Printf("❌ [DB] Failed to clear guilds table: %v", err)
+		log.Printf("❌ [Guilds][DB] Failed to clear guilds table: %v", err)
 		return
 	}
 
 	guildStmt, err := tx.Prepare(`INSERT INTO guilds (rank, name, level, experience, master, emblem_url, last_updated) VALUES (?, ?, ?, ?, ?, ?, ?)`)
 	if err != nil {
-		log.Printf("❌ [DB] Failed to prepare guilds insert statement: %v", err)
+		log.Printf("❌ [Guilds][DB] Failed to prepare guilds insert statement: %v", err)
 		return
 	}
 	defer guildStmt.Close()
@@ -546,13 +546,13 @@ func scrapeGuilds() {
 	log.Printf("    -> [DB] Updating 'characters' table with guild associations for %d members...", len(allMembers))
 
 	if _, err := tx.Exec("UPDATE characters SET guild_name = NULL"); err != nil {
-		log.Printf("❌ [DB] Failed to clear existing guild names from characters table: %v", err)
+		log.Printf("❌ [Guilds][DB] Failed to clear existing guild names from characters table: %v", err)
 		return
 	}
 
 	charStmt, err := tx.Prepare("UPDATE characters SET guild_name = ? WHERE name = ?")
 	if err != nil {
-		log.Printf("❌ [DB] Failed to prepare character guild update statement: %v", err)
+		log.Printf("❌ [Guilds][DB] Failed to prepare character guild update statement: %v", err)
 		return
 	}
 	defer charStmt.Close()
@@ -572,68 +572,16 @@ func scrapeGuilds() {
 	log.Printf("    -> [DB] Successfully associated %d characters with their guilds.", updateCount)
 
 	if err := tx.Commit(); err != nil {
-		log.Printf("❌ [DB] Failed to commit guilds and characters transaction: %v", err)
+		log.Printf("❌ [Guilds][DB] Failed to commit guilds and characters transaction: %v", err)
 		return
 	}
 
 	log.Printf("✅ [Guilds] Scrape and update complete. Saved %d guild records and updated character associations.", len(allGuilds))
 }
 
-// startBackgroundJobs starts all recurring background tasks.
-func startBackgroundJobs() {
-	// --- Market Scraper ---
-	go func() {
-		ticker := time.NewTicker(5 * time.Minute)
-		defer ticker.Stop()
-		scrapeData() // Run once immediately on start
-		for {
-			log.Printf("🕒 Waiting for the next 5-minute market scrape schedule...")
-			<-ticker.C
-			scrapeData()
-		}
-	}()
-
-	// --- Player Count Scraper ---
-	go func() {
-		ticker := time.NewTicker(1 * time.Minute)
-		defer ticker.Stop()
-		scrapeAndStorePlayerCount() // Run once immediately on start
-		for {
-			log.Printf("🕒 Waiting for the next 1-minute player count schedule...")
-			<-ticker.C
-			scrapeAndStorePlayerCount()
-		}
-	}()
-
-	// --- Guild Scraper ---
-	go func() {
-		ticker := time.NewTicker(60 * time.Minute)
-		defer ticker.Stop()
-		scrapeGuilds()
-		for {
-			log.Printf("🕒 Waiting for the next 30-minute guild schedule...")
-			<-ticker.C
-			scrapeGuilds()
-		}
-	}()
-
-	// --- Player Character Scraper ---
-	go func() {
-		ticker := time.NewTicker(30 * time.Minute)
-		defer ticker.Stop()
-		scrapePlayerCharacters()
-		for {
-			log.Printf("🕒 Waiting for the next 60-minute player character schedule...")
-			<-ticker.C
-			scrapePlayerCharacters()
-		}
-	}()
-
-}
-
 // scrapeData performs a single scrape of the market data.
 func scrapeData() {
-	log.Println("🚀 Starting scrape...")
+	log.Println("🚀 [Market] Starting scrape...")
 	// Compile regexes once for efficiency.
 	reRefineMid := regexp.MustCompile(`\s(\+\d+)`)
 	reRefineStart := regexp.MustCompile(`^(\+\d+)\s`)
@@ -653,12 +601,12 @@ func scrapeData() {
 		chromedp.OuterHTML("html", &htmlContent),
 	)
 	if err != nil {
-		log.Printf("❌ Failed to run chromedp tasks: %v", err)
+		log.Printf("❌ [Market] Failed to run chromedp tasks: %v", err)
 		return
 	}
 	doc, err := goquery.NewDocumentFromReader(strings.NewReader(htmlContent))
 	if err != nil {
-		log.Printf("❌ Failed to parse HTML: %v", err)
+		log.Printf("❌ [Market] Failed to parse HTML: %v", err)
 		return
 	}
 
@@ -732,17 +680,17 @@ func scrapeData() {
 		})
 	})
 
-	log.Printf("🔎 Scrape parsed. Found %d unique item names.", len(scrapedItemsByName))
+	log.Printf("🔎 [Market] Scrape parsed. Found %d unique item names.", len(scrapedItemsByName))
 	tx, err := db.Begin()
 	if err != nil {
-		log.Printf("❌ Failed to begin transaction: %v", err)
+		log.Printf("❌ [Market] Failed to begin transaction: %v", err)
 		return
 	}
 	defer tx.Rollback()
 
 	_, err = tx.Exec("INSERT OR IGNORE INTO scrape_history (timestamp) VALUES (?)", retrievalTime)
 	if err != nil {
-		log.Printf("❌ Failed to log scrape history: %v", err)
+		log.Printf("❌ [Market] Failed to log scrape history: %v", err)
 		return
 	}
 
@@ -750,7 +698,7 @@ func scrapeData() {
 	// Changed '=' to ':=' to correctly declare the 'rows' variable.
 	rows, err := tx.Query("SELECT DISTINCT name_of_the_item FROM items WHERE is_available = 1")
 	if err != nil {
-		log.Printf("❌ Could not get list of available items: %v", err)
+		log.Printf("❌ [Market] Could not get list of available items: %v", err)
 		return
 	}
 	dbAvailableNames := make(map[string]bool)
@@ -771,14 +719,14 @@ func scrapeData() {
 		var lastAvailableItems []Item
 		rows, err := tx.Query("SELECT name_of_the_item, item_id, quantity, price, store_name, seller_name, map_name, map_coordinates FROM items WHERE name_of_the_item = ? AND is_available = 1", itemName)
 		if err != nil {
-			log.Printf("⚠️ Failed to query for existing item %s: %v", itemName, err)
+			log.Printf("⚠️ [Market] Failed to query for existing item %s: %v", itemName, err)
 			continue
 		}
 		for rows.Next() {
 			var item Item
 			err := rows.Scan(&item.Name, &item.ItemID, &item.Quantity, &item.Price, &item.StoreName, &item.SellerName, &item.MapName, &item.MapCoordinates)
 			if err != nil {
-				log.Printf("⚠️ Failed to scan existing item: %v", err)
+				log.Printf("⚠️ [Market] Failed to scan existing item: %v", err)
 				continue
 			}
 			lastAvailableItems = append(lastAvailableItems, item)
@@ -791,19 +739,19 @@ func scrapeData() {
 		}
 
 		if _, err := tx.Exec("UPDATE items SET is_available = 0 WHERE name_of_the_item = ?", itemName); err != nil {
-			log.Printf("❌ Failed to mark old %s as unavailable: %v", itemName, err)
+			log.Printf("❌ [Market] Failed to mark old %s as unavailable: %v", itemName, err)
 			continue
 		}
 
 		insertSQL := `INSERT INTO items(name_of_the_item, item_id, quantity, price, store_name, seller_name, date_and_time_retrieved, map_name, map_coordinates, is_available) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1)`
 		stmt, err := tx.Prepare(insertSQL)
 		if err != nil {
-			log.Printf("⚠️ Could not prepare insert for %s: %v", itemName, err)
+			log.Printf("⚠️ [Market] Could not prepare insert for %s: %v", itemName, err)
 			continue
 		}
 		for _, item := range currentScrapedItems {
 			if _, err := stmt.Exec(item.Name, item.ItemID, item.Quantity, item.Price, item.StoreName, item.SellerName, retrievalTime, item.MapName, item.MapCoordinates); err != nil {
-				log.Printf("⚠️ Could not execute insert for %s: %v", item.Name, err)
+				log.Printf("⚠️ [Market] Could not execute insert for %s: %v", item.Name, err)
 			}
 		}
 		stmt.Close()
@@ -815,7 +763,7 @@ func scrapeData() {
 				details, _ := json.Marshal(map[string]interface{}{"price": firstItem.Price, "quantity": firstItem.Quantity, "seller": firstItem.SellerName})
 				_, err := tx.Exec(`INSERT INTO market_events (event_timestamp, event_type, item_name, item_id, details) VALUES (?, 'ADDED', ?, ?, ?)`, retrievalTime, itemName, firstItem.ItemID, string(details))
 				if err != nil {
-					log.Printf("❌ Failed to log ADDED event for %s: %v", itemName, err)
+					log.Printf("❌ [Market] Failed to log ADDED event for %s: %v", itemName, err)
 				}
 
 				go scrapeAndCacheItemIfNotExists(firstItem.ItemID, itemName)
@@ -824,7 +772,7 @@ func scrapeData() {
 			var historicalLowestPrice sql.NullInt64
 			err := tx.QueryRow(`SELECT MIN(CAST(REPLACE(price, ',', '') AS INTEGER)) FROM items WHERE name_of_the_item = ?`, itemName).Scan(&historicalLowestPrice)
 			if err != nil && err != sql.ErrNoRows {
-				log.Printf("⚠️ Could not get historical lowest price for %s: %v", itemName, err)
+				log.Printf("⚠️ [Market] Could not get historical lowest price for %s: %v", itemName, err)
 			}
 
 			var lowestPriceListingInBatch Item
@@ -845,7 +793,7 @@ func scrapeData() {
 				details, _ := json.Marshal(map[string]interface{}{"price": lowestPriceListingInBatch.Price, "quantity": lowestPriceListingInBatch.Quantity, "seller": lowestPriceListingInBatch.SellerName})
 				_, err := tx.Exec(`INSERT INTO market_events (event_timestamp, event_type, item_name, item_id, details) VALUES (?, 'NEW_LOW', ?, ?, ?)`, retrievalTime, itemName, lowestPriceListingInBatch.ItemID, string(details))
 				if err != nil {
-					log.Printf("❌ Failed to log NEW_LOW event for %s: %v", itemName, err)
+					log.Printf("❌ [Market] Failed to log NEW_LOW event for %s: %v", itemName, err)
 				}
 			}
 		} else {
@@ -861,16 +809,16 @@ func scrapeData() {
 			err := tx.QueryRow("SELECT item_id FROM items WHERE name_of_the_item = ? AND item_id > 0 LIMIT 1", name).Scan(&itemID)
 			if err != nil {
 				// If no ID is found, log it but default to 0 so the event can still be created.
-				log.Printf("⚠️ Could not find item_id for removed item '%s', logging event with item_id 0: %v", name, err)
+				log.Printf("⚠️ [Market] Could not find item_id for removed item '%s', logging event with item_id 0: %v", name, err)
 				itemID = 0
 			}
 			// --- FIX END ---
 			_, err = tx.Exec(`INSERT INTO market_events (event_timestamp, event_type, item_name, item_id, details) VALUES (?, 'REMOVED', ?, ?, '{}')`, retrievalTime, name, itemID)
 			if err != nil {
-				log.Printf("❌ Failed to log REMOVED event for %s: %v", name, err)
+				log.Printf("❌ [Market] Failed to log REMOVED event for %s: %v", name, err)
 			}
 			if _, err := tx.Exec("UPDATE items SET is_available = 0 WHERE name_of_the_item = ?", name); err != nil {
-				log.Printf("❌ Failed to mark disappeared item %s as unavailable: %v", name, err)
+				log.Printf("❌ [Market] Failed to mark disappeared item %s as unavailable: %v", name, err)
 			} else {
 				itemsRemoved++
 			}
@@ -878,10 +826,10 @@ func scrapeData() {
 	}
 
 	if err := tx.Commit(); err != nil {
-		log.Printf("❌ Failed to commit transaction: %v", err)
+		log.Printf("❌ [Market] Failed to commit transaction: %v", err)
 		return
 	}
-	log.Printf("✅ Scrape complete. Unchanged: %d groups. Updated: %d groups. Newly Added: %d groups. Removed: %d groups.", itemsUnchanged, itemsUpdated, itemsAdded, itemsRemoved)
+	log.Printf("✅ [Market] Scrape complete. Unchanged: %d groups. Updated: %d groups. Newly Added: %d groups. Removed: %d groups.", itemsUnchanged, itemsUpdated, itemsAdded, itemsRemoved)
 }
 
 // areItemSetsIdentical compares two slices of Items to see if they are identical.
@@ -918,4 +866,56 @@ func areItemSetsIdentical(setA, setB []Item) bool {
 		counts[item]--
 	}
 	return true
+}
+
+// startBackgroundJobs starts all recurring background tasks.
+func startBackgroundJobs() {
+	// --- Market Scraper ---
+	go func() {
+		ticker := time.NewTicker(5 * time.Minute)
+		defer ticker.Stop()
+		scrapeData() // Run once immediately on start
+		for {
+			log.Printf("🕒 Waiting for the next 5-minute market scrape schedule...")
+			<-ticker.C
+			scrapeData()
+		}
+	}()
+
+	// --- Player Count Scraper ---
+	go func() {
+		ticker := time.NewTicker(1 * time.Minute)
+		defer ticker.Stop()
+		scrapeAndStorePlayerCount() // Run once immediately on start
+		for {
+			log.Printf("🕒 Waiting for the next 1-minute player count schedule...")
+			<-ticker.C
+			scrapeAndStorePlayerCount()
+		}
+	}()
+
+	// --- Guild Scraper ---
+	go func() {
+		ticker := time.NewTicker(60 * time.Minute)
+		defer ticker.Stop()
+		scrapeGuilds()
+		for {
+			log.Printf("🕒 Waiting for the next 30-minute guild schedule...")
+			<-ticker.C
+			scrapeGuilds()
+		}
+	}()
+
+	// --- Player Character Scraper ---
+	go func() {
+		ticker := time.NewTicker(30 * time.Minute)
+		defer ticker.Stop()
+		// scrapePlayerCharacters()
+		for {
+			log.Printf("🕒 Waiting for the next 60-minute player character schedule...")
+			<-ticker.C
+			scrapePlayerCharacters()
+		}
+	}()
+
 }
