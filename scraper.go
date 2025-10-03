@@ -912,7 +912,7 @@ func startBackgroundJobs() {
 	go func() {
 		ticker := time.NewTicker(30 * time.Minute)
 		defer ticker.Stop()
-		scrapePlayerCharacters()
+		//scrapePlayerCharacters()
 		for {
 			log.Printf("🕒 [Job] Waiting for the next 60-minute player character schedule...")
 			<-ticker.C
