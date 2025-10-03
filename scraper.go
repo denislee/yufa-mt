@@ -580,32 +580,35 @@ func startBackgroundJobs() {
 		}
 	}()
 
-	//--- Player Characters ---
+	// --- Combined Character and Guild Scraper ---
 	go func() {
 		ticker := time.NewTicker(30 * time.Minute)
 		defer ticker.Stop()
-		scrapePlayerCharacters()
 
+		runParallelScrapes := func() {
+			var wg sync.WaitGroup
+			wg.Add(2)
+			go func() {
+				defer wg.Done()
+				scrapePlayerCharacters()
+			}()
+			go func() {
+				defer wg.Done()
+				scrapeGuilds()
+			}()
+			wg.Wait()
+		}
+
+		// Run both tasks in parallel immediately on start.
+		runParallelScrapes()
+
+		// Then, run them in parallel on each tick.
 		for {
-			log.Printf("🕒 Waiting for the next 30-minute character & guild schedule...")
+			log.Printf("🕒 Waiting for the next 30-minute character and guild scrape schedule...")
 			<-ticker.C
-			scrapePlayerCharacters()
+			runParallelScrapes()
 		}
 	}()
-
-	// --- Guilds Scraper ---
-	go func() {
-		ticker := time.NewTicker(30 * time.Minute)
-		defer ticker.Stop()
-		scrapeGuilds()
-
-		for {
-			log.Printf("🕒 Waiting for the next 30-minute character & guild schedule...")
-			<-ticker.C
-			scrapeGuilds()
-		}
-	}()
-
 }
 
 // scrapeData performs a single scrape of the market data.
@@ -899,3 +902,4 @@ func areItemSetsIdentical(setA, setB []Item) bool {
 	}
 	return true
 }
+
