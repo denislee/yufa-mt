@@ -416,6 +416,7 @@ func scrapeGuilds() {
 	err := chromedp.Run(firstPageCtx,
 		chromedp.Navigate("https://projetoyufa.com/rankings/guild?page=1"),
 		chromedp.WaitVisible(`nav[aria-label="pagination"]`), // Wait for the pagination nav bar
+		chromedp.Sleep(10*time.Second),
 		chromedp.OuterHTML("html", &initialHtmlContent),
 	)
 
@@ -462,6 +463,7 @@ func scrapeGuilds() {
 				chromedp.Navigate(url),
 				chromedp.WaitVisible(`tbody[data-slot="table-body"] tr:has(td:nth-of-type(2))`),
 				chromedp.WaitVisible(`div.group h3`),
+				chromedp.Sleep(10*time.Second),
 				chromedp.OuterHTML("html", &htmlContent),
 			)
 
