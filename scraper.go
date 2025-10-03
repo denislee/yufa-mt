@@ -444,7 +444,8 @@ func scrapeGuilds() {
 
 		if !pageScrapedSuccessfully {
 			log.Printf("❌ [Guilds] All %d attempts failed for page %d. Skipping this page.", maxRetries, page)
-			continue // Skip to the next page in the loop
+			return
+			//continue // Skip to the next page in the loop
 		}
 
 		doc, err := goquery.NewDocumentFromReader(strings.NewReader(htmlContent))
