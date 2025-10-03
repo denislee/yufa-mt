@@ -219,6 +219,7 @@ type CharacterPageData struct {
 	// Search and Filter
 	SearchName    string
 	SelectedClass string
+	SelectedGuild string
 	AllClasses    []string
 	// Sorting
 	SortBy string

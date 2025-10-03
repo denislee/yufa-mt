@@ -61,6 +61,15 @@
                         {{end}}
                     </div>
                 </div>
+                {{if .SelectedGuild}}
+                <div class="border-t border-gray-200 mt-3 pt-3">
+                    <div class="text-sm">
+                        Filtering by Guild: <span class="font-semibold bg-blue-100 text-blue-800 py-0.5 px-2 rounded-full">{{.SelectedGuild}}</span>
+                        <a href="/characters?name_query={{.SearchName}}&class_filter={{.SelectedClass}}&{{.ColumnParams}}" class="ml-2 text-red-500 hover:underline text-xs">[Clear Filter]</a>
+                    </div>
+                </div>
+                <input type="hidden" name="guild_filter" value="{{.SelectedGuild}}">
+                {{end}}
             </form>
         </div>
 
@@ -70,15 +79,15 @@
                 <table class="min-w-full leading-normal">
                     <thead>
                         <tr class="border-b-2 border-gray-200 bg-gray-50 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
-                            {{if index .VisibleColumns "rank"}}<th class="px-3 py-2 whitespace-nowrap"><a href="/characters?sort_by=rank&order={{if eq .SortBy "rank"}}{{toggleOrder .Order}}{{else}}ASC{{end}}&name_query={{.SearchName}}&class_filter={{.SelectedClass}}&{{.ColumnParams}}">Rank {{if eq .SortBy "rank"}}{{if eq .Order "ASC"}}<span class="text-gray-400">▲</span>{{else}}<span class="text-gray-400">▼</span>{{end}}{{end}}</a></th>{{end}}
-                            <th class="px-3 py-2 whitespace-nowrap"><a href="/characters?sort_by=name&order={{if eq .SortBy "name"}}{{toggleOrder .Order}}{{else}}ASC{{end}}&name_query={{.SearchName}}&class_filter={{.SelectedClass}}&{{.ColumnParams}}">Name {{if eq .SortBy "name"}}{{if eq .Order "ASC"}}<span class="text-gray-400">▲</span>{{else}}<span class="text-gray-400">▼</span>{{end}}{{end}}</a></th>
-                            {{if index .VisibleColumns "base_level"}}<th class="px-3 py-2 whitespace-nowrap"><a href="/characters?sort_by=base_level&order={{if eq .SortBy "base_level"}}{{toggleOrder .Order}}{{else}}ASC{{end}}&name_query={{.SearchName}}&class_filter={{.SelectedClass}}&{{.ColumnParams}}">Base Lvl {{if eq .SortBy "base_level"}}{{if eq .Order "ASC"}}<span class="text-gray-400">▲</span>{{else}}<span class="text-gray-400">▼</span>{{end}}{{end}}</a></th>{{end}}
-                            {{if index .VisibleColumns "job_level"}}<th class="px-3 py-2 whitespace-nowrap"><a href="/characters?sort_by=job_level&order={{if eq .SortBy "job_level"}}{{toggleOrder .Order}}{{else}}ASC{{end}}&name_query={{.SearchName}}&class_filter={{.SelectedClass}}&{{.ColumnParams}}">Job Lvl {{if eq .SortBy "job_level"}}{{if eq .Order "ASC"}}<span class="text-gray-400">▲</span>{{else}}<span class="text-gray-400">▼</span>{{end}}{{end}}</a></th>{{end}}
-                            {{if index .VisibleColumns "experience"}}<th class="px-3 py-2 whitespace-nowrap"><a href="/characters?sort_by=experience&order={{if eq .SortBy "experience"}}{{toggleOrder .Order}}{{else}}ASC{{end}}&name_query={{.SearchName}}&class_filter={{.SelectedClass}}&{{.ColumnParams}}">Exp % {{if eq .SortBy "experience"}}{{if eq .Order "ASC"}}<span class="text-gray-400">▲</span>{{else}}<span class="text-gray-400">▼</span>{{end}}{{end}}</a></th>{{end}}
-                            {{if index .VisibleColumns "class"}}<th class="px-3 py-2 whitespace-nowrap"><a href="/characters?sort_by=class&order={{if eq .SortBy "class"}}{{toggleOrder .Order}}{{else}}ASC{{end}}&name_query={{.SearchName}}&class_filter={{.SelectedClass}}&{{.ColumnParams}}">Class {{if eq .SortBy "class"}}{{if eq .Order "ASC"}}<span class="text-gray-400">▲</span>{{else}}<span class="text-gray-400">▼</span>{{end}}{{end}}</a></th>{{end}}
-                            {{if index .VisibleColumns "guild"}}<th class="px-3 py-2 whitespace-nowrap">Guild</th>{{end}}
-                            {{if index .VisibleColumns "last_updated"}}<th class="px-3 py-2 whitespace-nowrap"><a href="/characters?sort_by=last_updated&order={{if eq .SortBy "last_updated"}}{{toggleOrder .Order}}{{else}}ASC{{end}}&name_query={{.SearchName}}&class_filter={{.SelectedClass}}&{{.ColumnParams}}">Last Updated {{if eq .SortBy "last_updated"}}{{if eq .Order "ASC"}}<span class="text-gray-400">▲</span>{{else}}<span class="text-gray-400">▼</span>{{end}}{{end}}</a></th>{{end}}
-                            {{if index .VisibleColumns "last_active"}}<th class="px-3 py-2 whitespace-nowrap"><a href="/characters?sort_by=last_active&order={{if eq .SortBy "last_active"}}{{toggleOrder .Order}}{{else}}ASC{{end}}&name_query={{.SearchName}}&class_filter={{.SelectedClass}}&{{.ColumnParams}}">Last Active {{if eq .SortBy "last_active"}}{{if eq .Order "ASC"}}<span class="text-gray-400">▲</span>{{else}}<span class="text-gray-400">▼</span>{{end}}{{end}}</a></th>{{end}}
+                            {{if index .VisibleColumns "rank"}}<th class="px-3 py-2 whitespace-nowrap"><a href="/characters?sort_by=rank&order={{if eq .SortBy "rank"}}{{toggleOrder .Order}}{{else}}ASC{{end}}&name_query={{.SearchName}}&class_filter={{.SelectedClass}}&guild_filter={{.SelectedGuild}}&{{.ColumnParams}}">Rank {{if eq .SortBy "rank"}}{{if eq .Order "ASC"}}<span class="text-gray-400">▲</span>{{else}}<span class="text-gray-400">▼</span>{{end}}{{end}}</a></th>{{end}}
+                            <th class="px-3 py-2 whitespace-nowrap"><a href="/characters?sort_by=name&order={{if eq .SortBy "name"}}{{toggleOrder .Order}}{{else}}ASC{{end}}&name_query={{.SearchName}}&class_filter={{.SelectedClass}}&guild_filter={{.SelectedGuild}}&{{.ColumnParams}}">Name {{if eq .SortBy "name"}}{{if eq .Order "ASC"}}<span class="text-gray-400">▲</span>{{else}}<span class="text-gray-400">▼</span>{{end}}{{end}}</a></th>
+                            {{if index .VisibleColumns "base_level"}}<th class="px-3 py-2 whitespace-nowrap"><a href="/characters?sort_by=base_level&order={{if eq .SortBy "base_level"}}{{toggleOrder .Order}}{{else}}ASC{{end}}&name_query={{.SearchName}}&class_filter={{.SelectedClass}}&guild_filter={{.SelectedGuild}}&{{.ColumnParams}}">Base Lvl {{if eq .SortBy "base_level"}}{{if eq .Order "ASC"}}<span class="text-gray-400">▲</span>{{else}}<span class="text-gray-400">▼</span>{{end}}{{end}}</a></th>{{end}}
+                            {{if index .VisibleColumns "job_level"}}<th class="px-3 py-2 whitespace-nowrap"><a href="/characters?sort_by=job_level&order={{if eq .SortBy "job_level"}}{{toggleOrder .Order}}{{else}}ASC{{end}}&name_query={{.SearchName}}&class_filter={{.SelectedClass}}&guild_filter={{.SelectedGuild}}&{{.ColumnParams}}">Job Lvl {{if eq .SortBy "job_level"}}{{if eq .Order "ASC"}}<span class="text-gray-400">▲</span>{{else}}<span class="text-gray-400">▼</span>{{end}}{{end}}</a></th>{{end}}
+                            {{if index .VisibleColumns "experience"}}<th class="px-3 py-2 whitespace-nowrap"><a href="/characters?sort_by=experience&order={{if eq .SortBy "experience"}}{{toggleOrder .Order}}{{else}}ASC{{end}}&name_query={{.SearchName}}&class_filter={{.SelectedClass}}&guild_filter={{.SelectedGuild}}&{{.ColumnParams}}">Exp % {{if eq .SortBy "experience"}}{{if eq .Order "ASC"}}<span class="text-gray-400">▲</span>{{else}}<span class="text-gray-400">▼</span>{{end}}{{end}}</a></th>{{end}}
+                            {{if index .VisibleColumns "class"}}<th class="px-3 py-2 whitespace-nowrap"><a href="/characters?sort_by=class&order={{if eq .SortBy "class"}}{{toggleOrder .Order}}{{else}}ASC{{end}}&name_query={{.SearchName}}&class_filter={{.SelectedClass}}&guild_filter={{.SelectedGuild}}&{{.ColumnParams}}">Class {{if eq .SortBy "class"}}{{if eq .Order "ASC"}}<span class="text-gray-400">▲</span>{{else}}<span class="text-gray-400">▼</span>{{end}}{{end}}</a></th>{{end}}
+                            {{if index .VisibleColumns "guild"}}<th class="px-3 py-2 whitespace-nowrap"><a href="/characters?sort_by=guild&order={{if eq .SortBy "guild"}}{{toggleOrder .Order}}{{else}}ASC{{end}}&name_query={{.SearchName}}&class_filter={{.SelectedClass}}&guild_filter={{.SelectedGuild}}&{{.ColumnParams}}">Guild {{if eq .SortBy "guild"}}{{if eq .Order "ASC"}}<span class="text-gray-400">▲</span>{{else}}<span class="text-gray-400">▼</span>{{end}}{{end}}</a></th>{{end}}
+                            {{if index .VisibleColumns "last_updated"}}<th class="px-3 py-2 whitespace-nowrap"><a href="/characters?sort_by=last_updated&order={{if eq .SortBy "last_updated"}}{{toggleOrder .Order}}{{else}}ASC{{end}}&name_query={{.SearchName}}&class_filter={{.SelectedClass}}&guild_filter={{.SelectedGuild}}&{{.ColumnParams}}">Last Updated {{if eq .SortBy "last_updated"}}{{if eq .Order "ASC"}}<span class="text-gray-400">▲</span>{{else}}<span class="text-gray-400">▼</span>{{end}}{{end}}</a></th>{{end}}
+                            {{if index .VisibleColumns "last_active"}}<th class="px-3 py-2 whitespace-nowrap"><a href="/characters?sort_by=last_active&order={{if eq .SortBy "last_active"}}{{toggleOrder .Order}}{{else}}ASC{{end}}&name_query={{.SearchName}}&class_filter={{.SelectedClass}}&guild_filter={{.SelectedGuild}}&{{.ColumnParams}}">Last Active {{if eq .SortBy "last_active"}}{{if eq .Order "ASC"}}<span class="text-gray-400">▲</span>{{else}}<span class="text-gray-400">▼</span>{{end}}{{end}}</a></th>{{end}}
                         </tr>
                     </thead>
                     <tbody class="text-gray-700 text-xs">
@@ -99,7 +108,7 @@
                             {{if index $.VisibleColumns "job_level"}}<td class="px-3 py-2">{{.JobLevel}}</td>{{end}}
                             {{if index $.VisibleColumns "experience"}}<td class="px-3 py-2">{{printf "%.2f" .Experience}}%</td>{{end}}
                             {{if index $.VisibleColumns "class"}}<td class="px-3 py-2">{{.Class}}</td>{{end}}
-                            {{if index $.VisibleColumns "guild"}}<td class="px-3 py-2">{{.GuildName.String}}</td>{{end}}
+                            {{if index $.VisibleColumns "guild"}}<td class="px-3 py-2">{{if .GuildName.Valid}}<a href="/characters?guild_filter={{.GuildName.String}}&{{$.ColumnParams}}" class="text-blue-600 hover:underline">{{.GuildName.String}}</a>{{end}}</td>{{end}}
                             {{if index $.VisibleColumns "last_updated"}}<td class="px-3 py-2 whitespace-nowrap">{{.LastUpdated}}</td>{{end}}
                             {{if index $.VisibleColumns "last_active"}}<td class="px-3 py-2 whitespace-nowrap">{{.LastActive}}</td>{{end}}
                         </tr>
@@ -119,7 +128,7 @@
                 </span>
                 <div class="inline-flex mt-2 xs:mt-0">
                     {{if .HasPrevPage}}
-                        <a href="/characters?page={{.PrevPage}}&name_query={{.SearchName}}&class_filter={{.SelectedClass}}&sort_by={{.SortBy}}&order={{.Order}}&{{.ColumnParams}}" class="text-sm bg-gray-300 hover:bg-gray-400 text-gray-800 font-semibold py-1 px-3 rounded-l">
+                        <a href="/characters?page={{.PrevPage}}&name_query={{.SearchName}}&class_filter={{.SelectedClass}}&guild_filter={{.SelectedGuild}}&sort_by={{.SortBy}}&order={{.Order}}&{{.ColumnParams}}" class="text-sm bg-gray-300 hover:bg-gray-400 text-gray-800 font-semibold py-1 px-3 rounded-l">
                             Prev
                         </a>
                     {{else}}
@@ -129,7 +138,7 @@
                     {{end}}
 
                     {{if .HasNextPage}}
-                        <a href="/characters?page={{.NextPage}}&name_query={{.SearchName}}&class_filter={{.SelectedClass}}&sort_by={{.SortBy}}&order={{.Order}}&{{.ColumnParams}}" class="text-sm bg-gray-300 hover:bg-gray-400 text-gray-800 font-semibold py-1 px-3 rounded-r">
+                        <a href="/characters?page={{.NextPage}}&name_query={{.SearchName}}&class_filter={{.SelectedClass}}&guild_filter={{.SelectedGuild}}&sort_by={{.SortBy}}&order={{.Order}}&{{.ColumnParams}}" class="text-sm bg-gray-300 hover:bg-gray-400 text-gray-800 font-semibold py-1 px-3 rounded-r">
                             Next
                         </a>
                     {{else}}

@@ -929,6 +929,7 @@ func characterHandler(w http.ResponseWriter, r *http.Request) {
 	// --- 1. Get query parameters ---
 	searchName := r.FormValue("name_query")
 	selectedClass := r.FormValue("class_filter")
+	selectedGuild := r.FormValue("guild_filter")
 	sortBy := r.FormValue("sort_by")
 	order := r.FormValue("order")
 	pageStr := r.FormValue("page")
@@ -997,6 +998,10 @@ func characterHandler(w http.ResponseWriter, r *http.Request) {
 		whereConditions = append(whereConditions, "class = ?")
 		params = append(params, selectedClass)
 	}
+	if selectedGuild != "" {
+		whereConditions = append(whereConditions, "guild_name = ?")
+		params = append(params, selectedGuild)
+	}
 	whereClause := ""
 	if len(whereConditions) > 0 {
 		whereClause = "WHERE " + strings.Join(whereConditions, " AND ")
@@ -1010,6 +1015,7 @@ func characterHandler(w http.ResponseWriter, r *http.Request) {
 		"job_level":    "job_level",
 		"experience":   "experience",
 		"class":        "class",
+		"guild":        "guild_name",
 		"last_updated": "last_updated",
 		"last_active":  "last_active",
 	}
@@ -1112,6 +1118,7 @@ func characterHandler(w http.ResponseWriter, r *http.Request) {
 		LastScrapeTime: getLastScrapeTime(),
 		SearchName:     searchName,
 		SelectedClass:  selectedClass,
+		SelectedGuild:  selectedGuild,
 		AllClasses:     allClasses,
 		SortBy:         sortBy,
 		Order:          order,
@@ -1222,3 +1229,4 @@ func guildHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	tmpl.Execute(w, data)
 }
+
