@@ -32,7 +32,6 @@ func newOptimizedAllocator() (context.Context, context.CancelFunc) {
 		chromedp.Flag("headless", true),
 		chromedp.Flag("disable-gpu", true),
 		chromedp.Flag("no-sandbox", true),
-		// --- OPTIMIZATIONS ---
 		chromedp.Flag("disable-extensions", true),              // Disable extensions
 		chromedp.Flag("blink-settings", "imagesEnabled=false"), // Disable images
 	)
@@ -121,7 +120,7 @@ func scrapePlayerCharacters() {
 	log.Println("🏆 [Characters] Starting player character scrape...")
 
 	const maxRetries = 3
-	const batchSize = 1 // Number of pages to scrape in parallel
+	const batchSize = 2 // Number of pages to scrape in parallel
 
 	// Fetch existing player data for comparison ONCE at the beginning.
 	if enableCharacterScraperDebugLogs {
@@ -608,7 +607,7 @@ func startBackgroundJobs() {
 
 	// --- Guild Scraper ---
 	go func() {
-		ticker := time.NewTicker(30 * time.Minute)
+		ticker := time.NewTicker(60 * time.Minute)
 		defer ticker.Stop()
 		scrapeGuilds()
 		for {
@@ -620,9 +619,9 @@ func startBackgroundJobs() {
 
 	// --- Player Character Scraper ---
 	go func() {
-		ticker := time.NewTicker(60 * time.Minute)
+		ticker := time.NewTicker(30 * time.Minute)
 		defer ticker.Stop()
-		//scrapePlayerCharacters()
+		scrapePlayerCharacters()
 		for {
 			log.Printf("🕒 Waiting for the next 60-minute player character schedule...")
 			<-ticker.C
