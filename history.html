@@ -70,7 +70,7 @@
                 <div class="space-y-1 text-xs">
                     <p><strong>Price:</strong> <span id="lowest-price-val" class="font-semibold text-green-600">N/A</span></p>
                     <p><strong>Quantity:</strong> <span id="lowest-quantity-val">N/A</span></p>
-                    <p><strong>Store:</strong> <a id="lowest-store-val" class="truncate hover:underline" href="#">N/A</a></p>
+                    <p class="flex"><strong>Store:</strong> <a id="lowest-store-val" class="ml-1 truncate hover:underline min-w-0" href="#">N/A</a></p>
                     <p><strong>Seller:</strong> <span id="lowest-seller-val">N/A</span></p>
                     <p><strong>Location:</strong> <span id="lowest-location-val">N/A</span></p>
                     <p><strong>Date:</strong> <span id="lowest-date-val">N/A</span></p>
@@ -81,7 +81,7 @@
                 <div class="space-y-1 text-xs">
                     <p><strong>Price:</strong> <span id="highest-price-val" class="font-semibold text-red-600">N/A</span></p>
                     <p><strong>Quantity:</strong> <span id="highest-quantity-val">N/A</span></p>
-                    <p><strong>Store:</strong> <a id="highest-store-val" class="truncate hover:underline" href="#">N/A</a></p>
+                    <p class="flex"><strong>Store:</strong> <a id="highest-store-val" class="ml-1 truncate hover:underline min-w-0" href="#">N/A</a></p>
                     <p><strong>Seller:</strong> <span id="highest-seller-val">N/A</span></p>
                     <p><strong>Location:</strong> <span id="highest-location-val">N/A</span></p>
                     <p><strong>Date:</strong> <span id="highest-date-val">N/A</span></p>
@@ -114,7 +114,7 @@
                         <tr class="border-b border-gray-200 hover:bg-gray-50 {{if not .IsAvailable}}opacity-60{{end}}" title="{{if not .IsAvailable}}This specific listing is no longer available{{end}}">
                             <td class="px-3 py-2">{{.Price}}</td>
                             <td class="px-3 py-2">{{.Quantity}}</td>
-                            <td class="px-3 py-2"><a href="/full-list?only_available=true&store_name={{.StoreName | urlquery}}" class="truncate hover:underline" title="{{.StoreName}}">{{.StoreName}}</a></td>
+                            <td class="px-3 py-2 max-w-48 truncate" title="{{.StoreName}}"><a href="/full-list?only_available=true&store_name={{.StoreName | urlquery}}" class="hover:underline">{{.StoreName}}</a></td>
                             <td class="px-3 py-2">{{.SellerName}}</td>
                             <td class="px-3 py-2"><a href="#" onclick="copyNavi(event, '{{.MapName}}', '{{.MapCoordinates}}')" title="Click to copy /navi command" class="hover:underline">{{.MapName}} {{.MapCoordinates}}</a></td>
                             <td class="px-3 py-2">{{.Timestamp}}</td>
