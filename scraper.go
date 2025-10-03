@@ -158,6 +158,7 @@ func scrapePlayerCharacters() {
 					err := chromedp.Run(taskCtx,
 						chromedp.Navigate(url),
 						chromedp.WaitVisible(`tbody[data-slot="table-body"] tr[data-slot="table-row"]`),
+						chromedp.Sleep(500*time.Millisecond),
 						chromedp.OuterHTML("html", &htmlContent),
 					)
 
@@ -199,10 +200,8 @@ func scrapePlayerCharacters() {
 					}
 					rankStr := strings.TrimSpace(cells.Eq(0).Text())
 					nameStr := strings.TrimSpace(cells.Eq(1).Text())
-					// --- MODIFICATION START: Correctly target level and experience ---
 					levelStrRaw := cells.Eq(2).Find("div.mb-1.flex.justify-between.text-xs > span").Text()
 					expStrRaw := cells.Eq(2).Find("div.absolute.inset-0.flex.items-center.justify-center > span").Text()
-					// --- MODIFICATION END ---
 					classStr := cells.Eq(3).Find("span").Last().Text()
 
 					player.Name = nameStr
