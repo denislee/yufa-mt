@@ -921,16 +921,56 @@ func playerCountHandler(w http.ResponseWriter, r *http.Request) {
 
 // characterHandler serves the new player characters page.
 func characterHandler(w http.ResponseWriter, r *http.Request) {
-	// --- 1. Get query parameters for filtering and pagination ---
-	searchName := r.URL.Query().Get("name_query")
-	selectedClass := r.URL.Query().Get("class_filter")
-	pageStr := r.URL.Query().Get("page")
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "Failed to parse form", http.StatusBadRequest)
+		return
+	}
+
+	// --- 1. Get query parameters ---
+	searchName := r.FormValue("name_query")
+	selectedClass := r.FormValue("class_filter")
+	sortBy := r.FormValue("sort_by")
+	order := r.FormValue("order")
+	pageStr := r.FormValue("page")
+	selectedCols := r.Form["cols"]
 	page, err := strconv.Atoi(pageStr)
 	if err != nil || page < 1 {
 		page = 1
 	}
-	const playersPerPage = 50 // Set how many players to show per page
+	const playersPerPage = 50
 
+	// --- 1.5. Define columns and determine visibility ---
+	allCols := []Column{
+		{ID: "rank", DisplayName: "Rank"},
+		{ID: "base_level", DisplayName: "Base Lvl"},
+		{ID: "job_level", DisplayName: "Job Lvl"},
+		{ID: "experience", DisplayName: "Exp %"},
+		{ID: "class", DisplayName: "Class"},
+		{ID: "guild", DisplayName: "Guild"},
+		{ID: "last_updated", DisplayName: "Last Updated"},
+		{ID: "last_active", DisplayName: "Last Active"},
+	}
+
+	visibleColumns := make(map[string]bool)
+	columnParams := url.Values{}
+	formSubmitted := len(r.Form) > 0
+
+	if !formSubmitted {
+		// Initial page load, set the defaults.
+		for _, col := range allCols {
+			if col.ID != "rank" && col.ID != "last_updated" {
+				visibleColumns[col.ID] = true
+				columnParams.Add("cols", col.ID)
+			}
+		}
+	} else {
+		// A form was submitted (filter, sort, columns, or page change).
+		// Populate based on selection. If no `cols` param, no optional columns will be visible.
+		for _, col := range selectedCols {
+			visibleColumns[col] = true
+			columnParams.Add("cols", col)
+		}
+	}
 	// --- 2. Get all unique classes for the filter dropdown ---
 	var allClasses []string
 	classRows, err := db.Query("SELECT DISTINCT class FROM characters ORDER BY class ASC")
@@ -962,6 +1002,26 @@ func characterHandler(w http.ResponseWriter, r *http.Request) {
 		whereClause = "WHERE " + strings.Join(whereConditions, " AND ")
 	}
 
+	// --- 3.5 Handle Sorting ---
+	allowedSorts := map[string]string{
+		"rank":         "rank",
+		"name":         "name",
+		"base_level":   "base_level",
+		"job_level":    "job_level",
+		"experience":   "experience",
+		"class":        "class",
+		"last_updated": "last_updated",
+		"last_active":  "last_active",
+	}
+	orderByClause, ok := allowedSorts[sortBy]
+	if !ok {
+		orderByClause, sortBy = "rank", "rank" // Default sort
+	}
+	if strings.ToUpper(order) != "DESC" {
+		order = "ASC"
+	}
+	orderByFullClause := fmt.Sprintf("ORDER BY %s %s", orderByClause, order)
+
 	// --- 4. Get the total count of matching players for pagination ---
 	var totalPlayers int
 	countQuery := fmt.Sprintf("SELECT COUNT(*) FROM characters %s", whereClause)
@@ -984,12 +1044,12 @@ func characterHandler(w http.ResponseWriter, r *http.Request) {
 
 	// --- 6. Fetch the paginated player data ---
 	query := fmt.Sprintf(`
-		SELECT rank, name, base_level, job_level, experience, class, guild_name
+		SELECT rank, name, base_level, job_level, experience, class, guild_name, last_updated, last_active
 		FROM characters
 		%s
-		ORDER BY rank ASC
+		%s
 		LIMIT ? OFFSET ?
-	`, whereClause)
+	`, whereClause, orderByFullClause)
 	finalParams := append(params, playersPerPage, offset)
 
 	rows, err := db.Query(query, finalParams...)
@@ -1003,15 +1063,44 @@ func characterHandler(w http.ResponseWriter, r *http.Request) {
 	var players []PlayerCharacter
 	for rows.Next() {
 		var p PlayerCharacter
-		if err := rows.Scan(&p.Rank, &p.Name, &p.BaseLevel, &p.JobLevel, &p.Experience, &p.Class, &p.GuildName); err != nil {
+		var lastUpdatedStr, lastActiveStr string
+		if err := rows.Scan(&p.Rank, &p.Name, &p.BaseLevel, &p.JobLevel, &p.Experience, &p.Class, &p.GuildName, &lastUpdatedStr, &lastActiveStr); err != nil {
 			log.Printf("⚠️ Failed to scan player character row: %v", err)
 			continue
 		}
+
+		// Format dates for display
+		lastUpdatedTime, err := time.Parse(time.RFC3339, lastUpdatedStr)
+		if err == nil {
+			p.LastUpdated = lastUpdatedTime.Format("2006-01-02 15:04")
+		} else {
+			p.LastUpdated = lastUpdatedStr
+		}
+
+		lastActiveTime, err := time.Parse(time.RFC3339, lastActiveStr)
+		if err == nil {
+			p.LastActive = lastActiveTime.Format("2006-01-02 15:04")
+		} else {
+			p.LastActive = lastActiveStr
+		}
+
+		// Set active status
+		p.IsActive = (lastUpdatedStr == lastActiveStr) && lastUpdatedStr != ""
+
 		players = append(players, p)
 	}
 
 	// --- 7. Load template and send data ---
-	tmpl, err := template.ParseFiles("characters.html")
+	funcMap := template.FuncMap{
+		"toggleOrder": func(currentOrder string) string {
+			if currentOrder == "ASC" {
+				return "DESC"
+			}
+			return "ASC"
+		},
+	}
+
+	tmpl, err := template.New("characters.html").Funcs(funcMap).ParseFiles("characters.html")
 	if err != nil {
 		http.Error(w, "Could not load characters template", http.StatusInternalServerError)
 		log.Printf("❌ Could not load characters.html template: %v", err)
@@ -1024,6 +1113,11 @@ func characterHandler(w http.ResponseWriter, r *http.Request) {
 		SearchName:     searchName,
 		SelectedClass:  selectedClass,
 		AllClasses:     allClasses,
+		SortBy:         sortBy,
+		Order:          order,
+		VisibleColumns: visibleColumns,
+		AllColumns:     allCols,
+		ColumnParams:   template.URL(columnParams.Encode()),
 		CurrentPage:    page,
 		TotalPages:     totalPages,
 		PrevPage:       page - 1,

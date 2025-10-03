@@ -5,226 +5,127 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Yufa Market Tracker / Price History for {{.ItemName}}</title>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    <style>
-        /* --- General & Typography --- */
-        body {
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-            line-height: 1.6;
-            background-color: #f8f9fa;
-            color: #212529;
-            margin: 0;
-            padding: 24px;
-        }
-        .container {
-            max-width: 1000px;
-            margin: auto;
-            background: #ffffff;
-            padding: 24px;
-            border-radius: 8px;
-            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);
-            border: 1px solid #dee2e6;
-        }
-        h1, h2, h3 {
-            color: #343a40;
-            margin-top: 0;
-        }
-        h1 { font-size: 2em; margin-bottom: 0.25em; }
-        h2 { font-size: 1.5em; margin-bottom: 1em; border-bottom: 1px solid #e9ecef; padding-bottom: 0.5em; }
-        h3 { font-size: 1.25em; margin-bottom: 0.75em; }
-        a { color: #007bff; text-decoration: none; }
-        a:hover { text-decoration: underline; color: #0056b3; }
-        p { margin-top: 0; }
-        img.item-icon {
-            width: 24px;
-            height: 24px;
-            vertical-align: middle;
-            margin-right: 8px;
-            image-rendering: pixelated;
-        }
-
-        /* --- Header & Navigation --- */
-        .header-info {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            flex-wrap: wrap;
-            gap: 16px;
-            margin-bottom: 24px;
-            border-bottom: 1px solid #e9ecef;
-            padding-bottom: 16px;
-        }
-        .header-info p { margin: 0; color: #6c757d; }
-        .main-nav { display: flex; gap: 8px; align-items: center; }
-        .main-nav a, .main-nav strong {
-            font-weight: 500;
-            padding: 8px 12px;
-            border-radius: 6px;
-            font-size: 1.1em;
-            text-decoration: none;
-            color: #007bff;
-            transition: background-color 0.2s ease;
-        }
-        .main-nav a:hover {
-            background-color: #e9ecef;
-            text-decoration: none;
-        }
-        .main-nav strong {
-            color: #ffffff;
-            background-color: #007bff;
-        }
-
-        /* --- Tables --- */
-        table {
-            width: 100%;
-            border-collapse: collapse;
-            margin-top: 24px;
-        }
-        th, td {
-            padding: 12px 16px;
-            text-align: left;
-            border-bottom: 1px solid #e9ecef;
-            vertical-align: middle;
-        }
-        th {
-            background-color: #f8f9fa;
-            font-weight: 600;
-            color: #495057;
-            white-space: nowrap;
-        }
-        tr:hover { background-color: #f1f3f5; }
-        td a { font-weight: 500; }
-        .unavailable { opacity: 0.65; }
-
-        /* --- Page-Specific: History --- */
-        .info-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 20px; margin: 24px 0; }
-        .card { background: #f8f9fa; border: 1px solid #dee2e6; padding: 16px 20px; border-radius: 6px; }
-        .card h2, .card h3 { margin-top: 0; border-bottom: 1px solid #e9ecef; padding-bottom: 10px; font-size: 1.2em; color: #495057; }
-        .card p, .card li { margin: 8px 0; font-size: 0.95em; }
-        .card strong { color: #495057; display: inline-block; width: 90px; }
-        .card pre { white-space: pre-wrap; word-wrap: break-word; font-family: monospace; font-size: 0.9em; background-color: #e9ecef; padding: 10px; border-radius: 4px; }
-        #lowest-price-card h2 { color: #28a745; }
-        #highest-price-card h2 { color: #dc3545; }
-        .item-details-box { display: flex; gap: 20px; background: #f8f9fa; border: 1px solid #dee2e6; padding: 20px; border-radius: 6px; margin: 24px 0; align-items: flex-start; }
-        .item-details-box img { flex-shrink: 0; width: 64px; height: 64px; border-radius: 4px; background: #fff; padding: 5px; border: 1px solid #ddd; image-rendering: pixelated; }
-        .item-details-box p { margin: 0; font-style: italic; color: #6c757d; line-height: 1.5; }
-        .overall-summary { text-align: center; padding: 16px; background: #e9ecef; border-radius: 6px; margin-bottom: 24px; }
-        .overall-summary p { margin: 0; font-size: 1.1em; color: #495057; }
-        .text-success { color: #28a745; font-weight: bold; }
-        .text-danger { color: #dc3545; font-weight: bold; }
-        .truncate { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 200px; display: inline-block; vertical-align: middle; }
-
-    </style>
+    <script src="https://cdn.tailwindcss.com"></script>
 </head>
-<body>
-    <div class="container">
-        <div class="header-info">
-            <div>
-                <h1>Yufa Market Tracker</h1>
-                <p>Last updated: <strong data-timestamp="{{.LastScrapeTime}}">{{.LastScrapeTime}}</strong> <span id="time-ago"></span></p>
+<body class="bg-gray-100 text-gray-800">
+
+    <nav class="bg-white shadow-sm">
+        <div class="container mx-auto px-4 py-2">
+            <div class="flex justify-between items-center">
+                <div class="text-xl font-semibold text-gray-700">Yufa Market Tracker</div>
+                <div class="flex space-x-4">
+                    <a href="/" class="text-gray-600 hover:text-blue-500">Summary</a>
+                    <a href="/full-list" class="text-gray-600 hover:text-blue-500">Full List</a>
+                    <a href="/activity" class="text-gray-600 hover:text-blue-500">Activity</a>
+                    <a href="/players" class="text-gray-600 hover:text-blue-500">Player Count</a>
+                    <a href="/characters" class="text-gray-600 hover:text-blue-500">Characters</a>
+                    <a href="/guilds" class="text-gray-600 hover:text-blue-500">Guilds</a>
+                </div>
             </div>
-            <nav class="main-nav">
-                <a href="/">Summary</a>
-                <a href="/full-list">Full List</a>
-                <a href="/activity">Activity</a>
-                <a href="/players">Players</a>
-            </nav>
         </div>
-        
-        <h2 style="margin-top: 1.5rem;">Price History: <strong>{{.ItemName}}</strong></h2>
+    </nav>
+
+    <div class="container mx-auto px-4 py-6">
+        <div class="flex justify-between items-center mb-4 border-b border-gray-200 pb-3">
+            <h1 class="text-2xl font-bold text-gray-800">Price History: <span class="text-blue-600">{{.ItemName}}</span></h1>
+            <p class="text-sm text-gray-500">Last updated: <strong data-timestamp="{{.LastScrapeTime}}">{{.LastScrapeTime}}</strong> <span id="time-ago"></span></p>
+        </div>
 
         {{if .ItemDetails}}
-        <div class="item-details-box">
-            <img src="{{.ItemDetails.ImageURL}}" alt="{{.ItemName}}" class="item-icon">
-            <p>{{.ItemDetails.Description}}</p>
-        </div>
-        
-        <div class="info-cards">
-            <div class="card">
-                <h3>Item Properties</h3>
-                <p><strong>Type:</strong> {{.ItemDetails.Type}}</p>
-                <p><strong>Class:</strong> {{.ItemDetails.Class}}</p>
-                <p><strong>Buy:</strong> {{.ItemDetails.Buy}}</p>
-                <p><strong>Sell:</strong> {{.ItemDetails.Sell}}</p>
-                <p><strong>Weight:</strong> {{.ItemDetails.Weight}}</p>
-                <p><strong>Prefix:</strong> {{.ItemDetails.Prefix}}</p>
+        <div class="bg-white p-4 rounded-lg shadow mb-4 flex items-start gap-4">
+            <img src="{{.ItemDetails.ImageURL}}" alt="{{.ItemName}}" class="w-20 h-20 flex-shrink-0 bg-white p-1 border rounded" style="image-rendering: pixelated;">
+            <div>
+                <p class="text-gray-600 italic text-sm">{{.ItemDetails.Description}}</p>
+                <div class="mt-3 grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-x-4 gap-y-1 text-xs">
+                    <div class="font-semibold text-gray-700">Type: <span class="font-normal text-gray-600">{{.ItemDetails.Type}}</span></div>
+                    <div class="font-semibold text-gray-700">Class: <span class="font-normal text-gray-600">{{.ItemDetails.Class}}</span></div>
+                    <div class="font-semibold text-gray-700">Buy: <span class="font-normal text-gray-600">{{.ItemDetails.Buy}}</span></div>
+                    <div class="font-semibold text-gray-700">Sell: <span class="font-normal text-gray-600">{{.ItemDetails.Sell}}</span></div>
+                    <div class="font-semibold text-gray-700">Weight: <span class="font-normal text-gray-600">{{.ItemDetails.Weight}}</span></div>
+                    <div class="font-semibold text-gray-700">Prefix: <span class="font-normal text-gray-600">{{.ItemDetails.Prefix}}</span></div>
+                </div>
             </div>
-            {{if .ItemDetails.Script}}
-            <div class="card">
-                <h3>Item Script</h3>
-                <pre><code>{{.ItemDetails.Script}}</code></pre>
-            </div>
-            {{end}}
         </div>
+        {{if .ItemDetails.Script}}
+        <div class="bg-white p-3 rounded-lg shadow mb-4">
+            <h3 class="text-lg font-semibold text-gray-800 mb-2">Item Script</h3>
+            <pre class="bg-gray-100 p-3 rounded text-xs text-gray-700 overflow-x-auto"><code>{{.ItemDetails.Script}}</code></pre>
+        </div>
+        {{end}}
         {{else}}
-        <p>No detailed item information could be found.</p>
+        <p class="bg-white p-4 rounded-lg shadow mb-4 text-gray-500">No detailed item information could be found.</p>
         {{end}}
 
-        <div class="overall-summary">
-            <p>
+        <div class="bg-gray-200 p-2 rounded-lg text-center mb-4">
+            <p class="text-lg text-gray-800">
                 All-Time Price Range: 
-                <strong id="overall-lowest-display" class="text-success">N/A</strong> &mdash; 
-                <strong id="overall-highest-display" class="text-danger">N/A</strong>
+                <strong id="overall-lowest-display" class="font-bold text-green-600">N/A</strong> &mdash; 
+                <strong id="overall-highest-display" class="font-bold text-red-600">N/A</strong>
             </p>
         </div>
 
-        <div class="info-cards">
-            <div class="card" id="lowest-price-card">
-                <h2>Lowest Current Price</h2>
-                <p><strong>Price:</strong> <span id="lowest-price-val" class="text-success">N/A</span></p>
-                <p><strong>Quantity:</strong> <span id="lowest-quantity-val">N/A</span></p>
-                <p><strong>Store:</strong> <a id="lowest-store-val" class="truncate" href="#">N/A</a></p>
-                <p><strong>Seller:</strong> <span id="lowest-seller-val">N/A</span></p>
-                <p><strong>Location:</strong> <span id="lowest-location-val">N/A</span></p>
-                <p><strong>Date:</strong> <span id="lowest-date-val">N/A</span></p>
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+            <div class="bg-white p-3 rounded-lg shadow">
+                <h2 class="text-lg font-bold text-green-600 border-b pb-1 mb-2">Lowest Current Price</h2>
+                <div class="space-y-1 text-xs">
+                    <p><strong>Price:</strong> <span id="lowest-price-val" class="font-semibold text-green-600">N/A</span></p>
+                    <p><strong>Quantity:</strong> <span id="lowest-quantity-val">N/A</span></p>
+                    <p><strong>Store:</strong> <a id="lowest-store-val" class="truncate hover:underline" href="#">N/A</a></p>
+                    <p><strong>Seller:</strong> <span id="lowest-seller-val">N/A</span></p>
+                    <p><strong>Location:</strong> <span id="lowest-location-val">N/A</span></p>
+                    <p><strong>Date:</strong> <span id="lowest-date-val">N/A</span></p>
+                </div>
             </div>
-            <div class="card" id="highest-price-card">
-                <h2>Highest Current Price</h2>
-                <p><strong>Price:</strong> <span id="highest-price-val" class="text-danger">N/A</span></p>
-                <p><strong>Quantity:</strong> <span id="highest-quantity-val">N/A</span></p>
-                <p><strong>Store:</strong> <a id="highest-store-val" class="truncate" href="#">N/A</a></p>
-                <p><strong>Seller:</strong> <span id="highest-seller-val">N/A</span></p>
-                <p><strong>Location:</strong> <span id="highest-location-val">N/A</span></p>
-                <p><strong>Date:</strong> <span id="highest-date-val">N/A</span></p>
+            <div class="bg-white p-3 rounded-lg shadow">
+                <h2 class="text-lg font-bold text-red-600 border-b pb-1 mb-2">Highest Current Price</h2>
+                <div class="space-y-1 text-xs">
+                    <p><strong>Price:</strong> <span id="highest-price-val" class="font-semibold text-red-600">N/A</span></p>
+                    <p><strong>Quantity:</strong> <span id="highest-quantity-val">N/A</span></p>
+                    <p><strong>Store:</strong> <a id="highest-store-val" class="truncate hover:underline" href="#">N/A</a></p>
+                    <p><strong>Seller:</strong> <span id="highest-seller-val">N/A</span></p>
+                    <p><strong>Location:</strong> <span id="highest-location-val">N/A</span></p>
+                    <p><strong>Date:</strong> <span id="highest-date-val">N/A</span></p>
+                </div>
             </div>
         </div>
-
-        <canvas id="priceChart"></canvas>
+        
+        <div class="bg-white p-3 rounded-lg shadow mb-4">
+            <canvas id="priceChart"></canvas>
+        </div>
 
         {{if .AllListings}}
-        <div class="listings-history">
-            <h3>All Recorded Listings</h3>
-            <table>
-                <thead>
-                    <tr>
-                        <th>Price</th>
-                        <th>Qty</th>
-                        <th>Store</th>
-                        <th>Seller</th>
-                        <th>Location</th>
-                        <th>Date Scanned</th>
-                        <th>Available</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {{range .AllListings}}
-                    <tr {{if not .IsAvailable}}class="unavailable" title="This specific listing is no longer available"{{end}}>
-                        <td>{{.Price}}</td>
-                        <td>{{.Quantity}}</td>
-                        <td><a href="/full-list?only_available=true&store_name={{.StoreName | urlquery}}" class="truncate" title="{{.StoreName}}">{{.StoreName}}</a></td>
-                        <td>{{.SellerName}}</td>
-                        <td><a href="#" onclick="copyNavi(event, '{{.MapName}}', '{{.MapCoordinates}}')" title="Click to copy /navi command">{{.MapName}} {{.MapCoordinates}}</a></td>
-                        <td>{{.Timestamp}}</td>
-                        <td>
-                            {{if .IsAvailable}}
-                                <span class="text-success">Yes</span>
-                            {{else}}
-                                <span class="text-danger">No</span>
-                            {{end}}
-                        </td>
-                    </tr>
-                    {{end}}
-                </tbody>
-            </table>
+        <div class="bg-white shadow-lg rounded-lg overflow-hidden">
+            <h3 class="text-lg font-bold text-gray-800 p-3">All Recorded Listings</h3>
+            <div class="overflow-x-auto">
+                <table class="min-w-full leading-normal">
+                    <thead>
+                        <tr class="border-b-2 border-gray-200 bg-gray-50 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                            <th class="px-3 py-2">Price</th>
+                            <th class="px-3 py-2">Qty</th>
+                            <th class="px-3 py-2">Store</th>
+                            <th class="px-3 py-2">Seller</th>
+                            <th class="px-3 py-2">Location</th>
+                            <th class="px-3 py-2">Date Scanned</th>
+                            <th class="px-3 py-2">Available</th>
+                        </tr>
+                    </thead>
+                    <tbody class="text-gray-700 text-xs">
+                        {{range .AllListings}}
+                        <tr class="border-b border-gray-200 hover:bg-gray-50 {{if not .IsAvailable}}opacity-60{{end}}" title="{{if not .IsAvailable}}This specific listing is no longer available{{end}}">
+                            <td class="px-3 py-2">{{.Price}}</td>
+                            <td class="px-3 py-2">{{.Quantity}}</td>
+                            <td class="px-3 py-2"><a href="/full-list?only_available=true&store_name={{.StoreName | urlquery}}" class="truncate hover:underline" title="{{.StoreName}}">{{.StoreName}}</a></td>
+                            <td class="px-3 py-2">{{.SellerName}}</td>
+                            <td class="px-3 py-2"><a href="#" onclick="copyNavi(event, '{{.MapName}}', '{{.MapCoordinates}}')" title="Click to copy /navi command" class="hover:underline">{{.MapName}} {{.MapCoordinates}}</a></td>
+                            <td class="px-3 py-2">{{.Timestamp}}</td>
+                            <td class="px-3 py-2">
+                                {{if .IsAvailable}}<span class="font-semibold text-green-600">Yes</span>{{else}}<span class="font-semibold text-red-600">No</span>{{end}}
+                            </td>
+                        </tr>
+                        {{end}}
+                    </tbody>
+                </table>
+            </div>
         </div>
         {{end}}
 
@@ -237,60 +138,48 @@
         const overallLowest = {{.OverallLowest}};
         const overallHighest = {{.OverallHighest}};
 
-        if (overallLowest > 0) {
-            document.getElementById('overall-lowest-display').textContent = `${overallLowest.toLocaleString()}z`;
-        }
-        if (overallHighest > 0) {
-            document.getElementById('overall-highest-display').textContent = `${overallHighest.toLocaleString()}z`;
-        }
+        if (overallLowest > 0) document.getElementById('overall-lowest-display').textContent = `${overallLowest.toLocaleString()}z`;
+        if (overallHighest > 0) document.getElementById('overall-highest-display').textContent = `${overallHighest.toLocaleString()}z`;
 
         function copyNavi(event, mapName, coordinates) {
             event.preventDefault();
-            const formattedCoords = coordinates.trim().replace('(', '').replace(')', '').replace(',', '/');
+            const formattedCoords = coordinates.trim().replace(/[()]/g, '').replace(',', '/');
             const command = `/navi ${mapName.trim()} ${formattedCoords}`;
             navigator.clipboard.writeText(command).then(() => {
-                const originalElement = event.target;
-                const originalText = originalElement.innerText;
-                originalElement.innerText = 'Copied!';
-                originalElement.style.color = '#28a745';
-                originalElement.style.fontWeight = 'bold';
+                const el = event.target;
+                const originalText = el.innerText;
+                el.innerText = 'Copied!';
+                el.style.color = '#16a34a'; /* Tailwind green-600 */
                 setTimeout(() => {
-                    originalElement.innerText = originalText;
-                    originalElement.style.color = '';
-                    originalElement.style.fontWeight = '';
+                    el.innerText = originalText;
+                    el.style.color = '';
                 }, 1500);
-            }).catch(err => {
-                console.error('Failed to copy command: ', err);
-            });
+            }).catch(err => console.error('Failed to copy command: ', err));
         }
         
         if (currentLowestData) {
-            const mapName = currentLowestData.MapName;
-            const mapCoords = currentLowestData.MapCoordinates;
-            const lowestStoreLink = document.getElementById('lowest-store-val');
-            
+            const mapName = currentLowestData.MapName, mapCoords = currentLowestData.MapCoordinates;
+            const storeLink = document.getElementById('lowest-store-val');
             document.getElementById('lowest-price-val').textContent = `${currentLowestData.Price.toLocaleString()}z`;
             document.getElementById('lowest-quantity-val').textContent = currentLowestData.Quantity.toLocaleString();
-            lowestStoreLink.textContent = currentLowestData.StoreName;
-            lowestStoreLink.title = currentLowestData.StoreName;
-            lowestStoreLink.href = `/full-list?only_available=true&store_name=${encodeURIComponent(currentLowestData.StoreName)}`;
+            storeLink.textContent = currentLowestData.StoreName;
+            storeLink.title = currentLowestData.StoreName;
+            storeLink.href = `/full-list?only_available=true&store_name=${encodeURIComponent(currentLowestData.StoreName)}`;
             document.getElementById('lowest-seller-val').textContent = currentLowestData.SellerName;
-            document.getElementById('lowest-location-val').innerHTML = `<a href="#" onclick="copyNavi(event, '${mapName.replace(/'/g, "\\'")}', '${mapCoords.replace(/'/g, "\\'")}')" title="Click to copy /navi command">${mapName} ${mapCoords}</a>`;
+            document.getElementById('lowest-location-val').innerHTML = `<a href="#" onclick="copyNavi(event, '${mapName.replace(/'/g, "\\'")}', '${mapCoords.replace(/'/g, "\\'")}')" title="Click to copy /navi command" class="hover:underline">${mapName} ${mapCoords}</a>`;
             document.getElementById('lowest-date-val').textContent = currentLowestData.Timestamp;
         }
 
         if (currentHighestData) {
-            const mapName = currentHighestData.MapName;
-            const mapCoords = currentHighestData.MapCoordinates;
-            const highestStoreLink = document.getElementById('highest-store-val');
-
+            const mapName = currentHighestData.MapName, mapCoords = currentHighestData.MapCoordinates;
+            const storeLink = document.getElementById('highest-store-val');
             document.getElementById('highest-price-val').textContent = `${currentHighestData.Price.toLocaleString()}z`;
             document.getElementById('highest-quantity-val').textContent = currentHighestData.Quantity.toLocaleString();
-            highestStoreLink.textContent = currentHighestData.StoreName;
-            highestStoreLink.title = currentHighestData.StoreName;
-            highestStoreLink.href = `/full-list?only_available=true&store_name=${encodeURIComponent(currentHighestData.StoreName)}`;
+            storeLink.textContent = currentHighestData.StoreName;
+            storeLink.title = currentHighestData.StoreName;
+            storeLink.href = `/full-list?only_available=true&store_name=${encodeURIComponent(currentHighestData.StoreName)}`;
             document.getElementById('highest-seller-val').textContent = currentHighestData.SellerName;
-            document.getElementById('highest-location-val').innerHTML = `<a href="#" onclick="copyNavi(event, '${mapName.replace(/'/g, "\\'")}', '${mapCoords.replace(/'/g, "\\'")}')" title="Click to copy /navi command">${mapName} ${mapCoords}</a>`;
+            document.getElementById('highest-location-val').innerHTML = `<a href="#" onclick="copyNavi(event, '${mapName.replace(/'/g, "\\'")}', '${mapCoords.replace(/'/g, "\\'")}')" title="Click to copy /navi command" class="hover:underline">${mapName} ${mapCoords}</a>`;
             document.getElementById('highest-date-val').textContent = currentHighestData.Timestamp;
         }
 
@@ -299,68 +188,27 @@
         const highestPrices = priceHistoryData.map(p => p.HighestPrice);
 
         const ctx = document.getElementById('priceChart').getContext('2d');
-        const priceChart = new Chart(ctx, {
+        new Chart(ctx, {
             type: 'line',
             data: {
                 labels: labels,
                 datasets: [
-                    {
-                        label: 'Lowest Price',
-                        data: lowestPrices,
-                        borderColor: 'rgba(40, 167, 69, 1)',
-                        backgroundColor: 'rgba(40, 167, 69, 0.2)',
-                        borderWidth: 2,
-                        fill: false,
-                        tension: 0.1
-                    },
-                    {
-                        label: 'Highest Price',
-                        data: highestPrices,
-                        borderColor: 'rgba(220, 53, 69, 1)',
-                        backgroundColor: 'rgba(220, 53, 69, 0.2)',
-                        borderWidth: 2,
-                        fill: false,
-                        tension: 0.1
-                    }
+                    { label: 'Lowest Price', data: lowestPrices, borderColor: 'rgba(22, 163, 74, 1)', backgroundColor: 'rgba(22, 163, 74, 0.2)', borderWidth: 2, fill: false, tension: 0.1 },
+                    { label: 'Highest Price', data: highestPrices, borderColor: 'rgba(220, 38, 38, 1)', backgroundColor: 'rgba(220, 38, 38, 0.2)', borderWidth: 2, fill: false, tension: 0.1 }
                 ]
             },
             options: {
-                scales: {
-                    y: {
-                        beginAtZero: false,
-                        ticks: {
-                            callback: function(value) {
-                                return value.toLocaleString() + 'z';
-                            }
-                        }
-                    }
-                },
+                scales: { y: { beginAtZero: false, ticks: { callback: value => value.toLocaleString() + 'z' } } },
                 plugins: {
                     tooltip: {
                         callbacks: {
-                            label: function(context) {
-                                let label = context.dataset.label || '';
-                                if (label) {
-                                    label += ': ';
-                                }
-                                if (context.parsed.y !== null) {
-                                    label += context.parsed.y.toLocaleString() + 'z';
-                                }
-                                return label;
-                            },
-                            afterLabel: function(context) {
-                                const dataPoint = priceHistoryData[context.dataIndex];
-                                if (!dataPoint) return '';
-
-                                let details = [];
-                                if (context.dataset.label === 'Lowest Price') {
-                                    details.push(`  Store: ${dataPoint.LowestStoreName}`);
-                                    details.push(`  Qty: ${dataPoint.LowestQuantity.toLocaleString()}, Seller: ${dataPoint.LowestSellerName}`);
-                                } else if (context.dataset.label === 'Highest Price') {
-                                    details.push(`  Store: ${dataPoint.HighestStoreName}`);
-                                    details.push(`  Qty: ${dataPoint.HighestQuantity.toLocaleString()}, Seller: ${dataPoint.HighestSellerName}`);
-                                }
-                                return details;
+                            label: context => `${context.dataset.label || ''}: ${context.parsed.y !== null ? context.parsed.y.toLocaleString() + 'z' : ''}`,
+                            afterLabel: context => {
+                                const dp = priceHistoryData[context.dataIndex];
+                                if (!dp) return '';
+                                if (context.dataset.label === 'Lowest Price') return [`  Store: ${dp.LowestStoreName}`, `  Qty: ${dp.LowestQuantity.toLocaleString()}, Seller: ${dp.LowestSellerName}`];
+                                if (context.dataset.label === 'Highest Price') return [`  Store: ${dp.HighestStoreName}`, `  Qty: ${dp.HighestQuantity.toLocaleString()}, Seller: ${dp.HighestSellerName}`];
+                                return [];
                             }
                         }
                     }
@@ -373,27 +221,16 @@
             const lastUpdateElement = document.querySelector('[data-timestamp]');
             if (!lastUpdateElement) return;
             const timestampStr = lastUpdateElement.dataset.timestamp;
-            if (!timestampStr || timestampStr === 'Never') {
-                timeAgoSpan.textContent = '(never updated)';
-                return;
-            }
+            if (!timestampStr || timestampStr === 'Never') { timeAgoSpan.textContent = '(never updated)'; return; }
             const lastUpdateDate = new Date(timestampStr);
 
             function updateTimeAgo() {
                 const now = new Date();
                 const secondsPast = Math.floor((now.getTime() - lastUpdateDate.getTime()) / 1000);
-                if (secondsPast < 60) {
-                    timeAgoSpan.textContent = `(${secondsPast} second${secondsPast !== 1 ? 's' : ''} ago)`;
-                } else if (secondsPast < 3600) {
-                    const minutes = Math.floor(secondsPast / 60);
-                    timeAgoSpan.textContent = `(${minutes} minute${minutes !== 1 ? 's' : ''} ago)`;
-                } else if (secondsPast < 86400) {
-                    const hours = Math.floor(secondsPast / 3600);
-                    timeAgoSpan.textContent = `(${hours} hour${hours !== 1 ? 's' : ''} ago)`;
-                } else {
-                    const days = Math.floor(secondsPast / 86400);
-                    timeAgoSpan.textContent = `(${days} day${days !== 1 ? 's' : ''} ago)`;
-                }
+                if (secondsPast < 60) { timeAgoSpan.textContent = `(${secondsPast} second${secondsPast !== 1 ? 's' : ''} ago)`; }
+                else if (secondsPast < 3600) { const m = Math.floor(secondsPast / 60); timeAgoSpan.textContent = `(${m} minute${m !== 1 ? 's' : ''} ago)`; }
+                else if (secondsPast < 86400) { const h = Math.floor(secondsPast / 3600); timeAgoSpan.textContent = `(${h} hour${h !== 1 ? 's' : ''} ago)`; }
+                else { const d = Math.floor(secondsPast / 86400); timeAgoSpan.textContent = `(${d} day${d !== 1 ? 's' : ''} ago)`; }
             }
             updateTimeAgo();
             setInterval(updateTimeAgo, 30000);

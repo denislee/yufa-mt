@@ -4,132 +4,82 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Yufa Market Tracker / Activity</title>
-    <style>
-        /* --- General & Typography --- */
-        body {
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-            line-height: 1.6;
-            background-color: #f8f9fa;
-            color: #212529;
-            margin: 0;
-            padding: 24px;
-        }
-        .container {
-            max-width: 1200px;
-            margin: auto;
-            background: #ffffff;
-            padding: 24px;
-            border-radius: 8px;
-            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);
-            border: 1px solid #dee2e6;
-        }
-        h1, h2, h3 {
-            color: #343a40;
-            margin-top: 0;
-        }
-        h1 { font-size: 2em; margin-bottom: 0.25em; }
-        h2 { font-size: 1.5em; margin-bottom: 1em; border-bottom: 1px solid #e9ecef; padding-bottom: 0.5em; }
-        h3 { font-size: 1.25em; margin-bottom: 0.75em; }
-        a { color: #007bff; text-decoration: none; }
-        a:hover { text-decoration: underline; color: #0056b3; }
-        p { margin-top: 0; }
-        img.item-icon {
-            width: 24px;
-            height: 24px;
-            vertical-align: middle;
-            margin-right: 8px;
-            image-rendering: pixelated;
-        }
-
-        /* --- Header & Navigation --- */
-        .header-info {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            flex-wrap: wrap;
-            gap: 16px;
-            margin-bottom: 24px;
-            border-bottom: 1px solid #e9ecef;
-            padding-bottom: 16px;
-        }
-        .header-info p { margin: 0; color: #6c757d; }
-        .main-nav { display: flex; gap: 8px; align-items: center; }
-        .main-nav a, .main-nav strong {
-            font-weight: 500;
-            padding: 8px 12px;
-            border-radius: 6px;
-            font-size: 1.1em;
-            text-decoration: none;
-            color: #007bff;
-            transition: background-color 0.2s ease;
-        }
-        .main-nav a:hover {
-            background-color: #e9ecef;
-            text-decoration: none;
-        }
-        .main-nav strong {
-            color: #ffffff;
-            background-color: #007bff;
-        }
-
-        /* --- Page-Specific: Activity --- */
-        .activity-log ul { list-style-type: none; padding: 0; margin: 0; }
-        .activity-log li { padding: 12px 8px; border-bottom: 1px solid #e9ecef; display: flex; align-items: center; gap: 16px; font-size: 1em; }
-        .activity-log li:last-child { border-bottom: none; }
-        .log-timestamp { font-size: 0.9em; color: #6c757d; width: 120px; flex-shrink: 0; }
-        .log-event { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
-        .log-event strong a { font-weight: 600; color: #343a40; }
-        .log-event small { color: #6c757d; }
-        .log-added { color: #28a745; }
-        .log-removed { color: #6c757d; }
-        .log-new-low { color: #fd7e14; }
-        .log-new-low .highlight { font-weight: bold; background-color: #fff3cd; padding: 2px 5px; border-radius: 3px; }
-    </style>
+    <script src="https://cdn.tailwindcss.com"></script>
 </head>
-<body>
-    <div class="container">
-        <div class="header-info">
-            <div>
-                <h1>Yufa Market Tracker</h1>
-                <p>Last updated: <strong data-timestamp="{{.LastScrapeTime}}">{{.LastScrapeTime}}</strong> <span id="time-ago"></span></p>
-            </div>
-            <nav class="main-nav">
-                <a href="/">Summary</a>
-                <a href="/full-list">Full List</a>
-                <strong>Activity</strong>
-                <a href="/players">Players</a>
-            </nav>
-        </div>
-        <h2>Recent Market Activity</h2>
+<body class="bg-gray-100 text-gray-800">
 
-        {{if .MarketEvents}}
-        <div class="activity-log">
-            <ul>
+    <nav class="bg-white shadow-sm">
+        <div class="container mx-auto px-4 py-2">
+            <div class="flex justify-between items-center">
+                <div class="text-xl font-semibold text-gray-700">Yufa Market Tracker</div>
+                <div class="flex space-x-4">
+                    <a href="/" class="text-gray-600 hover:text-blue-500">Summary</a>
+                    <a href="/full-list" class="text-gray-600 hover:text-blue-500">Full List</a>
+                    <a href="/activity" class="text-blue-500 font-bold">Activity</a>
+                    <a href="/players" class="text-gray-600 hover:text-blue-500">Player Count</a>
+                    <a href="/characters" class="text-gray-600 hover:text-blue-500">Characters</a>
+                    <a href="/guilds" class="text-gray-600 hover:text-blue-500">Guilds</a>
+                </div>
+            </div>
+        </div>
+    </nav>
+    
+    <div class="container mx-auto px-4 py-6">
+        <div class="flex justify-between items-center mb-4 border-b border-gray-200 pb-3">
+            <h1 class="text-2xl font-bold text-gray-800">Recent Market Activity</h1>
+            <p class="text-sm text-gray-500">Last updated: <strong data-timestamp="{{.LastScrapeTime}}">{{.LastScrapeTime}}</strong> <span id="time-ago"></span></p>
+        </div>
+
+        <div class="bg-white shadow-lg rounded-lg overflow-hidden">
+            {{if .MarketEvents}}
+            <ul class="divide-y divide-gray-200">
                 {{range .MarketEvents}}
-                <li>
-                    <span class="log-timestamp">{{.Timestamp}}</span>
+                <li class="p-2 flex items-center space-x-3">
+                    <span class="text-xs text-gray-500 w-24 flex-shrink-0 whitespace-nowrap">{{.Timestamp}}</span>
                     {{if eq .EventType "ADDED"}}
-                        <span class="log-event log-added">
-                            ➕ <strong><img src="https://static.divine-pride.net/images/items/item/{{.ItemID}}.png" alt="" class="item-icon"> <a href="/item?name={{.ItemName | urlquery}}">{{.ItemName}}</a></strong> was added for sale.
-                            <small>({{.Details.price}} zeny, Qty: {{printf "%.0f" .Details.quantity}} by {{.Details.seller}})</small>
+                        <span class="flex items-center gap-2 text-xs">
+                            <span class="text-green-500">➕</span>
+                            <div class="flex flex-wrap items-center gap-x-2">
+                                <div class="flex items-center font-semibold">
+                                    <img src="https://static.divine-pride.net/images/items/item/{{.ItemID}}.png" alt="" class="w-5 h-5 mr-2" style="image-rendering: pixelated;">
+                                    <a href="/item?name={{.ItemName | urlquery}}" class="hover:underline">{{.ItemName}}</a>
+                                </div>
+                                <span>was added for sale.</span>
+                                <small class="text-gray-500">({{.Details.price}} zeny, Qty: {{printf "%.0f" .Details.quantity}} by {{.Details.seller}})</small>
+                            </div>
                         </span>
                     {{else if eq .EventType "REMOVED"}}
-                        <span class="log-event log-removed">
-                            ➖ <strong><img src="https://static.divine-pride.net/images/items/item/{{.ItemID}}.png" alt="" class="item-icon"> <a href="/item?name={{.ItemName | urlquery}}">{{.ItemName}}</a></strong> is no longer for sale.
+                        <span class="flex items-center gap-2 text-xs text-gray-500">
+                            <span>➖</span>
+                            <div class="flex flex-wrap items-center gap-x-2">
+                                <div class="flex items-center font-semibold text-gray-800">
+                                    <img src="https://static.divine-pride.net/images/items/item/{{.ItemID}}.png" alt="" class="w-5 h-5 mr-2" style="image-rendering: pixelated;">
+                                    <a href="/item?name={{.ItemName | urlquery}}" class="hover:underline">{{.ItemName}}</a>
+                                </div>
+                                <span>is no longer for sale.</span>
+                            </div>
                         </span>
                     {{else if eq .EventType "NEW_LOW"}}
-                         <span class="log-event log-new-low">
-                            🏆 <span class="highlight">New historical low</span> for <strong><img src="https://static.divine-pride.net/images/items/item/{{.ItemID}}.png" alt="" class="item-icon"> <a href="/item?name={{.ItemName | urlquery}}">{{.ItemName}}</a></strong>!
-                            <small>({{.Details.price}} zeny, Qty: {{printf "%.0f" .Details.quantity}} by {{.Details.seller}})</small>
+                         <span class="flex items-center gap-2 text-xs">
+                            <span>🏆</span>
+                            <div class="flex flex-wrap items-center gap-x-2">
+                                <span class="bg-yellow-100 text-yellow-800 font-bold px-2 py-0.5 rounded-md">New historical low</span>
+                                <span>for</span>
+                                <div class="flex items-center font-semibold">
+                                    <img src="https://static.divine-pride.net/images/items/item/{{.ItemID}}.png" alt="" class="w-5 h-5 mr-2" style="image-rendering: pixelated;">
+                                    <a href="/item?name={{.ItemName | urlquery}}" class="hover:underline">{{.ItemName}}</a>!
+                                </div>
+                                <small class="text-gray-500">({{.Details.price}} zeny, Qty: {{printf "%.0f" .Details.quantity}} by {{.Details.seller}})</small>
+                            </div>
                         </span>
                     {{end}}
                 </li>
                 {{end}}
             </ul>
+            {{else}}
+            <p class="text-center py-10 text-gray-500">No market activity has been recorded yet.</p>
+            {{end}}
         </div>
-        {{else}}
-        <p>No market activity has been recorded yet.</p>
-        {{end}}
     </div>
     <script>
         document.addEventListener('DOMContentLoaded', () => {

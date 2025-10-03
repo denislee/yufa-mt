@@ -6,160 +6,54 @@
     <title>Yufa Market Tracker / Player Count</title>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-annotation@3.0.1/dist/chartjs-plugin-annotation.min.js"></script>
-    <style>
-        /* --- General & Typography --- */
-        body {
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-            line-height: 1.6;
-            background-color: #f8f9fa;
-            color: #212529;
-            margin: 0;
-            padding: 24px;
-        }
-        .container {
-            max-width: 1200px;
-            margin: auto;
-            background: #ffffff;
-            padding: 24px;
-            border-radius: 8px;
-            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);
-            border: 1px solid #dee2e6;
-        }
-        h1, h2 {
-            color: #343a40;
-            margin-top: 0;
-        }
-        h1 { font-size: 2em; margin-bottom: 0.25em; }
-        h2 { font-size: 1.5em; margin-bottom: 1em; border-bottom: 1px solid #e9ecef; padding-bottom: 0.5em; }
-        a { color: #007bff; text-decoration: none; }
-        a:hover { text-decoration: underline; color: #0056b3; }
-
-        /* --- Header & Navigation --- */
-        .header-info {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            flex-wrap: wrap;
-            gap: 16px;
-            margin-bottom: 24px;
-            border-bottom: 1px solid #e9ecef;
-            padding-bottom: 16px;
-        }
-        .header-info p { margin: 0; color: #6c757d; }
-        .main-nav { display: flex; gap: 8px; align-items: center; }
-        .main-nav a, .main-nav strong {
-            font-weight: 500;
-            padding: 8px 12px;
-            border-radius: 6px;
-            font-size: 1.1em;
-            text-decoration: none;
-            color: #007bff;
-            transition: background-color 0.2s ease;
-        }
-        .main-nav a:hover {
-            background-color: #e9ecef;
-            text-decoration: none;
-        }
-        .main-nav strong {
-            color: #ffffff;
-            background-color: #007bff;
-        }
-        /* --- Filters & Options --- */
-         .filters-and-options {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 16px;
-            flex-wrap: wrap;
-            gap: 10px;
-        }
-        .time-filters {
-            display: flex;
-            gap: 8px;
-            justify-content: center;
-            flex-grow: 1;
-        }
-        .time-filters a {
-            background-color: #e9ecef;
-            padding: 6px 12px;
-            border-radius: 16px;
-            color: #495057;
-            font-size: 0.9em;
-            font-weight: 500;
-            border: 1px solid transparent;
-            transition: all 0.2s ease;
-        }
-        .time-filters a:hover {
-            background-color: #dee2e6;
-            text-decoration: none;
-        }
-        .time-filters a.active {
-            background-color: #007bff;
-            color: #ffffff;
-            border-color: #0056b3;
-        }
-        .view-options {
-            display: flex;
-            align-items: center;
-            gap: 12px;
-            font-size: 0.9em;
-        }
-        .view-options label {
-            display: flex;
-            align-items: center;
-            gap: 5px;
-            cursor: pointer;
-            user-select: none;
-        }
-    </style>
+    <script src="https://cdn.tailwindcss.com"></script>
 </head>
-<body>
-    <div class="container">
-        <div class="header-info">
-            <div>
-                <h1>Yufa Market Tracker</h1>
-                <p>Last market update: <strong data-timestamp="{{.LastScrapeTime}}">{{.LastScrapeTime}}</strong> <span id="time-ago"></span></p>
-            </div>
-            <nav class="main-nav">
-                <a href="/">Summary</a>
-                <a href="/full-list">Full List</a>
-                <a href="/activity">Activity</a>
-                <strong>Players</strong>
-            </nav>
-        </div>
-        <h2>Online Player History</h2>
+<body class="bg-gray-100 text-gray-800">
 
-        <div class="filters-and-options">
-            <div class="time-filters">
-                <a href="/players?interval=30m" class="{{if eq .SelectedInterval "30m"}}active{{end}}">Last 30 Mins</a>
-                <a href="/players?interval=6h" class="{{if eq .SelectedInterval "6h"}}active{{end}}">Last 6 Hours</a>
-                <a href="/players?interval=24h" class="{{if eq .SelectedInterval "24h"}}active{{end}}">Last 24 Hours</a>
-                <a href="/players?interval=7d" class="{{if eq .SelectedInterval "7d"}}active{{end}}">Last 7 Days</a>
-                <a href="/players?interval=30d" class="{{if eq .SelectedInterval "30d"}}active{{end}}">Last 30 Days</a>
+    <nav class="bg-white shadow-sm">
+        <div class="container mx-auto px-4 py-2">
+            <div class="flex justify-between items-center">
+                <div class="text-xl font-semibold text-gray-700">Yufa Market Tracker</div>
+                <div class="flex space-x-4">
+                    <a href="/" class="text-gray-600 hover:text-blue-500">Summary</a>
+                    <a href="/full-list" class="text-gray-600 hover:text-blue-500">Full List</a>
+                    <a href="/activity" class="text-gray-600 hover:text-blue-500">Activity</a>
+                    <a href="/players" class="text-blue-500 font-bold">Player Count</a>
+                    <a href="/characters" class="text-gray-600 hover:text-blue-500">Characters</a>
+                    <a href="/guilds" class="text-gray-600 hover:text-blue-500">Guilds</a>
+                </div>
             </div>
-             <div class="view-options">
-                <strong>Show:</strong>
-                <label>
-                    <input type="checkbox" id="togglePlayers">
-                    Players
-                </label>
-                <label>
-                    <input type="checkbox" id="toggleSellers">
-                    Sellers
-                </label>
-                <label>
-                    <input type="checkbox" id="toggleDelta" checked>
-                    Active (Δ)
-                </label>
-                <label>
-                    <input type="checkbox" id="toggleEvents" checked>
-                    Events
-                </label>
+        </div>
+    </nav>
+
+    <div class="container mx-auto px-4 py-6">
+        <div class="flex justify-between items-center mb-4 border-b border-gray-200 pb-3">
+            <h1 class="text-2xl font-bold text-gray-800">Online Player History</h1>
+            <p class="text-sm text-gray-500">Last market update: <strong data-timestamp="{{.LastScrapeTime}}">{{.LastScrapeTime}}</strong> <span id="time-ago"></span></p>
+        </div>
+
+        <div class="bg-white p-3 rounded-lg shadow mb-4">
+            <div class="flex flex-wrap justify-between items-center gap-2">
+                <div class="flex flex-wrap items-center gap-2">
+                    <a href="/players?interval=30m" class="text-sm font-medium px-3 py-1 rounded-full {{if eq .SelectedInterval "30m"}}bg-blue-500 text-white{{else}}bg-gray-200 text-gray-700 hover:bg-gray-300{{end}}">30 Mins</a>
+                    <a href="/players?interval=6h" class="text-sm font-medium px-3 py-1 rounded-full {{if eq .SelectedInterval "6h"}}bg-blue-500 text-white{{else}}bg-gray-200 text-gray-700 hover:bg-gray-300{{end}}">6 Hours</a>
+                    <a href="/players?interval=24h" class="text-sm font-medium px-3 py-1 rounded-full {{if eq .SelectedInterval "24h"}}bg-blue-500 text-white{{else}}bg-gray-200 text-gray-700 hover:bg-gray-300{{end}}">24 Hours</a>
+                    <a href="/players?interval=7d" class="text-sm font-medium px-3 py-1 rounded-full {{if eq .SelectedInterval "7d"}}bg-blue-500 text-white{{else}}bg-gray-200 text-gray-700 hover:bg-gray-300{{end}}">7 Days</a>
+                    <a href="/players?interval=30d" class="text-sm font-medium px-3 py-1 rounded-full {{if eq .SelectedInterval "30d"}}bg-blue-500 text-white{{else}}bg-gray-200 text-gray-700 hover:bg-gray-300{{end}}">30 Days</a>
+                </div>
+                 <div class="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm">
+                    <strong class="text-gray-700">Show:</strong>
+                    <label class="flex items-center gap-2"><input type="checkbox" id="togglePlayers" class="rounded"> Players</label>
+                    <label class="flex items-center gap-2"><input type="checkbox" id="toggleSellers" class="rounded"> Sellers</label>
+                    <label class="flex items-center gap-2"><input type="checkbox" id="toggleDelta" checked class="rounded"> Active (Δ)</label>
+                    <label class="flex items-center gap-2"><input type="checkbox" id="toggleEvents" checked class="rounded"> Events</label>
+                </div>
             </div>
         </div>
 
-
-        <canvas id="playerChart"></canvas>
+        <div class="bg-white p-3 rounded-lg shadow">
+            <canvas id="playerChart"></canvas>
+        </div>
     </div>
 
     <script>
@@ -172,20 +66,16 @@
             const toggleDelta = document.getElementById('toggleDelta');
             const toggleEvents = document.getElementById('toggleEvents');
 
-            // --- Set checkbox states from URL parameters on page load ---
             const urlParams = new URLSearchParams(window.location.search);
             const hasViewParams = urlParams.has('showPlayers') || urlParams.has('showSellers') || urlParams.has('showDelta') || urlParams.has('showEvents');
 
             if (hasViewParams) {
-                // If view params are present, they become the source of truth.
-                // Any parameter not present is considered false.
                 togglePlayers.checked = urlParams.has('showPlayers');
                 toggleSellers.checked = urlParams.has('showSellers');
                 toggleDelta.checked = urlParams.has('showDelta');
                 toggleEvents.checked = urlParams.has('showEvents');
             }
 
-            // --- Update time-interval links whenever a view filter checkbox changes ---
             function updateFilterLinks() {
                 const viewParams = new URLSearchParams();
                 if (togglePlayers.checked) viewParams.set('showPlayers', '1');
@@ -193,200 +83,101 @@
                 if (toggleDelta.checked) viewParams.set('showDelta', '1');
                 if (toggleEvents.checked) viewParams.set('showEvents', '1');
 
-                document.querySelectorAll('.time-filters a').forEach(link => {
-                    // Use the link's href as a base to construct the new URL
+                document.querySelectorAll('.flex.items-center.gap-2 a').forEach(link => {
                     const linkUrl = new URL(link.href, window.location.origin);
                     const interval = linkUrl.searchParams.get('interval');
-                    
                     const newParams = new URLSearchParams();
-                    if (interval) {
-                        newParams.set('interval', interval);
-                    }
-
-                    // Append the current view filter states to the interval links
+                    if (interval) newParams.set('interval', interval);
                     for (const [key, value] of viewParams.entries()) {
                         newParams.set(key, value);
                     }
-                    
                     link.href = `${linkUrl.pathname}?${newParams.toString()}`;
                 });
             }
 
-            // Attach event listeners to all filter checkboxes
-            togglePlayers.addEventListener('change', updateFilterLinks);
-            toggleSellers.addEventListener('change', updateFilterLinks);
-            toggleDelta.addEventListener('change', updateFilterLinks);
-            toggleEvents.addEventListener('change', updateFilterLinks);
-
-            // Initial call to set the hrefs correctly on page load
+            [togglePlayers, toggleSellers, toggleDelta, toggleEvents].forEach(el => el.addEventListener('change', updateFilterLinks));
             updateFilterLinks();
 
-
-            // --- Chart Configuration (and remaining original script) ---
             const labels = playerData.map(p => p.Timestamp);
             const playerCounts = playerData.map(p => p.Count);
             const sellerCounts = playerData.map(p => p.SellerCount);
             const deltaCounts = playerData.map(p => p.Delta);
 
-            // --- Calculate a fixed Y-axis range based on all data ---
             const allCounts = [...playerCounts, ...sellerCounts, ...deltaCounts].filter(c => c !== null);
             const maxDataValue = allCounts.length > 0 ? Math.max(...allCounts) : 0;
             const chartMaxY = Math.ceil((maxDataValue * 1.05) / 10) * 10;
 
-            // --- Event Annotation Logic ---
             const eventColors = {
-                'Battlegrounds': 'rgba(255, 159, 64, 0.2)', // Orange
-                'War of Emperium': 'rgba(255, 99, 132, 0.2)', // Red
-                'Default': 'rgba(153, 102, 255, 0.2)' // Purple
+                'Battlegrounds': 'rgba(255, 159, 64, 0.2)',
+                'War of Emperium': 'rgba(255, 99, 132, 0.2)',
+                'Default': 'rgba(153, 102, 255, 0.2)'
             };
 
             function createAnnotations(events) {
                 if (!events) return {};
                 return events.map(event => ({
-                    type: 'box',
-                    xMin: event.start,
-                    xMax: event.end,
+                    type: 'box', xMin: event.start, xMax: event.end,
                     backgroundColor: eventColors[event.name] || eventColors['Default'],
                     borderWidth: 0,
-                    label: {
-                        content: event.name,
-                        display: true,
-                        position: 'start',
-                        color: 'rgba(0,0,0,0.6)',
-                        font: {
-                            size: 10
-                        }
-                    }
+                    label: { content: event.name, display: true, position: 'start', color: 'rgba(0,0,0,0.6)', font: { size: 10 } }
                 }));
             }
-
-            // Set initial annotations based on the (potentially modified) checkbox state
             const initialAnnotations = toggleEvents.checked ? createAnnotations(eventData) : {};
-
             const ctx = document.getElementById('playerChart').getContext('2d');
             const playerChart = new Chart(ctx, {
                 type: 'line',
                 data: {
                     labels: labels,
                     datasets: [{
-                        label: 'Online Players',
-                        data: playerCounts,
-                        borderColor: 'rgba(0, 123, 255, 1)',
-                        backgroundColor: 'rgba(0, 123, 255, 0.2)',
-                        borderWidth: 2,
-                        fill: true,
-                        tension: 0.1,
-                        pointRadius: 2,
-                        pointHoverRadius: 5,
-                    },
-                    {
-                        label: 'Sellers',
-                        data: sellerCounts,
-                        borderColor: 'rgba(40, 167, 69, 1)',
-                        backgroundColor: 'rgba(40, 167, 69, 0.2)',
-                        borderWidth: 2,
-                        fill: true,
-                        tension: 0.1,
-                        pointRadius: 2,
-                        pointHoverRadius: 5,
-                    },
-                    {
-                        label: 'Active Players (Delta)',
-                        data: deltaCounts,
-                        borderColor: 'rgba(255, 193, 7, 1)',
-                        backgroundColor: 'rgba(255, 193, 7, 0.2)',
-                        borderWidth: 2,
-                        fill: true,
-                        tension: 0.1,
-                        pointRadius: 2,
-                        pointHoverRadius: 5,
+                        label: 'Online Players', data: playerCounts, borderColor: 'rgba(0, 123, 255, 1)', backgroundColor: 'rgba(0, 123, 255, 0.2)',
+                        borderWidth: 2, fill: true, tension: 0.1, pointRadius: 2, pointHoverRadius: 5,
+                    }, {
+                        label: 'Sellers', data: sellerCounts, borderColor: 'rgba(40, 167, 69, 1)', backgroundColor: 'rgba(40, 167, 69, 0.2)',
+                        borderWidth: 2, fill: true, tension: 0.1, pointRadius: 2, pointHoverRadius: 5,
+                    }, {
+                        label: 'Active Players (Delta)', data: deltaCounts, borderColor: 'rgba(255, 193, 7, 1)', backgroundColor: 'rgba(255, 193, 7, 0.2)',
+                        borderWidth: 2, fill: true, tension: 0.1, pointRadius: 2, pointHoverRadius: 5,
                     }]
                 },
                 options: {
                     scales: {
-                        y: {
-                            min: 0,
-                            max: chartMaxY,
-                            title: {
-                                display: true,
-                                text: 'Count'
-                            }
-                        },
-                        x: {
-                             title: {
-                                display: true,
-                                text: 'Date & Time'
-                            }
-                        }
+                        y: { min: 0, max: chartMaxY, title: { display: true, text: 'Count' } },
+                        x: { title: { display: true, text: 'Date & Time' } }
                     },
-                    plugins: {
-                        tooltip: {
-                           mode: 'index',
-                           intersect: false,
-                        },
-                        annotation: {
-                            annotations: initialAnnotations
-                        }
-                    }
+                    plugins: { tooltip: { mode: 'index', intersect: false, }, annotation: { annotations: initialAnnotations } }
                 }
             });
 
             function updateChartVisibility() {
-                const playersVisible = togglePlayers.checked;
-                const sellersVisible = toggleSellers.checked;
-                const deltaVisible = toggleDelta.checked;
-
-                playerChart.setDatasetVisibility(0, playersVisible); // Player dataset is at index 0
-                playerChart.setDatasetVisibility(1, sellersVisible); // Seller dataset is at index 1
-                playerChart.setDatasetVisibility(2, deltaVisible); // Delta dataset is at index 2
-                
-                playerChart.options.scales.y.display = playersVisible || sellersVisible || deltaVisible;
-
+                const vis = [togglePlayers.checked, toggleSellers.checked, toggleDelta.checked];
+                playerChart.setDatasetVisibility(0, vis[0]);
+                playerChart.setDatasetVisibility(1, vis[1]);
+                playerChart.setDatasetVisibility(2, vis[2]);
+                playerChart.options.scales.y.display = vis.some(v => v);
                 playerChart.update();
             }
             
-            togglePlayers.addEventListener('change', updateChartVisibility);
-            toggleSellers.addEventListener('change', updateChartVisibility);
-            toggleDelta.addEventListener('change', updateChartVisibility);
-
+            [togglePlayers, toggleSellers, toggleDelta].forEach(el => el.addEventListener('change', updateChartVisibility));
             toggleEvents.addEventListener('change', (e) => {
-                if (e.target.checked) {
-                    playerChart.options.plugins.annotation.annotations = createAnnotations(eventData);
-                } else {
-                    playerChart.options.plugins.annotation.annotations = {};
-                }
+                playerChart.options.plugins.annotation.annotations = e.target.checked ? createAnnotations(eventData) : {};
                 playerChart.update();
             });
-
-            // Set initial chart visibility based on (potentially modified) checkbox states
             updateChartVisibility();
 
-            // Time ago script for the header
             const timeAgoSpan = document.getElementById('time-ago');
             const lastUpdateElement = document.querySelector('[data-timestamp]');
             if (!lastUpdateElement) return;
             const timestampStr = lastUpdateElement.dataset.timestamp;
-            if (!timestampStr || timestampStr === 'Never') {
-                timeAgoSpan.textContent = '(never updated)';
-                return;
-            }
+            if (!timestampStr || timestampStr === 'Never') { timeAgoSpan.textContent = '(never updated)'; return; }
             const lastUpdateDate = new Date(timestampStr);
 
             function updateTimeAgo() {
                 const now = new Date();
                 const secondsPast = Math.floor((now.getTime() - lastUpdateDate.getTime()) / 1000);
-                if (secondsPast < 60) {
-                    timeAgoSpan.textContent = `(${secondsPast} second${secondsPast !== 1 ? 's' : ''} ago)`;
-                } else if (secondsPast < 3600) {
-                    const minutes = Math.floor(secondsPast / 60);
-                    timeAgoSpan.textContent = `(${minutes} minute${minutes !== 1 ? 's' : ''} ago)`;
-                } else if (secondsPast < 86400) {
-                    const hours = Math.floor(secondsPast / 3600);
-                    timeAgoSpan.textContent = `(${hours} hour${hours !== 1 ? 's' : ''} ago)`;
-                } else {
-                    const days = Math.floor(secondsPast / 86400);
-                    timeAgoSpan.textContent = `(${days} day${days !== 1 ? 's' : ''} ago)`;
-                }
+                if (secondsPast < 60) { timeAgoSpan.textContent = `(${secondsPast} second${secondsPast !== 1 ? 's' : ''} ago)`; }
+                else if (secondsPast < 3600) { const m = Math.floor(secondsPast / 60); timeAgoSpan.textContent = `(${m} minute${m !== 1 ? 's' : ''} ago)`; }
+                else if (secondsPast < 86400) { const h = Math.floor(secondsPast / 3600); timeAgoSpan.textContent = `(${h} hour${h !== 1 ? 's' : ''} ago)`; }
+                else { const d = Math.floor(secondsPast / 86400); timeAgoSpan.textContent = `(${d} day${d !== 1 ? 's' : ''} ago)`; }
             }
             updateTimeAgo();
             setInterval(updateTimeAgo, 30000);

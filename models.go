@@ -125,14 +125,16 @@ type ItemTypeTab struct {
 
 // PlayerCharacter represents a single player's data from the characters page.
 type PlayerCharacter struct {
-	Rank       int
-	Name       string
-	BaseLevel  int
-	JobLevel   int
-	Experience float64
-	Class      string
-	GuildName  sql.NullString // Use sql.NullString to handle players without a guild.
-	LastActive string
+	Rank        int
+	Name        string
+	BaseLevel   int
+	JobLevel    int
+	Experience  float64
+	Class       string
+	GuildName   sql.NullString // Use sql.NullString to handle players without a guild.
+	LastUpdated string
+	LastActive  string
+	IsActive    bool
 }
 
 // Guild represents a single guild's data from the rankings.
@@ -218,6 +220,13 @@ type CharacterPageData struct {
 	SearchName    string
 	SelectedClass string
 	AllClasses    []string
+	// Sorting
+	SortBy string
+	Order  string
+	// Column Visibility
+	VisibleColumns map[string]bool
+	AllColumns     []Column
+	ColumnParams   template.URL
 	// Pagination
 	CurrentPage  int
 	TotalPages   int

@@ -4,272 +4,71 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Yufa Market Tracker / Full List</title>
-    <style>
-        /* --- General & Typography --- */
-        body {
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-            line-height: 1.6;
-            background-color: #f8f9fa;
-            color: #212529;
-            margin: 0;
-            padding: 24px;
-        }
-        .container {
-            max-width: 1200px;
-            margin: auto;
-            background: #ffffff;
-            padding: 24px;
-            border-radius: 8px;
-            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);
-            border: 1px solid #dee2e6;
-        }
-        h1, h2, h3 {
-            color: #343a40;
-            margin-top: 0;
-        }
-        h1 { font-size: 2em; margin-bottom: 0.25em; }
-        h2 { font-size: 1.5em; margin-bottom: 1em; border-bottom: 1px solid #e9ecef; padding-bottom: 0.5em; }
-        h3 { font-size: 1.25em; margin-bottom: 0.75em; }
-        a { color: #007bff; text-decoration: none; }
-        a:hover { text-decoration: underline; color: #0056b3; }
-        p { margin-top: 0; }
-        img.item-icon {
-            width: 24px;
-            height: 24px;
-            vertical-align: middle;
-            margin-right: 8px;
-            image-rendering: pixelated;
-        }
-        img.tab-icon {
-            width: 20px;
-            height: 20px;
-            image-rendering: pixelated;
-        }
-
-        /* --- Header & Navigation --- */
-        .header-info {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            flex-wrap: wrap;
-            gap: 16px;
-            margin-bottom: 24px;
-            border-bottom: 1px solid #e9ecef;
-            padding-bottom: 16px;
-        }
-        .header-info p { margin: 0; color: #6c757d; }
-        .main-nav { display: flex; gap: 8px; align-items: center; }
-        .main-nav a, .main-nav strong {
-            font-weight: 500;
-            padding: 8px 12px;
-            border-radius: 6px;
-            font-size: 1.1em;
-            text-decoration: none;
-            color: #007bff;
-            transition: background-color 0.2s ease;
-        }
-        .main-nav a:hover {
-            background-color: #e9ecef;
-            text-decoration: none;
-        }
-        .main-nav strong {
-            color: #ffffff;
-            background-color: #007bff;
-        }
-
-        /* --- Tabs --- */
-        .item-type-tabs {
-            display: flex;
-            flex-wrap: wrap;
-            border-bottom: 2px solid #dee2e6;
-            margin-bottom: 24px;
-            gap: 4px;
-        }
-        .item-type-tabs a {
-            display: inline-flex;
-            align-items: center;
-            gap: 6px;
-            padding: 6px 10px;
-            color: #495057;
-            text-decoration: none;
-            border-bottom: 3px solid transparent;
-            margin-bottom: -2px;
-            font-weight: 500;
-            font-size: 0.9em;
-            transition: color 0.2s ease, border-color 0.2s ease, background-color 0.2s ease;
-            border-radius: 4px 4px 0 0;
-        }
-        .item-type-tabs a:hover {
-            color: #007bff;
-            background-color: #e9ecef;
-            text-decoration: none;
-        }
-        .item-type-tabs a.active {
-            color: #007bff;
-            border-bottom-color: #007bff;
-        }
-
-        /* --- Forms & Controls --- */
-        .filter-controls {
-            padding: 16px;
-            background-color: #f8f9fa;
-            border-radius: 6px;
-            border: 1px solid #dee2e6;
-            margin-bottom: 24px;
-        }
-        .filter-controls .main-filters {
-            display: flex;
-            gap: 12px; /* Adjusted gap */
-            align-items: center;
-            flex-wrap: wrap;
-        }
-        .filter-controls input[type="text"] {
-            padding: 10px 12px;
-            border-radius: 6px;
-            border: 1px solid #ced4da;
-            flex-grow: 1;
-            min-width: 200px;
-            font-size: 1em;
-        }
-        .filter-controls button {
-            padding: 10px 16px;
-            border: none;
-            background-color: #007bff;
-            color: white;
-            border-radius: 6px;
-            cursor: pointer;
-            font-size: 1em;
-            font-weight: 500;
-            transition: background-color 0.2s ease;
-        }
-        .filter-controls button:hover { background-color: #0056b3; }
-        .filter-controls label {
-            display: flex;
-            align-items: center;
-            gap: 6px;
-            cursor: pointer;
-            user-select: none;
-        }
-        .clear-filter-button {
-            padding: 10px 12px;
-            border: 1px solid #ced4da;
-            background-color: #e9ecef;
-            color: #495057;
-            border-radius: 6px;
-            text-decoration: none;
-            font-size: 0.9em;
-            font-weight: 500;
-            transition: background-color 0.2s ease, border-color 0.2s ease;
-            white-space: nowrap;
-        }
-        .clear-filter-button:hover {
-            background-color: #dee2e6;
-            border-color: #adb5bd;
-            text-decoration: none;
-        }
-        .column-selector {
-            display: flex;
-            flex-wrap: wrap;
-            align-items: center;
-            gap: 12px;
-            padding-top: 12px;
-            margin-top: 12px;
-            border-top: 1px solid #dee2e6;
-        }
-        .column-selector strong, .column-selector label {
-            font-size: 0.9em;
-        }
-
-        /* --- Tables --- */
-        table {
-            width: 100%;
-            border-collapse: collapse;
-            margin-top: 24px;
-        }
-        th, td {
-            padding: 12px 16px;
-            text-align: left;
-            border-bottom: 1px solid #e9ecef;
-            vertical-align: middle;
-        }
-        th {
-            background-color: #f8f9fa;
-            font-weight: 600;
-            color: #495057;
-            white-space: nowrap;
-        }
-        tr:hover { background-color: #f1f3f5; }
-        td a { font-weight: 500; }
-        th a { color: inherit; text-decoration: none; display: block; }
-        th.sorted-asc a::after { content: ' ▲'; font-size: 0.8em; }
-        th.sorted-desc a::after { content: ' ▼'; font-size: 0.8em; }
-        .unavailable { opacity: 0.65; }
-        
-        /* --- Utility Classes --- */
-        .text-success { color: #28a745; font-weight: bold; }
-        .text-danger { color: #dc3545; font-weight: bold; }
-        .truncate { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 200px; display: inline-block; vertical-align: middle; }
-    </style>
+    <script src="https://cdn.tailwindcss.com"></script>
 </head>
-<body>
-    <div class="container">
-        <div class="header-info">
-            <div>
-                <h1>Yufa Market Tracker</h1>
-                <p>Last updated: <strong data-timestamp="{{.LastScrapeTime}}">{{.LastScrapeTime}}</strong> <span id="time-ago"></span></p>
+<body class="bg-gray-100 text-gray-800">
+
+    <nav class="bg-white shadow-sm">
+        <div class="container mx-auto px-4 py-2">
+            <div class="flex justify-between items-center">
+                <div class="text-xl font-semibold text-gray-700">Yufa Market Tracker</div>
+                <div class="flex space-x-4">
+                    <a href="/" class="text-gray-600 hover:text-blue-500">Summary</a>
+                    <a href="/full-list" class="text-blue-500 font-bold">Full List</a>
+                    <a href="/activity" class="text-gray-600 hover:text-blue-500">Activity</a>
+                    <a href="/players" class="text-gray-600 hover:text-blue-500">Player Count</a>
+                    <a href="/characters" class="text-gray-600 hover:text-blue-500">Characters</a>
+                    <a href="/guilds" class="text-gray-600 hover:text-blue-500">Guilds</a>
+                </div>
             </div>
-            <nav class="main-nav">
-                <a href="/">Summary</a>
-                <strong>Full List</strong>
-                <a href="/activity">Activity</a>
-                <a href="/players">Players</a>
-            </nav>
+        </div>
+    </nav>
+
+    <div class="container mx-auto px-4 py-6">
+        <div class="flex justify-between items-center mb-4 border-b border-gray-200 pb-3">
+            <h1 class="text-2xl font-bold text-gray-800">Full Market List</h1>
+            <p class="text-sm text-gray-500">Last updated: <strong data-timestamp="{{.LastScrapeTime}}">{{.LastScrapeTime}}</strong> <span id="time-ago"></span></p>
         </div>
 
-        <form action="/full-list" method="get" class="filter-controls">
-            <input type="hidden" name="type" value="{{.SelectedType}}">
-            <div class="main-filters">
-                <input type="text" name="query" placeholder="Search for an item..." value="{{.SearchQuery}}">
-
-                {{if .StoreNameQuery}}
-
-                    <input list="store-names" name="store_name" placeholder="Filter by store name..." value="{{.StoreNameQuery}}">
-                    <datalist id="store-names">
-                        {{range .AllStoreNames}}
-                        <option value="{{.}}">
+        <div class="bg-white p-3 rounded-lg shadow mb-4">
+            <form action="/full-list" method="get">
+                <input type="hidden" name="type" value="{{.SelectedType}}">
+                <div class="grid grid-cols-1 md:grid-cols-4 gap-3 items-end">
+                    <div class="md:col-span-2">
+                        <label for="query" class="block text-sm font-medium text-gray-700">Search Item</label>
+                        <input type="text" name="query" id="query" placeholder="e.g., Jellopy, Mace [4]" value="{{.SearchQuery}}" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-300 focus:ring focus:ring-indigo-200 focus:ring-opacity-50 text-sm">
+                    </div>
+                    <div>
+                         <label for="store_name" class="block text-sm font-medium text-gray-700">Search Store</label>
+                        <input list="store-names" name="store_name" id="store_name" placeholder="e.g., My Cool Shop" value="{{.StoreNameQuery}}" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-300 focus:ring focus:ring-indigo-200 focus:ring-opacity-50 text-sm">
+                        <datalist id="store-names">
+                            {{range .AllStoreNames}}<option value="{{.}}">{{end}}
+                        </datalist>
+                    </div>
+                    <div class="flex items-center space-x-4">
+                        <button type="submit" class="w-full bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-md">Apply</button>
+                        {{if .StoreNameQuery}}<a href="/full-list?query={{.SearchQuery}}&sort_by={{.SortBy}}&order={{.Order}}{{if not .ShowAll}}&only_available=true{{end}}&{{.ColumnParams}}&type={{.SelectedType | urlquery}}" class="text-sm text-gray-500 hover:text-gray-700">Clear</a>{{end}}
+                    </div>
+                </div>
+                 <div class="border-t border-gray-200 mt-3 pt-3">
+                    <div class="flex flex-wrap items-center gap-x-4 gap-y-1">
+                         <div class="flex items-center">
+                            <input type="checkbox" name="only_available" value="true" id="only_available" {{if not .ShowAll}}checked{{end}} class="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500">
+                            <label for="only_available" class="ml-2 block text-sm text-gray-900">Show only available</label>
+                        </div>
+                        <div class="text-sm font-medium text-gray-700">Show Columns:</div>
+                         {{range .AllColumns}}
+                        <div class="flex items-center">
+                           <input type="checkbox" name="cols" value="{{.ID}}" id="col_{{.ID}}" {{if index $.VisibleColumns .ID}}checked{{end}} class="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500">
+                           <label for="col_{{.ID}}" class="ml-2 block text-sm text-gray-900">{{.DisplayName}}</label>
+                        </div>
                         {{end}}
-                    </datalist>
+                    </div>
+                </div>
+            </form>
+        </div>
 
-                    <a href="/full-list?query={{.SearchQuery}}&sort_by={{.SortBy}}&order={{.Order}}{{if not .ShowAll}}&only_available=true{{end}}&{{.ColumnParams}}&type={{.SelectedType | urlquery}}" class="clear-filter-button" title="Clear store filter">Clear Store</a>
-
-                {{else}}
-                    <input list="store-names" name="store_name" placeholder="Filter by store name..." value="">
-                    <datalist id="store-names">
-                        {{range .AllStoreNames}}
-                        <option value="{{.}}">
-                        {{end}}
-                    </datalist>
-                {{end}}
-
-                <label>
-                    <input type="checkbox" name="only_available" value="true" {{if not .ShowAll}}checked{{end}}>
-                    Show only available
-                </label>
-                <button type="submit">Search</button>
-            </div>
-            
-            <div class="column-selector">
-                <strong>Show Columns:</strong>
-                {{range .AllColumns}}
-                <label>
-                    <input type="checkbox" name="cols" value="{{.ID}}" {{if index $.VisibleColumns .ID}}checked{{end}}>
-                    {{.DisplayName}}
-                </label>
-                {{end}}
-            </div>
-        </form>
-
-        <div class="item-type-tabs">
+        <div class="flex flex-wrap border-b-2 border-gray-200 mb-4 gap-2">
             {{$currentType := .SelectedType}}
             {{$q := .SearchQuery}}
             {{$sort := .SortBy}}
@@ -277,70 +76,58 @@
             {{$showAll := .ShowAll}}
             {{$storeName := .StoreNameQuery}}
             {{$params := .ColumnParams}}
-            <a href="/full-list?query={{$q}}&sort_by={{$sort}}&order={{$order}}{{if not $showAll}}&only_available=true{{end}}&store_name={{$storeName | urlquery}}&{{$params}}" class="{{if eq $currentType ""}}active{{end}}">All Items</a>
+            <a href="/full-list?query={{$q}}&sort_by={{$sort}}&order={{$order}}{{if not $showAll}}&only_available=true{{end}}&store_name={{$storeName | urlquery}}&{{$params}}" class="px-3 py-1 text-sm font-medium flex items-center gap-2 -mb-0.5 border-b-2 {{if eq $currentType ""}}text-blue-600 border-blue-600{{else}}text-gray-500 border-transparent hover:text-gray-700 hover:border-gray-300{{end}}">All Items</a>
             {{range .ItemTypes}}
-                <a href="/full-list?query={{$q}}&sort_by={{$sort}}&order={{$order}}{{if not $showAll}}&only_available=true{{end}}&store_name={{$storeName | urlquery}}&{{$params}}&type={{.FullName | urlquery}}" class="{{if eq .FullName $currentType}}active{{end}}">
-                    <img src="https://static.divine-pride.net/images/items/item/{{.IconItemID}}.png" alt="" class="tab-icon">
+                <a href="/full-list?query={{$q}}&sort_by={{$sort}}&order={{$order}}{{if not $showAll}}&only_available=true{{end}}&store_name={{$storeName | urlquery}}&{{$params}}&type={{.FullName | urlquery}}" class="px-3 py-1 text-sm font-medium flex items-center gap-2 -mb-0.5 border-b-2 {{if eq .FullName $currentType}}text-blue-600 border-blue-600{{else}}text-gray-500 border-transparent hover:text-gray-700 hover:border-gray-300{{end}}">
+                    <img src="https://static.divine-pride.net/images/items/item/{{.IconItemID}}.png" alt="" class="w-5 h-5" style="image-rendering: pixelated;">
                     {{.ShortName}}
                 </a>
             {{end}}
         </div>
 
-        <p>Showing <strong>{{ len .Items }}</strong> individual listings.</p>
+        <p class="text-sm text-gray-600 mb-3">Showing <strong>{{ len .Items }}</strong> individual listings.</p>
 
-        <table>
-            <thead>
-                <tr>
-                    {{$params := .ColumnParams}}
-                    {{$query := .SearchQuery}}
-                    {{$storeName := .StoreNameQuery}}
-                    {{$showAll := .ShowAll}}
-                    {{$currentSort := .SortBy}}
-                    {{$currentOrder := .Order}}
-                    {{$selectedType := .SelectedType}}
-                    {{$revOrder := "ASC"}}{{if eq $currentOrder "ASC"}}{{$revOrder = "DESC"}}{{end}}
-
-                    <th class="{{if eq $currentSort "name"}}sorted-{{$currentOrder | lower}}{{end}}"><a href="/full-list?query={{$query}}&sort_by=name&order={{if eq $currentSort "name"}}{{$revOrder}}{{else}}ASC{{end}}{{if not $showAll}}&only_available=true{{end}}{{if $storeName}}&store_name={{$storeName | urlquery}}{{end}}&{{$params}}&type={{$selectedType | urlquery}}">Item Name</a></th>
-                    
-                    {{if index .VisibleColumns "item_id"}}<th class="{{if eq $currentSort "item_id"}}sorted-{{$currentOrder | lower}}{{end}}"><a href="/full-list?query={{$query}}&sort_by=item_id&order={{if eq $currentSort "item_id"}}{{$revOrder}}{{else}}ASC{{end}}{{if not $showAll}}&only_available=true{{end}}{{if $storeName}}&store_name={{$storeName | urlquery}}{{end}}&{{$params}}&type={{$selectedType | urlquery}}">Item ID</a></th>{{end}}
-                    {{if index .VisibleColumns "quantity"}}<th class="{{if eq $currentSort "quantity"}}sorted-{{$currentOrder | lower}}{{end}}"><a href="/full-list?query={{$query}}&sort_by=quantity&order={{if eq $currentSort "quantity"}}{{$revOrder}}{{else}}ASC{{end}}{{if not $showAll}}&only_available=true{{end}}{{if $storeName}}&store_name={{$storeName | urlquery}}{{end}}&{{$params}}&type={{$selectedType | urlquery}}">Qty</a></th>{{end}}
-                    
-                    <th class="{{if eq $currentSort "price"}}sorted-{{$currentOrder | lower}}{{end}}"><a href="/full-list?query={{$query}}&sort_by=price&order={{if eq $currentSort "price"}}{{$revOrder}}{{else}}ASC{{end}}{{if not $showAll}}&only_available=true{{end}}{{if $storeName}}&store_name={{$storeName | urlquery}}{{end}}&{{$params}}&type={{$selectedType | urlquery}}">Price</a></th>
-                    
-                    {{if index .VisibleColumns "store_name"}}<th class="{{if eq $currentSort "store_name"}}sorted-{{$currentOrder | lower}}{{end}}"><a href="/full-list?query={{$query}}&sort_by=store_name&order={{if eq $currentSort "store_name"}}{{$revOrder}}{{else}}ASC{{end}}{{if not $showAll}}&only_available=true{{end}}{{if $storeName}}&store_name={{$storeName | urlquery}}{{end}}&{{$params}}&type={{$selectedType | urlquery}}">Store</a></th>{{end}}
-                    {{if index .VisibleColumns "seller_name"}}<th class="{{if eq $currentSort "seller"}}sorted-{{$currentOrder | lower}}{{end}}"><a href="/full-list?query={{$query}}&sort_by=seller&order={{if eq $currentSort "seller"}}{{$revOrder}}{{else}}ASC{{end}}{{if not $showAll}}&only_available=true{{end}}{{if $storeName}}&store_name={{$storeName | urlquery}}{{end}}&{{$params}}&type={{$selectedType | urlquery}}">Seller</a></th>{{end}}
-                    {{if index .VisibleColumns "map_name"}}<th>Map</th>{{end}}
-                    {{if index .VisibleColumns "map_coordinates"}}<th>Coords</th>{{end}}
-                    {{if index .VisibleColumns "retrieved"}}<th class="{{if eq $currentSort "retrieved"}}sorted-{{$currentOrder | lower}}{{end}}"><a href="/full-list?query={{$query}}&sort_by=retrieved&order={{if eq $currentSort "retrieved"}}{{$revOrder}}{{else}}ASC{{end}}{{if not $showAll}}&only_available=true{{end}}{{if $storeName}}&store_name={{$storeName | urlquery}}{{end}}&{{$params}}&type={{$selectedType | urlquery}}">Scanned</a></th>{{end}}
-                    {{if index .VisibleColumns "availability"}}<th class="{{if eq $currentSort "availability"}}sorted-{{$currentOrder | lower}}{{end}}"><a href="/full-list?query={{$query}}&sort_by=availability&order={{if eq $currentSort "availability"}}{{$revOrder}}{{else}}ASC{{end}}{{if not $showAll}}&only_available=true{{end}}{{if $storeName}}&store_name={{$storeName | urlquery}}{{end}}&{{$params}}&type={{$selectedType | urlquery}}">Available</a></th>{{end}}
-                </tr>
-            </thead>
-            <tbody>
-                {{range .Items}}
-                <tr {{if not .IsAvailable}}class="unavailable" title="This item is no longer available"{{end}}>
-                    <td><img src="https://static.divine-pride.net/images/items/item/{{.ItemID}}.png" alt="" class="item-icon"> <a href="/item?name={{.Name | urlquery}}">{{.Name}}</a></td>
-                    
-                    {{if index $.VisibleColumns "item_id"}}<td>{{.ItemID}}</td>{{end}}
-                    {{if index $.VisibleColumns "quantity"}}<td>{{.Quantity}}</td>{{end}}
-                    <td>{{.Price}}</td>
-                    {{if index $.VisibleColumns "store_name"}}<td><a href="/full-list?only_available=true&store_name={{.StoreName | urlquery}}" class="truncate" title="{{.StoreName}}">{{.StoreName}}</a></td>{{end}}
-                    {{if index $.VisibleColumns "seller_name"}}<td>{{.SellerName}}</td>{{end}}
-                    {{if index $.VisibleColumns "map_name"}}<td>{{.MapName}}</td>{{end}}
-                    {{if index $.VisibleColumns "map_coordinates"}}<td><a href="#" onclick="copyNavi(event, '{{.MapName}}', '{{.MapCoordinates}}')" title="Click to copy /navi command">{{.MapCoordinates}}</a></td>{{end}}
-                    {{if index $.VisibleColumns "retrieved"}}<td>{{.Timestamp}}</td>{{end}}
-                    {{if index $.VisibleColumns "availability"}}
-                        <td>
-                            {{if .IsAvailable}}
-                                <span class="text-success">Yes</span>
-                            {{else}}
-                                <span class="text-danger">No</span>
+        <div class="bg-white shadow-lg rounded-lg overflow-hidden">
+            <div class="overflow-x-auto">
+                 <table class="min-w-full leading-normal">
+                    <thead>
+                        <tr class="border-b-2 border-gray-200 bg-gray-50 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                            {{$params := .ColumnParams}}{{$query := .SearchQuery}}{{$storeName := .StoreNameQuery}}{{$showAll := .ShowAll}}{{$currentSort := .SortBy}}{{$currentOrder := .Order}}{{$selectedType := .SelectedType}}{{$revOrder := "ASC"}}{{if eq $currentOrder "ASC"}}{{$revOrder = "DESC"}}{{end}}
+                            <th class="px-3 py-2"><a href="/full-list?query={{$query}}&sort_by=name&order={{if eq $currentSort "name"}}{{$revOrder}}{{else}}ASC{{end}}{{if not $showAll}}&only_available=true{{end}}{{if $storeName}}&store_name={{$storeName | urlquery}}{{end}}&{{$params}}&type={{$selectedType | urlquery}}">Item Name</a></th>
+                            {{if index .VisibleColumns "item_id"}}<th class="px-3 py-2"><a href="/full-list?query={{$query}}&sort_by=item_id&order={{if eq $currentSort "item_id"}}{{$revOrder}}{{else}}ASC{{end}}{{if not $showAll}}&only_available=true{{end}}{{if $storeName}}&store_name={{$storeName | urlquery}}{{end}}&{{$params}}&type={{$selectedType | urlquery}}">Item ID</a></th>{{end}}
+                            {{if index .VisibleColumns "quantity"}}<th class="px-3 py-2"><a href="/full-list?query={{$query}}&sort_by=quantity&order={{if eq $currentSort "quantity"}}{{$revOrder}}{{else}}ASC{{end}}{{if not $showAll}}&only_available=true{{end}}{{if $storeName}}&store_name={{$storeName | urlquery}}{{end}}&{{$params}}&type={{$selectedType | urlquery}}">Qty</a></th>{{end}}
+                            <th class="px-3 py-2"><a href="/full-list?query={{$query}}&sort_by=price&order={{if eq $currentSort "price"}}{{$revOrder}}{{else}}ASC{{end}}{{if not $showAll}}&only_available=true{{end}}{{if $storeName}}&store_name={{$storeName | urlquery}}{{end}}&{{$params}}&type={{$selectedType | urlquery}}">Price</a></th>
+                            {{if index .VisibleColumns "store_name"}}<th class="px-3 py-2"><a href="/full-list?query={{$query}}&sort_by=store_name&order={{if eq $currentSort "store_name"}}{{$revOrder}}{{else}}ASC{{end}}{{if not $showAll}}&only_available=true{{end}}{{if $storeName}}&store_name={{$storeName | urlquery}}{{end}}&{{$params}}&type={{$selectedType | urlquery}}">Store</a></th>{{end}}
+                            {{if index .VisibleColumns "seller_name"}}<th class="px-3 py-2"><a href="/full-list?query={{$query}}&sort_by=seller&order={{if eq $currentSort "seller"}}{{$revOrder}}{{else}}ASC{{end}}{{if not $showAll}}&only_available=true{{end}}{{if $storeName}}&store_name={{$storeName | urlquery}}{{end}}&{{$params}}&type={{$selectedType | urlquery}}">Seller</a></th>{{end}}
+                            {{if index .VisibleColumns "map_name"}}<th class="px-3 py-2">Map</th>{{end}}
+                            {{if index .VisibleColumns "map_coordinates"}}<th class="px-3 py-2">Coords</th>{{end}}
+                            {{if index .VisibleColumns "retrieved"}}<th class="px-3 py-2"><a href="/full-list?query={{$query}}&sort_by=retrieved&order={{if eq $currentSort "retrieved"}}{{$revOrder}}{{else}}ASC{{end}}{{if not $showAll}}&only_available=true{{end}}{{if $storeName}}&store_name={{$storeName | urlquery}}{{end}}&{{$params}}&type={{$selectedType | urlquery}}">Scanned</a></th>{{end}}
+                            {{if index .VisibleColumns "availability"}}<th class="px-3 py-2"><a href="/full-list?query={{$query}}&sort_by=availability&order={{if eq $currentSort "availability"}}{{$revOrder}}{{else}}ASC{{end}}{{if not $showAll}}&only_available=true{{end}}{{if $storeName}}&store_name={{$storeName | urlquery}}{{end}}&{{$params}}&type={{$selectedType | urlquery}}">Available</a></th>{{end}}
+                        </tr>
+                    </thead>
+                    <tbody class="text-gray-700 text-xs">
+                        {{range .Items}}
+                        <tr class="border-b border-gray-200 hover:bg-gray-50 {{if not .IsAvailable}}opacity-60{{end}}" {{if not .IsAvailable}}title="This item is no longer available"{{end}}>
+                            <td class="px-3 py-2"><div class="flex items-center"><img src="https://static.divine-pride.net/images/items/item/{{.ItemID}}.png" alt="" class="w-6 h-6 mr-2" style="image-rendering: pixelated;"> <a href="/item?name={{.Name | urlquery}}" class="font-semibold hover:underline">{{.Name}}</a></div></td>
+                            {{if index $.VisibleColumns "item_id"}}<td class="px-3 py-2">{{.ItemID}}</td>{{end}}
+                            {{if index $.VisibleColumns "quantity"}}<td class="px-3 py-2">{{.Quantity}}</td>{{end}}
+                            <td class="px-3 py-2">{{.Price}}</td>
+                            {{if index $.VisibleColumns "store_name"}}<td class="px-3 py-2"><a href="/full-list?only_available=true&store_name={{.StoreName | urlquery}}" class="truncate hover:underline" title="{{.StoreName}}">{{.StoreName}}</a></td>{{end}}
+                            {{if index $.VisibleColumns "seller_name"}}<td class="px-3 py-2">{{.SellerName}}</td>{{end}}
+                            {{if index $.VisibleColumns "map_name"}}<td class="px-3 py-2">{{.MapName}}</td>{{end}}
+                            {{if index $.VisibleColumns "map_coordinates"}}<td class="px-3 py-2"><a href="#" onclick="copyNavi(event, '{{.MapName}}', '{{.MapCoordinates}}')" title="Click to copy /navi command" class="hover:underline">{{.MapCoordinates}}</a></td>{{end}}
+                            {{if index $.VisibleColumns "retrieved"}}<td class="px-3 py-2">{{.Timestamp}}</td>{{end}}
+                            {{if index $.VisibleColumns "availability"}}
+                                <td class="px-3 py-2">
+                                    {{if .IsAvailable}}<span class="font-semibold text-green-600">Yes</span>{{else}}<span class="font-semibold text-red-600">No</span>{{end}}
+                                </td>
                             {{end}}
-                        </td>
-                    {{end}}
-                </tr>
-                {{end}}
-            </tbody>
-        </table>
+                        </tr>
+                        {{end}}
+                    </tbody>
+                </table>
+            </div>
+        </div>
     </div>
     
     <script>
@@ -352,12 +139,10 @@
                 const originalElement = event.target;
                 const originalText = originalElement.innerText;
                 originalElement.innerText = 'Copied!';
-                originalElement.style.color = '#28a745';
-                originalElement.style.fontWeight = 'bold';
+                originalElement.style.color = '#16a34a'; /* Tailwind green-600 */
                 setTimeout(() => {
                     originalElement.innerText = originalText;
                     originalElement.style.color = '';
-                    originalElement.style.fontWeight = '';
                 }, 1500);
             }).catch(err => {
                 console.error('Failed to copy command: ', err);

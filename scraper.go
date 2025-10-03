@@ -504,24 +504,38 @@ func startBackgroundJobs() {
 		}
 	}()
 
-	// --- Player Characters & Guilds Scraper ---
+	// --- Player Characters ---
+	// go func() {
+	// 	ticker := time.NewTicker(30 * time.Minute)
+	// 	defer ticker.Stop()
+	//
+	// 	// Run jobs immediately on start, in the correct order.
+	// 	scrapePlayerCharacters()
+	// 	time.Sleep(30 * time.Second) // Short pause between jobs to be safe.
+	// 	scrapeGuilds()
+	//
+	// 	for {
+	// 		log.Printf("🕒 Waiting for the next 30-minute character & guild schedule...")
+	// 		<-ticker.C
+	// 		scrapePlayerCharacters()
+	// 		time.Sleep(30 * time.Second) // Short pause between jobs to be safe.
+	// 		scrapeGuilds()
+	// 	}
+	// }()
+
+	// --- Guilds Scraper ---
 	go func() {
 		ticker := time.NewTicker(30 * time.Minute)
 		defer ticker.Stop()
-
-		// Run jobs immediately on start, in the correct order.
-		scrapePlayerCharacters()
-		time.Sleep(30 * time.Second) // Short pause between jobs to be safe.
 		scrapeGuilds()
 
 		for {
 			log.Printf("🕒 Waiting for the next 30-minute character & guild schedule...")
 			<-ticker.C
-			scrapePlayerCharacters()
-			time.Sleep(30 * time.Second) // Short pause between jobs to be safe.
 			scrapeGuilds()
 		}
 	}()
+
 }
 
 // scrapeData performs a single scrape of the market data.
