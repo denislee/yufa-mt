@@ -16,40 +16,51 @@ import (
 	"github.com/chromedp/chromedp"
 )
 
+// newOptimizedAllocator creates a new chromedp allocator context with optimized flags for scraping.
+// It disables unnecessary resources like images and extensions to improve performance.
+func newOptimizedAllocator() (context.Context, context.CancelFunc) {
+	opts := append(chromedp.DefaultExecAllocatorOptions[:],
+		chromedp.UserAgent(`Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36`),
+		chromedp.Flag("headless", true),
+		chromedp.Flag("disable-gpu", true),
+		chromedp.Flag("no-sandbox", true),
+		// --- OPTIMIZATIONS ---
+		chromedp.Flag("disable-extensions", true),              // Disable extensions
+		chromedp.Flag("blink-settings", "imagesEnabled=false"), // Disable images
+	)
+	return chromedp.NewExecAllocator(context.Background(), opts...)
+}
+
 // scrapeAndStorePlayerCount fetches the online player count, queries for the unique seller count, and saves them.
 func scrapeAndStorePlayerCount() {
 	log.Println("📊 Checking player and seller count...")
 
-	ctx, cancel := chromedp.NewContext(context.Background())
+	// Use the optimized allocator
+	allocCtx, cancel := newOptimizedAllocator()
+	defer cancel()
+	ctx, cancel := chromedp.NewContext(allocCtx)
 	defer cancel()
 	ctx, cancel = context.WithTimeout(ctx, 30*time.Second) // 30-second timeout
 	defer cancel()
 
-	var htmlContent string
+	var playerCountText string
 	err := chromedp.Run(ctx,
-		chromedp.Navigate("https://projetoyufa.com/download"),
-		chromedp.OuterHTML("html", &htmlContent),
+		chromedp.Navigate("https://projetoyufa.com/info"),
+		// OPTIMIZATION: Extract only the necessary text instead of the full HTML
+		chromedp.Text("p:contains('Online')", &playerCountText, chromedp.ByQuery),
 	)
 
 	if err != nil {
-		log.Printf("❌ Failed to get player info page: %v", err)
-		return
-	}
-
-	doc, err := goquery.NewDocumentFromReader(strings.NewReader(htmlContent))
-	if err != nil {
-		log.Printf("❌ Failed to parse player info HTML: %v", err)
+		log.Printf("❌ Failed to get player info: %v", err)
 		return
 	}
 
 	var onlineCount int
 	var found bool
 
-	selection := doc.Find("p:contains('Online')")
-	if selection.Length() > 0 {
-		fullText := selection.First().Text()
+	if playerCountText != "" {
 		re := regexp.MustCompile(`\d+`)
-		numStr := re.FindString(fullText)
+		numStr := re.FindString(playerCountText)
 		if num, err := strconv.Atoi(numStr); err == nil {
 			onlineCount = num
 			found = true
@@ -122,13 +133,8 @@ func scrapePlayerCharacters() {
 	// Use a single timestamp for the entire scrape operation.
 	updateTime := time.Now().Format(time.RFC3339)
 
-	allocOpts := append(chromedp.DefaultExecAllocatorOptions[:],
-		chromedp.UserAgent(`Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36`),
-		chromedp.Flag("headless", true),
-		chromedp.Flag("disable-gpu", true),
-		chromedp.Flag("no-sandbox", true),
-	)
-	allocCtx, cancel := chromedp.NewExecAllocator(context.Background(), allocOpts...)
+	// Use the optimized allocator for the entire job
+	allocCtx, cancel := newOptimizedAllocator()
 	defer cancel()
 
 	// Loop through pages in batches until there's no more data
@@ -158,7 +164,8 @@ func scrapePlayerCharacters() {
 					err := chromedp.Run(taskCtx,
 						chromedp.Navigate(url),
 						chromedp.WaitVisible(`tbody[data-slot="table-body"] tr[data-slot="table-row"]`),
-						chromedp.Sleep(500*time.Millisecond),
+						chromedp.Sleep(500*time.Millisecond), // This is often unnecessary
+						// OPTIMIZATION: Removed unnecessary time.Sleep(), WaitVisible is sufficient.
 						chromedp.OuterHTML("html", &htmlContent),
 					)
 
@@ -334,12 +341,8 @@ func scrapeGuilds() {
 	log.Println("🏰 [Guilds] Starting guild and character-guild association scrape...")
 	const maxRetries = 3
 
-	allocOpts := append(chromedp.DefaultExecAllocatorOptions[:],
-		chromedp.Flag("headless", true),
-		chromedp.Flag("disable-gpu", true),
-		chromedp.Flag("no-sandbox", true),
-	)
-	allocCtx, cancel := chromedp.NewExecAllocator(context.Background(), allocOpts...)
+	// Use the optimized allocator for the entire job
+	allocCtx, cancel := newOptimizedAllocator()
 	defer cancel()
 
 	// --- NEW: Find the last page number first ---
@@ -613,11 +616,8 @@ func scrapeData() {
 	reRefineMid := regexp.MustCompile(`\s(\+\d+)`)
 	reRefineStart := regexp.MustCompile(`^(\+\d+)\s`)
 
-	allocOpts := append(chromedp.DefaultExecAllocatorOptions[:],
-		chromedp.Flag("headless", true),
-		chromedp.Flag("disable-gpu", true),
-	)
-	allocCtx, cancel := chromedp.NewExecAllocator(context.Background(), allocOpts...)
+	// Use the optimized allocator
+	allocCtx, cancel := newOptimizedAllocator()
 	defer cancel()
 	taskCtx, cancel := chromedp.NewContext(allocCtx)
 	defer cancel()
