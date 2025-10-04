@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale-1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Yufa Market Tracker</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
@@ -76,11 +76,11 @@
                             {{$currentOrder := .Order}}
                             {{$selectedType := .SelectedType}}
                             {{$revOrder := "ASC"}}{{if eq $currentOrder "ASC"}}{{$revOrder = "DESC"}}{{end}}
-                            <th class="px-3 py-2"><a href="/?query={{$query}}{{if not $showAll}}&only_available=true{{end}}&sort_by=name&order={{if eq $currentSort "name"}}{{$revOrder}}{{else}}ASC{{end}}&type={{$selectedType | urlquery}}">Item Name</a></th>
-                            <th class="px-3 py-2"><a href="/?query={{$query}}{{if not $showAll}}&only_available=true{{end}}&sort_by=item_id&order={{if eq $currentSort "item_id"}}{{$revOrder}}{{else}}ASC{{end}}&type={{$selectedType | urlquery}}">Item ID</a></th>
-                            <th class="px-3 py-2"><a href="/?query={{$query}}{{if not $showAll}}&only_available=true{{end}}&sort_by=listings&order={{if eq $currentSort "listings"}}{{$revOrder}}{{else}}DESC{{end}}&type={{$selectedType | urlquery}}">Available</a></th>
-                            <th class="px-3 py-2"><a href="/?query={{$query}}{{if not $showAll}}&only_available=true{{end}}&sort_by=lowest_price&order={{if eq $currentSort "lowest_price"}}{{$revOrder}}{{else}}ASC{{end}}&type={{$selectedType | urlquery}}">Lowest Price</a></th>
-                            <th class="px-3 py-2"><a href="/?query={{$query}}{{if not $showAll}}&only_available=true{{end}}&sort_by=highest_price&order={{if eq $currentSort "highest_price"}}{{$revOrder}}{{else}}DESC{{end}}&type={{$selectedType | urlquery}}">Highest Price</a></th>
+                            <th class="px-3 py-2"><a href="/?query={{$query}}{{if not $showAll}}&only_available=true{{end}}&sort_by=name&order={{if eq $currentSort "name"}}{{$revOrder}}{{else}}ASC{{end}}&type={{$selectedType | urlquery}}">Item Name {{if eq $currentSort "name"}}{{if eq $currentOrder "ASC"}}<span class="text-gray-400">▲</span>{{else}}<span class="text-gray-400">▼</span>{{end}}{{end}}</a></th>
+                            <th class="px-3 py-2"><a href="/?query={{$query}}{{if not $showAll}}&only_available=true{{end}}&sort_by=item_id&order={{if eq $currentSort "item_id"}}{{$revOrder}}{{else}}ASC{{end}}&type={{$selectedType | urlquery}}">Item ID {{if eq $currentSort "item_id"}}{{if eq $currentOrder "ASC"}}<span class="text-gray-400">▲</span>{{else}}<span class="text-gray-400">▼</span>{{end}}{{end}}</a></th>
+                            <th class="px-3 py-2"><a href="/?query={{$query}}{{if not $showAll}}&only_available=true{{end}}&sort_by=listings&order={{if eq $currentSort "listings"}}{{$revOrder}}{{else}}DESC{{end}}&type={{$selectedType | urlquery}}">Available {{if eq $currentSort "listings"}}{{if eq $currentOrder "ASC"}}<span class="text-gray-400">▲</span>{{else}}<span class="text-gray-400">▼</span>{{end}}{{end}}</a></th>
+                            <th class="px-3 py-2"><a href="/?query={{$query}}{{if not $showAll}}&only_available=true{{end}}&sort_by=lowest_price&order={{if eq $currentSort "lowest_price"}}{{$revOrder}}{{else}}ASC{{end}}&type={{$selectedType | urlquery}}">Lowest Price {{if eq $currentSort "lowest_price"}}{{if eq $currentOrder "ASC"}}<span class="text-gray-400">▲</span>{{else}}<span class="text-gray-400">▼</span>{{end}}{{end}}</a></th>
+                            <th class="px-3 py-2"><a href="/?query={{$query}}{{if not $showAll}}&only_available=true{{end}}&sort_by=highest_price&order={{if eq $currentSort "highest_price"}}{{$revOrder}}{{else}}DESC{{end}}&type={{$selectedType | urlquery}}">Highest Price {{if eq $currentSort "highest_price"}}{{if eq $currentOrder "ASC"}}<span class="text-gray-400">▲</span>{{else}}<span class="text-gray-400">▼</span>{{end}}{{end}}</a></th>
                         </tr>
                     </thead>
                     <tbody class="text-gray-700 text-xs">
