@@ -209,10 +209,13 @@ func summaryHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	orderByClause, ok := allowedSorts[sortBy]
 	if !ok {
-		orderByClause, sortBy = "i.name_of_the_item", "name" // Default sort
-	}
-	if strings.ToUpper(order) != "DESC" {
-		order = "ASC"
+		sortBy = "highest_price"
+		orderByClause = allowedSorts[sortBy]
+		order = "DESC"
+	} else {
+		if strings.ToUpper(order) != "DESC" {
+			order = "ASC"
+		}
 	}
 
 	// Append ORDER BY to the query, with a secondary sort for stability
@@ -359,10 +362,13 @@ func fullListHandler(w http.ResponseWriter, r *http.Request) {
 
 	orderByClause, ok := allowedSorts[sortBy]
 	if !ok {
-		orderByClause, sortBy = "i.name_of_the_item", "name"
-	}
-	if strings.ToUpper(order) != "DESC" {
-		order = "ASC"
+		sortBy = "price"
+		orderByClause = allowedSorts[sortBy]
+		order = "DESC"
+	} else {
+		if strings.ToUpper(order) != "DESC" {
+			order = "ASC"
+		}
 	}
 
 	var whereConditions []string
