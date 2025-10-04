@@ -108,6 +108,9 @@
                                     <span class="h-2 w-2 mr-2" ></span>
                                     {{end}}
                                     <span>{{.Name}}</span>
+                                    {{if .IsGuildLeader}}
+                                    <span title="Guild Leader" class="mr-1 flex-shrink-0">‎ ⭐</span>
+                                    {{end}}
                                 </div>
                             </td>
                             {{if index $.VisibleColumns "base_level"}}<td class="px-3 py-2">{{.BaseLevel}}</td>{{end}}

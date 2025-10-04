@@ -942,6 +942,21 @@ func characterHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	const playersPerPage = 50
 
+	// Get all guild masters to identify leaders
+	guildMasters := make(map[string]bool)
+	masterRows, err := db.Query("SELECT DISTINCT master FROM guilds WHERE master IS NOT NULL AND master != ''")
+	if err != nil {
+		log.Printf("⚠️ Could not query for guild masters: %v", err)
+	} else {
+		defer masterRows.Close()
+		for masterRows.Next() {
+			var masterName string
+			if err := masterRows.Scan(&masterName); err == nil {
+				guildMasters[masterName] = true
+			}
+		}
+	}
+
 	// --- 1.5. Define columns and determine visibility ---
 	allCols := []Column{
 		{ID: "rank", DisplayName: "Rank"},
@@ -1095,6 +1110,11 @@ func characterHandler(w http.ResponseWriter, r *http.Request) {
 		// Set active status
 		p.IsActive = (lastUpdatedStr == lastActiveStr) && lastUpdatedStr != ""
 
+		// Check if the player is a guild leader
+		if _, isMaster := guildMasters[p.Name]; isMaster {
+			p.IsGuildLeader = true
+		}
+
 		players = append(players, p)
 	}
 
@@ -1231,3 +1251,4 @@ func guildHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	tmpl.Execute(w, data)
 }
+
