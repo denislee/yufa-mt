@@ -390,14 +390,14 @@ type GuildJSON struct {
 // scrapeGuilds scrapes guild data, including members, and updates both the guilds and characters tables.
 func scrapeGuilds() {
 	log.Println("🏰 [Guilds] Starting guild and character-guild association scrape...")
-	const maxRetries = 32
+	const maxRetries = 60
 
 	allocOpts := append(chromedp.DefaultExecAllocatorOptions[:],
 		chromedp.Flag("headless", true),
 		chromedp.Flag("disable-gpu", true),
 		chromedp.Flag("no-sandbox", true),
 		chromedp.Flag("disable-extensions", true), // Disable extensions
-		//		chromedp.Flag("blink-settings", "imagesEnabled=false"), // Disable images
+	//	chromedp.Flag("blink-settings", "imagesEnabled=false"), // Disable images
 	)
 	allocCtx, cancel := chromedp.NewExecAllocator(context.Background(), allocOpts...)
 	defer cancel()
@@ -416,7 +416,6 @@ func scrapeGuilds() {
 	err := chromedp.Run(firstPageCtx,
 		chromedp.Navigate("https://projetoyufa.com/rankings/guild?page=1"),
 		chromedp.WaitVisible(`nav[aria-label="pagination"]`), // Wait for the pagination nav bar
-		chromedp.Sleep(10*time.Second),
 		chromedp.OuterHTML("html", &initialHtmlContent),
 	)
 
@@ -463,7 +462,6 @@ func scrapeGuilds() {
 				chromedp.Navigate(url),
 				chromedp.WaitVisible(`tbody[data-slot="table-body"] tr:has(td:nth-of-type(2))`),
 				chromedp.WaitVisible(`div.group h3`),
-				chromedp.Sleep(10*time.Second),
 				chromedp.OuterHTML("html", &htmlContent),
 			)
 
