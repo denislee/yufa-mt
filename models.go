@@ -237,6 +237,10 @@ type CharacterPageData struct {
 	TotalPlayers int
 	HasPrevPage  bool
 	HasNextPage  bool
+	// Graph Data
+	ClassDistributionJSON template.JS
+	GraphFilter           map[string]bool
+	GraphFilterParams     template.URL
 }
 
 // GuildPageData holds data for the guild listing page template.
@@ -254,4 +258,3 @@ type GuildPageData struct {
 	HasPrevPage bool
 	HasNextPage bool
 }
-

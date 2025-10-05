@@ -927,6 +927,9 @@ func playerCountHandler(w http.ResponseWriter, r *http.Request) {
 	tmpl.Execute(w, data)
 }
 
+// handlers.go
+// ... (code before characterHandler)
+
 // characterHandler serves the new player characters page.
 func characterHandler(w http.ResponseWriter, r *http.Request) {
 	if err := r.ParseForm(); err != nil {
@@ -942,6 +945,9 @@ func characterHandler(w http.ResponseWriter, r *http.Request) {
 	order := r.FormValue("order")
 	pageStr := r.FormValue("page")
 	selectedCols := r.Form["cols"]
+	graphFilter := r.Form["graph_filter"]
+
+	isInitialLoad := len(r.Form) == 0
 	page, err := strconv.Atoi(pageStr)
 	if err != nil || page < 1 {
 		page = 1
@@ -977,16 +983,20 @@ func characterHandler(w http.ResponseWriter, r *http.Request) {
 
 	visibleColumns := make(map[string]bool)
 	columnParams := url.Values{}
-	formSubmitted := len(r.Form) > 0
 
-	if !formSubmitted {
+	if isInitialLoad {
 		// Initial page load, set the defaults.
-		for _, col := range allCols {
-			if col.ID != "rank" && col.ID != "last_updated" {
-				visibleColumns[col.ID] = true
-				columnParams.Add("cols", col.ID)
-			}
+		visibleColumns["base_level"] = true
+		visibleColumns["job_level"] = true
+		visibleColumns["experience"] = true
+		visibleColumns["class"] = true
+		visibleColumns["guild"] = true
+		visibleColumns["last_active"] = true
+		for colID := range visibleColumns {
+			columnParams.Add("cols", colID)
 		}
+		// Default graph filter on initial load
+		graphFilter = []string{"second"}
 	} else {
 		// A form was submitted (filter, sort, columns, or page change).
 		// Populate based on selection. If no `cols` param, no optional columns will be visible.
@@ -995,6 +1005,13 @@ func characterHandler(w http.ResponseWriter, r *http.Request) {
 			columnParams.Add("cols", col)
 		}
 	}
+
+	// Create URL parameters for the graph filter to persist its state
+	graphFilterParams := url.Values{}
+	for _, f := range graphFilter {
+		graphFilterParams.Add("graph_filter", f)
+	}
+
 	// --- 2. Get all unique classes for the filter dropdown ---
 	var allClasses []string
 	classRows, err := db.Query("SELECT DISTINCT class FROM characters ORDER BY class ASC")
@@ -1028,6 +1045,56 @@ func characterHandler(w http.ResponseWriter, r *http.Request) {
 	whereClause := ""
 	if len(whereConditions) > 0 {
 		whereClause = "WHERE " + strings.Join(whereConditions, " AND ")
+	}
+
+	// --- 3.1. Get Class Distribution for Graph based on the same filters ---
+	var classDistribution = make(map[string]int)
+	distQuery := fmt.Sprintf("SELECT class, COUNT(*) as count FROM characters %s GROUP BY class", whereClause)
+	distRows, err := db.Query(distQuery, params...)
+	if err != nil {
+		log.Printf("⚠️ Could not query for filtered class distribution: %v", err)
+	} else {
+		defer distRows.Close()
+		for distRows.Next() {
+			var className string
+			var count int
+			if err := distRows.Scan(&className, &count); err == nil {
+				classDistribution[className] = count
+			}
+		}
+	}
+
+	// Define class categories
+	noviceClasses := map[string]bool{"Aprendiz": true, "Super Aprendiz": true}
+	firstClasses := map[string]bool{"Arqueiro": true, "Espadachim": true, "Gatuno": true, "Mago": true, "Mercador": true, "Noviço": true}
+	secondClasses := map[string]bool{"Alquimista": true, "Arruaceiro": true, "Bardo": true, "Bruxo": true, "Cavaleiro": true, "Caçador": true, "Ferreiro": true, "Mercenário": true, "Monge": true, "Odalisca": true, "Sacerdote": true, "Sábio": true, "Templário": true}
+
+	graphFilterMap := make(map[string]bool)
+	for _, f := range graphFilter {
+		graphFilterMap[f] = true
+	}
+
+	// Process data for the chart, filtering by category
+	chartData := make(map[string]int)
+	for class, count := range classDistribution {
+		if noviceClasses[class] {
+			if graphFilterMap["novice"] {
+				chartData[class] = count
+			}
+		} else if firstClasses[class] {
+			if graphFilterMap["first"] {
+				chartData[class] = count
+			}
+		} else if secondClasses[class] {
+			if graphFilterMap["second"] {
+				chartData[class] = count
+			}
+		}
+	}
+	classDistJSON, err := json.Marshal(chartData)
+	if err != nil {
+		log.Printf("⚠️ Could not marshal class distribution data: %v", err)
+		classDistJSON = []byte("{}") // empty object on error
 	}
 
 	// --- 3.5 Handle Sorting ---
@@ -1142,28 +1209,33 @@ func characterHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	data := CharacterPageData{
-		Players:        players,
-		LastScrapeTime: getLastScrapeTime(),
-		SearchName:     searchName,
-		SelectedClass:  selectedClass,
-		SelectedGuild:  selectedGuild,
-		AllClasses:     allClasses,
-		SortBy:         sortBy,
-		Order:          order,
-		VisibleColumns: visibleColumns,
-		AllColumns:     allCols,
-		ColumnParams:   template.URL(columnParams.Encode()),
-		CurrentPage:    page,
-		TotalPages:     totalPages,
-		PrevPage:       page - 1,
-		NextPage:       page + 1,
-		HasPrevPage:    page > 1,
-		HasNextPage:    page < totalPages,
-		TotalPlayers:   totalPlayers,
+		Players:               players,
+		LastScrapeTime:        getLastScrapeTime(),
+		SearchName:            searchName,
+		SelectedClass:         selectedClass,
+		SelectedGuild:         selectedGuild,
+		AllClasses:            allClasses,
+		SortBy:                sortBy,
+		Order:                 order,
+		VisibleColumns:        visibleColumns,
+		AllColumns:            allCols,
+		ColumnParams:          template.URL(columnParams.Encode()),
+		CurrentPage:           page,
+		TotalPages:            totalPages,
+		PrevPage:              page - 1,
+		NextPage:              page + 1,
+		HasPrevPage:           page > 1,
+		HasNextPage:           page < totalPages,
+		TotalPlayers:          totalPlayers,
+		ClassDistributionJSON: template.JS(classDistJSON),
+		GraphFilter:           graphFilterMap,
+		GraphFilterParams:     template.URL(graphFilterParams.Encode()),
 	}
 	tmpl.Execute(w, data)
 }
 
+// ... (rest of handlers.go)
+// ... (rest of handlers.go)
 // guildHandler serves the new player guilds page.
 func guildHandler(w http.ResponseWriter, r *http.Request) {
 	// --- 1. Get query parameters for filtering and pagination ---
@@ -1257,4 +1329,3 @@ func guildHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	tmpl.Execute(w, data)
 }
-
