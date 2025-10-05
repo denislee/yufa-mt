@@ -1089,7 +1089,7 @@ func startBackgroundJobs() {
 
 	go func() {
 		scrapeGuilds()
-		ticker := time.NewTicker(60 * time.Minute)
+		ticker := time.NewTicker(4 * time.Hour)
 		defer ticker.Stop()
 		for {
 			log.Printf("🕒 [Job] Waiting for the next 60-minute guild schedule...")
@@ -1100,7 +1100,7 @@ func startBackgroundJobs() {
 
 	go func() {
 		scrapeZeny()
-		ticker := time.NewTicker(6 * time.Hour)
+		ticker := time.NewTicker(2 * time.Hour)
 		defer ticker.Stop()
 		for {
 			log.Printf("🕒 [Job] Waiting for the next 6-hour Zeny ranking schedule...")
@@ -1109,4 +1109,3 @@ func startBackgroundJobs() {
 		}
 	}()
 }
-
