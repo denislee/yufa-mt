@@ -969,6 +969,21 @@ func characterHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	const playersPerPage = 50
 
+	// Define special players who get an emoji
+	specialPlayers := map[string]bool{
+		"Purity Ring":  true,
+		"Bafo MvP":     true,
+		"franco bs":    true,
+		"Afanei":       true,
+		"GiupSankino":  true,
+		"MacroBot1000": true,
+		"Sileeent":     true,
+		"Shiiv":        true,
+		"Majim Lipe":   true,
+		"Solidao":      true,
+		"WildTig3r":    true,
+	}
+
 	// Get all guild masters to identify leaders
 	guildMasters := make(map[string]bool)
 	masterRows, err := db.Query("SELECT DISTINCT master FROM guilds WHERE master IS NOT NULL AND master != ''")
@@ -1201,6 +1216,11 @@ func characterHandler(w http.ResponseWriter, r *http.Request) {
 		// Check if the player is a guild leader
 		if _, isMaster := guildMasters[p.Name]; isMaster {
 			p.IsGuildLeader = true
+		}
+
+		// Check if the player is a special player
+		if _, ok := specialPlayers[p.Name]; ok {
+			p.IsSpecial = true
 		}
 
 		players = append(players, p)

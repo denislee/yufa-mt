@@ -136,6 +136,7 @@ type PlayerCharacter struct {
 	LastActive    string
 	IsActive      bool
 	IsGuildLeader bool
+	IsSpecial     bool
 }
 
 // Guild represents a single guild's data from the rankings.

@@ -140,6 +140,9 @@
                                     <span class="h-2 w-2 mr-2" ></span>
                                     {{end}}
                                     <span>{{.Name}}</span>
+                                    {{if .IsSpecial}}
+                                    <span title="First 99 in your class" class="mr-1 flex-shrink-0">‎ 🥇</span>
+                                    {{end}}
                                     {{if .IsGuildLeader}}
                                     <span title="Guild Leader" class="mr-1 flex-shrink-0">‎ ⭐</span>
                                     {{end}}
