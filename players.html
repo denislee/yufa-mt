@@ -45,7 +45,7 @@
         <div class="flex flex-wrap items-stretch gap-4 mb-4">
             <div class="bg-white p-3 rounded-lg shadow">
                 <div class="text-center h-full flex flex-col justify-center px-2">
-                    <span class="text-gray-500 text-xs block">Active Players Now</span>
+                    <span class="text-gray-500 text-xs block">Latest Active Players</span>
                     <strong class="text-2xl font-bold text-blue-600">{{.LatestActivePlayers}}</strong>
                 </div>
             </div>
@@ -55,7 +55,6 @@
                     <div class="flex flex-wrap items-center justify-between gap-4 h-full">
                         <div class="flex flex-wrap items-center gap-2">
                             <span class="text-sm font-medium text-gray-700 mr-2">Interval:</span>
-                            <a href="/players?interval=30m" class="filter-interval text-sm font-medium px-3 py-1 rounded-full {{if eq .SelectedInterval "30m"}}bg-blue-500 text-white{{else}}bg-gray-200 text-gray-700 hover:bg-gray-300{{end}}">30m</a>
                             <a href="/players?interval=6h" class="filter-interval text-sm font-medium px-3 py-1 rounded-full {{if eq .SelectedInterval "6h"}}bg-blue-500 text-white{{else}}bg-gray-200 text-gray-700 hover:bg-gray-300{{end}}">6h</a>
                             <a href="/players?interval=24h" class="filter-interval text-sm font-medium px-3 py-1 rounded-full {{if eq .SelectedInterval "24h"}}bg-blue-500 text-white{{else}}bg-gray-200 text-gray-700 hover:bg-gray-300{{end}}">24h</a>
                             <a href="/players?interval=7d" class="filter-interval text-sm font-medium px-3 py-1 rounded-full {{if eq .SelectedInterval "7d"}}bg-blue-500 text-white{{else}}bg-gray-200 text-gray-700 hover:bg-gray-300{{end}}">7d</a>

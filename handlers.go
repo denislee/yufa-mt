@@ -807,8 +807,6 @@ func playerCountHandler(w http.ResponseWriter, r *http.Request) {
 	var viewStart time.Time
 
 	switch interval {
-	case "30m":
-		viewStart = now.Add(-30 * time.Minute)
 	case "6h":
 		viewStart = now.Add(-6 * time.Hour)
 	case "24h":
