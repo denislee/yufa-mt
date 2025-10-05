@@ -1281,6 +1281,7 @@ func characterHandler(w http.ResponseWriter, r *http.Request) {
 		ClassDistributionJSON: template.JS(classDistJSON),
 		GraphFilter:           graphFilterMap,
 		GraphFilterParams:     template.URL(graphFilterParams.Encode()),
+		HasChartData:          len(chartData) > 1,
 	}
 	tmpl.Execute(w, data)
 }
@@ -1378,4 +1379,3 @@ func guildHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	tmpl.Execute(w, data)
 }
-

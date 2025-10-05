@@ -80,7 +80,7 @@
             </div>
 
             <div class="bg-white p-3 rounded-lg shadow mb-4">
-                <details open>
+                <details {{if .HasChartData}}open{{end}}>
                     <summary class="font-semibold text-lg cursor-pointer hover:text-blue-600">Class Distribution</summary>
                     <div class="mt-4">
                         <div class="flex flex-wrap items-center gap-4 mb-4 text-sm border-b pb-3">
