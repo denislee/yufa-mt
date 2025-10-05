@@ -1149,10 +1149,11 @@ func characterHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	orderByFullClause := fmt.Sprintf("ORDER BY %s %s", orderByClause, order)
 
-	// --- 4. Get the total count of matching players for pagination ---
+	// --- 4. Get the total count and total zeny of matching players for pagination ---
 	var totalPlayers int
-	countQuery := fmt.Sprintf("SELECT COUNT(*) FROM characters %s", whereClause)
-	err = db.QueryRow(countQuery, params...).Scan(&totalPlayers)
+	var totalZeny sql.NullInt64 // Use NullInt64 in case of no results (SUM would be NULL)
+	countQuery := fmt.Sprintf("SELECT COUNT(*), SUM(zeny) FROM characters %s", whereClause)
+	err = db.QueryRow(countQuery, params...).Scan(&totalPlayers, &totalZeny)
 	if err != nil {
 		http.Error(w, "Could not count player characters", http.StatusInternalServerError)
 		log.Printf("❌ Could not count player characters: %v", err)
@@ -1278,6 +1279,7 @@ func characterHandler(w http.ResponseWriter, r *http.Request) {
 		HasPrevPage:           page > 1,
 		HasNextPage:           page < totalPages,
 		TotalPlayers:          totalPlayers,
+		TotalZeny:             totalZeny.Int64,
 		ClassDistributionJSON: template.JS(classDistJSON),
 		GraphFilter:           graphFilterMap,
 		GraphFilterParams:     template.URL(graphFilterParams.Encode()),
@@ -1379,3 +1381,4 @@ func guildHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	tmpl.Execute(w, data)
 }
+

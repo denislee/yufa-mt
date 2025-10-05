@@ -240,6 +240,7 @@ type CharacterPageData struct {
 	PrevPage     int
 	NextPage     int
 	TotalPlayers int
+	TotalZeny    int64
 	HasPrevPage  bool
 	HasNextPage  bool
 	// Graph Data
@@ -264,3 +265,4 @@ type GuildPageData struct {
 	HasPrevPage bool
 	HasNextPage bool
 }
+

@@ -79,36 +79,51 @@
                 {{end}}
             </div>
 
-            <div class="bg-white p-3 rounded-lg shadow mb-4">
-                <details {{if .HasChartData}}open{{end}}>
-                    <summary class="font-semibold text-lg cursor-pointer hover:text-blue-600">Class Distribution</summary>
-                    <div class="mt-4">
-                        <div class="flex flex-wrap items-center gap-4 mb-4 text-sm border-b pb-3">
-                            <strong class="text-gray-700">Show Types:</strong>
-                            <label class="flex items-center space-x-2">
-                                <input type="checkbox" name="graph_filter" value="novice" onchange="this.form.submit();"
-                                    {{if index .GraphFilter "novice"}}checked{{end}}
-                                    class="rounded border-gray-300 text-indigo-600 shadow-sm focus:ring-indigo-500">
-                                <span>Novice</span>
-                            </label>
-                            <label class="flex items-center space-x-2">
-                                <input type="checkbox" name="graph_filter" value="first" onchange="this.form.submit();"
-                                    {{if index .GraphFilter "first"}}checked{{end}}
-                                    class="rounded border-gray-300 text-indigo-600 shadow-sm focus:ring-indigo-500">
-                                <span>First Class</span>
-                            </label>
-                            <label class="flex items-center space-x-2">
-                                <input type="checkbox" name="graph_filter" value="second" onchange="this.form.submit();"
-                                    {{if index .GraphFilter "second"}}checked{{end}}
-                                    class="rounded border-gray-300 text-indigo-600 shadow-sm focus:ring-indigo-500">
-                                <span>Second Class</span>
-                            </label>
+            <div class="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-4">
+                <div class="bg-white p-3 rounded-lg shadow lg:col-span-2">
+                    <details {{if .HasChartData}}open{{end}}>
+                        <summary class="font-semibold text-lg cursor-pointer hover:text-blue-600">Class Distribution</summary>
+                        <div class="mt-4">
+                            <div class="flex flex-wrap items-center gap-4 mb-4 text-sm border-b pb-3">
+                                <strong class="text-gray-700">Show Types:</strong>
+                                <label class="flex items-center space-x-2">
+                                    <input type="checkbox" name="graph_filter" value="novice" onchange="this.form.submit();"
+                                        {{if index .GraphFilter "novice"}}checked{{end}}
+                                        class="rounded border-gray-300 text-indigo-600 shadow-sm focus:ring-indigo-500">
+                                    <span>Novice</span>
+                                </label>
+                                <label class="flex items-center space-x-2">
+                                    <input type="checkbox" name="graph_filter" value="first" onchange="this.form.submit();"
+                                        {{if index .GraphFilter "first"}}checked{{end}}
+                                        class="rounded border-gray-300 text-indigo-600 shadow-sm focus:ring-indigo-500">
+                                    <span>First Class</span>
+                                </label>
+                                <label class="flex items-center space-x-2">
+                                    <input type="checkbox" name="graph_filter" value="second" onchange="this.form.submit();"
+                                        {{if index .GraphFilter "second"}}checked{{end}}
+                                        class="rounded border-gray-300 text-indigo-600 shadow-sm focus:ring-indigo-500">
+                                    <span>Second Class</span>
+                                </label>
+                            </div>
+                            <div style="position: relative; height:300px">
+                                <canvas id="classDistChart"></canvas>
+                            </div>
                         </div>
-                        <div style="position: relative; height:300px">
-                            <canvas id="classDistChart"></canvas>
+                    </details>
+                </div>
+                <div class="bg-white p-3 rounded-lg shadow h-full">
+                    <div class="flex flex-col justify-center items-center text-center h-full">
+                        <div>
+                            <h3 class="text-lg font-semibold text-gray-700">Total Zeny (Filtered)</h3>
+                            <p class="text-4xl font-bold text-green-600 mt-4 tracking-tight">
+                                {{if .TotalZeny}}{{formatZeny .TotalZeny}} <span class="text-2xl font-medium">z</span>{{else}}N/A{{end}}
+                            </p>
+                            <p class="text-sm text-gray-500 mt-2">
+                                Sum across {{.TotalPlayers}} characters (without bank).
+                            </p>
                         </div>
                     </div>
-                </details>
+                </div>
             </div>
         </form>
 
