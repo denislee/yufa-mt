@@ -756,23 +756,47 @@ func scrapeData() {
 	reRefineMid := regexp.MustCompile(`\s(\+\d+)`)
 	reRefineStart := regexp.MustCompile(`^(\+\d+)\s`)
 
+	const maxRetries = 3
+	const retryDelay = 5 * time.Second
+
 	allocCtx, cancel := newOptimizedAllocator()
-	defer cancel()
-	taskCtx, cancel := chromedp.NewContext(allocCtx)
-	defer cancel()
-	taskCtx, cancel = context.WithTimeout(taskCtx, 30*time.Second)
 	defer cancel()
 
 	var htmlContent string
-	err := chromedp.Run(taskCtx,
-		chromedp.Navigate("https://projetoyufa.com/market"),
-		chromedp.WaitVisible(`div[data-slot="card-header"]`),
-		chromedp.OuterHTML("html", &htmlContent),
-	)
-	if err != nil {
-		log.Printf("❌ [Market] Failed to run chromedp tasks: %v", err)
+	var err error
+	var scrapeSuccessful bool
+
+	for attempt := 1; attempt <= maxRetries; attempt++ {
+		log.Printf("🚀 [Market] Scraping market page (Attempt %d/%d)...", attempt, maxRetries)
+		taskCtx, cancel := chromedp.NewContext(allocCtx)
+		defer cancel()
+
+		taskCtxWithTimeout, cancelTimeout := context.WithTimeout(taskCtx, 45*time.Second)
+		defer cancelTimeout()
+
+		err = chromedp.Run(taskCtxWithTimeout,
+			chromedp.Navigate("https://projetoyufa.com/market"),
+			chromedp.WaitVisible(`div[data-slot="card-header"]`),
+			chromedp.OuterHTML("html", &htmlContent),
+		)
+
+		if err == nil {
+			scrapeSuccessful = true
+			break
+		}
+
+		log.Printf("⚠️ [Market] Attempt %d/%d failed: %v", attempt, maxRetries, err)
+		if attempt < maxRetries {
+			log.Printf("    -> Retrying in %v...", retryDelay)
+			time.Sleep(retryDelay)
+		}
+	}
+
+	if !scrapeSuccessful {
+		log.Printf("❌ [Market] Failed to scrape market page after %d attempts. Aborting update.", maxRetries)
 		return
 	}
+
 	doc, err := goquery.NewDocumentFromReader(strings.NewReader(htmlContent))
 	if err != nil {
 		log.Printf("❌ [Market] Failed to parse HTML: %v", err)
@@ -1085,3 +1109,4 @@ func startBackgroundJobs() {
 		}
 	}()
 }
+
