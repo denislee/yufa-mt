@@ -590,9 +590,40 @@ func scrapeGuilds() {
 	log.Printf("✅ [Guilds] Scrape and update complete. Saved %d guild records and updated character associations.", len(allGuilds))
 }
 
+// Helper struct for comparing Zeny data
+type CharacterZenyInfo struct {
+	Zeny       sql.NullInt64
+	LastActive string
+}
+
 func scrapeZeny() {
 	log.Println("💰 [Zeny] Starting Zeny ranking scrape...")
 	const maxRetries = 3
+
+	// --- PRE-FETCH EXISTING DATA ---
+	log.Println("    -> [DB] Fetching existing character zeny data for activity comparison...")
+	existingCharacters := make(map[string]CharacterZenyInfo)
+	rows, err := db.Query("SELECT name, zeny, last_active FROM characters")
+	if err != nil {
+		log.Printf("❌ [Zeny][DB] Failed to query existing characters for comparison: %v", err)
+		// We can continue, but activity tracking may be inaccurate.
+	} else {
+		defer rows.Close()
+		for rows.Next() {
+			var name string
+			var info CharacterZenyInfo
+			if err := rows.Scan(&name, &info.Zeny, &info.LastActive); err != nil {
+				log.Printf("    -> [DB] WARN: Failed to scan existing zeny row: %v", err)
+				continue
+			}
+			existingCharacters[name] = info
+		}
+		if enableZenyScraperDebugLogs {
+			log.Printf("    -> [DB] Found %d existing character records for comparison.", len(existingCharacters))
+		}
+	}
+	// Use a single timestamp for the entire scrape operation.
+	updateTime := time.Now().Format(time.RFC3339)
 
 	allocCtx, cancel := newOptimizedAllocator()
 	defer cancel()
@@ -605,7 +636,7 @@ func scrapeZeny() {
 	defer cancelTimeout()
 
 	var initialHtmlContent string
-	err := chromedp.Run(firstPageCtx,
+	err = chromedp.Run(firstPageCtx,
 		chromedp.Navigate("https://projetoyufa.com/rankings/zeny?page=1"),
 		chromedp.WaitVisible(`nav[aria-label="pagination"]`),
 		chromedp.OuterHTML("html", &initialHtmlContent),
@@ -722,7 +753,7 @@ func scrapeZeny() {
 	}
 	defer tx.Rollback()
 
-	stmt, err := tx.Prepare("UPDATE characters SET zeny = ? WHERE name = ?")
+	stmt, err := tx.Prepare("UPDATE characters SET zeny = ?, last_active = ? WHERE name = ?")
 	if err != nil {
 		log.Printf("❌ [Zeny][DB] Failed to prepare update statement: %v", err)
 		return
@@ -730,15 +761,31 @@ func scrapeZeny() {
 	defer stmt.Close()
 
 	updatedCount := 0
-	for name, zeny := range allZenyInfo {
-		res, err := stmt.Exec(zeny, name)
-		if err != nil {
-			log.Printf("    -> ⚠️ [Zeny][DB] Failed to update zeny for '%s': %v", name, err)
-			continue
-		}
-		rowsAffected, _ := res.RowsAffected()
-		if rowsAffected > 0 {
-			updatedCount++
+	unchangedCount := 0
+	for name, newZeny := range allZenyInfo {
+		oldInfo, exists := existingCharacters[name]
+
+		// Condition for update: character is new, their old zeny value was NULL, or the zeny value has changed.
+		if !exists || !oldInfo.Zeny.Valid || oldInfo.Zeny.Int64 != newZeny {
+			res, err := stmt.Exec(newZeny, updateTime, name)
+			if err != nil {
+				log.Printf("    -> ⚠️ [Zeny][DB] Failed to update zeny for '%s': %v", name, err)
+				continue
+			}
+			rowsAffected, _ := res.RowsAffected()
+			if rowsAffected > 0 {
+				if enableZenyScraperDebugLogs {
+					if !exists || !oldInfo.Zeny.Valid {
+						log.Printf("    -> [Activity] Player '%s' zeny recorded for the first time: %d. Updating last_active.", name, newZeny)
+					} else {
+						log.Printf("    -> [Activity] Player '%s' zeny changed from %d to %d. Updating last_active.", name, oldInfo.Zeny.Int64, newZeny)
+					}
+				}
+				updatedCount++
+			}
+		} else {
+			// Zeny value is the same, no update needed.
+			unchangedCount++
 		}
 	}
 
@@ -747,7 +794,7 @@ func scrapeZeny() {
 		return
 	}
 
-	log.Printf("✅ [Zeny] Database update complete. Updated zeny for %d characters.", updatedCount)
+	log.Printf("✅ [Zeny] Database update complete. Updated activity for %d characters. %d characters were unchanged.", updatedCount, unchangedCount)
 }
 
 func scrapeData() {
