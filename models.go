@@ -208,10 +208,11 @@ type PlayerCountPoint struct {
 
 // PlayerCountPageData holds data for the player count history page template.
 type PlayerCountPageData struct {
-	PlayerDataJSON   template.JS
-	LastScrapeTime   string
-	SelectedInterval string
-	EventDataJSON    template.JS
+	PlayerDataJSON      template.JS
+	LastScrapeTime      string
+	SelectedInterval    string
+	EventDataJSON       template.JS
+	LatestActivePlayers int
 }
 
 type CharacterPageData struct {
@@ -258,3 +259,4 @@ type GuildPageData struct {
 	HasPrevPage bool
 	HasNextPage bool
 }
+

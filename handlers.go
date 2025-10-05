@@ -879,9 +879,15 @@ func playerCountHandler(w http.ResponseWriter, r *http.Request) {
 	for rows.Next() {
 		var point PlayerCountPoint
 		var timestampStr string
-		if err := rows.Scan(&timestampStr, &point.Count, &point.SellerCount); err != nil {
+		var sellerCount sql.NullInt64
+		if err := rows.Scan(&timestampStr, &point.Count, &sellerCount); err != nil {
 			log.Printf("⚠️ Failed to scan player history row: %v", err)
 			continue
+		}
+		if sellerCount.Valid {
+			point.SellerCount = int(sellerCount.Int64)
+		} else {
+			point.SellerCount = 0
 		}
 		// Calculate the delta between total players and sellers.
 		point.Delta = point.Count - point.SellerCount
@@ -911,6 +917,16 @@ func playerCountHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Get the latest active player count
+	var latestCount, latestSellerCount int
+	err = db.QueryRow("SELECT count, seller_count FROM player_history ORDER BY timestamp DESC LIMIT 1").Scan(&latestCount, &latestSellerCount)
+	if err != nil && err != sql.ErrNoRows {
+		log.Printf("⚠️ Could not query for latest player count: %v", err)
+		latestCount = 0
+		latestSellerCount = 0
+	}
+	latestActivePlayers := latestCount - latestSellerCount
+
 	tmpl, err := template.ParseFiles("players.html")
 	if err != nil {
 		http.Error(w, "Could not load players template", http.StatusInternalServerError)
@@ -919,10 +935,11 @@ func playerCountHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	data := PlayerCountPageData{
-		PlayerDataJSON:   template.JS(playerHistoryJSON),
-		LastScrapeTime:   getLastScrapeTime(),
-		SelectedInterval: interval,
-		EventDataJSON:    template.JS(eventIntervalsJSON),
+		PlayerDataJSON:      template.JS(playerHistoryJSON),
+		LastScrapeTime:      getLastScrapeTime(),
+		SelectedInterval:    interval,
+		EventDataJSON:       template.JS(eventIntervalsJSON),
+		LatestActivePlayers: latestActivePlayers,
 	}
 	tmpl.Execute(w, data)
 }
@@ -1329,3 +1346,4 @@ func guildHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	tmpl.Execute(w, data)
 }
+
