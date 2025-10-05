@@ -131,6 +131,7 @@ type PlayerCharacter struct {
 	JobLevel      int
 	Experience    float64
 	Class         string
+	Zeny          int64
 	GuildName     sql.NullString // Use sql.NullString to handle players without a guild.
 	LastUpdated   string
 	LastActive    string

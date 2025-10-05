@@ -10,6 +10,46 @@ import (
 // db is a package-level variable to hold the database connection pool.
 var db *sql.DB
 
+// applyMigrations checks for and applies database schema changes.
+func applyMigrations(db *sql.DB) error {
+	// --- MIGRATION 1: Add 'zeny' column to 'characters' table ---
+	// Check if the column already exists to make this operation idempotent.
+	rows, err := db.Query("PRAGMA table_info(characters);")
+	if err != nil {
+		return fmt.Errorf("could not query table info for characters: %w", err)
+	}
+	defer rows.Close()
+
+	var columnExists bool
+	for rows.Next() {
+		var (
+			cid       int
+			name      string
+			ctype     string
+			notnull   int
+			dfltValue sql.NullString
+			pk        int
+		)
+		if err := rows.Scan(&cid, &name, &ctype, &notnull, &dfltValue, &pk); err != nil {
+			return err
+		}
+		if name == "zeny" {
+			columnExists = true
+			break
+		}
+	}
+
+	if !columnExists {
+		// If the column does not exist, add it. Default to 0 and disallow NULLs.
+		_, err := db.Exec("ALTER TABLE characters ADD COLUMN zeny INTEGER NOT NULL DEFAULT 0;")
+		if err != nil {
+			return fmt.Errorf("failed to add 'zeny' column to 'characters' table: %w", err)
+		}
+	}
+
+	return nil
+}
+
 // initDB opens the database file and creates the application tables if they don't exist.
 func initDB(filepath string) (*sql.DB, error) {
 	var err error
@@ -124,6 +164,11 @@ func initDB(filepath string) (*sql.DB, error) {
 	);`
 	if _, err = db.Exec(createCharactersTableSQL); err != nil {
 		return nil, fmt.Errorf("could not create characters table: %w", err)
+	}
+
+	// After all tables are ensured to exist, apply any pending migrations.
+	if err := applyMigrations(db); err != nil {
+		return nil, err
 	}
 
 	return db, nil

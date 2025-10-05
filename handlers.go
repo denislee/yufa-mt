@@ -942,9 +942,6 @@ func playerCountHandler(w http.ResponseWriter, r *http.Request) {
 	tmpl.Execute(w, data)
 }
 
-// handlers.go
-// ... (code before characterHandler)
-
 // characterHandler serves the new player characters page.
 func characterHandler(w http.ResponseWriter, r *http.Request) {
 	if err := r.ParseForm(); err != nil {
@@ -971,17 +968,19 @@ func characterHandler(w http.ResponseWriter, r *http.Request) {
 
 	// Define special players who get an emoji
 	specialPlayers := map[string]bool{
-		"Purity Ring":  true,
-		"Bafo MvP":     true,
-		"franco bs":    true,
-		"Afanei":       true,
-		"GiupSankino":  true,
-		"MacroBot1000": true,
-		"Sileeent":     true,
-		"Shiiv":        true,
-		"Majim Lipe":   true,
-		"Solidao":      true,
-		"WildTig3r":    true,
+		"Purity Ring":   true,
+		"Bafo MvP":      true,
+		"franco bs":     true,
+		"franco alchie": true,
+		"Afanei":        true,
+		"GiupSankino":   true,
+		"MacroBot1000":  true,
+		"Sileeent":      true,
+		"Shiiv":         true,
+		"Majim Lipe":    true,
+		"Solidao":       true,
+		"WildTig3r":     true,
+		"No Glory":      true, // was father aesir
 	}
 
 	// Get all guild masters to identify leaders
@@ -1005,6 +1004,7 @@ func characterHandler(w http.ResponseWriter, r *http.Request) {
 		{ID: "base_level", DisplayName: "Base Lvl"},
 		{ID: "job_level", DisplayName: "Job Lvl"},
 		{ID: "experience", DisplayName: "Exp %"},
+		{ID: "zeny", DisplayName: "Zeny"},
 		{ID: "class", DisplayName: "Class"},
 		{ID: "guild", DisplayName: "Guild"},
 		{ID: "last_updated", DisplayName: "Last Updated"},
@@ -1134,6 +1134,7 @@ func characterHandler(w http.ResponseWriter, r *http.Request) {
 		"base_level":   "base_level",
 		"job_level":    "job_level",
 		"experience":   "experience",
+		"zeny":         "zeny",
 		"class":        "class",
 		"guild":        "guild_name",
 		"last_updated": "last_updated",
@@ -1170,7 +1171,7 @@ func characterHandler(w http.ResponseWriter, r *http.Request) {
 
 	// --- 6. Fetch the paginated player data ---
 	query := fmt.Sprintf(`
-		SELECT rank, name, base_level, job_level, experience, class, guild_name, last_updated, last_active
+		SELECT rank, name, base_level, job_level, experience, class, guild_name, zeny, last_updated, last_active
 		FROM characters
 		%s
 		%s
@@ -1190,7 +1191,7 @@ func characterHandler(w http.ResponseWriter, r *http.Request) {
 	for rows.Next() {
 		var p PlayerCharacter
 		var lastUpdatedStr, lastActiveStr string
-		if err := rows.Scan(&p.Rank, &p.Name, &p.BaseLevel, &p.JobLevel, &p.Experience, &p.Class, &p.GuildName, &lastUpdatedStr, &lastActiveStr); err != nil {
+		if err := rows.Scan(&p.Rank, &p.Name, &p.BaseLevel, &p.JobLevel, &p.Experience, &p.Class, &p.GuildName, &p.Zeny, &lastUpdatedStr, &lastActiveStr); err != nil {
 			log.Printf("⚠️ Failed to scan player character row: %v", err)
 			continue
 		}
@@ -1234,6 +1235,21 @@ func characterHandler(w http.ResponseWriter, r *http.Request) {
 			}
 			return "ASC"
 		},
+		"formatZeny": func(zeny int64) string {
+			s := strconv.FormatInt(zeny, 10)
+			if len(s) <= 3 {
+				return s
+			}
+			var result []string
+			for i := len(s); i > 0; i -= 3 {
+				start := i - 3
+				if start < 0 {
+					start = 0
+				}
+				result = append([]string{s[start:i]}, result...)
+			}
+			return strings.Join(result, ".")
+		},
 	}
 
 	tmpl, err := template.New("characters.html").Funcs(funcMap).ParseFiles("characters.html")
@@ -1269,8 +1285,6 @@ func characterHandler(w http.ResponseWriter, r *http.Request) {
 	tmpl.Execute(w, data)
 }
 
-// ... (rest of handlers.go)
-// ... (rest of handlers.go)
 // guildHandler serves the new player guilds page.
 func guildHandler(w http.ResponseWriter, r *http.Request) {
 	// --- 1. Get query parameters for filtering and pagination ---

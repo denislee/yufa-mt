@@ -18,43 +18,40 @@ import (
 
 // --- CONFIGURATION ---
 // These constants control verbose logging for each specific scraper module.
-// Set to true to see detailed, step-by-step progress for a given job.
 const enablePlayerCountDebugLogs = false
 const enableCharacterScraperDebugLogs = false
 const enableGuildScraperDebugLogs = false
+const enableZenyScraperDebugLogs = true
 const enableMarketScraperDebugLogs = true
 
-// newOptimizedAllocator creates a new chromedp allocator context with optimized flags for scraping.
-// It disables unnecessary resources like images and extensions to improve performance.
+// newOptimizedAllocator creates a new chromedp allocator context with optimized flags
+// for scraping, disabling unnecessary resources like images to improve performance.
 func newOptimizedAllocator() (context.Context, context.CancelFunc) {
 	opts := append(chromedp.DefaultExecAllocatorOptions[:],
 		chromedp.UserAgent(`Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36`),
 		chromedp.Flag("headless", true),
 		chromedp.Flag("disable-gpu", true),
 		chromedp.Flag("no-sandbox", true),
-		chromedp.Flag("disable-extensions", true),              // Disable extensions
-		chromedp.Flag("blink-settings", "imagesEnabled=false"), // Disable images
+		chromedp.Flag("disable-extensions", true),
+		chromedp.Flag("blink-settings", "imagesEnabled=false"),
 	)
 	return chromedp.NewExecAllocator(context.Background(), opts...)
 }
 
-// scrapeAndStorePlayerCount fetches the online player count, queries for the unique seller count, and saves them.
 func scrapeAndStorePlayerCount() {
 	log.Println("📊 [Counter] Checking player and seller count...")
 
-	// Use the optimized allocator
 	allocCtx, cancel := newOptimizedAllocator()
 	defer cancel()
 	ctx, cancel := chromedp.NewContext(allocCtx)
 	defer cancel()
-	ctx, cancel = context.WithTimeout(ctx, 30*time.Second) // 30-second timeout
+	ctx, cancel = context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
 
 	var playerCountText string
 	err := chromedp.Run(ctx,
 		chromedp.Navigate("https://projetoyufa.com/info"),
-
-		chromedp.WaitVisible(`span[data-slot="badge"] p`), // Wait for the element to be visible
+		chromedp.WaitVisible(`span[data-slot="badge"] p`),
 		chromedp.Text(`span[data-slot="badge"] p`, &playerCountText, chromedp.ByQuery),
 	)
 
@@ -80,7 +77,6 @@ func scrapeAndStorePlayerCount() {
 		return
 	}
 
-	// Get the number of unique sellers with available items directly from the database.
 	var sellerCount int
 	err = db.QueryRow("SELECT COUNT(DISTINCT seller_name) FROM items WHERE is_available = 1").Scan(&sellerCount)
 	if err != nil {
@@ -89,7 +85,6 @@ func scrapeAndStorePlayerCount() {
 		sellerCount = 0
 	}
 
-	// Check if the latest counts are different from the new ones to avoid duplicate entries.
 	var lastPlayerCount int
 	var lastSellerCount sql.NullInt64
 	err = db.QueryRow("SELECT count, seller_count FROM player_history ORDER BY timestamp DESC LIMIT 1").Scan(&lastPlayerCount, &lastSellerCount)
@@ -98,7 +93,6 @@ func scrapeAndStorePlayerCount() {
 		return
 	}
 
-	// If both counts are the same as the last record, do nothing.
 	if err != sql.ErrNoRows && onlineCount == lastPlayerCount && lastSellerCount.Valid && sellerCount == int(lastSellerCount.Int64) {
 		if enablePlayerCountDebugLogs {
 			log.Printf("[Counter] Player/seller count unchanged (%d players, %d sellers). No update needed.", onlineCount, sellerCount)
@@ -120,14 +114,12 @@ func scrapePlayerCharacters() {
 	log.Println("🏆 [Characters] Starting player character scrape...")
 
 	const maxRetries = 3
-	const batchSize = 1 // Number of pages to scrape in parallel
+	const batchSize = 1
 
-	// Use the optimized allocator for the entire job
 	allocCtx, cancel := newOptimizedAllocator()
 	defer cancel()
 
-	// --- NEW: Find the last page number first ---
-	var lastPage = 1 // Default to 1 page
+	var lastPage = 1
 	log.Println("🏆 [Characters] Determining total number of pages...")
 	firstPageCtx, cancelFirstPage := chromedp.NewContext(allocCtx)
 	defer cancelFirstPage()
@@ -137,7 +129,7 @@ func scrapePlayerCharacters() {
 	var initialHtmlContent string
 	err := chromedp.Run(firstPageCtx,
 		chromedp.Navigate("https://projetoyufa.com/rankings?page=1"),
-		chromedp.WaitVisible(`nav[aria-label="pagination"]`), // Wait for the pagination nav bar
+		chromedp.WaitVisible(`nav[aria-label="pagination"]`),
 		chromedp.OuterHTML("html", &initialHtmlContent),
 	)
 
@@ -146,14 +138,13 @@ func scrapePlayerCharacters() {
 	} else {
 		doc, _ := goquery.NewDocumentFromReader(strings.NewReader(initialHtmlContent))
 		pageRegex := regexp.MustCompile(`page=(\d+)`)
-		// Find all links within the pagination bar
 		doc.Find(`nav[aria-label="pagination"] a[href*="?page="]`).Each(func(i int, s *goquery.Selection) {
 			if href, exists := s.Attr("href"); exists {
 				matches := pageRegex.FindStringSubmatch(href)
 				if len(matches) > 1 {
 					if p, err := strconv.Atoi(matches[1]); err == nil {
 						if p > lastPage {
-							lastPage = p // Keep track of the highest page number found
+							lastPage = p
 						}
 					}
 				}
@@ -161,7 +152,6 @@ func scrapePlayerCharacters() {
 		})
 	}
 	log.Printf("✅ [Characters] Found %d total pages to scrape.", lastPage)
-	// --- END of finding last page ---
 
 	// Fetch existing player data for comparison ONCE at the beginning.
 	if enableCharacterScraperDebugLogs {
@@ -189,18 +179,15 @@ func scrapePlayerCharacters() {
 	// Use a single timestamp for the entire scrape operation.
 	updateTime := time.Now().Format(time.RFC3339)
 
-	// --- MODIFIED LOOP: Loop from page 1 to the determined last page ---
 	for startPage := 1; startPage <= lastPage; startPage += batchSize {
 		var wg sync.WaitGroup
 		playerChan := make(chan []PlayerCharacter, batchSize)
 
 		log.Printf("🏆 [Characters] Scraping batch of up to %d pages starting from page %d (Total: %d)...", batchSize, startPage, lastPage)
 
-		// Launch a goroutine for each page in the batch
 		for i := 0; i < batchSize; i++ {
 			currentPage := startPage + i
 
-			// --- NEW: Ensure we don't try to scrape pages that don't exist ---
 			if currentPage > lastPage {
 				continue
 			}
@@ -235,7 +222,7 @@ func scrapePlayerCharacters() {
 				}
 
 				if !pageScrapedSuccessfully {
-					playerChan <- nil // Signal failure for this page
+					playerChan <- nil // Signal failure
 					return
 				}
 
@@ -248,7 +235,7 @@ func scrapePlayerCharacters() {
 
 				rows := doc.Find(`tbody[data-slot="table-body"] tr[data-slot="table-row"]`)
 				if rows.Length() == 0 {
-					playerChan <- []PlayerCharacter{} // Signal an empty but successful page
+					playerChan <- []PlayerCharacter{} // Signal empty but successful page
 					return
 				}
 
@@ -292,7 +279,6 @@ func scrapePlayerCharacters() {
 		wg.Wait()
 		close(playerChan)
 
-		// Consolidate results from the channel
 		var batchPlayers []PlayerCharacter
 		for players := range playerChan {
 			if players != nil {
@@ -300,7 +286,6 @@ func scrapePlayerCharacters() {
 			}
 		}
 
-		// If no players were found in this batch, something might be wrong, but we continue
 		if len(batchPlayers) == 0 {
 			log.Println("⚠️ [Characters] No players found in this batch. Continuing to next batch.")
 			continue
@@ -308,7 +293,6 @@ func scrapePlayerCharacters() {
 
 		log.Printf("🔎 [Characters] Found %d total players in batch from page %d. Processing for DB...", len(batchPlayers), startPage)
 
-		// Open a new transaction for the entire batch
 		tx, err := db.Begin()
 		if err != nil {
 			log.Printf("❌ [DB] Failed to begin transaction for batch from page %d: %v", startPage, err)
@@ -362,7 +346,6 @@ func scrapePlayerCharacters() {
 		log.Printf("✅ [Characters] Saved/updated %d records from batch starting at page %d.", len(batchPlayers), startPage)
 	}
 
-	// Cleanup logic remains the same
 	log.Println("🧹 [Characters] Cleaning up old player records not found in this scrape...")
 	result, err := db.Exec("DELETE FROM characters WHERE last_updated != ?", updateTime)
 	if err != nil {
@@ -375,7 +358,7 @@ func scrapePlayerCharacters() {
 	log.Printf("✅ [Characters] Scrape and update process complete.")
 }
 
-// Helper structs for parsing the embedded guild JSON
+// Helper structs for parsing guild data
 type GuildMemberJSON struct {
 	Name string `json:"name"`
 }
@@ -387,7 +370,6 @@ type GuildJSON struct {
 	Members []GuildMemberJSON `json:"members"`
 }
 
-// scrapeGuilds scrapes guild data, including members, and updates both the guilds and characters tables.
 func scrapeGuilds() {
 	log.Println("🏰 [Guilds] Starting guild and character-guild association scrape...")
 	const maxRetries = 60
@@ -396,17 +378,14 @@ func scrapeGuilds() {
 		chromedp.Flag("headless", true),
 		chromedp.Flag("disable-gpu", true),
 		chromedp.Flag("no-sandbox", true),
-		chromedp.Flag("disable-extensions", true), // Disable extensions
-	//	chromedp.Flag("blink-settings", "imagesEnabled=false"), // Disable images
+		chromedp.Flag("disable-extensions", true),
 	)
 	allocCtx, cancel := chromedp.NewExecAllocator(context.Background(), allocOpts...)
 	defer cancel()
 
-	// --- NEW: Find the last page number first ---
-	var lastPage = 1 // Default to 1 page
+	var lastPage = 1
 	log.Println("🏰 [Guilds] Determining total number of pages...")
 
-	// Create a new context just for this initial task
 	firstPageCtx, cancelFirstPage := chromedp.NewContext(allocCtx)
 	defer cancelFirstPage()
 	firstPageCtx, cancelTimeout := context.WithTimeout(firstPageCtx, 60*time.Second)
@@ -415,7 +394,7 @@ func scrapeGuilds() {
 	var initialHtmlContent string
 	err := chromedp.Run(firstPageCtx,
 		chromedp.Navigate("https://projetoyufa.com/rankings/guild?page=1"),
-		chromedp.WaitVisible(`nav[aria-label="pagination"]`), // Wait for the pagination nav bar
+		chromedp.WaitVisible(`nav[aria-label="pagination"]`),
 		chromedp.OuterHTML("html", &initialHtmlContent),
 	)
 
@@ -424,14 +403,13 @@ func scrapeGuilds() {
 	} else {
 		doc, _ := goquery.NewDocumentFromReader(strings.NewReader(initialHtmlContent))
 		pageRegex := regexp.MustCompile(`page=(\d+)`)
-		// Find all links within the pagination bar
 		doc.Find(`nav[aria-label="pagination"] a[href*="?page="]`).Each(func(i int, s *goquery.Selection) {
 			if href, exists := s.Attr("href"); exists {
 				matches := pageRegex.FindStringSubmatch(href)
 				if len(matches) > 1 {
 					if p, err := strconv.Atoi(matches[1]); err == nil {
 						if p > lastPage {
-							lastPage = p // Keep track of the highest page number found
+							lastPage = p
 						}
 					}
 				}
@@ -439,12 +417,10 @@ func scrapeGuilds() {
 		})
 		log.Printf("✅ [Guilds] Found %d total pages to scrape.", lastPage)
 	}
-	// --- END of finding last page ---
 
 	allGuilds := make(map[string]Guild)
 	allMembers := make(map[string]string) // Map character name to guild name
 
-	// --- MODIFIED LOOP: Loop from 1 to the last page found ---
 	for page := 1; page <= lastPage; page++ {
 		var htmlContent string
 		var pageScrapedSuccessfully bool
@@ -614,14 +590,172 @@ func scrapeGuilds() {
 	log.Printf("✅ [Guilds] Scrape and update complete. Saved %d guild records and updated character associations.", len(allGuilds))
 }
 
-// scrapeData performs a single scrape of the market data.
+func scrapeZeny() {
+	log.Println("💰 [Zeny] Starting Zeny ranking scrape...")
+	const maxRetries = 3
+
+	allocCtx, cancel := newOptimizedAllocator()
+	defer cancel()
+
+	var lastPage = 1
+	log.Println("💰 [Zeny] Determining total number of pages...")
+	firstPageCtx, cancelFirstPage := chromedp.NewContext(allocCtx)
+	defer cancelFirstPage()
+	firstPageCtx, cancelTimeout := context.WithTimeout(firstPageCtx, 60*time.Second)
+	defer cancelTimeout()
+
+	var initialHtmlContent string
+	err := chromedp.Run(firstPageCtx,
+		chromedp.Navigate("https://projetoyufa.com/rankings/zeny?page=1"),
+		chromedp.WaitVisible(`nav[aria-label="pagination"]`),
+		chromedp.OuterHTML("html", &initialHtmlContent),
+	)
+
+	if err != nil {
+		log.Printf("⚠️ [Zeny] Could not find pagination on page 1. Assuming only one page. Error: %v", err)
+	} else {
+		doc, _ := goquery.NewDocumentFromReader(strings.NewReader(initialHtmlContent))
+		pageRegex := regexp.MustCompile(`page=(\d+)`)
+		doc.Find(`nav[aria-label="pagination"] a[href*="?page="]`).Each(func(i int, s *goquery.Selection) {
+			if href, exists := s.Attr("href"); exists {
+				matches := pageRegex.FindStringSubmatch(href)
+				if len(matches) > 1 {
+					if p, err := strconv.Atoi(matches[1]); err == nil {
+						if p > lastPage {
+							lastPage = p
+						}
+					}
+				}
+			}
+		})
+	}
+	log.Printf("✅ [Zeny] Found %d total pages to scrape.", lastPage)
+
+	allZenyInfo := make(map[string]int64)
+	var mu sync.Mutex // Mutex to protect allZenyInfo map
+
+	var wg sync.WaitGroup
+	sem := make(chan struct{}, 5) // Limit to 5 concurrent scrapers
+
+	for page := 1; page <= lastPage; page++ {
+		wg.Add(1)
+		sem <- struct{}{} // Acquire a semaphore slot
+		go func(p int) {
+			defer wg.Done()
+			defer func() { <-sem }() // Release the slot
+
+			var htmlContent string
+			var pageScrapedSuccessfully bool
+
+			for attempt := 1; attempt <= maxRetries; attempt++ {
+				taskCtx, cancelCtx := chromedp.NewContext(allocCtx)
+				defer cancelCtx()
+				taskCtx, cancelTimeoutLoop := context.WithTimeout(taskCtx, 60*time.Second)
+				defer cancelTimeoutLoop()
+
+				url := fmt.Sprintf("https://projetoyufa.com/rankings/zeny?page=%d", p)
+				err := chromedp.Run(taskCtx,
+					chromedp.Navigate(url),
+					chromedp.WaitVisible(`tbody[data-slot="table-body"] tr[data-slot="table-row"]`),
+					chromedp.OuterHTML("html", &htmlContent),
+				)
+
+				if err == nil {
+					pageScrapedSuccessfully = true
+					break
+				}
+				if attempt == maxRetries {
+					log.Printf("    -> ❌ [Zeny] Error on page %d after %d attempts: %v", p, maxRetries, err)
+				}
+			}
+
+			if !pageScrapedSuccessfully {
+				return
+			}
+
+			doc, err := goquery.NewDocumentFromReader(strings.NewReader(htmlContent))
+			if err != nil {
+				log.Printf("    -> ❌ [Zeny] Failed to parse HTML for page %d: %v", p, err)
+				return
+			}
+
+			doc.Find(`tbody[data-slot="table-body"] tr[data-slot="table-row"]`).Each(func(i int, s *goquery.Selection) {
+				cells := s.Find(`td[data-slot="table-cell"]`)
+				if cells.Length() < 3 {
+					return
+				}
+
+				nameStr := strings.TrimSpace(cells.Eq(1).Text())
+				zenyStrRaw := strings.TrimSpace(cells.Eq(2).Text())
+				zenyStrClean := strings.ReplaceAll(zenyStrRaw, ",", "")
+				zenyStrClean = strings.TrimSuffix(zenyStrClean, "z")
+				zenyStrClean = strings.TrimSpace(zenyStrClean) // Trim space left between number and 'z'
+
+				zenyVal, err := strconv.ParseInt(zenyStrClean, 10, 64)
+				if err != nil {
+					log.Printf("    -> ⚠️ [Zeny] Could not parse zeny value '%s' for player '%s'", zenyStrRaw, nameStr)
+					return
+				}
+
+				mu.Lock()
+				allZenyInfo[nameStr] = zenyVal
+				mu.Unlock()
+			})
+			if enableZenyScraperDebugLogs {
+				log.Printf("    -> [Zeny] Scraped page %d successfully.", p)
+			}
+		}(page)
+	}
+
+	wg.Wait()
+	log.Printf("✅ [Zeny] Finished scraping all pages. Found zeny info for %d characters.", len(allZenyInfo))
+
+	if len(allZenyInfo) == 0 {
+		log.Println("⚠️ [Zeny] No zeny information was scraped. Skipping database update.")
+		return
+	}
+
+	tx, err := db.Begin()
+	if err != nil {
+		log.Printf("❌ [Zeny][DB] Failed to begin transaction: %v", err)
+		return
+	}
+	defer tx.Rollback()
+
+	stmt, err := tx.Prepare("UPDATE characters SET zeny = ? WHERE name = ?")
+	if err != nil {
+		log.Printf("❌ [Zeny][DB] Failed to prepare update statement: %v", err)
+		return
+	}
+	defer stmt.Close()
+
+	updatedCount := 0
+	for name, zeny := range allZenyInfo {
+		res, err := stmt.Exec(zeny, name)
+		if err != nil {
+			log.Printf("    -> ⚠️ [Zeny][DB] Failed to update zeny for '%s': %v", name, err)
+			continue
+		}
+		rowsAffected, _ := res.RowsAffected()
+		if rowsAffected > 0 {
+			updatedCount++
+		}
+	}
+
+	if err := tx.Commit(); err != nil {
+		log.Printf("❌ [Zeny][DB] Failed to commit transaction: %v", err)
+		return
+	}
+
+	log.Printf("✅ [Zeny] Database update complete. Updated zeny for %d characters.", updatedCount)
+}
+
 func scrapeData() {
 	log.Println("🚀 [Market] Starting scrape...")
 	// Compile regexes once for efficiency.
 	reRefineMid := regexp.MustCompile(`\s(\+\d+)`)
 	reRefineStart := regexp.MustCompile(`^(\+\d+)\s`)
 
-	// Use the optimized allocator
 	allocCtx, cancel := newOptimizedAllocator()
 	defer cancel()
 	taskCtx, cancel := chromedp.NewContext(allocCtx)
@@ -666,11 +800,10 @@ func scrapeData() {
 				if match := reRefineStart.FindStringSubmatch(itemName); len(match) > 1 {
 					cleanedName := strings.Replace(itemName, match[0], "", 1)
 					cleanedName = strings.Join(strings.Fields(cleanedName), " ")
-					itemName = cleanedName + " " + match[1] // Re-add space before the refinement
+					itemName = cleanedName + " " + match[1]
 				}
 			}
 
-			// Find and append card names.
 			var cardNames []string
 			itemSelection.Find("div.mt-1.flex.flex-wrap.gap-1 span[data-slot='badge']").Each(func(k int, cardSelection *goquery.Selection) {
 				cardName := strings.TrimSpace(strings.TrimSuffix(cardSelection.Text(), " Card"))
@@ -729,8 +862,6 @@ func scrapeData() {
 		return
 	}
 
-	// --- FIX IS HERE ---
-	// Changed '=' to ':=' to correctly declare the 'rows' variable.
 	rows, err := tx.Query("SELECT DISTINCT name_of_the_item FROM items WHERE is_available = 1")
 	if err != nil {
 		log.Printf("❌ [Market] Could not get list of available items: %v", err)
@@ -839,15 +970,12 @@ func scrapeData() {
 	itemsRemoved := 0
 	for name := range dbAvailableNames {
 		if _, foundInScrape := scrapedItemsByName[name]; !foundInScrape {
-			// --- FIX START ---
-			var itemID int // Declare itemID
+			var itemID int
 			err := tx.QueryRow("SELECT item_id FROM items WHERE name_of_the_item = ? AND item_id > 0 LIMIT 1", name).Scan(&itemID)
 			if err != nil {
-				// If no ID is found, log it but default to 0 so the event can still be created.
 				log.Printf("⚠️ [Market] Could not find item_id for removed item '%s', logging event with item_id 0: %v", name, err)
 				itemID = 0
 			}
-			// --- FIX END ---
 			_, err = tx.Exec(`INSERT INTO market_events (event_timestamp, event_type, item_name, item_id, details) VALUES (?, 'REMOVED', ?, ?, '{}')`, retrievalTime, name, itemID)
 			if err != nil {
 				log.Printf("❌ [Market] Failed to log REMOVED event for %s: %v", name, err)
@@ -867,7 +995,6 @@ func scrapeData() {
 	log.Printf("✅ [Market] Scrape complete. Unchanged: %d groups. Updated: %d groups. Newly Added: %d groups. Removed: %d groups.", itemsUnchanged, itemsUpdated, itemsAdded, itemsRemoved)
 }
 
-// areItemSetsIdentical compares two slices of Items to see if they are identical.
 func areItemSetsIdentical(setA, setB []Item) bool {
 	if len(setA) != len(setB) {
 		return false
@@ -903,9 +1030,7 @@ func areItemSetsIdentical(setA, setB []Item) bool {
 	return true
 }
 
-// startBackgroundJobs starts all recurring background tasks.
 func startBackgroundJobs() {
-	// --- Market Scraper ---
 	go func() {
 		ticker := time.NewTicker(5 * time.Minute)
 		defer ticker.Stop()
@@ -917,7 +1042,6 @@ func startBackgroundJobs() {
 		}
 	}()
 
-	// --- Player Count Scraper ---
 	go func() {
 		ticker := time.NewTicker(1 * time.Minute)
 		defer ticker.Stop()
@@ -929,28 +1053,35 @@ func startBackgroundJobs() {
 		}
 	}()
 
-	// --- Guild Scraper ---
-	go func() {
-		ticker := time.NewTicker(60 * time.Minute)
-		defer ticker.Stop()
-		scrapeGuilds()
-		for {
-			log.Printf("🕒 [Job] Waiting for the next 30-minute guild schedule...")
-			<-ticker.C
-			scrapeGuilds()
-		}
-	}()
-
-	// --- Player Character Scraper ---
 	go func() {
 		ticker := time.NewTicker(30 * time.Minute)
 		defer ticker.Stop()
-		//scrapePlayerCharacters()
 		for {
-			log.Printf("🕒 [Job] Waiting for the next 60-minute player character schedule...")
+			log.Printf("🕒 [Job] Waiting for the next 30-minute player character schedule...")
 			<-ticker.C
 			scrapePlayerCharacters()
 		}
 	}()
 
+	go func() {
+		scrapeGuilds()
+		ticker := time.NewTicker(60 * time.Minute)
+		defer ticker.Stop()
+		for {
+			log.Printf("🕒 [Job] Waiting for the next 60-minute guild schedule...")
+			<-ticker.C
+			scrapeGuilds()
+		}
+	}()
+
+	go func() {
+		scrapeZeny()
+		ticker := time.NewTicker(6 * time.Hour)
+		defer ticker.Stop()
+		for {
+			log.Printf("🕒 [Job] Waiting for the next 6-hour Zeny ranking schedule...")
+			<-ticker.C
+			scrapeZeny()
+		}
+	}()
 }
