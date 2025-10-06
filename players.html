@@ -56,10 +56,18 @@
         <div class="flex flex-wrap items-stretch gap-4 mb-4">
             <div class="bg-white p-3 rounded-lg shadow">
                 <div class="text-center h-full flex flex-col justify-center px-2">
-                    <span class="text-gray-500 text-xs block">Latest Active Players</span>
+                    <span class="text-gray-500 text-xs block">Active Players Now</span>
                     <strong class="text-2xl font-bold text-blue-600">{{.LatestActivePlayers}}</strong>
                 </div>
             </div>
+
+  <div class="bg-white p-3 rounded-lg shadow">
+        <div class="text-center h-full flex flex-col justify-center px-2">
+            <span class="text-gray-500 text-xs block">Historical Max Active</span>
+            <strong class="text-2xl font-bold text-green-600">{{.HistoricalMaxActivePlayers}}</strong>
+            <span class="text-gray-400 text-xs mt-1">{{.HistoricalMaxActivePlayersTime}}</span>
+        </div>
+    </div>
 
             <div class="bg-white p-3 rounded-lg shadow flex-grow">
                 <form id="playerFilterForm" class="h-full">

@@ -925,6 +925,29 @@ func playerCountHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	latestActivePlayers := latestCount - latestSellerCount
 
+	// Get the historical maximum active players
+	var historicalMaxActive int
+	var historicalMaxTime string
+	var historicalMaxTimestampStr sql.NullString
+	err = db.QueryRow("SELECT (count - COALESCE(seller_count, 0)), timestamp FROM player_history ORDER BY (count - COALESCE(seller_count, 0)) DESC LIMIT 1").Scan(&historicalMaxActive, &historicalMaxTimestampStr)
+
+	if err != nil && err != sql.ErrNoRows {
+		log.Printf("⚠️ Could not query for historical max player count: %v", err)
+		historicalMaxActive = 0
+		historicalMaxTime = "N/A"
+	} else if !historicalMaxTimestampStr.Valid {
+		historicalMaxActive = 0
+		historicalMaxTime = "N/A"
+	} else {
+		// Format the time for display
+		parsedTime, parseErr := time.Parse(time.RFC3339, historicalMaxTimestampStr.String)
+		if parseErr == nil {
+			historicalMaxTime = parsedTime.Format("2006-01-02 15:04")
+		} else {
+			historicalMaxTime = historicalMaxTimestampStr.String // fallback
+		}
+	}
+
 	tmpl, err := template.ParseFiles("players.html")
 	if err != nil {
 		http.Error(w, "Could not load players template", http.StatusInternalServerError)
@@ -933,16 +956,16 @@ func playerCountHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	data := PlayerCountPageData{
-		PlayerDataJSON:      template.JS(playerHistoryJSON),
-		LastScrapeTime:      getLastScrapeTime(),
-		SelectedInterval:    interval,
-		EventDataJSON:       template.JS(eventIntervalsJSON),
-		LatestActivePlayers: latestActivePlayers,
+		PlayerDataJSON:                 template.JS(playerHistoryJSON),
+		LastScrapeTime:                 getLastScrapeTime(),
+		SelectedInterval:               interval,
+		EventDataJSON:                  template.JS(eventIntervalsJSON),
+		LatestActivePlayers:            latestActivePlayers,
+		HistoricalMaxActivePlayers:     historicalMaxActive,
+		HistoricalMaxActivePlayersTime: historicalMaxTime,
 	}
 	tmpl.Execute(w, data)
-}
-
-// characterHandler serves the new player characters page.
+} // characterHandler serves the new player characters page.
 func characterHandler(w http.ResponseWriter, r *http.Request) {
 	if err := r.ParseForm(); err != nil {
 		http.Error(w, "Failed to parse form", http.StatusBadRequest)
