@@ -1356,7 +1356,8 @@ func guildHandler(w http.ResponseWriter, r *http.Request) {
 
 	// --- 5. Fetch the paginated guild data ---
 	query := fmt.Sprintf(`
-		SELECT rank, name, level, experience, master, emblem_url
+		SELECT rank, name, level, experience, master, emblem_url,
+		       (SELECT COUNT(*) FROM characters WHERE guild_name = guilds.name) as member_count
 		FROM guilds
 		%s
 		ORDER BY rank ASC
@@ -1375,7 +1376,7 @@ func guildHandler(w http.ResponseWriter, r *http.Request) {
 	var guilds []Guild
 	for rows.Next() {
 		var g Guild
-		if err := rows.Scan(&g.Rank, &g.Name, &g.Level, &g.Experience, &g.Master, &g.EmblemURL); err != nil {
+		if err := rows.Scan(&g.Rank, &g.Name, &g.Level, &g.Experience, &g.Master, &g.EmblemURL, &g.MemberCount); err != nil {
 			log.Printf("⚠️ Failed to scan guild row: %v", err)
 			continue
 		}
@@ -1404,3 +1405,4 @@ func guildHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	tmpl.Execute(w, data)
 }
+

@@ -142,12 +142,13 @@ type PlayerCharacter struct {
 
 // Guild represents a single guild's data from the rankings.
 type Guild struct {
-	Rank       int
-	Name       string
-	Level      int
-	Experience int
-	Master     string
-	EmblemURL  string
+	Rank        int
+	Name        string
+	Level       int
+	Experience  int
+	Master      string
+	EmblemURL   string
+	MemberCount int
 }
 
 // --- Page Data Structs for HTML Templates ---
@@ -267,3 +268,4 @@ type GuildPageData struct {
 	HasPrevPage bool
 	HasNextPage bool
 }
+
