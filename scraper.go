@@ -452,14 +452,14 @@ func scrapeGuilds() {
 		}
 
 		if !pageScrapedSuccessfully {
-			log.Printf("❌ [Guilds] All %d attempts failed for page %d. Skipping this page.", maxRetries, page)
+			log.Printf("❌ [Guilds] All %d attempts failed for page %d. Aborting guild scrape to prevent partial data update.", maxRetries, page)
 			return
 		}
 
 		doc, err := goquery.NewDocumentFromReader(strings.NewReader(htmlContent))
 		if err != nil {
-			log.Printf("❌ [Guilds] Failed to parse HTML for page %d: %v", page, err)
-			continue
+			log.Printf("❌ [Guilds] Failed to parse HTML for page %d. Aborting guild scrape to prevent partial data update. Error: %v", page, err)
+			return
 		}
 
 		guildRows := doc.Find(`tbody[data-slot="table-body"] > tr:not(:has(td[colspan="4"]))`)
@@ -1156,3 +1156,4 @@ func startBackgroundJobs() {
 		}
 	}()
 }
+
