@@ -67,12 +67,37 @@
                 <table class="min-w-full leading-normal">
                     <thead>
                         <tr class="border-b-2 border-gray-200 bg-gray-50 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
-                            <th class="px-2 sm:px-3 py-2">Rank</th>
-                            <th class="px-2 sm:px-3 py-2">Name</th>
-                            <th class="px-2 sm:px-3 py-2">Level</th>
+                            <th class="px-2 sm:px-3 py-2">
+                                <a href="/guilds?sort_by=rank&order={{if eq .SortBy "rank"}}{{toggleOrder .Order}}{{else}}ASC{{end}}&name_query={{.SearchName}}" class="hover:text-blue-600">
+                                    Rank
+                                    {{if eq .SortBy "rank"}}{{- if eq .Order "ASC"}}&#9650;{{else}}&#9660;{{end}}{{- end}}
+                                </a>
+                            </th>
+                            <th class="px-2 sm:px-3 py-2">
+                                <a href="/guilds?sort_by=name&order={{if eq .SortBy "name"}}{{toggleOrder .Order}}{{else}}ASC{{end}}&name_query={{.SearchName}}" class="hover:text-blue-600">
+                                    Name
+                                    {{if eq .SortBy "name"}}{{- if eq .Order "ASC"}}&#9650;{{else}}&#9660;{{end}}{{- end}}
+                                </a>
+                            </th>
+                            <th class="px-2 sm:px-3 py-2">
+                                <a href="/guilds?sort_by=level&order={{if eq .SortBy "level"}}{{toggleOrder .Order}}{{else}}DESC{{end}}&name_query={{.SearchName}}" class="hover:text-blue-600">
+                                    Level
+                                    {{if eq .SortBy "level"}}{{- if eq .Order "ASC"}}&#9650;{{else}}&#9660;{{end}}{{- end}}
+                                </a>
+                            </th>
                             <th class="px-2 sm:px-3 py-2">Experience %</th>
-                            <th class="px-2 sm:px-3 py-2">Master</th>
-                            <th class="px-2 sm:px-3 py-2">Members</th>
+                            <th class="px-2 sm:px-3 py-2">
+                                <a href="/guilds?sort_by=master&order={{if eq .SortBy "master"}}{{toggleOrder .Order}}{{else}}ASC{{end}}&name_query={{.SearchName}}" class="hover:text-blue-600">
+                                    Master
+                                    {{if eq .SortBy "master"}}{{- if eq .Order "ASC"}}&#9650;{{else}}&#9660;{{end}}{{- end}}
+                                </a>
+                            </th>
+                            <th class="px-2 sm:px-3 py-2">
+                                <a href="/guilds?sort_by=members&order={{if eq .SortBy "members"}}{{toggleOrder .Order}}{{else}}DESC{{end}}&name_query={{.SearchName}}" class="hover:text-blue-600">
+                                    Members
+                                    {{if eq .SortBy "members"}}{{- if eq .Order "ASC"}}&#9650;{{else}}&#9660;{{end}}{{- end}}
+                                </a>
+                            </th>
                         </tr>
                     </thead>
                     <tbody class="text-gray-700 text-xs">
@@ -110,7 +135,7 @@
                 </span>
                 <div class="inline-flex mt-2 xs:mt-0">
                     {{if .HasPrevPage}}
-                        <a href="/guilds?page={{.PrevPage}}&name_query={{.SearchName}}" class="text-sm bg-gray-300 hover:bg-gray-400 text-gray-800 font-semibold py-1 px-3 rounded-l">
+                        <a href="/guilds?page={{.PrevPage}}&name_query={{.SearchName}}&sort_by={{.SortBy}}&order={{.Order}}" class="text-sm bg-gray-300 hover:bg-gray-400 text-gray-800 font-semibold py-1 px-3 rounded-l">
                             Prev
                         </a>
                     {{else}}
@@ -120,7 +145,7 @@
                     {{end}}
 
                     {{if .HasNextPage}}
-                        <a href="/guilds?page={{.NextPage}}&name_query={{.SearchName}}" class="text-sm bg-gray-300 hover:bg-gray-400 text-gray-800 font-semibold py-1 px-3 rounded-r">
+                        <a href="/guilds?page={{.NextPage}}&name_query={{.SearchName}}&sort_by={{.SortBy}}&order={{.Order}}" class="text-sm bg-gray-300 hover:bg-gray-400 text-gray-800 font-semibold py-1 px-3 rounded-r">
                             Next
                         </a>
                     {{else}}

@@ -1313,9 +1313,12 @@ func characterHandler(w http.ResponseWriter, r *http.Request) {
 
 // guildHandler serves the new player guilds page.
 func guildHandler(w http.ResponseWriter, r *http.Request) {
-	// --- 1. Get query parameters for filtering and pagination ---
+	// --- 1. Get query parameters ---
 	searchName := r.URL.Query().Get("name_query")
 	pageStr := r.URL.Query().Get("page")
+	sortBy := r.URL.Query().Get("sort_by")
+	order := r.URL.Query().Get("order")
+
 	page, err := strconv.Atoi(pageStr)
 	if err != nil || page < 1 {
 		page = 1
@@ -1334,7 +1337,24 @@ func guildHandler(w http.ResponseWriter, r *http.Request) {
 		whereClause = "WHERE " + strings.Join(whereConditions, " AND ")
 	}
 
-	// --- 3. Get the total count of matching guilds for pagination ---
+	// --- 3. Handle Sorting ---
+	allowedSorts := map[string]string{
+		"rank":    "rank",
+		"name":    "name",
+		"level":   "level",
+		"master":  "master",
+		"members": "member_count",
+	}
+	orderByClause, ok := allowedSorts[sortBy]
+	if !ok {
+		orderByClause, sortBy = "rank", "rank" // Default sort
+	}
+	if strings.ToUpper(order) != "DESC" {
+		order = "ASC"
+	}
+	orderByFullClause := fmt.Sprintf("ORDER BY %s %s", orderByClause, order)
+
+	// --- 4. Get the total count of matching guilds for pagination ---
 	var totalGuilds int
 	countQuery := fmt.Sprintf("SELECT COUNT(*) FROM guilds %s", whereClause)
 	err = db.QueryRow(countQuery, params...).Scan(&totalGuilds)
@@ -1344,7 +1364,7 @@ func guildHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// --- 4. Calculate pagination details ---
+	// --- 5. Calculate pagination details ---
 	totalPages := int(math.Ceil(float64(totalGuilds) / float64(guildsPerPage)))
 	if page > totalPages {
 		page = totalPages
@@ -1354,15 +1374,15 @@ func guildHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	offset := (page - 1) * guildsPerPage
 
-	// --- 5. Fetch the paginated guild data ---
+	// --- 6. Fetch the paginated guild data ---
 	query := fmt.Sprintf(`
 		SELECT rank, name, level, experience, master, emblem_url,
 		       (SELECT COUNT(*) FROM characters WHERE guild_name = guilds.name) as member_count
 		FROM guilds
 		%s
-		ORDER BY rank ASC
+		%s
 		LIMIT ? OFFSET ?
-	`, whereClause)
+	`, whereClause, orderByFullClause)
 	finalParams := append(params, guildsPerPage, offset)
 
 	rows, err := db.Query(query, finalParams...)
@@ -1383,8 +1403,17 @@ func guildHandler(w http.ResponseWriter, r *http.Request) {
 		guilds = append(guilds, g)
 	}
 
-	// --- 6. Load template and send data ---
-	tmpl, err := template.ParseFiles("guilds.html")
+	// --- 7. Load template and send data ---
+	funcMap := template.FuncMap{
+		"toggleOrder": func(currentOrder string) string {
+			if currentOrder == "ASC" {
+				return "DESC"
+			}
+			return "ASC"
+		},
+	}
+
+	tmpl, err := template.New("guilds.html").Funcs(funcMap).ParseFiles("guilds.html")
 	if err != nil {
 		http.Error(w, "Could not load guilds template", http.StatusInternalServerError)
 		log.Printf("❌ Could not load guilds.html template: %v", err)
@@ -1395,6 +1424,8 @@ func guildHandler(w http.ResponseWriter, r *http.Request) {
 		Guilds:         guilds,
 		LastScrapeTime: getLastScrapeTime(),
 		SearchName:     searchName,
+		SortBy:         sortBy,
+		Order:          order,
 		CurrentPage:    page,
 		TotalPages:     totalPages,
 		PrevPage:       page - 1,

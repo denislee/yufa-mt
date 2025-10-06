@@ -259,6 +259,9 @@ type GuildPageData struct {
 	LastScrapeTime string
 	// Search and Filter
 	SearchName string
+	// Sorting
+	SortBy string
+	Order  string
 	// Pagination
 	CurrentPage int
 	TotalPages  int
