@@ -24,8 +24,8 @@ var definedEvents = []EventDefinition{
 	},
 	{
 		Name:      "War of Emperium",
-		StartTime: "22:00",
-		EndTime:   "23:00",
+		StartTime: "21:00",
+		EndTime:   "22:00",
 		Days:      []time.Weekday{time.Sunday},
 	},
 }
@@ -1381,4 +1381,3 @@ func guildHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	tmpl.Execute(w, data)
 }
-
