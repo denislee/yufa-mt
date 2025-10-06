@@ -13,13 +13,13 @@
         }
     </style>
 </head>
-<body class="bg-gray-100 text-gray-800">
+<body class="bg-gray-100 text-gray-800 text-sm sm:text-base">
 
-    <nav class="bg-white shadow-sm">
-        <div class="container mx-auto px-4 py-2">
-            <div class="flex justify-between items-center">
+    <nav class="bg-white shadow-sm sticky top-0 z-10">
+        <div class="container mx-auto px-4">
+            <div class="flex justify-between items-center py-2">
                 <div class="text-xl font-semibold text-gray-700">Yufa Market Tracker</div>
-                <div class="flex space-x-4">
+                <div class="hidden md:flex space-x-4">
                     <a href="/" class="text-gray-600 hover:text-blue-500">Summary</a>
                     <a href="/full-list" class="text-gray-600 hover:text-blue-500">Full List</a>
                     <a href="/activity" class="text-gray-600 hover:text-blue-500">Activity</a>
@@ -27,12 +27,25 @@
                     <a href="/characters" class="text-blue-500 font-bold">Characters</a>
                     <a href="/guilds" class="text-gray-600 hover:text-blue-500">Guilds</a>
                 </div>
+                <div class="md:hidden flex items-center">
+                    <button id="mobile-menu-button" class="text-gray-600 hover:text-gray-800 focus:outline-none">
+                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16m-7 6h7"></path></svg>
+                    </button>
+                </div>
             </div>
+        </div>
+        <div id="mobile-menu" class="hidden md:hidden border-t border-gray-200">
+            <a href="/" class="block py-2 px-4 text-sm text-gray-600 hover:bg-gray-50">Summary</a>
+            <a href="/full-list" class="block py-2 px-4 text-sm text-gray-600 hover:bg-gray-50">Full List</a>
+            <a href="/activity" class="block py-2 px-4 text-sm text-gray-600 hover:bg-gray-50">Activity</a>
+            <a href="/players" class="block py-2 px-4 text-sm text-gray-600 hover:bg-gray-50">Player Count</a>
+            <a href="/characters" class="block py-2 px-4 text-sm bg-blue-50 text-blue-600 font-semibold">Characters</a>
+            <a href="/guilds" class="block py-2 px-4 text-sm text-gray-600 hover:bg-gray-50">Guilds</a>
         </div>
     </nav>
 
     <div class="container mx-auto px-4 py-6">
-        <div class="flex justify-between items-center mb-4 border-b border-gray-200 pb-3">
+        <div class="flex flex-col sm:flex-row justify-between sm:items-center gap-2 mb-4 border-b border-gray-200 pb-3">
             <h1 class="text-2xl font-bold text-gray-800">Player Characters</h1>
             <p class="text-sm text-gray-500">Last Scrape: {{.LastScrapeTime}}</p>
         </div>
@@ -132,23 +145,23 @@
                 <table class="min-w-full leading-normal">
                     <thead>
                         <tr class="border-b-2 border-gray-200 bg-gray-50 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
-                            {{if index .VisibleColumns "rank"}}<th class="px-3 py-2 whitespace-nowrap"><a href="/characters?sort_by=rank&order={{if eq .SortBy "rank"}}{{toggleOrder .Order}}{{else}}ASC{{end}}&name_query={{.SearchName}}&class_filter={{.SelectedClass}}&guild_filter={{.SelectedGuild}}&{{.ColumnParams}}&{{.GraphFilterParams}}">Rank {{if eq .SortBy "rank"}}{{if eq .Order "ASC"}}<span class="text-gray-400">▲</span>{{else}}<span class="text-gray-400">▼</span>{{end}}{{end}}</a></th>{{end}}
-                            <th class="px-3 py-2 whitespace-nowrap"><a href="/characters?sort_by=name&order={{if eq .SortBy "name"}}{{toggleOrder .Order}}{{else}}ASC{{end}}&name_query={{.SearchName}}&class_filter={{.SelectedClass}}&guild_filter={{.SelectedGuild}}&{{.ColumnParams}}&{{.GraphFilterParams}}">Name {{if eq .SortBy "name"}}{{if eq .Order "ASC"}}<span class="text-gray-400">▲</span>{{else}}<span class="text-gray-400">▼</span>{{end}}{{end}}</a></th>
-                            {{if index .VisibleColumns "base_level"}}<th class="px-3 py-2 whitespace-nowrap"><a href="/characters?sort_by=base_level&order={{if eq .SortBy "base_level"}}{{toggleOrder .Order}}{{else}}ASC{{end}}&name_query={{.SearchName}}&class_filter={{.SelectedClass}}&guild_filter={{.SelectedGuild}}&{{.ColumnParams}}&{{.GraphFilterParams}}">Base Lvl {{if eq .SortBy "base_level"}}{{if eq .Order "ASC"}}<span class="text-gray-400">▲</span>{{else}}<span class="text-gray-400">▼</span>{{end}}{{end}}</a></th>{{end}}
-                            {{if index .VisibleColumns "job_level"}}<th class="px-3 py-2 whitespace-nowrap"><a href="/characters?sort_by=job_level&order={{if eq .SortBy "job_level"}}{{toggleOrder .Order}}{{else}}ASC{{end}}&name_query={{.SearchName}}&class_filter={{.SelectedClass}}&guild_filter={{.SelectedGuild}}&{{.ColumnParams}}&{{.GraphFilterParams}}">Job Lvl {{if eq .SortBy "job_level"}}{{if eq .Order "ASC"}}<span class="text-gray-400">▲</span>{{else}}<span class="text-gray-400">▼</span>{{end}}{{end}}</a></th>{{end}}
-                            {{if index .VisibleColumns "experience"}}<th class="px-3 py-2 whitespace-nowrap"><a href="/characters?sort_by=experience&order={{if eq .SortBy "experience"}}{{toggleOrder .Order}}{{else}}ASC{{end}}&name_query={{.SearchName}}&class_filter={{.SelectedClass}}&guild_filter={{.SelectedGuild}}&{{.ColumnParams}}&{{.GraphFilterParams}}">Exp % {{if eq .SortBy "experience"}}{{if eq .Order "ASC"}}<span class="text-gray-400">▲</span>{{else}}<span class="text-gray-400">▼</span>{{end}}{{end}}</a></th>{{end}}
-                            {{if index .VisibleColumns "zeny"}}<th class="px-3 py-2 whitespace-nowrap"><a href="/characters?sort_by=zeny&order={{if eq .SortBy "zeny"}}{{toggleOrder .Order}}{{else}}DESC{{end}}&name_query={{.SearchName}}&class_filter={{.SelectedClass}}&guild_filter={{.SelectedGuild}}&{{.ColumnParams}}&{{.GraphFilterParams}}">Zeny {{if eq .SortBy "zeny"}}{{if eq .Order "ASC"}}<span class="text-gray-400">▲</span>{{else}}<span class="text-gray-400">▼</span>{{end}}{{end}}</a></th>{{end}}
-                            {{if index .VisibleColumns "class"}}<th class="px-3 py-2 whitespace-nowrap"><a href="/characters?sort_by=class&order={{if eq .SortBy "class"}}{{toggleOrder .Order}}{{else}}ASC{{end}}&name_query={{.SearchName}}&class_filter={{.SelectedClass}}&guild_filter={{.SelectedGuild}}&{{.ColumnParams}}&{{.GraphFilterParams}}">Class {{if eq .SortBy "class"}}{{if eq .Order "ASC"}}<span class="text-gray-400">▲</span>{{else}}<span class="text-gray-400">▼</span>{{end}}{{end}}</a></th>{{end}}
-                            {{if index .VisibleColumns "guild"}}<th class="px-3 py-2 whitespace-nowrap"><a href="/characters?sort_by=guild&order={{if eq .SortBy "guild"}}{{toggleOrder .Order}}{{else}}ASC{{end}}&name_query={{.SearchName}}&class_filter={{.SelectedClass}}&guild_filter={{.SelectedGuild}}&{{.ColumnParams}}&{{.GraphFilterParams}}">Guild {{if eq .SortBy "guild"}}{{if eq .Order "ASC"}}<span class="text-gray-400">▲</span>{{else}}<span class="text-gray-400">▼</span>{{end}}{{end}}</a></th>{{end}}
-                            {{if index .VisibleColumns "last_updated"}}<th class="px-3 py-2 whitespace-nowrap"><a href="/characters?sort_by=last_updated&order={{if eq .SortBy "last_updated"}}{{toggleOrder .Order}}{{else}}ASC{{end}}&name_query={{.SearchName}}&class_filter={{.SelectedClass}}&guild_filter={{.SelectedGuild}}&{{.ColumnParams}}&{{.GraphFilterParams}}">Last Updated {{if eq .SortBy "last_updated"}}{{if eq .Order "ASC"}}<span class="text-gray-400">▲</span>{{else}}<span class="text-gray-400">▼</span>{{end}}{{end}}</a></th>{{end}}
-                            {{if index .VisibleColumns "last_active"}}<th class="px-3 py-2 whitespace-nowrap"><a href="/characters?sort_by=last_active&order={{if eq .SortBy "last_active"}}{{toggleOrder .Order}}{{else}}ASC{{end}}&name_query={{.SearchName}}&class_filter={{.SelectedClass}}&guild_filter={{.SelectedGuild}}&{{.ColumnParams}}&{{.GraphFilterParams}}">Last Active {{if eq .SortBy "last_active"}}{{if eq .Order "ASC"}}<span class="text-gray-400">▲</span>{{else}}<span class="text-gray-400">▼</span>{{end}}{{end}}</a></th>{{end}}
+                            {{if index .VisibleColumns "rank"}}<th class="px-2 sm:px-3 py-2 whitespace-nowrap"><a href="/characters?sort_by=rank&order={{if eq .SortBy "rank"}}{{toggleOrder .Order}}{{else}}ASC{{end}}&name_query={{.SearchName}}&class_filter={{.SelectedClass}}&guild_filter={{.SelectedGuild}}&{{.ColumnParams}}&{{.GraphFilterParams}}">Rank {{if eq .SortBy "rank"}}{{if eq .Order "ASC"}}<span class="text-gray-400">▲</span>{{else}}<span class="text-gray-400">▼</span>{{end}}{{end}}</a></th>{{end}}
+                            <th class="px-2 sm:px-3 py-2 whitespace-nowrap"><a href="/characters?sort_by=name&order={{if eq .SortBy "name"}}{{toggleOrder .Order}}{{else}}ASC{{end}}&name_query={{.SearchName}}&class_filter={{.SelectedClass}}&guild_filter={{.SelectedGuild}}&{{.ColumnParams}}&{{.GraphFilterParams}}">Name {{if eq .SortBy "name"}}{{if eq .Order "ASC"}}<span class="text-gray-400">▲</span>{{else}}<span class="text-gray-400">▼</span>{{end}}{{end}}</a></th>
+                            {{if index .VisibleColumns "base_level"}}<th class="px-2 sm:px-3 py-2 whitespace-nowrap"><a href="/characters?sort_by=base_level&order={{if eq .SortBy "base_level"}}{{toggleOrder .Order}}{{else}}ASC{{end}}&name_query={{.SearchName}}&class_filter={{.SelectedClass}}&guild_filter={{.SelectedGuild}}&{{.ColumnParams}}&{{.GraphFilterParams}}">Base Lvl {{if eq .SortBy "base_level"}}{{if eq .Order "ASC"}}<span class="text-gray-400">▲</span>{{else}}<span class="text-gray-400">▼</span>{{end}}{{end}}</a></th>{{end}}
+                            {{if index .VisibleColumns "job_level"}}<th class="px-2 sm:px-3 py-2 whitespace-nowrap"><a href="/characters?sort_by=job_level&order={{if eq .SortBy "job_level"}}{{toggleOrder .Order}}{{else}}ASC{{end}}&name_query={{.SearchName}}&class_filter={{.SelectedClass}}&guild_filter={{.SelectedGuild}}&{{.ColumnParams}}&{{.GraphFilterParams}}">Job Lvl {{if eq .SortBy "job_level"}}{{if eq .Order "ASC"}}<span class="text-gray-400">▲</span>{{else}}<span class="text-gray-400">▼</span>{{end}}{{end}}</a></th>{{end}}
+                            {{if index .VisibleColumns "experience"}}<th class="px-2 sm:px-3 py-2 whitespace-nowrap"><a href="/characters?sort_by=experience&order={{if eq .SortBy "experience"}}{{toggleOrder .Order}}{{else}}ASC{{end}}&name_query={{.SearchName}}&class_filter={{.SelectedClass}}&guild_filter={{.SelectedGuild}}&{{.ColumnParams}}&{{.GraphFilterParams}}">Exp % {{if eq .SortBy "experience"}}{{if eq .Order "ASC"}}<span class="text-gray-400">▲</span>{{else}}<span class="text-gray-400">▼</span>{{end}}{{end}}</a></th>{{end}}
+                            {{if index .VisibleColumns "zeny"}}<th class="px-2 sm:px-3 py-2 whitespace-nowrap"><a href="/characters?sort_by=zeny&order={{if eq .SortBy "zeny"}}{{toggleOrder .Order}}{{else}}DESC{{end}}&name_query={{.SearchName}}&class_filter={{.SelectedClass}}&guild_filter={{.SelectedGuild}}&{{.ColumnParams}}&{{.GraphFilterParams}}">Zeny {{if eq .SortBy "zeny"}}{{if eq .Order "ASC"}}<span class="text-gray-400">▲</span>{{else}}<span class="text-gray-400">▼</span>{{end}}{{end}}</a></th>{{end}}
+                            {{if index .VisibleColumns "class"}}<th class="px-2 sm:px-3 py-2 whitespace-nowrap"><a href="/characters?sort_by=class&order={{if eq .SortBy "class"}}{{toggleOrder .Order}}{{else}}ASC{{end}}&name_query={{.SearchName}}&class_filter={{.SelectedClass}}&guild_filter={{.SelectedGuild}}&{{.ColumnParams}}&{{.GraphFilterParams}}">Class {{if eq .SortBy "class"}}{{if eq .Order "ASC"}}<span class="text-gray-400">▲</span>{{else}}<span class="text-gray-400">▼</span>{{end}}{{end}}</a></th>{{end}}
+                            {{if index .VisibleColumns "guild"}}<th class="px-2 sm:px-3 py-2 whitespace-nowrap"><a href="/characters?sort_by=guild&order={{if eq .SortBy "guild"}}{{toggleOrder .Order}}{{else}}ASC{{end}}&name_query={{.SearchName}}&class_filter={{.SelectedClass}}&guild_filter={{.SelectedGuild}}&{{.ColumnParams}}&{{.GraphFilterParams}}">Guild {{if eq .SortBy "guild"}}{{if eq .Order "ASC"}}<span class="text-gray-400">▲</span>{{else}}<span class="text-gray-400">▼</span>{{end}}{{end}}</a></th>{{end}}
+                            {{if index .VisibleColumns "last_updated"}}<th class="px-2 sm:px-3 py-2 whitespace-nowrap"><a href="/characters?sort_by=last_updated&order={{if eq .SortBy "last_updated"}}{{toggleOrder .Order}}{{else}}ASC{{end}}&name_query={{.SearchName}}&class_filter={{.SelectedClass}}&guild_filter={{.SelectedGuild}}&{{.ColumnParams}}&{{.GraphFilterParams}}">Last Updated {{if eq .SortBy "last_updated"}}{{if eq .Order "ASC"}}<span class="text-gray-400">▲</span>{{else}}<span class="text-gray-400">▼</span>{{end}}{{end}}</a></th>{{end}}
+                            {{if index .VisibleColumns "last_active"}}<th class="px-2 sm:px-3 py-2 whitespace-nowrap"><a href="/characters?sort_by=last_active&order={{if eq .SortBy "last_active"}}{{toggleOrder .Order}}{{else}}ASC{{end}}&name_query={{.SearchName}}&class_filter={{.SelectedClass}}&guild_filter={{.SelectedGuild}}&{{.ColumnParams}}&{{.GraphFilterParams}}">Last Active {{if eq .SortBy "last_active"}}{{if eq .Order "ASC"}}<span class="text-gray-400">▲</span>{{else}}<span class="text-gray-400">▼</span>{{end}}{{end}}</a></th>{{end}}
                         </tr>
                     </thead>
                     <tbody class="text-gray-700 text-xs">
                         {{range .Players}}
                         <tr class="border-b border-gray-200 hover:bg-gray-50">
-                            {{if index $.VisibleColumns "rank"}}<td class="px-3 py-2">{{.Rank}}</td>{{end}}
-                            <td class="px-3 py-2 font-semibold">
+                            {{if index $.VisibleColumns "rank"}}<td class="px-2 sm:px-3 py-2">{{.Rank}}</td>{{end}}
+                            <td class="px-2 sm:px-3 py-2 font-semibold">
                                 <div class="flex items-center">
                                     {{if .IsActive}}
                                     <span class="h-2 w-2 mr-2 bg-green-500 rounded-full flex-shrink-0" title="Active"></span>
@@ -164,14 +177,14 @@
                                     {{end}}
                                 </div>
                             </td>
-                            {{if index $.VisibleColumns "base_level"}}<td class="px-3 py-2">{{.BaseLevel}}</td>{{end}}
-                            {{if index $.VisibleColumns "job_level"}}<td class="px-3 py-2">{{.JobLevel}}</td>{{end}}
-                            {{if index $.VisibleColumns "experience"}}<td class="px-3 py-2">{{printf "%.2f" .Experience}}%</td>{{end}}
-                            {{if index $.VisibleColumns "zeny"}}<td class="px-3 py-2">{{if .Zeny}}{{formatZeny .Zeny}}{{else}}N/A{{end}}</td>{{end}}
-                            {{if index $.VisibleColumns "class"}}<td class="px-3 py-2">{{.Class}}</td>{{end}}
-                            {{if index $.VisibleColumns "guild"}}<td class="px-3 py-2">{{if .GuildName.Valid}}<a href="/characters?guild_filter={{.GuildName.String}}&name_query={{$.SearchName}}&class_filter={{$.SelectedClass}}&{{$.ColumnParams}}&{{$.GraphFilterParams}}" class="text-blue-600 hover:underline">{{.GuildName.String}}</a>{{end}}</td>{{end}}
-                            {{if index $.VisibleColumns "last_updated"}}<td class="px-3 py-2 whitespace-nowrap">{{.LastUpdated}}</td>{{end}}
-                            {{if index $.VisibleColumns "last_active"}}<td class="px-3 py-2 whitespace-nowrap">{{.LastActive}}</td>{{end}}
+                            {{if index $.VisibleColumns "base_level"}}<td class="px-2 sm:px-3 py-2">{{.BaseLevel}}</td>{{end}}
+                            {{if index $.VisibleColumns "job_level"}}<td class="px-2 sm:px-3 py-2">{{.JobLevel}}</td>{{end}}
+                            {{if index $.VisibleColumns "experience"}}<td class="px-2 sm:px-3 py-2">{{printf "%.2f" .Experience}}%</td>{{end}}
+                            {{if index $.VisibleColumns "zeny"}}<td class="px-2 sm:px-3 py-2">{{if .Zeny}}{{formatZeny .Zeny}}{{else}}N/A{{end}}</td>{{end}}
+                            {{if index $.VisibleColumns "class"}}<td class="px-2 sm:px-3 py-2">{{.Class}}</td>{{end}}
+                            {{if index $.VisibleColumns "guild"}}<td class="px-2 sm:px-3 py-2">{{if .GuildName.Valid}}<a href="/characters?guild_filter={{.GuildName.String}}&name_query={{$.SearchName}}&class_filter={{$.SelectedClass}}&{{$.ColumnParams}}&{{$.GraphFilterParams}}" class="text-blue-600 hover:underline">{{.GuildName.String}}</a>{{end}}</td>{{end}}
+                            {{if index $.VisibleColumns "last_updated"}}<td class="px-2 sm:px-3 py-2 whitespace-nowrap">{{.LastUpdated}}</td>{{end}}
+                            {{if index $.VisibleColumns "last_active"}}<td class="px-2 sm:px-3 py-2 whitespace-nowrap">{{.LastActive}}</td>{{end}}
                         </tr>
                         {{else}}
                         <tr>
@@ -215,6 +228,12 @@
 
 <script>
 document.addEventListener('DOMContentLoaded', () => {
+    // Mobile menu toggle
+    document.getElementById('mobile-menu-button').addEventListener('click', function() {
+        var menu = document.getElementById('mobile-menu');
+        menu.classList.toggle('hidden');
+    });
+
     const ctx = document.getElementById('classDistChart');
     if (ctx) {
         try {

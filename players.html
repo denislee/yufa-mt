@@ -2,13 +2,11 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale-1.0">
     <title>Yufa Market Tracker / Player Count</title>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-
     <script src="https://cdn.jsdelivr.net/npm/date-fns@3/index.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
-    
     <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-annotation@3.0.1/dist/chartjs-plugin-annotation.min.js"></script>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
@@ -18,13 +16,13 @@
         }
     </style>
 </head>
-<body class="bg-gray-100 text-gray-800">
+<body class="bg-gray-100 text-gray-800 text-sm sm:text-base">
 
-    <nav class="bg-white shadow-sm">
-        <div class="container mx-auto px-4 py-2">
-            <div class="flex justify-between items-center">
+    <nav class="bg-white shadow-sm sticky top-0 z-10">
+        <div class="container mx-auto px-4">
+            <div class="flex justify-between items-center py-2">
                 <div class="text-xl font-semibold text-gray-700">Yufa Market Tracker</div>
-                <div class="flex space-x-4">
+                <div class="hidden md:flex space-x-4">
                     <a href="/" class="text-gray-600 hover:text-blue-500">Summary</a>
                     <a href="/full-list" class="text-gray-600 hover:text-blue-500">Full List</a>
                     <a href="/activity" class="text-gray-600 hover:text-blue-500">Activity</a>
@@ -32,12 +30,25 @@
                     <a href="/characters" class="text-gray-600 hover:text-blue-500">Characters</a>
                     <a href="/guilds" class="text-gray-600 hover:text-blue-500">Guilds</a>
                 </div>
+                <div class="md:hidden flex items-center">
+                    <button id="mobile-menu-button" class="text-gray-600 hover:text-gray-800 focus:outline-none">
+                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16m-7 6h7"></path></svg>
+                    </button>
+                </div>
             </div>
+        </div>
+        <div id="mobile-menu" class="hidden md:hidden border-t border-gray-200">
+            <a href="/" class="block py-2 px-4 text-sm text-gray-600 hover:bg-gray-50">Summary</a>
+            <a href="/full-list" class="block py-2 px-4 text-sm text-gray-600 hover:bg-gray-50">Full List</a>
+            <a href="/activity" class="block py-2 px-4 text-sm text-gray-600 hover:bg-gray-50">Activity</a>
+            <a href="/players" class="block py-2 px-4 text-sm bg-blue-50 text-blue-600 font-semibold">Player Count</a>
+            <a href="/characters" class="block py-2 px-4 text-sm text-gray-600 hover:bg-gray-50">Characters</a>
+            <a href="/guilds" class="block py-2 px-4 text-sm text-gray-600 hover:bg-gray-50">Guilds</a>
         </div>
     </nav>
 
     <div class="container mx-auto px-4 py-6">
-        <div class="flex justify-between items-center mb-4 border-b border-gray-200 pb-3">
+        <div class="flex flex-col sm:flex-row justify-between sm:items-center gap-2 mb-4 border-b border-gray-200 pb-3">
             <h1 class="text-2xl font-bold text-gray-800">Online Player History</h1>
             <p class="text-sm text-gray-500">Last market update: <strong data-timestamp="{{.LastScrapeTime}}">{{.LastScrapeTime}}</strong> <span id="time-ago"></span></p>
         </div>
@@ -60,7 +71,7 @@
                             <a href="/players?interval=7d" class="filter-interval text-sm font-medium px-3 py-1 rounded-full {{if eq .SelectedInterval "7d"}}bg-blue-500 text-white{{else}}bg-gray-200 text-gray-700 hover:bg-gray-300{{end}}">7d</a>
                             <a href="/players?interval=30d" class="filter-interval text-sm font-medium px-3 py-1 rounded-full {{if eq .SelectedInterval "30d"}}bg-blue-500 text-white{{else}}bg-gray-200 text-gray-700 hover:bg-gray-300{{end}}">30d</a>
                         </div>
-                        <div class="flex items-center gap-x-3 text-sm">
+                        <div class="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm">
                             <strong class="text-gray-700">Show:</strong>
                             <label class="flex items-center gap-2"><input type="checkbox" id="togglePlayers" class="rounded"> Players</label>
                             <label class="flex items-center gap-2"><input type="checkbox" id="toggleSellers" class="rounded"> Sellers</label>
@@ -82,6 +93,12 @@
         const eventData = {{.EventDataJSON}};
 
         document.addEventListener('DOMContentLoaded', () => {
+            // Mobile menu toggle
+            document.getElementById('mobile-menu-button').addEventListener('click', function() {
+                var menu = document.getElementById('mobile-menu');
+                menu.classList.toggle('hidden');
+            });
+            
             const togglePlayers = document.getElementById('togglePlayers');
             const toggleSellers = document.getElementById('toggleSellers');
             const toggleDelta = document.getElementById('toggleDelta');
@@ -119,7 +136,6 @@
             [togglePlayers, toggleSellers, toggleDelta, toggleEvents].forEach(el => el.addEventListener('change', updateFilterLinks));
             updateFilterLinks();
 
-            // --- MODIFIED: Transform data for time-series axis ---
             const chartDataPlayers = playerData.map(p => ({ x: new Date(p.Timestamp), y: p.Count }));
             const chartDataSellers = playerData.map(p => ({ x: new Date(p.Timestamp), y: p.SellerCount }));
             const chartDataDelta = playerData.map(p => ({ x: new Date(p.Timestamp), y: p.Delta }));
@@ -148,7 +164,6 @@
             const playerChart = new Chart(ctx, {
                 type: 'line',
                 data: {
-                    // MODIFIED: No separate 'labels' array needed
                     datasets: [{
                         label: 'Online Players', data: chartDataPlayers, borderColor: 'rgba(0, 123, 255, 1)', backgroundColor: 'rgba(0, 123, 255, 0.2)',
                         borderWidth: 2, fill: true, tension: 0.1, pointRadius: 2, pointHoverRadius: 5,
@@ -163,7 +178,6 @@
                 options: {
                     scales: {
                         y: { min: 0, max: chartMaxY, title: { display: true, text: 'Count' } },
-                        // --- MODIFIED: Configure x-axis for time series ---
                         x: {
                             type: 'time',
                             title: { display: true, text: 'Date & Time' },

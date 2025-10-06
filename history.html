@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale-1.0">
+    <meta name="viewport" content="width=deivce-width, initial-scale=1.0">
     <title>Yufa Market Tracker / Price History for {{.ItemName}}</title>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="https://cdn.tailwindcss.com"></script>
@@ -13,13 +13,13 @@
         }
     </style>
 </head>
-<body class="bg-gray-100 text-gray-800">
+<body class="bg-gray-100 text-gray-800 text-sm sm:text-base">
 
-    <nav class="bg-white shadow-sm">
-        <div class="container mx-auto px-4 py-2">
-            <div class="flex justify-between items-center">
+    <nav class="bg-white shadow-sm sticky top-0 z-10">
+        <div class="container mx-auto px-4">
+            <div class="flex justify-between items-center py-2">
                 <div class="text-xl font-semibold text-gray-700">Yufa Market Tracker</div>
-                <div class="flex space-x-4">
+                <div class="hidden md:flex space-x-4">
                     <a href="/" class="text-gray-600 hover:text-blue-500">Summary</a>
                     <a href="/full-list" class="text-gray-600 hover:text-blue-500">Full List</a>
                     <a href="/activity" class="text-gray-600 hover:text-blue-500">Activity</a>
@@ -27,18 +27,31 @@
                     <a href="/characters" class="text-gray-600 hover:text-blue-500">Characters</a>
                     <a href="/guilds" class="text-gray-600 hover:text-blue-500">Guilds</a>
                 </div>
+                <div class="md:hidden flex items-center">
+                    <button id="mobile-menu-button" class="text-gray-600 hover:text-gray-800 focus:outline-none">
+                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16m-7 6h7"></path></svg>
+                    </button>
+                </div>
             </div>
+        </div>
+        <div id="mobile-menu" class="hidden md:hidden border-t border-gray-200">
+            <a href="/" class="block py-2 px-4 text-sm text-gray-600 hover:bg-gray-50">Summary</a>
+            <a href="/full-list" class="block py-2 px-4 text-sm text-gray-600 hover:bg-gray-50">Full List</a>
+            <a href="/activity" class="block py-2 px-4 text-sm text-gray-600 hover:bg-gray-50">Activity</a>
+            <a href="/players" class="block py-2 px-4 text-sm text-gray-600 hover:bg-gray-50">Player Count</a>
+            <a href="/characters" class="block py-2 px-4 text-sm text-gray-600 hover:bg-gray-50">Characters</a>
+            <a href="/guilds" class="block py-2 px-4 text-sm text-gray-600 hover:bg-gray-50">Guilds</a>
         </div>
     </nav>
 
     <div class="container mx-auto px-4 py-6">
-        <div class="flex justify-between items-center mb-4 border-b border-gray-200 pb-3">
+        <div class="flex flex-col sm:flex-row justify-between sm:items-center gap-2 mb-4 border-b border-gray-200 pb-3">
             <h1 class="text-2xl font-bold text-gray-800">Price History: <span class="text-blue-600">{{.ItemName}}</span></h1>
             <p class="text-sm text-gray-500">Last updated: <strong data-timestamp="{{.LastScrapeTime}}">{{.LastScrapeTime}}</strong> <span id="time-ago"></span></p>
         </div>
 
         {{if .ItemDetails}}
-        <div class="bg-white p-4 rounded-lg shadow mb-4 flex items-start gap-4">
+        <div class="bg-white p-4 rounded-lg shadow mb-4 flex flex-col sm:flex-row items-start gap-4">
             <img src="{{.ItemDetails.ImageURL}}" alt="{{.ItemName}}" class="w-20 h-20 flex-shrink-0 bg-white p-1 border rounded" style="image-rendering: pixelated;">
             <div>
                 <p class="text-gray-600 italic text-sm">{{.ItemDetails.Description}}</p>
@@ -106,25 +119,25 @@
                 <table class="min-w-full leading-normal">
                     <thead>
                         <tr class="border-b-2 border-gray-200 bg-gray-50 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
-                            <th class="px-3 py-2">Price</th>
-                            <th class="px-3 py-2">Qty</th>
-                            <th class="px-3 py-2">Store</th>
-                            <th class="px-3 py-2">Seller</th>
-                            <th class="px-3 py-2">Location</th>
-                            <th class="px-3 py-2">Date Scanned</th>
-                            <th class="px-3 py-2">Available</th>
+                            <th class="px-2 sm:px-3 py-2">Price</th>
+                            <th class="px-2 sm:px-3 py-2">Qty</th>
+                            <th class="px-2 sm:px-3 py-2">Store</th>
+                            <th class="px-2 sm:px-3 py-2">Seller</th>
+                            <th class="px-2 sm:px-3 py-2">Location</th>
+                            <th class="px-2 sm:px-3 py-2">Date Scanned</th>
+                            <th class="px-2 sm:px-3 py-2">Available</th>
                         </tr>
                     </thead>
                     <tbody class="text-gray-700 text-xs">
                         {{range .AllListings}}
                         <tr class="border-b border-gray-200 hover:bg-gray-50 {{if not .IsAvailable}}opacity-60{{end}}" title="{{if not .IsAvailable}}This specific listing is no longer available{{end}}">
-                            <td class="px-3 py-2">{{.Price}}</td>
-                            <td class="px-3 py-2">{{.Quantity}}</td>
-                            <td class="px-3 py-2 max-w-48 truncate" title="{{.StoreName}}"><a href="/full-list?only_available=true&store_name={{.StoreName | urlquery}}" class="hover:underline">{{.StoreName}}</a></td>
-                            <td class="px-3 py-2">{{.SellerName}}</td>
-                            <td class="px-3 py-2"><a href="#" onclick="copyNavi(event, '{{.MapName}}', '{{.MapCoordinates}}')" title="Click to copy /navi command" class="hover:underline">{{.MapName}} {{.MapCoordinates}}</a></td>
-                            <td class="px-3 py-2">{{.Timestamp}}</td>
-                            <td class="px-3 py-2">
+                            <td class="px-2 sm:px-3 py-2">{{.Price}}</td>
+                            <td class="px-2 sm:px-3 py-2">{{.Quantity}}</td>
+                            <td class="px-2 sm:px-3 py-2 max-w-48 truncate" title="{{.StoreName}}"><a href="/full-list?only_available=true&store_name={{.StoreName | urlquery}}" class="hover:underline">{{.StoreName}}</a></td>
+                            <td class="px-2 sm:px-3 py-2">{{.SellerName}}</td>
+                            <td class="px-2 sm:px-3 py-2"><a href="#" onclick="copyNavi(event, '{{.MapName}}', '{{.MapCoordinates}}')" title="Click to copy /navi command" class="hover:underline">{{.MapName}} {{.MapCoordinates}}</a></td>
+                            <td class="px-2 sm:px-3 py-2">{{.Timestamp}}</td>
+                            <td class="px-2 sm:px-3 py-2">
                                 {{if .IsAvailable}}<span class="font-semibold text-green-600">Yes</span>{{else}}<span class="font-semibold text-red-600">No</span>{{end}}
                             </td>
                         </tr>
@@ -223,6 +236,12 @@
         });
         
         document.addEventListener('DOMContentLoaded', () => {
+            // Mobile menu toggle
+            document.getElementById('mobile-menu-button').addEventListener('click', function() {
+                var menu = document.getElementById('mobile-menu');
+                menu.classList.toggle('hidden');
+            });
+
             const timeAgoSpan = document.getElementById('time-ago');
             const lastUpdateElement = document.querySelector('[data-timestamp]');
             if (!lastUpdateElement) return;

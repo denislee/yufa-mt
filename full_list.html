@@ -12,13 +12,13 @@
         }
     </style>
 </head>
-<body class="bg-gray-100 text-gray-800">
+<body class="bg-gray-100 text-gray-800 text-sm sm:text-base">
 
-    <nav class="bg-white shadow-sm">
-        <div class="container mx-auto px-4 py-2">
-            <div class="flex justify-between items-center">
+    <nav class="bg-white shadow-sm sticky top-0 z-10">
+        <div class="container mx-auto px-4">
+            <div class="flex justify-between items-center py-2">
                 <div class="text-xl font-semibold text-gray-700">Yufa Market Tracker</div>
-                <div class="flex space-x-4">
+                <div class="hidden md:flex space-x-4">
                     <a href="/" class="text-gray-600 hover:text-blue-500">Summary</a>
                     <a href="/full-list" class="text-blue-500 font-bold">Full List</a>
                     <a href="/activity" class="text-gray-600 hover:text-blue-500">Activity</a>
@@ -26,44 +26,58 @@
                     <a href="/characters" class="text-gray-600 hover:text-blue-500">Characters</a>
                     <a href="/guilds" class="text-gray-600 hover:text-blue-500">Guilds</a>
                 </div>
+                <div class="md:hidden flex items-center">
+                    <button id="mobile-menu-button" class="text-gray-600 hover:text-gray-800 focus:outline-none">
+                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16m-7 6h7"></path></svg>
+                    </button>
+                </div>
             </div>
+        </div>
+        <div id="mobile-menu" class="hidden md:hidden border-t border-gray-200">
+            <a href="/" class="block py-2 px-4 text-sm text-gray-600 hover:bg-gray-50">Summary</a>
+            <a href="/full-list" class="block py-2 px-4 text-sm bg-blue-50 text-blue-600 font-semibold">Full List</a>
+            <a href="/activity" class="block py-2 px-4 text-sm text-gray-600 hover:bg-gray-50">Activity</a>
+            <a href="/players" class="block py-2 px-4 text-sm text-gray-600 hover:bg-gray-50">Player Count</a>
+            <a href="/characters" class="block py-2 px-4 text-sm text-gray-600 hover:bg-gray-50">Characters</a>
+            <a href="/guilds" class="block py-2 px-4 text-sm text-gray-600 hover:bg-gray-50">Guilds</a>
         </div>
     </nav>
 
     <div class="container mx-auto px-4 py-6">
-        <div class="flex justify-between items-center mb-4 border-b border-gray-200 pb-3">
+        <div class="flex flex-col sm:flex-row justify-between sm:items-center gap-2 mb-4 border-b border-gray-200 pb-3">
             <h1 class="text-2xl font-bold text-gray-800">Full Market List</h1>
             <p class="text-sm text-gray-500">Last updated: <strong data-timestamp="{{.LastScrapeTime}}">{{.LastScrapeTime}}</strong> <span id="time-ago"></span></p>
         </div>
 
         <div class="bg-white p-3 rounded-lg shadow mb-4">
-            <form action="/full-list" method="get" class="flex flex-wrap items-center gap-3">
-                <input type="hidden" name="type" value="{{.SelectedType}}">
-
-                        <input type="text" name="query" placeholder="Search for an item..." value="{{.SearchQuery}}" class="flex-grow mt-1 block w-full md:w-auto rounded-md border-gray-300 shadow-sm focus:border-indigo-300 focus:ring focus:ring-indigo-200 focus:ring-opacity-50 text-sm">
-                        <label class="flex items-center space-x-2 text-sm text-gray-700">
-                            <input type="checkbox" name="only_available" value="true" {{if not .ShowAll}}checked{{end}} class="rounded border-gray-300 text-indigo-600 shadow-sm focus:border-indigo-300 focus:ring focus:ring-offset-0 focus:ring-indigo-200 focus:ring-opacity-50">
-                            <span>Show only available</span>
-                        </label>
-                        <button type="submit" class="w-full md:w-auto bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-md">Search</button>
-                    <div class="flex flex-wrap items-center gap-x-4 gap-y-1">
-                        <strong class="text-gray-700">Show:</strong>
-                         {{range .AllColumns}}
-                        <div class="flex items-center">
-                           <input type="checkbox" name="cols" value="{{.ID}}" id="col_{{.ID}}" {{if index $.VisibleColumns .ID}}checked{{end}} class="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500">
-                           <label for="col_{{.ID}}" class="ml-2 block text-sm text-gray-900">{{.DisplayName}}</label>
-                        </div>
-                        {{end}}
+            <form action="/full-list" method="get" class="flex flex-col gap-3">
+                <div class="flex flex-wrap items-center gap-3">
+                    <input type="hidden" name="type" value="{{.SelectedType}}">
+                    <input type="text" name="query" placeholder="Search for an item..." value="{{.SearchQuery}}" class="flex-grow mt-1 block w-full md:w-auto rounded-md border-gray-300 shadow-sm focus:border-indigo-300 focus:ring focus:ring-indigo-200 focus:ring-opacity-50 text-sm">
+                    <label class="flex items-center space-x-2 text-sm text-gray-700">
+                        <input type="checkbox" name="only_available" value="true" {{if not .ShowAll}}checked{{end}} class="rounded border-gray-300 text-indigo-600 shadow-sm focus:border-indigo-300 focus:ring focus:ring-offset-0 focus:ring-indigo-200 focus:ring-opacity-50">
+                        <span>Show only available</span>
+                    </label>
+                    <button type="submit" class="w-full md:w-auto bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-md">Search</button>
+                </div>
+                <div class="flex flex-wrap items-center gap-x-4 gap-y-1">
+                    <strong class="text-gray-700 text-sm">Show:</strong>
+                     {{range .AllColumns}}
+                    <div class="flex items-center">
+                       <input type="checkbox" name="cols" value="{{.ID}}" id="col_{{.ID}}" {{if index $.VisibleColumns .ID}}checked{{end}} class="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500">
+                       <label for="col_{{.ID}}" class="ml-2 block text-sm text-gray-900">{{.DisplayName}}</label>
                     </div>
-                    {{if .StoreNameQuery}}
-                    <div class="border-t border-gray-200 mt-3 pt-3">
-                        <div class="text-sm">
-                            Filtering by Store: <span class="font-semibold bg-blue-100 text-blue-800 py-0.5 px-2 rounded-full">{{.StoreNameQuery}}</span>
-                            <a href="/full-list?query={{.SearchQuery}}&sort_by={{.SortBy}}&order={{.Order}}{{if not .ShowAll}}&only_available=true{{end}}&{{.ColumnParams}}&type={{.SelectedType | urlquery}}" class="ml-2 text-red-500 hover:underline text-xs">[Clear Filter]</a>
-                        </div>
-                    </div>
-                    <input type="hidden" name="store_name" value="{{.StoreNameQuery}}">
                     {{end}}
+                </div>
+                {{if .StoreNameQuery}}
+                <div class="border-t border-gray-200 mt-3 pt-3">
+                    <div class="text-sm">
+                        Filtering by Store: <span class="font-semibold bg-blue-100 text-blue-800 py-0.5 px-2 rounded-full">{{.StoreNameQuery}}</span>
+                        <a href="/full-list?query={{.SearchQuery}}&sort_by={{.SortBy}}&order={{.Order}}{{if not .ShowAll}}&only_available=true{{end}}&{{.ColumnParams}}&type={{.SelectedType | urlquery}}" class="ml-2 text-red-500 hover:underline text-xs">[Clear Filter]</a>
+                    </div>
+                </div>
+                <input type="hidden" name="store_name" value="{{.StoreNameQuery}}">
+                {{end}}
             </form>
         </div>
 
@@ -92,32 +106,32 @@
                     <thead>
                         <tr class="border-b-2 border-gray-200 bg-gray-50 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
                             {{$params := .ColumnParams}}{{$query := .SearchQuery}}{{$storeName := .StoreNameQuery}}{{$showAll := .ShowAll}}{{$currentSort := .SortBy}}{{$currentOrder := .Order}}{{$selectedType := .SelectedType}}{{$revOrder := "ASC"}}{{if eq $currentOrder "ASC"}}{{$revOrder = "DESC"}}{{end}}
-                            <th class="px-3 py-2"><a href="/full-list?query={{$query}}&sort_by=name&order={{if eq $currentSort "name"}}{{$revOrder}}{{else}}ASC{{end}}{{if not $showAll}}&only_available=true{{end}}{{if $storeName}}&store_name={{$storeName | urlquery}}{{end}}&{{$params}}&type={{$selectedType | urlquery}}">Item Name {{if eq $currentSort "name"}}{{if eq $currentOrder "ASC"}}<span class="text-gray-400">▲</span>{{else}}<span class="text-gray-400">▼</span>{{end}}{{end}}</a></th>
-                            {{if index .VisibleColumns "item_id"}}<th class="px-3 py-2"><a href="/full-list?query={{$query}}&sort_by=item_id&order={{if eq $currentSort "item_id"}}{{$revOrder}}{{else}}ASC{{end}}{{if not $showAll}}&only_available=true{{end}}{{if $storeName}}&store_name={{$storeName | urlquery}}{{end}}&{{$params}}&type={{$selectedType | urlquery}}">Item ID {{if eq $currentSort "item_id"}}{{if eq $currentOrder "ASC"}}<span class="text-gray-400">▲</span>{{else}}<span class="text-gray-400">▼</span>{{end}}{{end}}</a></th>{{end}}
-                            {{if index .VisibleColumns "quantity"}}<th class="px-3 py-2"><a href="/full-list?query={{$query}}&sort_by=quantity&order={{if eq $currentSort "quantity"}}{{$revOrder}}{{else}}ASC{{end}}{{if not $showAll}}&only_available=true{{end}}{{if $storeName}}&store_name={{$storeName | urlquery}}{{end}}&{{$params}}&type={{$selectedType | urlquery}}">Qty {{if eq $currentSort "quantity"}}{{if eq $currentOrder "ASC"}}<span class="text-gray-400">▲</span>{{else}}<span class="text-gray-400">▼</span>{{end}}{{end}}</a></th>{{end}}
-                            <th class="px-3 py-2"><a href="/full-list?query={{$query}}&sort_by=price&order={{if eq $currentSort "price"}}{{$revOrder}}{{else}}DESC{{end}}{{if not $showAll}}&only_available=true{{end}}{{if $storeName}}&store_name={{$storeName | urlquery}}{{end}}&{{$params}}&type={{$selectedType | urlquery}}">Price {{if eq $currentSort "price"}}{{if eq $currentOrder "ASC"}}<span class="text-gray-400">▲</span>{{else}}<span class="text-gray-400">▼</span>{{end}}{{end}}</a></th>
-                            {{if index .VisibleColumns "store_name"}}<th class="px-3 py-2"><a href="/full-list?query={{$query}}&sort_by=store_name&order={{if eq $currentSort "store_name"}}{{$revOrder}}{{else}}ASC{{end}}{{if not $showAll}}&only_available=true{{end}}{{if $storeName}}&store_name={{$storeName | urlquery}}{{end}}&{{$params}}&type={{$selectedType | urlquery}}">Store {{if eq $currentSort "store_name"}}{{if eq $currentOrder "ASC"}}<span class="text-gray-400">▲</span>{{else}}<span class="text-gray-400">▼</span>{{end}}{{end}}</a></th>{{end}}
-                            {{if index .VisibleColumns "seller_name"}}<th class="px-3 py-2"><a href="/full-list?query={{$query}}&sort_by=seller&order={{if eq $currentSort "seller"}}{{$revOrder}}{{else}}ASC{{end}}{{if not $showAll}}&only_available=true{{end}}{{if $storeName}}&store_name={{$storeName | urlquery}}{{end}}&{{$params}}&type={{$selectedType | urlquery}}">Seller {{if eq $currentSort "seller"}}{{if eq $currentOrder "ASC"}}<span class="text-gray-400">▲</span>{{else}}<span class="text-gray-400">▼</span>{{end}}{{end}}</a></th>{{end}}
-                            {{if index .VisibleColumns "map_name"}}<th class="px-3 py-2">Map</th>{{end}}
-                            {{if index .VisibleColumns "map_coordinates"}}<th class="px-3 py-2">Coords</th>{{end}}
-                            {{if index .VisibleColumns "retrieved"}}<th class="px-3 py-2"><a href="/full-list?query={{$query}}&sort_by=retrieved&order={{if eq $currentSort "retrieved"}}{{$revOrder}}{{else}}ASC{{end}}{{if not $showAll}}&only_available=true{{end}}{{if $storeName}}&store_name={{$storeName | urlquery}}{{end}}&{{$params}}&type={{$selectedType | urlquery}}">Scanned {{if eq $currentSort "retrieved"}}{{if eq $currentOrder "ASC"}}<span class="text-gray-400">▲</span>{{else}}<span class="text-gray-400">▼</span>{{end}}{{end}}</a></th>{{end}}
-                            {{if index .VisibleColumns "availability"}}<th class="px-3 py-2"><a href="/full-list?query={{$query}}&sort_by=availability&order={{if eq $currentSort "availability"}}{{$revOrder}}{{else}}ASC{{end}}{{if not $showAll}}&only_available=true{{end}}{{if $storeName}}&store_name={{$storeName | urlquery}}{{end}}&{{$params}}&type={{$selectedType | urlquery}}">Available {{if eq $currentSort "availability"}}{{if eq $currentOrder "ASC"}}<span class="text-gray-400">▲</span>{{else}}<span class="text-gray-400">▼</span>{{end}}{{end}}</a></th>{{end}}
+                            <th class="px-2 sm:px-3 py-2"><a href="/full-list?query={{$query}}&sort_by=name&order={{if eq $currentSort "name"}}{{$revOrder}}{{else}}ASC{{end}}{{if not $showAll}}&only_available=true{{end}}{{if $storeName}}&store_name={{$storeName | urlquery}}{{end}}&{{$params}}&type={{$selectedType | urlquery}}">Item Name {{if eq $currentSort "name"}}{{if eq $currentOrder "ASC"}}<span class="text-gray-400">▲</span>{{else}}<span class="text-gray-400">▼</span>{{end}}{{end}}</a></th>
+                            {{if index .VisibleColumns "item_id"}}<th class="px-2 sm:px-3 py-2"><a href="/full-list?query={{$query}}&sort_by=item_id&order={{if eq $currentSort "item_id"}}{{$revOrder}}{{else}}ASC{{end}}{{if not $showAll}}&only_available=true{{end}}{{if $storeName}}&store_name={{$storeName | urlquery}}{{end}}&{{$params}}&type={{$selectedType | urlquery}}">Item ID {{if eq $currentSort "item_id"}}{{if eq $currentOrder "ASC"}}<span class="text-gray-400">▲</span>{{else}}<span class="text-gray-400">▼</span>{{end}}{{end}}</a></th>{{end}}
+                            {{if index .VisibleColumns "quantity"}}<th class="px-2 sm:px-3 py-2"><a href="/full-list?query={{$query}}&sort_by=quantity&order={{if eq $currentSort "quantity"}}{{$revOrder}}{{else}}ASC{{end}}{{if not $showAll}}&only_available=true{{end}}{{if $storeName}}&store_name={{$storeName | urlquery}}{{end}}&{{$params}}&type={{$selectedType | urlquery}}">Qty {{if eq $currentSort "quantity"}}{{if eq $currentOrder "ASC"}}<span class="text-gray-400">▲</span>{{else}}<span class="text-gray-400">▼</span>{{end}}{{end}}</a></th>{{end}}
+                            <th class="px-2 sm:px-3 py-2"><a href="/full-list?query={{$query}}&sort_by=price&order={{if eq $currentSort "price"}}{{$revOrder}}{{else}}DESC{{end}}{{if not $showAll}}&only_available=true{{end}}{{if $storeName}}&store_name={{$storeName | urlquery}}{{end}}&{{$params}}&type={{$selectedType | urlquery}}">Price {{if eq $currentSort "price"}}{{if eq $currentOrder "ASC"}}<span class="text-gray-400">▲</span>{{else}}<span class="text-gray-400">▼</span>{{end}}{{end}}</a></th>
+                            {{if index .VisibleColumns "store_name"}}<th class="px-2 sm:px-3 py-2"><a href="/full-list?query={{$query}}&sort_by=store_name&order={{if eq $currentSort "store_name"}}{{$revOrder}}{{else}}ASC{{end}}{{if not $showAll}}&only_available=true{{end}}{{if $storeName}}&store_name={{$storeName | urlquery}}{{end}}&{{$params}}&type={{$selectedType | urlquery}}">Store {{if eq $currentSort "store_name"}}{{if eq $currentOrder "ASC"}}<span class="text-gray-400">▲</span>{{else}}<span class="text-gray-400">▼</span>{{end}}{{end}}</a></th>{{end}}
+                            {{if index .VisibleColumns "seller_name"}}<th class="px-2 sm:px-3 py-2"><a href="/full-list?query={{$query}}&sort_by=seller&order={{if eq $currentSort "seller"}}{{$revOrder}}{{else}}ASC{{end}}{{if not $showAll}}&only_available=true{{end}}{{if $storeName}}&store_name={{$storeName | urlquery}}{{end}}&{{$params}}&type={{$selectedType | urlquery}}">Seller {{if eq $currentSort "seller"}}{{if eq $currentOrder "ASC"}}<span class="text-gray-400">▲</span>{{else}}<span class="text-gray-400">▼</span>{{end}}{{end}}</a></th>{{end}}
+                            {{if index .VisibleColumns "map_name"}}<th class="px-2 sm:px-3 py-2">Map</th>{{end}}
+                            {{if index .VisibleColumns "map_coordinates"}}<th class="px-2 sm:px-3 py-2">Coords</th>{{end}}
+                            {{if index .VisibleColumns "retrieved"}}<th class="px-2 sm:px-3 py-2"><a href="/full-list?query={{$query}}&sort_by=retrieved&order={{if eq $currentSort "retrieved"}}{{$revOrder}}{{else}}ASC{{end}}{{if not $showAll}}&only_available=true{{end}}{{if $storeName}}&store_name={{$storeName | urlquery}}{{end}}&{{$params}}&type={{$selectedType | urlquery}}">Scanned {{if eq $currentSort "retrieved"}}{{if eq $currentOrder "ASC"}}<span class="text-gray-400">▲</span>{{else}}<span class="text-gray-400">▼</span>{{end}}{{end}}</a></th>{{end}}
+                            {{if index .VisibleColumns "availability"}}<th class="px-2 sm:px-3 py-2"><a href="/full-list?query={{$query}}&sort_by=availability&order={{if eq $currentSort "availability"}}{{$revOrder}}{{else}}ASC{{end}}{{if not $showAll}}&only_available=true{{end}}{{if $storeName}}&store_name={{$storeName | urlquery}}{{end}}&{{$params}}&type={{$selectedType | urlquery}}">Available {{if eq $currentSort "availability"}}{{if eq $currentOrder "ASC"}}<span class="text-gray-400">▲</span>{{else}}<span class="text-gray-400">▼</span>{{end}}{{end}}</a></th>{{end}}
                         </tr>
                     </thead>
                     <tbody class="text-gray-700 text-xs">
                         {{range .Items}}
                         <tr class="border-b border-gray-200 hover:bg-gray-50 {{if not .IsAvailable}}opacity-60{{end}}" {{if not .IsAvailable}}title="This item is no longer available"{{end}}>
-                            <td class="px-3 py-2"><div class="flex items-center"><img src="https://static.divine-pride.net/images/items/item/{{.ItemID}}.png" alt="" class="w-6 h-6 mr-2" style="image-rendering: pixelated;"> <a href="/item?name={{.Name | urlquery}}" class="font-semibold hover:underline">{{.Name}}</a></div></td>
-                            {{if index $.VisibleColumns "item_id"}}<td class="px-3 py-2">{{.ItemID}}</td>{{end}}
-                            {{if index $.VisibleColumns "quantity"}}<td class="px-3 py-2">{{.Quantity}}</td>{{end}}
-                            <td class="px-3 py-2">{{.Price}}</td>
-                            {{if index $.VisibleColumns "store_name"}}<td class="px-3 py-2 max-w-48 truncate" title="{{.StoreName}}"><a href="/full-list?only_available=true&store_name={{.StoreName | urlquery}}" class="hover:underline">{{.StoreName}}</a></td>{{end}}
-                            {{if index $.VisibleColumns "seller_name"}}<td class="px-3 py-2">{{.SellerName}}</td>{{end}}
-                            {{if index $.VisibleColumns "map_name"}}<td class="px-3 py-2">{{.MapName}}</td>{{end}}
-                            {{if index $.VisibleColumns "map_coordinates"}}<td class="px-3 py-2"><a href="#" onclick="copyNavi(event, '{{.MapName}}', '{{.MapCoordinates}}')" title="Click to copy /navi command" class="hover:underline">{{.MapCoordinates}}</a></td>{{end}}
-                            {{if index $.VisibleColumns "retrieved"}}<td class="px-3 py-2">{{.Timestamp}}</td>{{end}}
+                            <td class="px-2 sm:px-3 py-2"><div class="flex items-center"><img src="https://static.divine-pride.net/images/items/item/{{.ItemID}}.png" alt="" class="w-6 h-6 mr-2" style="image-rendering: pixelated;"> <a href="/item?name={{.Name | urlquery}}" class="font-semibold hover:underline">{{.Name}}</a></div></td>
+                            {{if index $.VisibleColumns "item_id"}}<td class="px-2 sm:px-3 py-2">{{.ItemID}}</td>{{end}}
+                            {{if index $.VisibleColumns "quantity"}}<td class="px-2 sm:px-3 py-2">{{.Quantity}}</td>{{end}}
+                            <td class="px-2 sm:px-3 py-2">{{.Price}}</td>
+                            {{if index $.VisibleColumns "store_name"}}<td class="px-2 sm:px-3 py-2 max-w-48 truncate" title="{{.StoreName}}"><a href="/full-list?only_available=true&store_name={{.StoreName | urlquery}}" class="hover:underline">{{.StoreName}}</a></td>{{end}}
+                            {{if index $.VisibleColumns "seller_name"}}<td class="px-2 sm:px-3 py-2">{{.SellerName}}</td>{{end}}
+                            {{if index $.VisibleColumns "map_name"}}<td class="px-2 sm:px-3 py-2">{{.MapName}}</td>{{end}}
+                            {{if index $.VisibleColumns "map_coordinates"}}<td class="px-2 sm:px-3 py-2"><a href="#" onclick="copyNavi(event, '{{.MapName}}', '{{.MapCoordinates}}')" title="Click to copy /navi command" class="hover:underline">{{.MapCoordinates}}</a></td>{{end}}
+                            {{if index $.VisibleColumns "retrieved"}}<td class="px-2 sm:px-3 py-2">{{.Timestamp}}</td>{{end}}
                             {{if index $.VisibleColumns "availability"}}
-                                <td class="px-3 py-2">
+                                <td class="px-2 sm:px-3 py-2">
                                     {{if .IsAvailable}}<span class="font-semibold text-green-600">Yes</span>{{else}}<span class="font-semibold text-red-600">No</span>{{end}}
                                 </td>
                             {{end}}
@@ -149,6 +163,12 @@
         }
 
         document.addEventListener('DOMContentLoaded', () => {
+            // Mobile menu toggle
+            document.getElementById('mobile-menu-button').addEventListener('click', function() {
+                var menu = document.getElementById('mobile-menu');
+                menu.classList.toggle('hidden');
+            });
+
             const timeAgoSpan = document.getElementById('time-ago');
             const lastUpdateElement = document.querySelector('[data-timestamp]');
             if (!lastUpdateElement) return;

@@ -12,13 +12,13 @@
         }
     </style>
 </head>
-<body class="bg-gray-100 text-gray-800">
+<body class="bg-gray-100 text-gray-800 text-sm sm:text-base">
 
-    <nav class="bg-white shadow-sm">
-        <div class="container mx-auto px-4 py-2">
-            <div class="flex justify-between items-center">
+    <nav class="bg-white shadow-sm sticky top-0 z-10">
+        <div class="container mx-auto px-4">
+            <div class="flex justify-between items-center py-2">
                 <div class="text-xl font-semibold text-gray-700">Yufa Market Tracker</div>
-                <div class="flex space-x-4">
+                <div class="hidden md:flex space-x-4">
                     <a href="/" class="text-gray-600 hover:text-blue-500">Summary</a>
                     <a href="/full-list" class="text-gray-600 hover:text-blue-500">Full List</a>
                     <a href="/activity" class="text-blue-500 font-bold">Activity</a>
@@ -26,12 +26,25 @@
                     <a href="/characters" class="text-gray-600 hover:text-blue-500">Characters</a>
                     <a href="/guilds" class="text-gray-600 hover:text-blue-500">Guilds</a>
                 </div>
+                <div class="md:hidden flex items-center">
+                    <button id="mobile-menu-button" class="text-gray-600 hover:text-gray-800 focus:outline-none">
+                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16m-7 6h7"></path></svg>
+                    </button>
+                </div>
             </div>
+        </div>
+        <div id="mobile-menu" class="hidden md:hidden border-t border-gray-200">
+            <a href="/" class="block py-2 px-4 text-sm text-gray-600 hover:bg-gray-50">Summary</a>
+            <a href="/full-list" class="block py-2 px-4 text-sm text-gray-600 hover:bg-gray-50">Full List</a>
+            <a href="/activity" class="block py-2 px-4 text-sm bg-blue-50 text-blue-600 font-semibold">Activity</a>
+            <a href="/players" class="block py-2 px-4 text-sm text-gray-600 hover:bg-gray-50">Player Count</a>
+            <a href="/characters" class="block py-2 px-4 text-sm text-gray-600 hover:bg-gray-50">Characters</a>
+            <a href="/guilds" class="block py-2 px-4 text-sm text-gray-600 hover:bg-gray-50">Guilds</a>
         </div>
     </nav>
     
     <div class="container mx-auto px-4 py-6">
-        <div class="flex justify-between items-center mb-4 border-b border-gray-200 pb-3">
+        <div class="flex flex-col sm:flex-row justify-between sm:items-center gap-2 mb-4 border-b border-gray-200 pb-3">
             <h1 class="text-2xl font-bold text-gray-800">Recent Market Activity</h1>
             <p class="text-sm text-gray-500">Last updated: <strong data-timestamp="{{.LastScrapeTime}}">{{.LastScrapeTime}}</strong> <span id="time-ago"></span></p>
         </div>
@@ -40,14 +53,14 @@
             {{if .MarketEvents}}
             <ul class="divide-y divide-gray-200">
                 {{range .MarketEvents}}
-                <li class="p-2 flex items-center space-x-3">
+                <li class="p-3 flex flex-col sm:flex-row sm:items-center sm:space-x-3 gap-1">
                     <span class="text-xs text-gray-500 w-24 flex-shrink-0 whitespace-nowrap">{{.Timestamp}}</span>
                     {{if eq .EventType "ADDED"}}
-                        <span class="flex items-center gap-2 text-xs">
-                            <span class="text-green-500">➕</span>
+                        <span class="flex items-start gap-2 text-xs">
+                            <span class="text-green-500 mt-0.5">➕</span>
                             <div class="flex flex-wrap items-center gap-x-2">
                                 <div class="flex items-center font-semibold">
-                                    <img src="https://static.divine-pride.net/images/items/item/{{.ItemID}}.png" alt="" class="w-5 h-5 mr-2" style="image-rendering: pixelated;">
+                                    <img src="https://static.divine-pride.net/images/items/item/{{.ItemID}}.png" alt="" class="w-5 h-5 mr-1.5" style="image-rendering: pixelated;">
                                     <a href="/item?name={{.ItemName | urlquery}}" class="hover:underline">{{.ItemName}}</a>
                                 </div>
                                 <span>was added for sale.</span>
@@ -55,24 +68,24 @@
                             </div>
                         </span>
                     {{else if eq .EventType "REMOVED"}}
-                        <span class="flex items-center gap-2 text-xs text-gray-500">
-                            <span>➖</span>
+                        <span class="flex items-start gap-2 text-xs text-gray-500">
+                            <span class="mt-0.5">➖</span>
                             <div class="flex flex-wrap items-center gap-x-2">
                                 <div class="flex items-center font-semibold text-gray-800">
-                                    <img src="https://static.divine-pride.net/images/items/item/{{.ItemID}}.png" alt="" class="w-5 h-5 mr-2" style="image-rendering: pixelated;">
+                                    <img src="https://static.divine-pride.net/images/items/item/{{.ItemID}}.png" alt="" class="w-5 h-5 mr-1.5" style="image-rendering: pixelated;">
                                     <a href="/item?name={{.ItemName | urlquery}}" class="hover:underline">{{.ItemName}}</a>
                                 </div>
                                 <span>is no longer for sale.</span>
                             </div>
                         </span>
                     {{else if eq .EventType "NEW_LOW"}}
-                         <span class="flex items-center gap-2 text-xs">
-                            <span>🏆</span>
+                         <span class="flex items-start gap-2 text-xs">
+                            <span class="mt-0.5">🏆</span>
                             <div class="flex flex-wrap items-center gap-x-2">
                                 <span class="bg-yellow-100 text-yellow-800 font-bold px-2 py-0.5 rounded-md">New historical low</span>
                                 <span>for</span>
                                 <div class="flex items-center font-semibold">
-                                    <img src="https://static.divine-pride.net/images/items/item/{{.ItemID}}.png" alt="" class="w-5 h-5 mr-2" style="image-rendering: pixelated;">
+                                    <img src="https://static.divine-pride.net/images/items/item/{{.ItemID}}.png" alt="" class="w-5 h-5 mr-1.5" style="image-rendering: pixelated;">
                                     <a href="/item?name={{.ItemName | urlquery}}" class="hover:underline">{{.ItemName}}</a>!
                                 </div>
                                 <small class="text-gray-500">({{.Details.price}} zeny, Qty: {{printf "%.0f" .Details.quantity}} by {{.Details.seller}})</small>
@@ -89,6 +102,12 @@
     </div>
     <script>
         document.addEventListener('DOMContentLoaded', () => {
+            // Mobile menu toggle
+            document.getElementById('mobile-menu-button').addEventListener('click', function() {
+                var menu = document.getElementById('mobile-menu');
+                menu.classList.toggle('hidden');
+            });
+
             const timeAgoSpan = document.getElementById('time-ago');
             const lastUpdateElement = document.querySelector('[data-timestamp]');
             if (!lastUpdateElement) return;
