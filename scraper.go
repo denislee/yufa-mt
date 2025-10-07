@@ -1194,7 +1194,7 @@ func areItemSetsIdentical(setA, setB []Item) bool {
 
 func startBackgroundJobs() {
 	go func() {
-		ticker := time.NewTicker(5 * time.Minute)
+		ticker := time.NewTicker(3 * time.Minute)
 		defer ticker.Stop()
 		scrapeData() // Run once immediately on start
 		for {
@@ -1216,7 +1216,7 @@ func startBackgroundJobs() {
 	}()
 
 	go func() {
-		ticker := time.NewTicker(2 * time.Hour)
+		ticker := time.NewTicker(30 * time.Minute)
 		defer ticker.Stop()
 		for {
 			log.Printf("🕒 [Job] Waiting for the next 30-minute player character schedule...")
@@ -1226,9 +1226,9 @@ func startBackgroundJobs() {
 	}()
 
 	go func() {
-		scrapeGuilds()
 		ticker := time.NewTicker(1 * time.Hour)
 		defer ticker.Stop()
+		scrapeGuilds()
 		for {
 			log.Printf("🕒 [Job] Waiting for the next 60-minute guild schedule...")
 			<-ticker.C
@@ -1237,7 +1237,7 @@ func startBackgroundJobs() {
 	}()
 
 	go func() {
-		ticker := time.NewTicker(3 * time.Hour)
+		ticker := time.NewTicker(1 * time.Hour)
 		defer ticker.Stop()
 		for {
 			log.Printf("🕒 [Job] Waiting for the next 6-hour Zeny ranking schedule...")

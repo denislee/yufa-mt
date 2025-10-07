@@ -1348,14 +1348,18 @@ func guildHandler(w http.ResponseWriter, r *http.Request) {
 		"avg_level": "avg_base_level",
 	}
 	orderByClause, ok := allowedSorts[sortBy]
-	if !ok {
-		orderByClause, sortBy = "level", "level" // Default sort
+	isDefaultSort := !ok
+	if isDefaultSort {
+		orderByClause, sortBy = "level", "level" // Set default sort column
 	}
+
+	// Sanitize order parameter, defaulting to ASC
 	if strings.ToUpper(order) != "DESC" {
 		order = "ASC"
 	}
 
-	if order != "" {
+	// Override order to DESC for the initial, default page load
+	if isDefaultSort {
 		order = "DESC"
 	}
 
@@ -1468,3 +1472,4 @@ func guildHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	tmpl.Execute(w, data)
 }
+
