@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"net/http" // Added import
 	"regexp"
 	"strconv"
 	"strings"
@@ -38,27 +39,42 @@ func newOptimizedAllocator() (context.Context, context.CancelFunc) {
 	return chromedp.NewExecAllocator(context.Background(), opts...)
 }
 
+// scrapeAndStorePlayerCount uses net/http and goquery for a lightweight way to get the player count.
 func scrapeAndStorePlayerCount() {
 	log.Println("📊 [Counter] Checking player and seller count...")
 
-	allocCtx, cancel := newOptimizedAllocator()
-	defer cancel()
-	ctx, cancel := chromedp.NewContext(allocCtx)
-	defer cancel()
-	ctx, cancel = context.WithTimeout(ctx, 30*time.Second)
-	defer cancel()
-
-	var playerCountText string
-	err := chromedp.Run(ctx,
-		chromedp.Navigate("https://projetoyufa.com/info"),
-		chromedp.WaitVisible(`span[data-slot="badge"] p`),
-		chromedp.Text(`span[data-slot="badge"] p`, &playerCountText, chromedp.ByQuery),
-	)
-
+	// Create a new HTTP client with a timeout.
+	client := &http.Client{Timeout: 30 * time.Second}
+	req, err := http.NewRequest("GET", "https://projetoyufa.com/info", nil)
 	if err != nil {
-		log.Printf("❌ [Counter] Failed to get player info: %v", err)
+		log.Printf("❌ [Counter] Failed to create HTTP request: %v", err)
 		return
 	}
+
+	// Set a User-Agent to mimic a real browser.
+	req.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36")
+
+	resp, err := client.Do(req)
+	if err != nil {
+		log.Printf("❌ [Counter] Failed to fetch player info page: %v", err)
+		return
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		log.Printf("❌ [Counter] Received non-200 status code from info page: %d", resp.StatusCode)
+		return
+	}
+
+	// Parse the response body with goquery.
+	doc, err := goquery.NewDocumentFromReader(resp.Body)
+	if err != nil {
+		log.Printf("❌ [Counter] Failed to parse player info page HTML: %v", err)
+		return
+	}
+
+	// Find the element and extract its text.
+	playerCountText := doc.Find(`span[data-slot="badge"] p`).Text()
 
 	var onlineCount int
 	var found bool
@@ -1138,3 +1154,4 @@ func startBackgroundJobs() {
 		}
 	}()
 }
+
