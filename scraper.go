@@ -22,7 +22,7 @@ import (
 // These constants control verbose logging for each specific scraper module.
 const enablePlayerCountDebugLogs = false
 const enableCharacterScraperDebugLogs = false
-const enableGuildScraperDebugLogs = false
+const enableGuildScraperDebugLogs = true
 const enableZenyScraperDebugLogs = false
 const enableMarketScraperDebugLogs = false
 
@@ -405,157 +405,169 @@ type GuildJSON struct {
 	Members []GuildMemberJSON `json:"members"`
 }
 
+// **MODIFIED FUNCTION**
 func scrapeGuilds() {
 	log.Println("🏰 [Guilds] Starting guild and character-guild association scrape...")
-	const maxRetries = 60
+	const maxRetries = 5
+	const retryDelay = 5 * time.Second
+	client := &http.Client{Timeout: 60 * time.Second}
 
-	allocOpts := append(chromedp.DefaultExecAllocatorOptions[:],
-		chromedp.Flag("headless", true),
-		chromedp.Flag("disable-gpu", true),
-		chromedp.Flag("no-sandbox", true),
-		chromedp.Flag("disable-extensions", true),
-	)
-	allocCtx, cancel := chromedp.NewExecAllocator(context.Background(), allocOpts...)
-	defer cancel()
+	// Define individual regexes for each piece of guild data.
+	// These regexes assume a certain structure in the HTML source.
+	nameRegex := regexp.MustCompile(`<span class="font-medium">([^<]+)</span>`)
+	levelRegex := regexp.MustCompile(`\\"guild_lv\\":(\d+),\\"connect_member\\"`)
+	masterRegex := regexp.MustCompile(`\\"master\\":\\"([^"]+)\\",\\"members\\"`)
+	//membersRegex := regexp.MustCompile(`\\"members\\":\[(.*)\"}\]\}`)
+	//	membersRegex := regexp.MustCompile(`\\"members\\":\[(.*?)\]\}\]`)
+	membersRegex := regexp.MustCompile(`\\"members\\":\[(.*?)\]\}`)
+	memberNameRegex := regexp.MustCompile(`\\"name\\":\\"([^"]+)\\",\\"base_level\\"`)
 
+	// --- Determine total number of pages ---
 	var lastPage = 1
 	log.Println("🏰 [Guilds] Determining total number of pages...")
-
-	firstPageCtx, cancelFirstPage := chromedp.NewContext(allocCtx)
-	defer cancelFirstPage()
-	firstPageCtx, cancelTimeout := context.WithTimeout(firstPageCtx, 60*time.Second)
-	defer cancelTimeout()
-
-	var initialHtmlContent string
-	err := chromedp.Run(firstPageCtx,
-		chromedp.Navigate("https://projetoyufa.com/rankings/guild?page=1"),
-		chromedp.WaitVisible(`nav[aria-label="pagination"]`),
-		chromedp.OuterHTML("html", &initialHtmlContent),
-	)
-
+	firstPageURL := "https://projetoyufa.com/rankings/guild?page=1"
+	req, err := http.NewRequest("GET", firstPageURL, nil)
 	if err != nil {
-		log.Printf("⚠️ [Guilds] Could not find pagination on page 1. Assuming only one page. Error: %v", err)
+		log.Printf("❌ [Guilds] Failed to create request for page 1: %v", err)
+		return
+	}
+	req.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36")
+	resp, err := client.Do(req)
+	if err != nil {
+		log.Printf("⚠️ [Guilds] Could not fetch page 1 to determine page count. Assuming one page. Error: %v", err)
 	} else {
-		doc, _ := goquery.NewDocumentFromReader(strings.NewReader(initialHtmlContent))
-		pageRegex := regexp.MustCompile(`page=(\d+)`)
-		doc.Find(`nav[aria-label="pagination"] a[href*="?page="]`).Each(func(i int, s *goquery.Selection) {
-			if href, exists := s.Attr("href"); exists {
-				matches := pageRegex.FindStringSubmatch(href)
-				if len(matches) > 1 {
-					if p, err := strconv.Atoi(matches[1]); err == nil {
+		bodyBytes, readErr := io.ReadAll(resp.Body)
+		if readErr != nil {
+			log.Printf("⚠️ [Guilds] Failed to read page 1 body. Assuming one page. Error: %v", readErr)
+		} else {
+			pageRegex := regexp.MustCompile(`page=(\d+)`)
+			matches := pageRegex.FindAllStringSubmatch(string(bodyBytes), -1)
+			for _, match := range matches {
+				if len(match) > 1 {
+					if p, pErr := strconv.Atoi(match[1]); pErr == nil {
 						if p > lastPage {
 							lastPage = p
 						}
 					}
 				}
 			}
-		})
-		log.Printf("✅ [Guilds] Found %d total pages to scrape.", lastPage)
+		}
+		resp.Body.Close()
 	}
+	log.Printf("✅ [Guilds] Found %d total pages to scrape.", lastPage)
 
 	allGuilds := make(map[string]Guild)
 	allMembers := make(map[string]string) // Map character name to guild name
+	var mu sync.Mutex
+	var wg sync.WaitGroup
+	sem := make(chan struct{}, 5) // Limit to 5 concurrent scrapers
 
 	for page := 1; page <= lastPage; page++ {
-		var htmlContent string
-		var pageScrapedSuccessfully bool
-		url := fmt.Sprintf("https://projetoyufa.com/rankings/guild?page=%d", page)
+		wg.Add(1)
+		sem <- struct{}{}
+		go func(p int) {
+			defer wg.Done()
+			defer func() { <-sem }()
 
-		for attempt := 1; attempt <= maxRetries; attempt++ {
-			taskCtx, cancelCtx := chromedp.NewContext(allocCtx)
-			defer cancelCtx()
-			taskCtx, cancelTimeoutLoop := context.WithTimeout(taskCtx, 60*time.Second)
-			defer cancelTimeoutLoop()
+			var bodyContent string
+			pageScrapedSuccessfully := false
 
-			log.Printf("🏰 [Guilds] Scraping page %d of %d (Attempt %d/%d)...", page, lastPage, attempt, maxRetries)
+			for attempt := 1; attempt <= maxRetries; attempt++ {
+				url := fmt.Sprintf("https://projetoyufa.com/rankings/guild?page=%d", p)
+				req, reqErr := http.NewRequest("GET", url, nil)
+				if reqErr != nil {
+					log.Printf("    -> ❌ Error creating request for page %d: %v", p, reqErr)
+					time.Sleep(retryDelay)
+					continue
+				}
+				req.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36")
 
-			err := chromedp.Run(taskCtx,
-				chromedp.Navigate(url),
-				chromedp.WaitVisible(`tbody[data-slot="table-body"] tr:has(td:nth-of-type(2))`),
-				chromedp.WaitVisible(`div.group h3`),
-				chromedp.OuterHTML("html", &htmlContent),
-			)
-
-			if err == nil {
+				resp, doErr := client.Do(req)
+				if doErr != nil {
+					log.Printf("    -> ❌ Error on page %d (attempt %d/%d): %v", p, attempt, maxRetries, doErr)
+					time.Sleep(retryDelay)
+					continue
+				}
+				if resp.StatusCode != http.StatusOK {
+					log.Printf("    -> ❌ Non-200 status on page %d (attempt %d/%d): %d", p, attempt, maxRetries, resp.StatusCode)
+					resp.Body.Close()
+					time.Sleep(retryDelay)
+					continue
+				}
+				bodyBytes, readErr := io.ReadAll(resp.Body)
+				resp.Body.Close()
+				if readErr != nil {
+					log.Printf("    -> ❌ Failed to read body for page %d: %v", p, readErr)
+					time.Sleep(retryDelay)
+					continue
+				}
+				bodyContent = string(bodyBytes)
 				pageScrapedSuccessfully = true
 				break
 			}
-			log.Printf("❌ [Guilds] Error on page %d, attempt %d/%d: %v", page, attempt, maxRetries, err)
-			if attempt < maxRetries {
-				time.Sleep(20 * time.Second)
-			}
-		}
 
-		if !pageScrapedSuccessfully {
-			log.Printf("❌ [Guilds] All %d attempts failed for page %d. Aborting guild scrape to prevent partial data update.", maxRetries, page)
-			return
-		}
-
-		doc, err := goquery.NewDocumentFromReader(strings.NewReader(htmlContent))
-		if err != nil {
-			log.Printf("❌ [Guilds] Failed to parse HTML for page %d. Aborting guild scrape to prevent partial data update. Error: %v", page, err)
-			return
-		}
-
-		guildRows := doc.Find(`tbody[data-slot="table-body"] > tr:not(:has(td[colspan="4"]))`)
-		log.Printf("🔎 [Guilds] Found %d guild rows on page %d. Processing...", guildRows.Length(), page)
-
-		guildRows.Each(func(i int, s *goquery.Selection) {
-			var guild Guild
-			var parseErr error
-
-			cells := s.Find(`td[data-slot="table-cell"]`)
-			if cells.Length() < 4 {
-				log.Printf("    -> [Parser] WARN: Skipping row %d, expected at least 4 cells, got %d.", i, cells.Length())
+			if !pageScrapedSuccessfully {
+				log.Printf("    -> ❌ All retries failed for page %d. Skipping.", p)
 				return
 			}
 
-			rankStr := strings.TrimSpace(cells.Eq(0).Text())
-			nameStr := strings.TrimSpace(cells.Eq(1).Find("span").Text())
-			levelStr := strings.TrimSpace(cells.Eq(2).Text())
+			// Find all matches for each attribute individually.
+			nameMatches := nameRegex.FindAllStringSubmatch(bodyContent, -1)
+			levelMatches := levelRegex.FindAllStringSubmatch(bodyContent, -1)
+			masterMatches := masterRegex.FindAllStringSubmatch(bodyContent, -1)
+			membersMatches := membersRegex.FindAllStringSubmatch(bodyContent, -1)
+			log.Printf("    -> ⚠️ [Guilds] membersMatches %d", len(membersMatches))
+			//log.Printf("    -> ⚠️ [Guilds] membersMatches text %s", membersMatches)
 
-			memberRow := s.Next()
-			if memberRow.Length() == 0 {
-				log.Printf("    -> [Parser] WARN: Could not find member detail row for guild '%s'.", nameStr)
+			numGuilds := len(nameMatches)
+			if numGuilds == 0 || len(levelMatches) != numGuilds || len(masterMatches) != numGuilds {
+				log.Printf("    -> ⚠️ [Guilds] Mismatch in regex match counts on page %d. Skipping page. (Names: %d, Levels: %d, Masters: %d)",
+					p, len(nameMatches), len(levelMatches), len(masterMatches))
 				return
 			}
 
-			masterStr := ""
-			memberRow.Find("div.group").Each(func(_ int, memberCard *goquery.Selection) {
-				if strings.Contains(memberCard.Text(), "Líder") {
-					masterStr = strings.TrimSpace(memberCard.Find("h3").Text())
+			var pageGuilds []Guild
+			var pageMembers = make(map[string]string)
+			for i := 0; i < numGuilds; i++ {
+				name := nameMatches[i][1]
+				level, _ := strconv.Atoi(levelMatches[i][1])
+				master := masterMatches[i][1]
+
+				guild := Guild{
+					Name:       name,
+					Level:      level,
+					Master:     master,
+					EmblemURL:  "",
+					Experience: 0,
 				}
-			})
-
-			memberRow.Find("div.group h3").Each(func(_ int, memberNameTag *goquery.Selection) {
-				memberName := strings.TrimSpace(memberNameTag.Text())
-				if memberName != "" {
-					allMembers[memberName] = nameStr
+				pageGuilds = append(pageGuilds, guild)
+				// This strategy can only reliably associate the master.
+				if master != "" {
+					pageMembers[master] = name
 				}
-			})
 
-			guild.Name = nameStr
-			guild.Master = masterStr
-			guild.Rank, parseErr = strconv.Atoi(rankStr)
-			if parseErr != nil {
-				log.Printf("    -> [Parser] ERROR: Could not parse RANK for '%s' from value '%s'. Error: %v", nameStr, rankStr, parseErr)
-				return
-			}
-			guild.Level, parseErr = strconv.Atoi(levelStr)
-			if parseErr != nil {
-				log.Printf("    -> [Parser] ERROR: Could not parse LEVEL for '%s' from value '%s'. Error: %v", nameStr, levelStr, parseErr)
-				return
+				members := memberNameRegex.FindAllStringSubmatch(membersMatches[i][1], -1)
+				for _, member := range members {
+					pageMembers[member[1]] = name
+				}
 			}
 
-			guild.Experience = 0
-			guild.EmblemURL = ""
-
-			log.Printf("    -> [Parser] SUCCESS: Parsed guild '%s' (Rank: %d, Level: %d, Master: '%s')", guild.Name, guild.Rank, guild.Level, guild.Master)
-			allGuilds[guild.Name] = guild
-		})
-
-		time.Sleep(2 * time.Second)
+			if len(pageGuilds) > 0 {
+				mu.Lock()
+				for _, guild := range pageGuilds {
+					allGuilds[guild.Name] = guild
+				}
+				for memberName, guildName := range pageMembers {
+					allMembers[memberName] = guildName
+				}
+				mu.Unlock()
+			}
+			log.Printf("    -> Scraped page %d/%d, found %d guilds.", p, lastPage, len(pageGuilds))
+		}(page)
 	}
+	wg.Wait()
+
+	log.Printf("✅ [Guilds] Finished scraping all pages. Found %d unique guilds.", len(allGuilds))
 
 	if len(allGuilds) == 0 {
 		log.Println("⚠️ [Guilds] Scrape finished with 0 total guilds found. Guild/character tables will not be updated.")
@@ -584,12 +596,12 @@ func scrapeGuilds() {
 
 	updateTime := time.Now().Format(time.RFC3339)
 	for _, g := range allGuilds {
-		if _, err := guildStmt.Exec(g.Rank, g.Name, g.Level, g.Experience, g.Master, g.EmblemURL, updateTime); err != nil {
+		if _, err := guildStmt.Exec(0, g.Name, g.Level, g.Experience, g.Master, g.EmblemURL, updateTime); err != nil {
 			log.Printf("    -> [DB] WARN: Failed to insert guild '%s': %v", g.Name, err)
 		}
 	}
 
-	log.Printf("    -> [DB] Updating 'characters' table with guild associations for %d members...", len(allMembers))
+	log.Printf("    -> [DB] Updating 'characters' table with guild associations for %d masters...", len(allMembers))
 
 	if _, err := tx.Exec("UPDATE characters SET guild_name = NULL"); err != nil {
 		log.Printf("❌ [Guilds][DB] Failed to clear existing guild names from characters table: %v", err)
@@ -615,7 +627,7 @@ func scrapeGuilds() {
 			}
 		}
 	}
-	log.Printf("    -> [DB] Successfully associated %d characters with their guilds.", updateCount)
+	log.Printf("    -> [DB] Successfully associated %d characters (masters) with their guilds.", updateCount)
 
 	if err := tx.Commit(); err != nil {
 		log.Printf("❌ [Guilds][DB] Failed to commit guilds and characters transaction: %v", err)

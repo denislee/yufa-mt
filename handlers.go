@@ -1349,11 +1349,16 @@ func guildHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	orderByClause, ok := allowedSorts[sortBy]
 	if !ok {
-		orderByClause, sortBy = "rank", "rank" // Default sort
+		orderByClause, sortBy = "level", "level" // Default sort
 	}
 	if strings.ToUpper(order) != "DESC" {
 		order = "ASC"
 	}
+
+	if order != "" {
+		order = "DESC"
+	}
+
 	orderByFullClause := fmt.Sprintf("ORDER BY %s %s", orderByClause, order)
 
 	// --- 4. Get the total count of matching guilds for pagination ---
@@ -1377,10 +1382,11 @@ func guildHandler(w http.ResponseWriter, r *http.Request) {
 	offset := (page - 1) * guildsPerPage
 
 	// --- 6. Fetch the paginated guild data ---
+	// --- 6. Fetch the paginated guild data ---
 	query := fmt.Sprintf(`
-		SELECT
-		    rank, name, level, experience, master, emblem_url,
-		    (SELECT COUNT(*) FROM characters WHERE guild_name = guilds.name) as member_count,
+	SELECT
+		name, level, experience, master, emblem_url,
+		(SELECT COUNT(*) FROM characters WHERE guild_name = guilds.name) as member_count,
 		    COALESCE((SELECT SUM(zeny) FROM characters WHERE guild_name = guilds.name), 0) as total_zeny,
 		    COALESCE((SELECT AVG(base_level) FROM characters WHERE guild_name = guilds.name), 0) as avg_base_level
 		FROM guilds
@@ -1401,7 +1407,7 @@ func guildHandler(w http.ResponseWriter, r *http.Request) {
 	var guilds []Guild
 	for rows.Next() {
 		var g Guild
-		if err := rows.Scan(&g.Rank, &g.Name, &g.Level, &g.Experience, &g.Master, &g.EmblemURL, &g.MemberCount, &g.TotalZeny, &g.AvgBaseLevel); err != nil {
+		if err := rows.Scan(&g.Name, &g.Level, &g.Experience, &g.Master, &g.EmblemURL, &g.MemberCount, &g.TotalZeny, &g.AvgBaseLevel); err != nil {
 			log.Printf("⚠️ Failed to scan guild row: %v", err)
 			continue
 		}
