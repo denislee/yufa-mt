@@ -21,7 +21,7 @@ import (
 // --- CONFIGURATION ---
 // These constants control verbose logging for each specific scraper module.
 const enablePlayerCountDebugLogs = false
-const enableCharacterScraperDebugLogs = true
+const enableCharacterScraperDebugLogs = false
 const enableGuildScraperDebugLogs = false
 const enableZenyScraperDebugLogs = true
 const enableMarketScraperDebugLogs = false
@@ -127,44 +127,57 @@ func scrapeAndStorePlayerCount() {
 	log.Printf("✅ [Counter] Player/seller count updated. New values: %d players, %d sellers", onlineCount, sellerCount)
 }
 
+// **MODIFIED FUNCTION**
+// scrapePlayerCharacters uses multiple individual regexes to find data points and assembles
+// characters based on the order the data was found in the raw server response.
 func scrapePlayerCharacters() {
 	log.Println("🏆 [Characters] Starting player character scrape...")
 	const maxRetries = 3
+	const retryDelay = 3 * time.Second
 
-	allocCtx, cancel := newOptimizedAllocator()
-	defer cancel()
+	// Define individual regexes for each piece of character data.
+	rankRegex := regexp.MustCompile(`p\-1 text\-center font\-medium\\",\\"children\\":(\d+)\}\]`)
+	nameRegex := regexp.MustCompile(`max-w-10 truncate p-1 font-semibold">([^<]+)</td>`)
+	baseLevelRegex := regexp.MustCompile(`\\"level\\":(\d+),`)
+	jobLevelRegex := regexp.MustCompile(`\\"job_level\\":(\d+),\\"exp`)
+	expRegex := regexp.MustCompile(`\\"exp\\":(\d+)`)
+	classRegex := regexp.MustCompile(`"hidden text\-sm sm:inline\\",\\"children\\":\\"([^"]+)\\"`)
 
+	client := &http.Client{Timeout: 45 * time.Second}
+
+	// --- Determine total number of pages using regex ---
 	var lastPage = 1
 	log.Println("🏆 [Characters] Determining total number of pages...")
-	firstPageCtx, cancelFirstPage := chromedp.NewContext(allocCtx)
-	defer cancelFirstPage()
-	firstPageCtx, cancelTimeout := context.WithTimeout(firstPageCtx, 60*time.Second)
-	defer cancelTimeout()
+	firstPageURL := "https://projetoyufa.com/rankings?page=1"
 
-	var initialHtmlContent string
-	err := chromedp.Run(firstPageCtx,
-		chromedp.Navigate("https://projetoyufa.com/rankings?page=1"),
-		chromedp.WaitVisible(`nav[aria-label="pagination"]`),
-		chromedp.OuterHTML("html", &initialHtmlContent),
-	)
-
+	req, err := http.NewRequest("GET", firstPageURL, nil)
 	if err != nil {
-		log.Printf("⚠️ [Characters] Could not find pagination on page 1. Assuming only one page. Error: %v", err)
+		log.Printf("❌ [Characters] Failed to create request for page 1: %v", err)
+		return
+	}
+	req.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36")
+
+	resp, err := client.Do(req)
+	if err != nil {
+		log.Printf("⚠️ [Characters] Could not fetch page 1 to determine page count. Assuming one page. Error: %v", err)
 	} else {
-		doc, _ := goquery.NewDocumentFromReader(strings.NewReader(initialHtmlContent))
-		pageRegex := regexp.MustCompile(`page=(\d+)`)
-		doc.Find(`nav[aria-label="pagination"] a[href*="?page="]`).Each(func(i int, s *goquery.Selection) {
-			if href, exists := s.Attr("href"); exists {
-				matches := pageRegex.FindStringSubmatch(href)
-				if len(matches) > 1 {
-					if p, err := strconv.Atoi(matches[1]); err == nil {
+		bodyBytes, readErr := io.ReadAll(resp.Body)
+		if readErr != nil {
+			log.Printf("⚠️ [Characters] Failed to read page 1 body. Assuming one page. Error: %v", readErr)
+		} else {
+			pageRegex := regexp.MustCompile(`page=(\d+)`)
+			matches := pageRegex.FindAllStringSubmatch(string(bodyBytes), -1)
+			for _, match := range matches {
+				if len(match) > 1 {
+					if p, pErr := strconv.Atoi(match[1]); pErr == nil {
 						if p > lastPage {
 							lastPage = p
 						}
 					}
 				}
 			}
-		})
+		}
+		resp.Body.Close()
 	}
 	log.Printf("✅ [Characters] Found %d total pages to scrape.", lastPage)
 
@@ -191,13 +204,11 @@ func scrapePlayerCharacters() {
 		}
 	}
 
-	// Use a single timestamp for the entire scrape operation.
 	updateTime := time.Now().Format(time.RFC3339)
-
 	allPlayers := make(map[string]PlayerCharacter)
 	var mu sync.Mutex
 	var wg sync.WaitGroup
-	sem := make(chan struct{}, 5) // Limit to 5 concurrent scrapers
+	sem := make(chan struct{}, 5)
 
 	log.Printf("🏆 [Characters] Scraping all %d pages...", lastPage)
 	for page := 1; page <= lastPage; page++ {
@@ -207,75 +218,100 @@ func scrapePlayerCharacters() {
 			defer wg.Done()
 			defer func() { <-sem }()
 
-			var htmlContent string
-			var pageScrapedSuccessfully bool
+			var bodyContent string
+			pageScrapedSuccessfully := false
 
 			for attempt := 1; attempt <= maxRetries; attempt++ {
-				taskCtx, cancelCtx := chromedp.NewContext(allocCtx)
-				defer cancelCtx()
-				taskCtx, cancelTimeout := context.WithTimeout(taskCtx, 60*time.Second)
-				defer cancelTimeout()
-
 				url := fmt.Sprintf("https://projetoyufa.com/rankings?page=%d", p)
-				err := chromedp.Run(taskCtx,
-					chromedp.Navigate(url),
-					chromedp.WaitVisible(`tbody[data-slot="table-body"] tr[data-slot="table-row"]`),
-					chromedp.Sleep(500*time.Millisecond),
-					chromedp.OuterHTML("html", &htmlContent),
-				)
+				req, reqErr := http.NewRequest("GET", url, nil)
+				if reqErr != nil {
+					log.Printf("    -> ❌ Error creating request for page %d: %v", p, reqErr)
+					time.Sleep(retryDelay)
+					continue
+				}
+				req.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36")
 
-				if err == nil {
-					pageScrapedSuccessfully = true
-					break
+				resp, doErr := client.Do(req)
+				if doErr != nil {
+					log.Printf("    -> ❌ Error on page %d (attempt %d/%d): %v", p, attempt, maxRetries, doErr)
+					time.Sleep(retryDelay)
+					continue
 				}
-				if attempt == maxRetries {
-					log.Printf("    -> ❌ Error on page %d after %d attempts: %v", p, maxRetries, err)
+
+				if resp.StatusCode != http.StatusOK {
+					log.Printf("    -> ❌ Non-200 status code for page %d (attempt %d/%d): %d", p, attempt, maxRetries, resp.StatusCode)
+					resp.Body.Close()
+					time.Sleep(retryDelay)
+					continue
 				}
+
+				bodyBytes, readErr := io.ReadAll(resp.Body)
+				resp.Body.Close()
+				if readErr != nil {
+					log.Printf("    -> ❌ Failed to read body for page %d: %v", p, readErr)
+					time.Sleep(retryDelay)
+					continue
+				}
+
+				bodyContent = string(bodyBytes)
+				pageScrapedSuccessfully = true
+				break
 			}
 
 			if !pageScrapedSuccessfully {
+				log.Printf("    -> ❌ All retries failed for page %d.", p)
 				return
 			}
 
-			doc, err := goquery.NewDocumentFromReader(strings.NewReader(htmlContent))
-			if err != nil {
-				log.Printf("    -> ❌ Failed to parse HTML for page %d: %v", p, err)
+			// Find all matches for each attribute individually.
+			rankMatches := rankRegex.FindAllStringSubmatch(bodyContent, -1)
+			nameMatches := nameRegex.FindAllStringSubmatch(bodyContent, -1)
+			baseLevelMatches := baseLevelRegex.FindAllStringSubmatch(bodyContent, -1)
+			jobLevelMatches := jobLevelRegex.FindAllStringSubmatch(bodyContent, -1)
+			expMatches := expRegex.FindAllStringSubmatch(bodyContent, -1)
+			classMatches := classRegex.FindAllStringSubmatch(bodyContent, -1)
+
+			if enableCharacterScraperDebugLogs {
+				log.Printf("    -> matches: rank: %s, name: %s, base: %s, job %s, exp %s, class %s", rankMatches, nameMatches, baseLevelMatches, jobLevelMatches, expMatches, classMatches)
+				log.Printf("    -> matches: rank: %d, name: %d, base: %d, job %d, exp %d, class %d", len(rankMatches), len(nameMatches), len(baseLevelMatches), len(jobLevelMatches), len(expMatches), len(classMatches))
+			}
+
+			// Validate that we found the same number of matches for each attribute.
+			numChars := len(nameMatches)
+			if enableCharacterScraperDebugLogs {
+				log.Printf("    -> chars: %d", numChars)
+			}
+
+			if numChars == 0 || len(rankMatches) != numChars || len(baseLevelMatches) != numChars || len(jobLevelMatches) != numChars || len(expMatches) != numChars || len(classMatches) != numChars {
+				log.Printf("    -> matches: rank: %s, name: %s, base: %s, job %s, exp %s, class %s", rankMatches, nameMatches, baseLevelMatches, jobLevelMatches, expMatches, classMatches)
+				log.Printf("    -> matches: rank: %d, name: %d, base: %d, job %d, exp %d, class %d", len(rankMatches), len(nameMatches), len(baseLevelMatches), len(jobLevelMatches), len(expMatches), len(classMatches))
+				log.Printf("    -> ⚠️ [Characters] Mismatch in regex match counts on page %d. Skipping page. (Ranks: %d, Names: %d, Classes: %d)", p, len(rankMatches), len(nameMatches), len(classMatches))
 				return
 			}
 
 			var pagePlayers []PlayerCharacter
-			doc.Find(`tbody[data-slot="table-body"] tr[data-slot="table-row"]`).Each(func(i int, s *goquery.Selection) {
-				var player PlayerCharacter
-				var parseErr error
+			for i := 0; i < numChars; i++ {
+				rank, _ := strconv.Atoi(rankMatches[i][1])
+				name := nameMatches[i][1]
+				baseLevel, _ := strconv.Atoi(baseLevelMatches[i][1])
+				jobLevel, _ := strconv.Atoi(jobLevelMatches[i][1])
+				rawExp, _ := strconv.ParseFloat(expMatches[i][1], 64)
+				class := classMatches[i][1]
 
-				cells := s.Find(`td[data-slot="table-cell"]`)
-				if cells.Length() < 4 {
-					return
+				player := PlayerCharacter{
+					Rank:       rank,
+					Name:       name,
+					BaseLevel:  baseLevel,
+					JobLevel:   jobLevel,
+					Experience: rawExp / 1000000.0, // Calculate percentage
+					Class:      class,
 				}
-				rankStr := strings.TrimSpace(cells.Eq(0).Text())
-				nameStr := strings.TrimSpace(cells.Eq(1).Text())
-				levelStrRaw := cells.Eq(2).Find("div.mb-1.flex.justify-between.text-xs > span").Text()
-				expStrRaw := cells.Eq(2).Find("div.absolute.inset-0.flex.items-center.justify-center > span").Text()
-				classStr := cells.Eq(3).Find("span").Last().Text()
 
-				player.Name = nameStr
-				player.Class = classStr
-
-				player.Rank, parseErr = strconv.Atoi(rankStr)
-				if parseErr != nil {
-					return
+				if enableCharacterScraperDebugLogs {
+					log.Printf("    -> char rank: %d, name: %s, level: %d/%d, exp: %.2f%%, class: %s", player.Rank, player.Name, player.BaseLevel, player.JobLevel, player.Experience, player.Class)
 				}
-				levelStrClean := strings.TrimSpace(strings.TrimPrefix(levelStrRaw, "Nv."))
-				levelParts := strings.Split(levelStrClean, "/")
-				if len(levelParts) == 2 {
-					player.BaseLevel, _ = strconv.Atoi(strings.TrimSpace(levelParts[0]))
-					player.JobLevel, _ = strconv.Atoi(strings.TrimSpace(levelParts[1]))
-				}
-				expStr := strings.TrimSuffix(strings.TrimSpace(expStrRaw), "%")
-				player.Experience, _ = strconv.ParseFloat(expStr, 64)
-
 				pagePlayers = append(pagePlayers, player)
-			})
+			}
 
 			if len(pagePlayers) > 0 {
 				mu.Lock()
@@ -284,9 +320,7 @@ func scrapePlayerCharacters() {
 				}
 				mu.Unlock()
 			}
-			if enableCharacterScraperDebugLogs {
-				log.Printf("    -> Scraped page %d, found %d players.", p, len(pagePlayers))
-			}
+			log.Printf("    -> Scraped page %d/%d, found %d chars.", p, lastPage, len(pagePlayers))
 		}(page)
 	}
 
@@ -326,7 +360,8 @@ func scrapePlayerCharacters() {
 	for _, p := range allPlayers {
 		lastActiveTime := updateTime
 		if oldPlayer, exists := existingPlayers[p.Name]; exists {
-			if oldPlayer.Experience == p.Experience {
+			// Compare floats with a small tolerance to avoid issues with precision.
+			if (p.Experience-oldPlayer.Experience) < 0.001 && (p.Experience-oldPlayer.Experience) > -0.001 {
 				lastActiveTime = oldPlayer.LastActive
 			} else {
 				if enableCharacterScraperDebugLogs {
@@ -733,7 +768,7 @@ func scrapeZeny() {
 				mu.Unlock()
 			})
 			if enableZenyScraperDebugLogs {
-				log.Printf("    -> [Zeny] Scraped page %d successfully.", p)
+				log.Printf("    -> [Zeny] Scraped page %d / %d successfully.", p, lastPage)
 			}
 		}(page)
 	}
@@ -1166,7 +1201,6 @@ func startBackgroundJobs() {
 	}()
 
 	go func() {
-		scrapeGuilds()
 		ticker := time.NewTicker(1 * time.Hour)
 		defer ticker.Stop()
 		for {
