@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log"
 	"net/http" // Added import
 	"regexp"
@@ -23,7 +24,7 @@ const enablePlayerCountDebugLogs = false
 const enableCharacterScraperDebugLogs = true
 const enableGuildScraperDebugLogs = false
 const enableZenyScraperDebugLogs = true
-const enableMarketScraperDebugLogs = true
+const enableMarketScraperDebugLogs = false
 
 // newOptimizedAllocator creates a new chromedp allocator context with optimized flags
 // for scraping, disabling unnecessary resources like images to improve performance.
@@ -804,38 +805,62 @@ func scrapeData() {
 
 	const maxRetries = 3
 	const retryDelay = 5 * time.Second
+	const requestURL = "https://projetoyufa.com/market"
 
-	allocCtx, cancel := newOptimizedAllocator()
-	defer cancel()
+	// Create a new HTTP client with a timeout.
+	client := &http.Client{Timeout: 45 * time.Second}
 
 	var htmlContent string
-	var err error
 	var scrapeSuccessful bool
 
 	for attempt := 1; attempt <= maxRetries; attempt++ {
 		log.Printf("🚀 [Market] Scraping market page (Attempt %d/%d)...", attempt, maxRetries)
-		taskCtx, cancel := chromedp.NewContext(allocCtx)
-		defer cancel()
 
-		taskCtxWithTimeout, cancelTimeout := context.WithTimeout(taskCtx, 45*time.Second)
-		defer cancelTimeout()
-
-		err = chromedp.Run(taskCtxWithTimeout,
-			chromedp.Navigate("https://projetoyufa.com/market"),
-			chromedp.WaitVisible(`div[data-slot="card-header"]`),
-			chromedp.OuterHTML("html", &htmlContent),
-		)
-
-		if err == nil {
-			scrapeSuccessful = true
-			break
+		req, err := http.NewRequest("GET", requestURL, nil)
+		if err != nil {
+			log.Printf("⚠️ [Market] Attempt %d/%d failed: could not create request: %v", attempt, maxRetries, err)
+			time.Sleep(retryDelay) // Wait before the next attempt
+			continue
 		}
 
-		log.Printf("⚠️ [Market] Attempt %d/%d failed: %v", attempt, maxRetries, err)
-		if attempt < maxRetries {
-			log.Printf("    -> Retrying in %v...", retryDelay)
-			time.Sleep(retryDelay)
+		// Set a User-Agent to mimic a real browser to avoid being blocked.
+		req.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36")
+
+		resp, err := client.Do(req)
+		if err != nil {
+			log.Printf("⚠️ [Market] Attempt %d/%d failed during request: %v", attempt, maxRetries, err)
+			if attempt < maxRetries {
+				log.Printf("    -> Retrying in %v...", retryDelay)
+				time.Sleep(retryDelay)
+			}
+			continue
 		}
+
+		// Ensure the response body is always closed.
+		bodyBytes, readErr := io.ReadAll(resp.Body)
+		resp.Body.Close()
+
+		if readErr != nil {
+			log.Printf("⚠️ [Market] Attempt %d/%d failed reading response body: %v", attempt, maxRetries, readErr)
+			if attempt < maxRetries {
+				log.Printf("    -> Retrying in %v...", retryDelay)
+				time.Sleep(retryDelay)
+			}
+			continue
+		}
+
+		if resp.StatusCode != http.StatusOK {
+			log.Printf("⚠️ [Market] Attempt %d/%d failed: received non-200 status code: %d", attempt, maxRetries, resp.StatusCode)
+			if attempt < maxRetries {
+				log.Printf("    -> Retrying in %v...", retryDelay)
+				time.Sleep(retryDelay)
+			}
+			continue
+		}
+
+		htmlContent = string(bodyBytes)
+		scrapeSuccessful = true
+		break // Success, exit the loop.
 	}
 
 	if !scrapeSuccessful {
@@ -857,6 +882,10 @@ func scrapeData() {
 		sellerName := strings.TrimSpace(s.Find("svg.lucide-user").Next().Text())
 		mapName := strings.TrimSpace(s.Find("svg.lucide-map-pin").Next().Text())
 		mapCoordinates := strings.TrimSpace(s.Find("svg.lucide-copy").Next().Text())
+
+		if enableMarketScraperDebugLogs == true {
+			log.Printf("[Market] shop name: %s, seller name: %s, map_name: %s, mapcoord: %s", shopName, sellerName, mapName, mapCoordinates)
+		}
 
 		s.Find(`div[data-slot="card-content"] .flex.items-center.space-x-2`).Each(func(j int, itemSelection *goquery.Selection) {
 			itemName := strings.TrimSpace(itemSelection.Find("p.truncate").Text())
@@ -914,6 +943,10 @@ func scrapeData() {
 				MapName:        mapName,
 				MapCoordinates: mapCoordinates,
 			}
+			if enableMarketScraperDebugLogs == true {
+				log.Printf("🔎 [Market] name: %s, id: %d, qtd: %d price %s store: %s seller: %s map: %s coord %s", itemName, itemID, quantity, priceStr, shopName, sellerName, mapName, mapCoordinates)
+			}
+
 			scrapedItemsByName[itemName] = append(scrapedItemsByName[itemName], item)
 		})
 	})
@@ -1064,7 +1097,6 @@ func scrapeData() {
 	}
 	log.Printf("✅ [Market] Scrape complete. Unchanged: %d groups. Updated: %d groups. Newly Added: %d groups. Removed: %d groups.", itemsUnchanged, itemsUpdated, itemsAdded, itemsRemoved)
 }
-
 func areItemSetsIdentical(setA, setB []Item) bool {
 	if len(setA) != len(setB) {
 		return false
@@ -1154,4 +1186,3 @@ func startBackgroundJobs() {
 		}
 	}()
 }
-
