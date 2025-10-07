@@ -23,7 +23,7 @@ import (
 const enablePlayerCountDebugLogs = false
 const enableCharacterScraperDebugLogs = false
 const enableGuildScraperDebugLogs = false
-const enableZenyScraperDebugLogs = true
+const enableZenyScraperDebugLogs = false
 const enableMarketScraperDebugLogs = false
 
 // newOptimizedAllocator creates a new chromedp allocator context with optimized flags
@@ -634,6 +634,8 @@ type CharacterZenyInfo struct {
 func scrapeZeny() {
 	log.Println("💰 [Zeny] Starting Zeny ranking scrape...")
 	const maxRetries = 3
+	const retryDelay = 3 * time.Second
+	client := &http.Client{Timeout: 45 * time.Second}
 
 	// --- PRE-FETCH EXISTING DATA ---
 	log.Println("    -> [DB] Fetching existing character zeny data for activity comparison...")
@@ -641,7 +643,6 @@ func scrapeZeny() {
 	rows, err := db.Query("SELECT name, zeny, last_active FROM characters")
 	if err != nil {
 		log.Printf("❌ [Zeny][DB] Failed to query existing characters for comparison: %v", err)
-		// We can continue, but activity tracking may be inaccurate.
 	} else {
 		defer rows.Close()
 		for rows.Next() {
@@ -657,91 +658,101 @@ func scrapeZeny() {
 			log.Printf("    -> [DB] Found %d existing character records for comparison.", len(existingCharacters))
 		}
 	}
-	// Use a single timestamp for the entire scrape operation.
-	updateTime := time.Now().Format(time.RFC3339)
 
-	allocCtx, cancel := newOptimizedAllocator()
-	defer cancel()
-
+	// --- DETERMINE TOTAL PAGES ---
 	var lastPage = 1
 	log.Println("💰 [Zeny] Determining total number of pages...")
-	firstPageCtx, cancelFirstPage := chromedp.NewContext(allocCtx)
-	defer cancelFirstPage()
-	firstPageCtx, cancelTimeout := context.WithTimeout(firstPageCtx, 60*time.Second)
-	defer cancelTimeout()
-
-	var initialHtmlContent string
-	err = chromedp.Run(firstPageCtx,
-		chromedp.Navigate("https://projetoyufa.com/rankings/zeny?page=1"),
-		chromedp.WaitVisible(`nav[aria-label="pagination"]`),
-		chromedp.OuterHTML("html", &initialHtmlContent),
-	)
-
+	firstPageURL := "https://projetoyufa.com/rankings/zeny?page=1"
+	req, err := http.NewRequest("GET", firstPageURL, nil)
 	if err != nil {
-		log.Printf("⚠️ [Zeny] Could not find pagination on page 1. Assuming only one page. Error: %v", err)
+		log.Printf("❌ [Zeny] Failed to create request for page 1: %v", err)
+		return
+	}
+	req.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36")
+	resp, err := client.Do(req)
+	if err != nil {
+		log.Printf("⚠️ [Zeny] Could not fetch page 1 to determine page count. Assuming one page. Error: %v", err)
 	} else {
-		doc, _ := goquery.NewDocumentFromReader(strings.NewReader(initialHtmlContent))
-		pageRegex := regexp.MustCompile(`page=(\d+)`)
-		doc.Find(`nav[aria-label="pagination"] a[href*="?page="]`).Each(func(i int, s *goquery.Selection) {
-			if href, exists := s.Attr("href"); exists {
-				matches := pageRegex.FindStringSubmatch(href)
-				if len(matches) > 1 {
-					if p, err := strconv.Atoi(matches[1]); err == nil {
-						if p > lastPage {
-							lastPage = p
+		defer resp.Body.Close()
+		if resp.StatusCode == http.StatusOK {
+			doc, docErr := goquery.NewDocumentFromReader(resp.Body)
+			if docErr != nil {
+				log.Printf("⚠️ [Zeny] Failed to parse page 1 body. Assuming one page. Error: %v", docErr)
+			} else {
+				pageRegex := regexp.MustCompile(`page=(\d+)`)
+				doc.Find(`nav[aria-label="pagination"] a[href*="?page="]`).Each(func(i int, s *goquery.Selection) {
+					if href, exists := s.Attr("href"); exists {
+						matches := pageRegex.FindStringSubmatch(href)
+						if len(matches) > 1 {
+							if p, pErr := strconv.Atoi(matches[1]); pErr == nil {
+								if p > lastPage {
+									lastPage = p
+								}
+							}
 						}
 					}
-				}
+				})
 			}
-		})
+		}
 	}
 	log.Printf("✅ [Zeny] Found %d total pages to scrape.", lastPage)
 
+	// --- SCRAPE ALL PAGES CONCURRENTLY ---
+	updateTime := time.Now().Format(time.RFC3339)
 	allZenyInfo := make(map[string]int64)
-	var mu sync.Mutex // Mutex to protect allZenyInfo map
-
+	var mu sync.Mutex
 	var wg sync.WaitGroup
 	sem := make(chan struct{}, 5) // Limit to 5 concurrent scrapers
 
 	for page := 1; page <= lastPage; page++ {
 		wg.Add(1)
-		sem <- struct{}{} // Acquire a semaphore slot
+		sem <- struct{}{}
 		go func(p int) {
 			defer wg.Done()
-			defer func() { <-sem }() // Release the slot
+			defer func() { <-sem }()
 
-			var htmlContent string
-			var pageScrapedSuccessfully bool
+			var doc *goquery.Document
+			pageScrapedSuccessfully := false
 
 			for attempt := 1; attempt <= maxRetries; attempt++ {
-				taskCtx, cancelCtx := chromedp.NewContext(allocCtx)
-				defer cancelCtx()
-				taskCtx, cancelTimeoutLoop := context.WithTimeout(taskCtx, 60*time.Second)
-				defer cancelTimeoutLoop()
-
 				url := fmt.Sprintf("https://projetoyufa.com/rankings/zeny?page=%d", p)
-				err := chromedp.Run(taskCtx,
-					chromedp.Navigate(url),
-					chromedp.WaitVisible(`tbody[data-slot="table-body"] tr[data-slot="table-row"]`),
-					chromedp.OuterHTML("html", &htmlContent),
-				)
+				req, reqErr := http.NewRequest("GET", url, nil)
+				if reqErr != nil {
+					log.Printf("    -> ❌ Error creating request for page %d: %v", p, reqErr)
+					time.Sleep(retryDelay)
+					continue
+				}
+				req.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36")
 
-				if err == nil {
-					pageScrapedSuccessfully = true
-					break
+				resp, doErr := client.Do(req)
+				if doErr != nil {
+					log.Printf("    -> ❌ Error on page %d (attempt %d/%d): %v", p, attempt, maxRetries, doErr)
+					time.Sleep(retryDelay)
+					continue
 				}
-				if attempt == maxRetries {
-					log.Printf("    -> ❌ [Zeny] Error on page %d after %d attempts: %v", p, maxRetries, err)
+
+				if resp.StatusCode != http.StatusOK {
+					log.Printf("    -> ❌ Non-200 status on page %d (attempt %d/%d): %d", p, attempt, maxRetries, resp.StatusCode)
+					resp.Body.Close()
+					time.Sleep(retryDelay)
+					continue
 				}
+
+				var parseErr error
+				doc, parseErr = goquery.NewDocumentFromReader(resp.Body)
+				resp.Body.Close()
+				if parseErr != nil {
+					log.Printf("    -> ❌ Failed to parse body for page %d: %v", p, parseErr)
+					time.Sleep(retryDelay)
+					continue
+				}
+
+				pageScrapedSuccessfully = true
+				break
 			}
 
 			if !pageScrapedSuccessfully {
-				return
-			}
-
-			doc, err := goquery.NewDocumentFromReader(strings.NewReader(htmlContent))
-			if err != nil {
-				log.Printf("    -> ❌ [Zeny] Failed to parse HTML for page %d: %v", p, err)
+				log.Printf("    -> ❌ All retries failed for page %d.", p)
 				return
 			}
 
@@ -755,9 +766,14 @@ func scrapeZeny() {
 				zenyStrRaw := strings.TrimSpace(cells.Eq(2).Text())
 				zenyStrClean := strings.ReplaceAll(zenyStrRaw, ",", "")
 				zenyStrClean = strings.TrimSuffix(zenyStrClean, "z")
-				zenyStrClean = strings.TrimSpace(zenyStrClean) // Trim space left between number and 'z'
+				zenyStrClean = strings.TrimSpace(zenyStrClean)
 
 				zenyVal, err := strconv.ParseInt(zenyStrClean, 10, 64)
+
+				if enableZenyScraperDebugLogs {
+					log.Printf("    -> [Zeny] name: %s, zeny: %s.", nameStr, zenyStrClean)
+				}
+
 				if err != nil {
 					log.Printf("    -> ⚠️ [Zeny] Could not parse zeny value '%s' for player '%s'", zenyStrRaw, nameStr)
 					return
@@ -767,9 +783,7 @@ func scrapeZeny() {
 				allZenyInfo[nameStr] = zenyVal
 				mu.Unlock()
 			})
-			if enableZenyScraperDebugLogs {
-				log.Printf("    -> [Zeny] Scraped page %d / %d successfully.", p, lastPage)
-			}
+			log.Printf("    -> [Zeny] Scraped page %d/%d successfully.", p, lastPage)
 		}(page)
 	}
 
@@ -781,6 +795,7 @@ func scrapeZeny() {
 		return
 	}
 
+	// --- UPDATE DATABASE ---
 	tx, err := db.Begin()
 	if err != nil {
 		log.Printf("❌ [Zeny][DB] Failed to begin transaction: %v", err)
@@ -800,7 +815,6 @@ func scrapeZeny() {
 	for name, newZeny := range allZenyInfo {
 		oldInfo, exists := existingCharacters[name]
 
-		// Condition for update: character is new, their old zeny value was NULL, or the zeny value has changed.
 		if !exists || !oldInfo.Zeny.Valid || oldInfo.Zeny.Int64 != newZeny {
 			res, err := stmt.Exec(newZeny, updateTime, name)
 			if err != nil {
@@ -819,7 +833,6 @@ func scrapeZeny() {
 				updatedCount++
 			}
 		} else {
-			// Zeny value is the same, no update needed.
 			unchangedCount++
 		}
 	}
@@ -1201,6 +1214,7 @@ func startBackgroundJobs() {
 	}()
 
 	go func() {
+		scrapeGuilds()
 		ticker := time.NewTicker(1 * time.Hour)
 		defer ticker.Stop()
 		for {
