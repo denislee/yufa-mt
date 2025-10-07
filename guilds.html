@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -97,6 +98,18 @@
                                     {{if eq .SortBy "members"}}{{- if eq .Order "ASC"}}&#9650;{{else}}&#9660;{{end}}{{- end}}
                                 </a>
                             </th>
+                             <th class="px-2 sm:px-3 py-2">
+                                <a href="/guilds?sort_by=zeny&order={{if eq .SortBy "zeny"}}{{toggleOrder .Order}}{{else}}DESC{{end}}&name_query={{.SearchName}}" class="hover:text-blue-600">
+                                    Total Zeny
+                                    {{if eq .SortBy "zeny"}}{{- if eq .Order "ASC"}}&#9650;{{else}}&#9660;{{end}}{{- end}}
+                                </a>
+                            </th>
+                             <th class="px-2 sm:px-3 py-2">
+                                <a href="/guilds?sort_by=avg_level&order={{if eq .SortBy "avg_level"}}{{toggleOrder .Order}}{{else}}DESC{{end}}&name_query={{.SearchName}}" class="hover:text-blue-600">
+                                    Avg Base Lvl
+                                    {{if eq .SortBy "avg_level"}}{{- if eq .Order "ASC"}}&#9650;{{else}}&#9660;{{end}}{{- end}}
+                                </a>
+                            </th>
                         </tr>
                     </thead>
                     <tbody class="text-gray-700 text-xs">
@@ -116,10 +129,12 @@
                             <td class="px-2 sm:px-3 py-2">{{.Level}}</td>
                             <td class="px-2 sm:px-3 py-2">{{.Master}}</td>
                             <td class="px-2 sm:px-3 py-2">{{.MemberCount}}</td>
+                            <td class="px-2 sm:px-3 py-2">{{formatZeny .TotalZeny}}</td>
+                            <td class="px-2 sm:px-3 py-2">{{formatAvgLevel .AvgBaseLevel}}</td>
                         </tr>
                         {{else}}
                         <tr>
-                            <td colspan="5" class="text-center py-10 text-gray-500">No guilds found matching your criteria.</td>
+                            <td colspan="7" class="text-center py-10 text-gray-500">No guilds found matching your criteria.</td>
                         </tr>
                         {{end}}
                     </tbody>
@@ -164,3 +179,4 @@
     </script>
 </body>
 </html>
+

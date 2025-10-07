@@ -1339,11 +1339,13 @@ func guildHandler(w http.ResponseWriter, r *http.Request) {
 
 	// --- 3. Handle Sorting ---
 	allowedSorts := map[string]string{
-		"rank":    "rank",
-		"name":    "name",
-		"level":   "level",
-		"master":  "master",
-		"members": "member_count",
+		"rank":      "rank",
+		"name":      "name",
+		"level":     "level",
+		"master":    "master",
+		"members":   "member_count",
+		"zeny":      "total_zeny",
+		"avg_level": "avg_base_level",
 	}
 	orderByClause, ok := allowedSorts[sortBy]
 	if !ok {
@@ -1376,8 +1378,11 @@ func guildHandler(w http.ResponseWriter, r *http.Request) {
 
 	// --- 6. Fetch the paginated guild data ---
 	query := fmt.Sprintf(`
-		SELECT rank, name, level, experience, master, emblem_url,
-		       (SELECT COUNT(*) FROM characters WHERE guild_name = guilds.name) as member_count
+		SELECT
+		    rank, name, level, experience, master, emblem_url,
+		    (SELECT COUNT(*) FROM characters WHERE guild_name = guilds.name) as member_count,
+		    COALESCE((SELECT SUM(zeny) FROM characters WHERE guild_name = guilds.name), 0) as total_zeny,
+		    COALESCE((SELECT AVG(base_level) FROM characters WHERE guild_name = guilds.name), 0) as avg_base_level
 		FROM guilds
 		%s
 		%s
@@ -1396,7 +1401,7 @@ func guildHandler(w http.ResponseWriter, r *http.Request) {
 	var guilds []Guild
 	for rows.Next() {
 		var g Guild
-		if err := rows.Scan(&g.Rank, &g.Name, &g.Level, &g.Experience, &g.Master, &g.EmblemURL, &g.MemberCount); err != nil {
+		if err := rows.Scan(&g.Rank, &g.Name, &g.Level, &g.Experience, &g.Master, &g.EmblemURL, &g.MemberCount, &g.TotalZeny, &g.AvgBaseLevel); err != nil {
 			log.Printf("⚠️ Failed to scan guild row: %v", err)
 			continue
 		}
@@ -1410,6 +1415,27 @@ func guildHandler(w http.ResponseWriter, r *http.Request) {
 				return "DESC"
 			}
 			return "ASC"
+		},
+		"formatZeny": func(zeny int64) string {
+			s := strconv.FormatInt(zeny, 10)
+			if len(s) <= 3 {
+				return s
+			}
+			var result []string
+			for i := len(s); i > 0; i -= 3 {
+				start := i - 3
+				if start < 0 {
+					start = 0
+				}
+				result = append([]string{s[start:i]}, result...)
+			}
+			return strings.Join(result, ".")
+		},
+		"formatAvgLevel": func(level float64) string {
+			if level == 0 {
+				return "N/A"
+			}
+			return fmt.Sprintf("%.1f", level)
 		},
 	}
 
@@ -1436,4 +1462,3 @@ func guildHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	tmpl.Execute(w, data)
 }
-
