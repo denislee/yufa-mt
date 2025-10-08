@@ -557,8 +557,16 @@ func itemHistoryHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Get page parameter for the listings table
+	pageStr := r.URL.Query().Get("page")
+	page, err := strconv.Atoi(pageStr)
+	if err != nil || page < 1 {
+		page = 1
+	}
+	const listingsPerPage = 50 // Define how many listings per page
+
 	var itemID int
-	err := db.QueryRow("SELECT item_id FROM items WHERE name_of_the_item = ? AND item_id > 0 LIMIT 1", itemName).Scan(&itemID)
+	err = db.QueryRow("SELECT item_id FROM items WHERE name_of_the_item = ? AND item_id > 0 LIMIT 1", itemName).Scan(&itemID)
 	if err != nil {
 		log.Printf("⚠️ Could not find a valid ItemID for '%s' in the database: %v", itemName, err)
 	}
@@ -756,6 +764,32 @@ func itemHistoryHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// --- Pagination for All Listings Table ---
+	var totalListings int
+	countQuery := "SELECT COUNT(*) FROM items WHERE name_of_the_item = ?"
+	err = db.QueryRow(countQuery, itemName).Scan(&totalListings)
+	if err != nil {
+		http.Error(w, "Could not count item listings", http.StatusInternalServerError)
+		log.Printf("❌ Could not count listings for item '%s': %v", itemName, err)
+		return
+	}
+
+	totalPages := 0
+	if totalListings > 0 {
+		totalPages = int(math.Ceil(float64(totalListings) / float64(listingsPerPage)))
+	}
+	if page > totalPages && totalPages > 0 {
+		page = totalPages
+	}
+	if page < 1 {
+		page = 1
+	}
+	offset := (page - 1) * listingsPerPage
+	if offset < 0 {
+		offset = 0
+	}
+	// --- End Pagination Logic ---
+
 	allListingsQuery := `
 		SELECT
 			price,
@@ -768,9 +802,10 @@ func itemHistoryHandler(w http.ResponseWriter, r *http.Request) {
             is_available
 		FROM items
 		WHERE name_of_the_item = ?
-		ORDER BY is_available DESC, date_and_time_retrieved DESC;
+		ORDER BY is_available DESC, date_and_time_retrieved DESC
+		LIMIT ? OFFSET ?;
 	`
-	rowsAll, err := db.Query(allListingsQuery, itemName)
+	rowsAll, err := db.Query(allListingsQuery, itemName, listingsPerPage, offset)
 	if err != nil {
 		http.Error(w, "Database query for all listings failed", http.StatusInternalServerError)
 		log.Printf("❌ All listings query error: %v", err)
@@ -811,6 +846,14 @@ func itemHistoryHandler(w http.ResponseWriter, r *http.Request) {
 		ItemDetails:        rmsItemDetails,
 		AllListings:        allListings,
 		LastScrapeTime:     getLastScrapeTime(),
+		// Pagination data
+		TotalListings: totalListings,
+		CurrentPage:   page,
+		TotalPages:    totalPages,
+		PrevPage:      page - 1,
+		NextPage:      page + 1,
+		HasPrevPage:   page > 1,
+		HasNextPage:   page < totalPages,
 	}
 	tmpl.Execute(w, data)
 }

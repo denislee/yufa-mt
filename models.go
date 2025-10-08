@@ -208,6 +208,14 @@ type HistoryPageData struct {
 	ItemDetails        *RMSItem
 	AllListings        []Item
 	LastScrapeTime     string
+	// Pagination for AllListings table
+	CurrentPage   int
+	TotalPages    int
+	PrevPage      int
+	NextPage      int
+	HasPrevPage   bool
+	HasNextPage   bool
+	TotalListings int
 }
 
 // PlayerCountPoint represents a single data point for the player history chart.

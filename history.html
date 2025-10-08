@@ -145,6 +145,33 @@
                     </tbody>
                 </table>
             </div>
+            {{if gt .TotalPages 1}}
+            <div class="px-3 py-3 bg-white border-t flex flex-col sm:flex-row items-center sm:justify-between text-xs">
+                <span class="text-gray-700">
+                    Page <strong>{{.CurrentPage}}</strong> of <strong>{{.TotalPages}}</strong> ({{.TotalListings}} total listings)
+                </span>
+                <div class="inline-flex mt-2 sm:mt-0">
+                    {{if .HasPrevPage}}
+                        <a href="?name={{.ItemName | urlquery}}&page={{.PrevPage}}" class="bg-gray-200 hover:bg-gray-300 text-gray-700 font-semibold py-1 px-3 rounded-l">
+                            &laquo; Prev
+                        </a>
+                    {{else}}
+                        <span class="bg-gray-100 text-gray-400 font-semibold py-1 px-3 rounded-l cursor-not-allowed">
+                            &laquo; Prev
+                        </span>
+                    {{end}}
+                    {{if .HasNextPage}}
+                        <a href="?name={{.ItemName | urlquery}}&page={{.NextPage}}" class="bg-gray-200 hover:bg-gray-300 text-gray-700 font-semibold py-1 px-3 rounded-r">
+                            Next &raquo;
+                        </a>
+                    {{else}}
+                        <span class="bg-gray-100 text-gray-400 font-semibold py-1 px-3 rounded-r cursor-not-allowed">
+                            Next &raquo;
+                        </span>
+                    {{end}}
+                </div>
+            </div>
+            {{end}}
         </div>
         {{end}}
 
