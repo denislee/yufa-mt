@@ -46,7 +46,7 @@
     <div class="container mx-auto px-4 py-6">
         <div class="flex flex-col sm:flex-row justify-between sm:items-center gap-2 mb-4 border-b border-gray-200 pb-3">
             <h1 class="text-2xl font-bold text-gray-800">Full Market List</h1>
-            <p class="text-sm text-gray-500">Last updated: <strong data-timestamp="{{.LastScrapeTime}}">{{.LastScrapeTime}}</strong> <span id="time-ago"></span></p>
+            <div id="last-updated" class="text-sm text-gray-500" data-timestamp="{{.LastScrapeTime}}"></div>
         </div>
 
         <div class="bg-white p-3 rounded-lg shadow mb-4">
@@ -169,34 +169,58 @@
                 menu.classList.toggle('hidden');
             });
 
-            const timeAgoSpan = document.getElementById('time-ago');
-            const lastUpdateElement = document.querySelector('[data-timestamp]');
-            if (!lastUpdateElement) return;
-            const timestampStr = lastUpdateElement.dataset.timestamp;
-            if (!timestampStr || timestampStr === 'Never') {
-                timeAgoSpan.textContent = '(never updated)';
-                return;
-            }
-            const lastUpdateDate = new Date(timestampStr);
-
-            function updateTimeAgo() {
-                const now = new Date();
-                const secondsPast = Math.floor((now.getTime() - lastUpdateDate.getTime()) / 1000);
-                if (secondsPast < 60) {
-                    timeAgoSpan.textContent = `(${secondsPast} second${secondsPast !== 1 ? 's' : ''} ago)`;
-                } else if (secondsPast < 3600) {
-                    const minutes = Math.floor(secondsPast / 60);
-                    timeAgoSpan.textContent = `(${minutes} minute${minutes !== 1 ? 's' : ''} ago)`;
-                } else if (secondsPast < 86400) {
-                    const hours = Math.floor(secondsPast / 3600);
-                    timeAgoSpan.textContent = `(${hours} hour${hours !== 1 ? 's' : ''} ago)`;
-                } else {
-                    const days = Math.floor(secondsPast / 86400);
-                    timeAgoSpan.textContent = `(${days} day${days !== 1 ? 's' : ''} ago)`;
+            // Format price data
+            document.querySelectorAll('[data-price]').forEach(elem => {
+                const price = parseInt(elem.dataset.price, 10);
+                if (!isNaN(price)) {
+                    elem.textContent = `${price.toLocaleString()}z`;
                 }
+            });
+
+            // Last updated time ago logic
+            const lastUpdateElement = document.getElementById('last-updated');
+            if (lastUpdateElement) {
+                const timestampStr = lastUpdateElement.dataset.timestamp;
+
+                if (!timestampStr || timestampStr === 'Never' || timestampStr === '') {
+                    lastUpdateElement.textContent = 'Updated: never';
+                    return;
+                }
+
+                const lastUpdateDate = new Date(timestampStr);
+
+                // Format the absolute timestamp once
+                const formattedTimestamp = lastUpdateDate.toLocaleString([], {
+                    year: 'numeric', month: 'short', day: 'numeric',
+                    hour: '2-digit', minute: '2-digit'
+                });
+
+                const updateTimeAgo = () => {
+                    const now = new Date();
+                    const secondsPast = Math.floor((now.getTime() - lastUpdateDate.getTime()) / 1000);
+                    let timeAgoString;
+
+                    if (secondsPast < 5) {
+                        timeAgoString = 'just now';
+                    } else if (secondsPast < 60) {
+                        timeAgoString = `${secondsPast}s ago`;
+                    } else if (secondsPast < 3600) {
+                        const minutes = Math.floor(secondsPast / 60);
+                        timeAgoString = `${minutes}m ago`;
+                    } else if (secondsPast < 86400) {
+                        const hours = Math.floor(secondsPast / 3600);
+                        timeAgoString = `${hours}h ago`;
+                    } else {
+                        const days = Math.floor(secondsPast / 86400);
+                        timeAgoString = `${days}d ago`;
+                    }
+                    // Using innerHTML to allow for subtle styling of the timestamp
+                    lastUpdateElement.innerHTML = `Updated: ${timeAgoString} <span class="text-gray-400 font-normal">(${formattedTimestamp})</span>`;
+                };
+
+                updateTimeAgo();
+                setInterval(updateTimeAgo, 30000); // Refresh every 30 seconds
             }
-            updateTimeAgo();
-            setInterval(updateTimeAgo, 30000);
         });
     </script>
 </body>
