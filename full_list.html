@@ -92,7 +92,7 @@
             <a href="/full-list?query={{$q}}&sort_by={{$sort}}&order={{$order}}{{if not $showAll}}&only_available=true{{end}}&store_name={{$storeName | urlquery}}&{{$params}}" class="px-3 py-1 text-sm font-medium flex items-center gap-2 -mb-0.5 border-b-2 {{if eq $currentType ""}}text-blue-600 border-blue-600{{else}}text-gray-500 border-transparent hover:text-gray-700 hover:border-gray-300{{end}}">All Items</a>
             {{range .ItemTypes}}
                 <a href="/full-list?query={{$q}}&sort_by={{$sort}}&order={{$order}}{{if not $showAll}}&only_available=true{{end}}&store_name={{$storeName | urlquery}}&{{$params}}&type={{.FullName | urlquery}}" class="px-3 py-1 text-sm font-medium flex items-center gap-2 -mb-0.5 border-b-2 {{if eq .FullName $currentType}}text-blue-600 border-blue-600{{else}}text-gray-500 border-transparent hover:text-gray-700 hover:border-gray-300{{end}}">
-                    <img src="https://static.divine-pride.net/images/items/item/{{.IconItemID}}.png" alt="" class="w-5 h-5" style="image-rendering: pixelated;">
+                    <img src="https://static.divine-pride.net/images/items/item/{{.IconItemID}}.png" alt="" class="" style="image-rendering: pixelated;">
                     {{.ShortName}}
                 </a>
             {{end}}

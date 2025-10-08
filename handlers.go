@@ -91,38 +91,38 @@ func mapItemTypeToTabData(typeName string) ItemTypeTab {
 	tab := ItemTypeTab{FullName: typeName, ShortName: typeName, IconItemID: 909} // Default to Jellopy
 	switch typeName {
 	case "Ammunition":
-		tab.ShortName = "Ammo"
+		tab.ShortName = ""
 		tab.IconItemID = 1750 // Arrow
 	case "Armor":
-		tab.ShortName = "Armor"
-		tab.IconItemID = 2301 // Cotton Shirt
+		tab.ShortName = ""
+		tab.IconItemID = 2316 // Cotton Shirt
 	case "Card":
-		tab.ShortName = "Cards"
+		tab.ShortName = ""
 		tab.IconItemID = 4133 // Poring Card
 	case "Delayed-Consumable":
-		tab.ShortName = "Consume"
+		tab.ShortName = ""
 		tab.IconItemID = 610 // Blue Potion
 	case "Healing Item":
-		tab.ShortName = "Healing"
+		tab.ShortName = ""
 		tab.IconItemID = 501 // Red Potion
 	case "Miscellaneous":
-		tab.ShortName = "Misc"
+		tab.ShortName = ""
 		tab.IconItemID = 909 // Jellopy
 	case "Monster Egg":
-		tab.ShortName = "Eggs"
+		tab.ShortName = ""
 		tab.IconItemID = 9001 // Poring Egg
 	case "Pet Armor":
-		tab.ShortName = "Pet Gear"
+		tab.ShortName = ""
 		tab.IconItemID = 5183 // B.B. Cap
 	case "Taming Item":
-		tab.ShortName = "Taming"
+		tab.ShortName = ""
 		tab.IconItemID = 632 // Unripe Apple
 	case "Usable Item":
-		tab.ShortName = "Usable"
+		tab.ShortName = ""
 		tab.IconItemID = 601 // Fly Wing
 	case "Weapon":
-		tab.ShortName = "Weapons"
-		tab.IconItemID = 1201 // Main Gauche
+		tab.ShortName = ""
+		tab.IconItemID = 1162 // Main Gauche
 	}
 	return tab
 }
@@ -1525,4 +1525,3 @@ func guildHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	tmpl.Execute(w, data)
 }
-
