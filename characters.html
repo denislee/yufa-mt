@@ -11,6 +11,9 @@
         .container {
             max-width: 95% !important;
         }
+        details[open] > summary .open-marker {
+            transform: rotate(90deg);
+        }
     </style>
 </head>
 <body class="bg-gray-100 text-gray-800 text-sm sm:text-base">
@@ -92,10 +95,15 @@
                 {{end}}
             </div>
 
-            <div class="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-4">
-                <div class="bg-white p-3 rounded-lg shadow lg:col-span-2">
-                    <details {{if .HasChartData}}open{{end}}>
-                        <summary class="font-semibold text-lg cursor-pointer hover:text-blue-600">Class Distribution</summary>
+            <details class="mb-4">
+                <summary class="bg-white p-3 rounded-lg shadow font-semibold text-lg cursor-pointer hover:text-blue-600 list-none flex justify-between items-center">
+                    <span>📊 Statistics & Distribution</span>
+                    <span class="text-gray-500 transform transition-transform duration-200 open-marker">▶</span>
+                </summary>
+
+                <div class="grid grid-cols-1 lg:grid-cols-3 gap-4 mt-4">
+                    <div class="bg-white p-3 rounded-lg shadow lg:col-span-2">
+                        <h3 class="font-semibold text-lg">Class Distribution</h3>
                         <div class="mt-4">
                             <div class="flex flex-wrap items-center gap-4 mb-4 text-sm border-b pb-3">
                                 <strong class="text-gray-700">Show Types:</strong>
@@ -122,22 +130,22 @@
                                 <canvas id="classDistChart"></canvas>
                             </div>
                         </div>
-                    </details>
-                </div>
-                <div class="bg-white p-3 rounded-lg shadow h-full">
-                    <div class="flex flex-col justify-center items-center text-center h-full">
-                        <div>
-                            <h3 class="text-lg font-semibold text-gray-700">Total Zeny (Filtered)</h3>
-                            <p class="text-4xl font-bold text-green-600 mt-4 tracking-tight">
-                                {{if .TotalZeny}}{{formatZeny .TotalZeny}} <span class="text-2xl font-medium">z</span>{{else}}N/A{{end}}
-                            </p>
-                            <p class="text-sm text-gray-500 mt-2">
-                                Sum across {{.TotalPlayers}} characters (without bank).
-                            </p>
+                    </div>
+                    <div class="bg-white p-3 rounded-lg shadow h-full">
+                        <div class="flex flex-col justify-center items-center text-center h-full">
+                            <div>
+                                <h3 class="text-lg font-semibold text-gray-700">Total Zeny (Filtered)</h3>
+                                <p class="text-4xl font-bold text-green-600 mt-4 tracking-tight">
+                                    {{if .TotalZeny}}{{formatZeny .TotalZeny}} <span class="text-2xl font-medium">z</span>{{else}}N/A{{end}}
+                                </p>
+                                <p class="text-sm text-gray-500 mt-2">
+                                    Sum across {{.TotalPlayers}} characters (without bank).
+                                </p>
+                            </div>
                         </div>
                     </div>
                 </div>
-            </div>
+            </details>
         </form>
 
         <div class="bg-white shadow-lg rounded-lg overflow-hidden">
