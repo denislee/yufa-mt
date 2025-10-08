@@ -794,6 +794,23 @@ func getLastScrapeTime() string {
 	return "Never"
 }
 
+// getLastPlayerCountTime is a helper function to get the most recent player count scrape time.
+func getLastPlayerCountTime() string {
+	var lastScrapeTimestamp sql.NullString
+	err := db.QueryRow("SELECT MAX(timestamp) FROM player_history").Scan(&lastScrapeTimestamp)
+	if err != nil {
+		log.Printf("⚠️ Could not get last player count time: %v", err)
+	}
+	if lastScrapeTimestamp.Valid {
+		parsedTime, err := time.Parse(time.RFC3339, lastScrapeTimestamp.String)
+		if err == nil {
+			// Format for display
+			return parsedTime.Format("2006-01-02 15:04:05")
+		}
+	}
+	return "Never"
+}
+
 // getLastGuildScrapeTime is a helper function to get the most recent guild scrape time.
 func getLastGuildScrapeTime() string {
 	var lastScrapeTimestamp sql.NullString
@@ -993,7 +1010,7 @@ func playerCountHandler(w http.ResponseWriter, r *http.Request) {
 
 	data := PlayerCountPageData{
 		PlayerDataJSON:                 template.JS(playerHistoryJSON),
-		LastScrapeTime:                 getLastScrapeTime(),
+		LastScrapeTime:                 getLastPlayerCountTime(),
 		SelectedInterval:               interval,
 		EventDataJSON:                  template.JS(eventIntervalsJSON),
 		LatestActivePlayers:            latestActivePlayers,
