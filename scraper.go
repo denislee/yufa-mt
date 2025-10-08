@@ -162,6 +162,8 @@ func scrapePlayerCharacters() {
 		log.Printf("⚠️ [Characters] Could not fetch page 1 to determine page count. Assuming one page. Error: %v", err)
 	} else {
 		bodyBytes, readErr := io.ReadAll(resp.Body)
+		// ✅ FIX: Close the body immediately after reading, before checking for errors.
+		resp.Body.Close()
 		if readErr != nil {
 			log.Printf("⚠️ [Characters] Failed to read page 1 body. Assuming one page. Error: %v", readErr)
 		} else {
@@ -177,7 +179,6 @@ func scrapePlayerCharacters() {
 				}
 			}
 		}
-		resp.Body.Close()
 	}
 	log.Printf("✅ [Characters] Found %d total pages to scrape.", lastPage)
 
@@ -246,6 +247,7 @@ func scrapePlayerCharacters() {
 				}
 
 				bodyBytes, readErr := io.ReadAll(resp.Body)
+				// ✅ FIX: Close the body immediately after reading, before checking for errors.
 				resp.Body.Close()
 				if readErr != nil {
 					log.Printf("    -> ❌ Failed to read body for page %d: %v", p, readErr)
@@ -337,6 +339,7 @@ func scrapePlayerCharacters() {
 		log.Printf("❌ [DB] Failed to begin transaction: %v", err)
 		return
 	}
+	defer tx.Rollback() // Rollback is a no-op if Commit succeeds
 
 	stmt, err := tx.Prepare(`
 		INSERT INTO characters (rank, name, base_level, job_level, experience, class, last_updated, last_active)
@@ -352,7 +355,6 @@ func scrapePlayerCharacters() {
 	`)
 	if err != nil {
 		log.Printf("❌ [DB] Failed to prepare characters upsert statement: %v", err)
-		tx.Rollback()
 		return
 	}
 	defer stmt.Close()
@@ -417,8 +419,6 @@ func scrapeGuilds() {
 	nameRegex := regexp.MustCompile(`<span class="font-medium">([^<]+)</span>`)
 	levelRegex := regexp.MustCompile(`\\"guild_lv\\":(\d+),\\"connect_member\\"`)
 	masterRegex := regexp.MustCompile(`\\"master\\":\\"([^"]+)\\",\\"members\\"`)
-	//membersRegex := regexp.MustCompile(`\\"members\\":\[(.*)\"}\]\}`)
-	//	membersRegex := regexp.MustCompile(`\\"members\\":\[(.*?)\]\}\]`)
 	membersRegex := regexp.MustCompile(`\\"members\\":\[(.*?)\]\}`)
 	memberNameRegex := regexp.MustCompile(`\\"name\\":\\"([^"]+)\\",\\"base_level\\"`)
 
@@ -437,6 +437,8 @@ func scrapeGuilds() {
 		log.Printf("⚠️ [Guilds] Could not fetch page 1 to determine page count. Assuming one page. Error: %v", err)
 	} else {
 		bodyBytes, readErr := io.ReadAll(resp.Body)
+		// ✅ FIX: Close the body immediately after reading, before checking for errors.
+		resp.Body.Close()
 		if readErr != nil {
 			log.Printf("⚠️ [Guilds] Failed to read page 1 body. Assuming one page. Error: %v", readErr)
 		} else {
@@ -452,7 +454,6 @@ func scrapeGuilds() {
 				}
 			}
 		}
-		resp.Body.Close()
 	}
 	log.Printf("✅ [Guilds] Found %d total pages to scrape.", lastPage)
 
@@ -495,6 +496,7 @@ func scrapeGuilds() {
 					continue
 				}
 				bodyBytes, readErr := io.ReadAll(resp.Body)
+				// ✅ FIX: Close the body immediately after reading, before checking for errors.
 				resp.Body.Close()
 				if readErr != nil {
 					log.Printf("    -> ❌ Failed to read body for page %d: %v", p, readErr)
@@ -685,6 +687,7 @@ func scrapeZeny() {
 	if err != nil {
 		log.Printf("⚠️ [Zeny] Could not fetch page 1 to determine page count. Assuming one page. Error: %v", err)
 	} else {
+		// defer is safe here as it's not inside a retry loop.
 		defer resp.Body.Close()
 		if resp.StatusCode == http.StatusOK {
 			doc, docErr := goquery.NewDocumentFromReader(resp.Body)
@@ -752,6 +755,7 @@ func scrapeZeny() {
 
 				var parseErr error
 				doc, parseErr = goquery.NewDocumentFromReader(resp.Body)
+				// ✅ FIX: Close the body immediately after goquery has read it.
 				resp.Body.Close()
 				if parseErr != nil {
 					log.Printf("    -> ❌ Failed to parse body for page %d: %v", p, parseErr)
@@ -896,8 +900,8 @@ func scrapeData() {
 			continue
 		}
 
-		// Ensure the response body is always closed.
 		bodyBytes, readErr := io.ReadAll(resp.Body)
+		// ✅ FIX: Close the body immediately after reading, before checking for errors.
 		resp.Body.Close()
 
 		if readErr != nil {
@@ -1218,7 +1222,6 @@ func startBackgroundJobs() {
 	go func() {
 		ticker := time.NewTicker(30 * time.Minute)
 		defer ticker.Stop()
-		scrapePlayerCharacters()
 		for {
 			log.Printf("🕒 [Job] Waiting for the next 30-minute player character schedule...")
 			<-ticker.C
@@ -1247,3 +1250,4 @@ func startBackgroundJobs() {
 		}
 	}()
 }
+
