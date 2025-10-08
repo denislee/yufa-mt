@@ -463,11 +463,42 @@ func fullListHandler(w http.ResponseWriter, r *http.Request) {
 
 // activityHandler serves the page for recent market activity.
 func activityHandler(w http.ResponseWriter, r *http.Request) {
+	// 1. Get page parameter
+	pageStr := r.URL.Query().Get("page")
+	page, err := strconv.Atoi(pageStr)
+	if err != nil || page < 1 {
+		page = 1
+	}
+	const eventsPerPage = 50 // Define how many events per page
+
+	// 2. Get total event count for pagination
+	var totalEvents int
+	err = db.QueryRow("SELECT COUNT(*) FROM market_events").Scan(&totalEvents)
+	if err != nil {
+		http.Error(w, "Could not count market events", http.StatusInternalServerError)
+		log.Printf("❌ Could not count market events: %v", err)
+		return
+	}
+
+	// 3. Calculate pagination details
+	totalPages := 0
+	if totalEvents > 0 {
+		totalPages = int(math.Ceil(float64(totalEvents) / float64(eventsPerPage)))
+	}
+	if page > totalPages {
+		page = totalPages
+	}
+	if page < 1 {
+		page = 1
+	}
+	offset := (page - 1) * eventsPerPage
+
+	// 4. Query for paginated events
 	eventRows, err := db.Query(`
         SELECT event_timestamp, event_type, item_name, item_id, details
         FROM market_events
         ORDER BY event_timestamp DESC
-        LIMIT 200`) // Show more events on the dedicated page
+        LIMIT ? OFFSET ?`, eventsPerPage, offset)
 	if err != nil {
 		http.Error(w, "Could not query for market events", http.StatusInternalServerError)
 		log.Printf("❌ Could not query for market events: %v", err)
@@ -504,9 +535,16 @@ func activityHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// 5. Populate data struct with pagination info
 	data := ActivityPageData{
 		MarketEvents:   marketEvents,
 		LastScrapeTime: getLastScrapeTime(),
+		CurrentPage:    page,
+		TotalPages:     totalPages,
+		PrevPage:       page - 1,
+		NextPage:       page + 1,
+		HasPrevPage:    page > 1,
+		HasNextPage:    page < totalPages,
 	}
 	tmpl.Execute(w, data)
 }
@@ -1525,3 +1563,4 @@ func guildHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	tmpl.Execute(w, data)
 }
+

@@ -188,6 +188,13 @@ type PageData struct {
 type ActivityPageData struct {
 	MarketEvents   []MarketEvent
 	LastScrapeTime string
+	// Pagination
+	CurrentPage int
+	TotalPages  int
+	PrevPage    int
+	NextPage    int
+	HasPrevPage bool
+	HasNextPage bool
 }
 
 // HistoryPageData holds data for the item history page template.
@@ -273,3 +280,4 @@ type GuildPageData struct {
 	HasPrevPage bool
 	HasNextPage bool
 }
+
