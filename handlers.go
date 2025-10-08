@@ -794,6 +794,24 @@ func getLastScrapeTime() string {
 	return "Never"
 }
 
+// getLastGuildScrapeTime is a helper function to get the most recent guild scrape time.
+func getLastGuildScrapeTime() string {
+	var lastScrapeTimestamp sql.NullString
+	// Query the 'guilds' table for the most recent 'last_updated' timestamp.
+	err := db.QueryRow("SELECT MAX(last_updated) FROM guilds").Scan(&lastScrapeTimestamp)
+	if err != nil {
+		log.Printf("⚠️ Could not get last guild scrape time: %v", err)
+	}
+	if lastScrapeTimestamp.Valid {
+		parsedTime, err := time.Parse(time.RFC3339, lastScrapeTimestamp.String)
+		if err == nil {
+			// Format for display
+			return parsedTime.Format("2006-01-02 15:04:05")
+		}
+	}
+	return "Never"
+}
+
 // playerCountHandler serves the page with a graph of online player history.
 func playerCountHandler(w http.ResponseWriter, r *http.Request) {
 	interval := r.URL.Query().Get("interval")
@@ -1457,19 +1475,18 @@ func guildHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	data := GuildPageData{
-		Guilds:         guilds,
-		LastScrapeTime: getLastScrapeTime(),
-		SearchName:     searchName,
-		SortBy:         sortBy,
-		Order:          order,
-		CurrentPage:    page,
-		TotalPages:     totalPages,
-		PrevPage:       page - 1,
-		NextPage:       page + 1,
-		HasPrevPage:    page > 1,
-		HasNextPage:    page < totalPages,
-		TotalGuilds:    totalGuilds,
+		Guilds:              guilds,
+		LastGuildUpdateTime: getLastGuildScrapeTime(),
+		SearchName:          searchName,
+		SortBy:              sortBy,
+		Order:               order,
+		CurrentPage:         page,
+		TotalPages:          totalPages,
+		PrevPage:            page - 1,
+		NextPage:            page + 1,
+		HasPrevPage:         page > 1,
+		HasNextPage:         page < totalPages,
+		TotalGuilds:         totalGuilds,
 	}
 	tmpl.Execute(w, data)
 }
-

@@ -257,8 +257,8 @@ type CharacterPageData struct {
 
 // GuildPageData holds data for the guild listing page template.
 type GuildPageData struct {
-	Guilds         []Guild
-	LastScrapeTime string
+	Guilds              []Guild
+	LastGuildUpdateTime string
 	// Search and Filter
 	SearchName string
 	// Sorting
