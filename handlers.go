@@ -119,7 +119,7 @@ func mapItemTypeToTabData(typeName string) ItemTypeTab {
 		tab.IconItemID = 632 // Unripe Apple
 	case "Usable Item":
 		tab.ShortName = ""
-		tab.IconItemID = 601 // Fly Wing
+		tab.IconItemID = 603 // Fly Wing
 	case "Weapon":
 		tab.ShortName = ""
 		tab.IconItemID = 1162 // Main Gauche
