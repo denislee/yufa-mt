@@ -777,7 +777,7 @@ func itemHistoryHandler(w http.ResponseWriter, r *http.Request) {
 	tmpl.Execute(w, data)
 }
 
-// getLastScrapeTime is a helper function to get the most recent scrape time.
+// getLastScrapeTime is a helper function to get the most recent market scrape time.
 func getLastScrapeTime() string {
 	var lastScrapeTimestamp sql.NullString
 	err := db.QueryRow("SELECT MAX(timestamp) FROM scrape_history").Scan(&lastScrapeTimestamp)
@@ -801,6 +801,24 @@ func getLastGuildScrapeTime() string {
 	err := db.QueryRow("SELECT MAX(last_updated) FROM guilds").Scan(&lastScrapeTimestamp)
 	if err != nil {
 		log.Printf("⚠️ Could not get last guild scrape time: %v", err)
+	}
+	if lastScrapeTimestamp.Valid {
+		parsedTime, err := time.Parse(time.RFC3339, lastScrapeTimestamp.String)
+		if err == nil {
+			// Format for display
+			return parsedTime.Format("2006-01-02 15:04:05")
+		}
+	}
+	return "Never"
+}
+
+// getLastCharacterScrapeTime is a helper function to get the most recent character scrape time.
+func getLastCharacterScrapeTime() string {
+	var lastScrapeTimestamp sql.NullString
+	// Query the 'characters' table for the most recent 'last_updated' timestamp.
+	err := db.QueryRow("SELECT MAX(last_updated) FROM characters").Scan(&lastScrapeTimestamp)
+	if err != nil {
+		log.Printf("⚠️ Could not get last character scrape time: %v", err)
 	}
 	if lastScrapeTimestamp.Valid {
 		parsedTime, err := time.Parse(time.RFC3339, lastScrapeTimestamp.String)
@@ -1303,7 +1321,7 @@ func characterHandler(w http.ResponseWriter, r *http.Request) {
 
 	data := CharacterPageData{
 		Players:               players,
-		LastScrapeTime:        getLastScrapeTime(),
+		LastScrapeTime:        getLastCharacterScrapeTime(),
 		SearchName:            searchName,
 		SelectedClass:         selectedClass,
 		SelectedGuild:         selectedGuild,
@@ -1490,3 +1508,4 @@ func guildHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	tmpl.Execute(w, data)
 }
+
