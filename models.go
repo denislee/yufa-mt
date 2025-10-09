@@ -302,6 +302,18 @@ type GuildPageData struct {
 	HasNextPage bool
 }
 
+// ADDED: GuildDetailPageData holds all data for the single guild view.
+type GuildDetailPageData struct {
+	Guild                 Guild
+	Members               []PlayerCharacter
+	LastScrapeTime        string
+	ClassDistributionJSON template.JS
+	HasChartData          bool
+	// Sorting for members table
+	SortBy string
+	Order  string
+}
+
 // MvpKillPageData holds all data needed for the MVP kill rankings page.
 type MvpKillPageData struct {
 	Players        []MvpKillEntry
@@ -311,7 +323,7 @@ type MvpKillPageData struct {
 	LastScrapeTime string
 }
 
-// ADDED: CharacterDetailPageData holds all data for the single character view.
+// CharacterDetailPageData holds all data for the single character view.
 type CharacterDetailPageData struct {
 	Character      PlayerCharacter
 	Guild          *Guild // Pointer to handle characters without a guild

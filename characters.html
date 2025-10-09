@@ -194,7 +194,7 @@
                             {{if index $.VisibleColumns "experience"}}<td class="px-2 sm:px-3 py-2">{{printf "%.2f" .Experience}}%</td>{{end}}
                             {{if index $.VisibleColumns "zeny"}}<td class="px-2 sm:px-3 py-2">{{if .Zeny}}{{formatZeny .Zeny}}{{else}}N/A{{end}}</td>{{end}}
                             {{if index $.VisibleColumns "class"}}<td class="px-2 sm:px-3 py-2">{{.Class}}</td>{{end}}
-                            {{if index $.VisibleColumns "guild"}}<td class="px-2 sm:px-3 py-2">{{if .GuildName.Valid}}<a href="/characters?guild_filter={{.GuildName.String}}&name_query={{$.SearchName}}&class_filter={{$.SelectedClass}}&{{$.ColumnParams}}&{{$.GraphFilterParams}}" class="text-blue-600 hover:underline">{{.GuildName.String}}</a>{{end}}</td>{{end}}
+                            {{if index $.VisibleColumns "guild"}}<td class="px-2 sm:px-3 py-2">{{if .GuildName.Valid}}<a href="/guild?name={{.GuildName.String | urlquery}}" class="text-blue-600 hover:underline">{{.GuildName.String}}</a>{{end}}</td>{{end}}
                             {{if index $.VisibleColumns "last_updated"}}<td class="px-2 sm:px-3 py-2 whitespace-nowrap">{{.LastUpdated}}</td>{{end}}
                             {{if index $.VisibleColumns "last_active"}}<td class="px-2 sm:px-3 py-2 whitespace-nowrap">{{.LastActive}}</td>{{end}}
                         </tr>

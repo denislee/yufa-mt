@@ -2063,3 +2063,154 @@ func characterChangelogHandler(w http.ResponseWriter, r *http.Request) {
 	tmpl.Execute(w, data)
 }
 
+// ADDED: guildDetailHandler serves the new guild detail page.
+func guildDetailHandler(w http.ResponseWriter, r *http.Request) {
+	guildName := r.URL.Query().Get("name")
+	if guildName == "" {
+		http.Error(w, "Guild name is required", http.StatusBadRequest)
+		return
+	}
+
+	// --- 1. Get query parameters for sorting members ---
+	sortBy := r.URL.Query().Get("sort_by")
+	order := r.URL.Query().Get("order")
+
+	// --- 2. Fetch main guild data ---
+	var g Guild
+	guildQuery := `
+        SELECT
+            name, level, experience, master, emblem_url,
+            (SELECT COUNT(*) FROM characters WHERE guild_name = guilds.name) as member_count,
+            COALESCE((SELECT SUM(zeny) FROM characters WHERE guild_name = guilds.name), 0) as total_zeny,
+            COALESCE((SELECT AVG(base_level) FROM characters WHERE guild_name = guilds.name), 0) as avg_base_level
+        FROM guilds
+        WHERE name = ?`
+
+	err := db.QueryRow(guildQuery, guildName).Scan(&g.Name, &g.Level, &g.Experience, &g.Master, &g.EmblemURL, &g.MemberCount, &g.TotalZeny, &g.AvgBaseLevel)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			http.Error(w, "Guild not found", http.StatusNotFound)
+		} else {
+			http.Error(w, "Database query for guild details failed", http.StatusInternalServerError)
+			log.Printf("❌ Could not query for guild '%s': %v", guildName, err)
+		}
+		return
+	}
+
+	// --- 3. Handle Sorting for Member List ---
+	allowedSorts := map[string]string{
+		"rank":        "rank",
+		"name":        "name",
+		"base_level":  "base_level",
+		"job_level":   "job_level",
+		"experience":  "experience",
+		"zeny":        "zeny",
+		"class":       "class",
+		"last_active": "last_active",
+	}
+	orderByClause, ok := allowedSorts[sortBy]
+	if !ok {
+		orderByClause, sortBy = "base_level", "base_level" // Default sort
+		order = "DESC"
+	} else {
+		if strings.ToUpper(order) != "DESC" {
+			order = "ASC"
+		}
+	}
+	orderByFullClause := fmt.Sprintf("ORDER BY %s %s", orderByClause, order)
+
+	// --- 4. Fetch guild members ---
+	membersQuery := fmt.Sprintf(`
+		SELECT rank, name, base_level, job_level, experience, class, guild_name, zeny, last_updated, last_active
+		FROM characters
+		WHERE guild_name = ?
+		%s
+	`, orderByFullClause)
+
+	rows, err := db.Query(membersQuery, guildName)
+	if err != nil {
+		http.Error(w, "Could not query for guild members", http.StatusInternalServerError)
+		log.Printf("❌ Could not query for members of guild '%s': %v", guildName, err)
+		return
+	}
+	defer rows.Close()
+
+	var members []PlayerCharacter
+	classDistribution := make(map[string]int)
+	for rows.Next() {
+		var p PlayerCharacter
+		var lastUpdatedStr, lastActiveStr string
+		if err := rows.Scan(&p.Rank, &p.Name, &p.BaseLevel, &p.JobLevel, &p.Experience, &p.Class, &p.GuildName, &p.Zeny, &lastUpdatedStr, &lastActiveStr); err != nil {
+			log.Printf("⚠️ Failed to scan guild member row: %v", err)
+			continue
+		}
+		classDistribution[p.Class]++ // Increment class count for the chart
+
+		lastActiveTime, _ := time.Parse(time.RFC3339, lastActiveStr)
+		p.LastActive = lastActiveTime.Format("2006-01-02 15:04")
+
+		if p.Name == g.Master {
+			p.IsGuildLeader = true
+		}
+
+		members = append(members, p)
+	}
+
+	// --- 5. Prepare chart data ---
+	classDistJSON, err := json.Marshal(classDistribution)
+	if err != nil {
+		log.Printf("⚠️ Could not marshal class distribution data for guild '%s': %v", guildName, err)
+		classDistJSON = []byte("{}") // empty object on error
+	}
+
+	// --- 6. Load template and send data ---
+	funcMap := template.FuncMap{
+		"toggleOrder": func(currentOrder string) string {
+			if currentOrder == "ASC" {
+				return "DESC"
+			}
+			return "ASC"
+		},
+		"formatZeny": func(zeny int64) string {
+			s := strconv.FormatInt(zeny, 10)
+			if len(s) <= 3 {
+				return s
+			}
+			var result []string
+			for i := len(s); i > 0; i -= 3 {
+				start := i - 3
+				if start < 0 {
+					start = 0
+				}
+				result = append([]string{s[start:i]}, result...)
+			}
+			return strings.Join(result, ".")
+		},
+		"formatAvgLevel": func(level float64) string {
+			if level == 0 {
+				return "N/A"
+			}
+			return fmt.Sprintf("%.1f", level)
+		},
+	}
+
+	tmpl, err := template.New("guild_detail.html").Funcs(funcMap).ParseFiles("guild_detail.html")
+	if err != nil {
+		http.Error(w, "Could not load guild detail template", http.StatusInternalServerError)
+		log.Printf("❌ Could not load guild_detail.html template: %v", err)
+		return
+	}
+
+	data := GuildDetailPageData{
+		Guild:                 g,
+		Members:               members,
+		LastScrapeTime:        getLastGuildScrapeTime(),
+		SortBy:                sortBy,
+		Order:                 order,
+		ClassDistributionJSON: template.JS(classDistJSON),
+		HasChartData:          len(classDistribution) > 1,
+	}
+
+	tmpl.Execute(w, data)
+}
+
