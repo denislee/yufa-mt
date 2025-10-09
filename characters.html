@@ -178,7 +178,9 @@
                                     {{else}}
                                     <span class="h-2 w-2 mr-2" ></span>
                                     {{end}}
-                                    <span>{{.Name}}</span>
+                                    <a href="/character?name={{.Name}}" class="text-blue-600 hover:underline">
+                                        <span>{{.Name}}</span>
+                                    </a>
                                     {{if .IsSpecial}}
                                     <span title="First 99 in your class" class="mr-1 flex-shrink-0">‎ 🥇</span>
                                     {{end}}

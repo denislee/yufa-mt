@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Character Details: {{.Character.Name}}</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-100 text-gray-800 text-sm sm:text-base">
+
+    <nav class="bg-white shadow-sm sticky top-0 z-10">
+        <div class="container mx-auto px-4">
+            <div class="flex justify-between items-center py-2">
+                <div class="text-xl font-semibold text-gray-700">Yufa Market Tracker</div>
+                <div class="hidden md:flex space-x-4">
+                    <a href="/" class="text-gray-600 hover:text-blue-500">Summary</a>
+                    <a href="/full-list" class="text-gray-600 hover:text-blue-500">Full List</a>
+                    <a href="/activity" class="text-gray-600 hover:text-blue-500">Activity</a>
+                    <a href="/players" class="text-gray-600 hover:text-blue-500">Player Count</a>
+                    <a href="/characters" class="text-blue-500 font-bold">Characters</a>
+                    <a href="/guilds" class="text-gray-600 hover:text-blue-500">Guilds</a>
+                    <a href="/mvp-kills" class="text-gray-600 hover:text-blue-500">MVP Kills</a>
+                </div>
+            </div>
+        </div>
+    </nav>
+
+    <div class="container mx-auto px-4 py-6">
+        <div class="flex flex-col sm:flex-row justify-between sm:items-center gap-2 mb-4 border-b border-gray-200 pb-3">
+            <div>
+                <h1 class="text-3xl font-bold text-gray-800 flex items-center">
+                    {{.Character.Name}}
+                    {{if .Character.IsGuildLeader}}
+                        <span title="Guild Leader" class="ml-2 text-xl">⭐</span>
+                    {{end}}
+                </h1>
+                <p class="text-lg text-gray-600">{{.Character.Class}}</p>
+            </div>
+            <div class="text-sm text-gray-500">Last updated: {{.LastScrapeTime}}</div>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+            <div class="md:col-span-2">
+                <div class="bg-white p-4 rounded-lg shadow">
+                    <h2 class="text-xl font-semibold mb-4 border-b pb-2">Character Information</h2>
+                    <div class="grid grid-cols-2 sm:grid-cols-3 gap-4">
+                        <div>
+                            <p class="font-medium text-gray-500">Rank</p>
+                            <p class="text-lg">{{.Character.Rank}}</p>
+                        </div>
+                        <div>
+                            <p class="font-medium text-gray-500">Base Level</p>
+                            <p class="text-lg">{{.Character.BaseLevel}}</p>
+                        </div>
+                        <div>
+                            <p class="font-medium text-gray-500">Job Level</p>
+                            <p class="text-lg">{{.Character.JobLevel}}</p>
+                        </div>
+                        <div>
+                            <p class="font-medium text-gray-500">Experience</p>
+                            <p class="text-lg">{{printf "%.2f" .Character.Experience}}%</p>
+                        </div>
+                        <div>
+                            <p class="font-medium text-gray-500">Zeny</p>
+                            <p class="text-lg font-mono">{{if .Character.Zeny}}{{formatZeny .Character.Zeny}} z{{else}}N/A{{end}}</p>
+                        </div>
+                         <div>
+                            <p class="font-medium text-gray-500">Status</p>
+                            <p class="text-lg">{{if .Character.IsActive}}<span class="text-green-600 font-semibold">Active</span>{{else}}<span class="text-gray-500">Inactive</span>{{end}}</p>
+                        </div>
+                        <div class="col-span-full sm:col-span-1">
+                            <p class="font-medium text-gray-500">Last Active</p>
+                            <p class="text-lg">{{.Character.LastActive}}</p>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="bg-white p-4 rounded-lg shadow mt-6">
+                    <h2 class="text-xl font-semibold mb-2">MVP Kills ({{.MvpKills.TotalKills}} Total)</h2>
+                    {{if gt .MvpKills.TotalKills 0}}
+                    <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4 pt-2">
+                        {{range .MvpHeaders}}
+                            {{$killCount := getKillCount $.MvpKills.Kills .MobID}}
+                            {{if gt $killCount 0}}
+                            <div class="flex items-center space-x-3 p-2 rounded-md bg-gray-50">
+                                <img src="https://projetoyufa.com/_next/image?url=%2Fimages%2Fmvp%2F{{.MobID}}.png&w=1920&q=75" alt="{{.MobName}}" class="h-10 w-10 object-contain">
+                                <div>
+                                    <p class="font-semibold text-gray-800">{{.MobName}}</p>
+                                    <p class="text-sm text-gray-600">{{$killCount}} kills</p>
+                                </div>
+                            </div>
+                            {{end}}
+                        {{end}}
+                    </div>
+                    {{else}}
+                    <p class="text-gray-500 mt-4">This player has no recorded MVP kills.</p>
+                    {{end}}
+                </div>
+            </div>
+
+            <div class="md:col-span-1">
+                {{if .Guild}}
+                <div class="bg-white p-4 rounded-lg shadow">
+                    <h2 class="text-xl font-semibold mb-4 border-b pb-2">Guild Information</h2>
+                    <div class="space-y-3">
+                        <div>
+                            <p class="font-medium text-gray-500">Guild Name</p>
+                            <a href="/guilds?name_query={{.Guild.Name}}" class="text-lg text-blue-600 hover:underline">{{.Guild.Name}}</a>
+                        </div>
+                        <div>
+                            <p class="font-medium text-gray-500">Guild Level</p>
+                            <p class="text-lg">{{.Guild.Level}}</p>
+                        </div>
+                        <div>
+                            <p class="font-medium text-gray-500">Guild Master</p>
+                            <a href="/character?name={{.Guild.Master}}" class="text-lg text-blue-600 hover:underline">{{.Guild.Master}}</a>
+                        </div>
+                        <div>
+                            <p class="font-medium text-gray-500">Members</p>
+                            <p class="text-lg">{{.Guild.MemberCount}}</p>
+                        </div>
+                    </div>
+                </div>
+                {{else}}
+                <div class="bg-white p-4 rounded-lg shadow">
+                     <h2 class="text-xl font-semibold mb-2">Guild Information</h2>
+                     <p class="text-gray-500 mt-4">This character is not in a guild.</p>
+                </div>
+                {{end}}
+            </div>
+        </div>
+    </div>
+</body>
+</html>

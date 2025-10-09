@@ -311,3 +311,11 @@ type MvpKillPageData struct {
 	LastScrapeTime string
 }
 
+// ADDED: CharacterDetailPageData holds all data for the single character view.
+type CharacterDetailPageData struct {
+	Character      PlayerCharacter
+	Guild          *Guild // Pointer to handle characters without a guild
+	MvpKills       MvpKillEntry
+	MvpHeaders     []MvpHeader
+	LastScrapeTime string
+}

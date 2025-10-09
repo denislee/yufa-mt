@@ -1130,7 +1130,9 @@ func playerCountHandler(w http.ResponseWriter, r *http.Request) {
 		HistoricalMaxActivePlayersTime: historicalMaxTime,
 	}
 	tmpl.Execute(w, data)
-} // characterHandler serves the new player characters page.
+}
+
+// characterHandler serves the new player characters page.
 func characterHandler(w http.ResponseWriter, r *http.Request) {
 	if err := r.ParseForm(); err != nil {
 		http.Error(w, "Failed to parse form", http.StatusBadRequest)
@@ -1769,5 +1771,131 @@ func mvpKillsHandler(w http.ResponseWriter, r *http.Request) {
 		Order:          order,
 		LastScrapeTime: getLastCharacterScrapeTime(), // MVP data is scraped with characters
 	}
+	tmpl.Execute(w, data)
+}
+
+// ADDED: characterDetailHandler serves the detailed information page for a single character.
+func characterDetailHandler(w http.ResponseWriter, r *http.Request) {
+	charName := r.URL.Query().Get("name")
+	if charName == "" {
+		http.Error(w, "Character name is required", http.StatusBadRequest)
+		return
+	}
+
+	// --- 1. Fetch main character data ---
+	var p PlayerCharacter
+	var lastUpdatedStr, lastActiveStr string
+	query := `SELECT rank, name, base_level, job_level, experience, class, guild_name, zeny, last_updated, last_active FROM characters WHERE name = ?`
+	err := db.QueryRow(query, charName).Scan(
+		&p.Rank, &p.Name, &p.BaseLevel, &p.JobLevel, &p.Experience, &p.Class, &p.GuildName, &p.Zeny, &lastUpdatedStr, &lastActiveStr,
+	)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			http.Error(w, "Character not found", http.StatusNotFound)
+		} else {
+			http.Error(w, "Database query for character failed", http.StatusInternalServerError)
+			log.Printf("❌ Could not query for character '%s': %v", charName, err)
+		}
+		return
+	}
+
+	// Format dates and set active status
+	lastUpdatedTime, _ := time.Parse(time.RFC3339, lastUpdatedStr)
+	p.LastUpdated = lastUpdatedTime.Format("2006-01-02 15:04")
+	lastActiveTime, _ := time.Parse(time.RFC3339, lastActiveStr)
+	p.LastActive = lastActiveTime.Format("2006-01-02 15:04")
+	p.IsActive = (lastUpdatedStr == lastActiveStr) && lastUpdatedStr != ""
+
+	// --- 2. Fetch Guild Data (if any) ---
+	var guild *Guild
+	if p.GuildName.Valid {
+		g := Guild{}
+		guildQuery := `SELECT name, level, master, (SELECT COUNT(*) FROM characters WHERE guild_name = guilds.name) as member_count FROM guilds WHERE name = ?`
+		err := db.QueryRow(guildQuery, p.GuildName.String).Scan(&g.Name, &g.Level, &g.Master, &g.MemberCount)
+		if err != nil && err != sql.ErrNoRows {
+			log.Printf("⚠️ Could not fetch guild details for '%s': %v", p.GuildName.String, err)
+		} else if err == nil {
+			guild = &g
+			if p.Name == g.Master {
+				p.IsGuildLeader = true
+			}
+		}
+	}
+
+	// --- 3. Fetch MVP Kills ---
+	var mvpKills MvpKillEntry
+	mvpKills.CharacterName = p.Name
+	mvpKills.Kills = make(map[string]int)
+
+	// Build the column names for the query
+	var mvpCols []string
+	for _, mobID := range mvpMobIDs {
+		mvpCols = append(mvpCols, fmt.Sprintf("mvp_%s", mobID))
+	}
+	mvpQuery := fmt.Sprintf("SELECT %s FROM character_mvp_kills WHERE character_name = ?", strings.Join(mvpCols, ", "))
+
+	scanDest := make([]interface{}, len(mvpMobIDs))
+	for i := range mvpMobIDs {
+		scanDest[i] = new(int)
+	}
+
+	err = db.QueryRow(mvpQuery, charName).Scan(scanDest...)
+	if err != nil && err != sql.ErrNoRows {
+		log.Printf("⚠️ Could not fetch MVP kills for '%s': %v", charName, err)
+	} else if err == nil {
+		totalKills := 0
+		for i, mobID := range mvpMobIDs {
+			killCount := *scanDest[i].(*int)
+			mvpKills.Kills[mobID] = killCount
+			totalKills += killCount
+		}
+		mvpKills.TotalKills = totalKills
+	}
+
+	// Create MVP headers for the template
+	var mvpHeaders []MvpHeader
+	for _, mobID := range mvpMobIDs {
+		if name, ok := mvpNames[mobID]; ok {
+			mvpHeaders = append(mvpHeaders, MvpHeader{MobID: mobID, MobName: name})
+		}
+	}
+
+	// --- 4. Prepare data and render template ---
+	data := CharacterDetailPageData{
+		Character:      p,
+		Guild:          guild,
+		MvpKills:       mvpKills,
+		MvpHeaders:     mvpHeaders,
+		LastScrapeTime: getLastCharacterScrapeTime(),
+	}
+
+	funcMap := template.FuncMap{
+		"formatZeny": func(zeny int64) string {
+			s := strconv.FormatInt(zeny, 10)
+			if len(s) <= 3 {
+				return s
+			}
+			var result []string
+			for i := len(s); i > 0; i -= 3 {
+				start := i - 3
+				if start < 0 {
+					start = 0
+				}
+				result = append([]string{s[start:i]}, result...)
+			}
+			return strings.Join(result, ".")
+		},
+		"getKillCount": func(kills map[string]int, mobID string) int {
+			return kills[mobID]
+		},
+	}
+
+	tmpl, err := template.New("character_detail.html").Funcs(funcMap).ParseFiles("character_detail.html")
+	if err != nil {
+		http.Error(w, "Could not load character detail template", http.StatusInternalServerError)
+		log.Printf("❌ Could not load character_detail.html template: %v", err)
+		return
+	}
+
 	tmpl.Execute(w, data)
 }

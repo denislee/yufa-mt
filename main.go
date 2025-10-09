@@ -27,6 +27,7 @@ func main() {
 	http.HandleFunc("/characters", characterHandler) // Shows player characters.
 	http.HandleFunc("/guilds", guildHandler)         // Shows guild rankings.
 	http.HandleFunc("/mvp-kills", mvpKillsHandler)   // Shows MVP kill rankings.
+	http.HandleFunc("/character", characterDetailHandler)
 
 	// Start the web server.
 	port := "8080"
@@ -35,4 +36,3 @@ func main() {
 		log.Fatalf("❌ Failed to start web server: %v", err)
 	}
 }
-
