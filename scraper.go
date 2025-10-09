@@ -59,6 +59,10 @@ var mvpNamesScraper = map[string]string{
 	"1511": "Amon Ra",
 }
 
+// --- SOLUTION: GLOBAL MUTEX FOR DATABASE ACCESS ---
+// This mutex will ensure that only one goroutine can write to the database at a time.
+var dbMutex sync.Mutex
+
 // newOptimizedAllocator creates a new chromedp allocator context with optimized flags
 // for scraping, disabling unnecessary resources like images to improve performance.
 func newOptimizedAllocator() (context.Context, context.CancelFunc) {
@@ -142,6 +146,10 @@ func scrapeAndStorePlayerCount() {
 		return
 	}
 
+	// --- MODIFICATION: ACQUIRE DATABASE LOCK ---
+	dbMutex.Lock()
+	defer dbMutex.Unlock()
+
 	var sellerCount int
 	err = db.QueryRow("SELECT COUNT(DISTINCT seller_name) FROM items WHERE is_available = 1").Scan(&sellerCount)
 	if err != nil {
@@ -179,6 +187,7 @@ func scrapeAndStorePlayerCount() {
 // characters based on the order the data was found in the raw server response.
 func scrapePlayerCharacters() {
 	log.Println("🏆 [Characters] Starting player character scrape...")
+	// ... (Web scraping logic is unchanged)
 	const maxRetries = 3
 	const retryDelay = 3 * time.Second
 
@@ -229,31 +238,7 @@ func scrapePlayerCharacters() {
 	}
 	log.Printf("✅ [Characters] Found %d total pages to scrape.", lastPage)
 
-	// Fetch existing player data for comparison ONCE at the beginning.
-	if enableCharacterScraperDebugLogs {
-		log.Println("    -> [DB] Fetching existing player data for activity comparison...")
-	}
-	existingPlayers := make(map[string]PlayerCharacter)
-	// **MODIFIED**: Query more fields for change logging.
-	rowsPre, err := db.Query("SELECT name, base_level, job_level, experience, class, last_active FROM characters")
-	if err != nil {
-		log.Printf("❌ [DB] Failed to query existing characters for comparison: %v", err)
-	} else {
-		defer rowsPre.Close()
-		for rowsPre.Next() {
-			var p PlayerCharacter
-			// **MODIFIED**: Scan more fields.
-			if err := rowsPre.Scan(&p.Name, &p.BaseLevel, &p.JobLevel, &p.Experience, &p.Class, &p.LastActive); err != nil {
-				log.Printf("    -> [DB] WARN: Failed to scan existing player row: %v", err)
-				continue
-			}
-			existingPlayers[p.Name] = p
-		}
-		if enableCharacterScraperDebugLogs {
-			log.Printf("    -> [DB] Found %d existing player records for comparison.", len(existingPlayers))
-		}
-	}
-
+	// ... (Concurrent scraping logic is unchanged)
 	updateTime := time.Now().Format(time.RFC3339)
 	allPlayers := make(map[string]PlayerCharacter)
 	var mu sync.Mutex
@@ -383,6 +368,35 @@ func scrapePlayerCharacters() {
 		return
 	}
 
+	// --- MODIFICATION: ACQUIRE DATABASE LOCK ---
+	dbMutex.Lock()
+	defer dbMutex.Unlock()
+
+	// Fetch existing player data for comparison ONCE at the beginning.
+	if enableCharacterScraperDebugLogs {
+		log.Println("    -> [DB] Fetching existing player data for activity comparison...")
+	}
+	existingPlayers := make(map[string]PlayerCharacter)
+	// **MODIFIED**: Query more fields for change logging.
+	rowsPre, err := db.Query("SELECT name, base_level, job_level, experience, class, last_active FROM characters")
+	if err != nil {
+		log.Printf("❌ [DB] Failed to query existing characters for comparison: %v", err)
+	} else {
+		defer rowsPre.Close()
+		for rowsPre.Next() {
+			var p PlayerCharacter
+			// **MODIFIED**: Scan more fields.
+			if err := rowsPre.Scan(&p.Name, &p.BaseLevel, &p.JobLevel, &p.Experience, &p.Class, &p.LastActive); err != nil {
+				log.Printf("    -> [DB] WARN: Failed to scan existing player row: %v", err)
+				continue
+			}
+			existingPlayers[p.Name] = p
+		}
+		if enableCharacterScraperDebugLogs {
+			log.Printf("    -> [DB] Found %d existing player records for comparison.", len(existingPlayers))
+		}
+	}
+
 	tx, err := db.Begin()
 	if err != nil {
 		log.Printf("❌ [DB] Failed to begin transaction: %v", err)
@@ -485,24 +499,10 @@ type GuildJSON struct {
 
 func scrapeGuilds() {
 	log.Println("🏰 [Guilds] Starting guild and character-guild association scrape...")
+	// ... (Web scraping logic is unchanged)
 	const maxRetries = 5
 	const retryDelay = 5 * time.Second
 	client := &http.Client{Timeout: 60 * time.Second}
-
-	// --- Pre-fetch old guild associations for change logging ---
-	oldAssociations := make(map[string]string)
-	oldGuildRows, err := db.Query("SELECT name, guild_name FROM characters WHERE guild_name IS NOT NULL")
-	if err != nil {
-		log.Printf("⚠️ [Guilds] Could not fetch old guild associations for comparison: %v", err)
-	} else {
-		for oldGuildRows.Next() {
-			var charName, guildName string
-			if err := oldGuildRows.Scan(&charName, &guildName); err == nil {
-				oldAssociations[charName] = guildName
-			}
-		}
-		oldGuildRows.Close() // Close the rows connection immediately after use
-	}
 
 	// Define individual regexes for each piece of guild data.
 	nameRegex := regexp.MustCompile(`<span class="font-medium">([^<]+)</span>`)
@@ -650,6 +650,25 @@ func scrapeGuilds() {
 		return
 	}
 
+	// --- MODIFICATION: ACQUIRE DATABASE LOCK ---
+	dbMutex.Lock()
+	defer dbMutex.Unlock()
+
+	// --- Pre-fetch old guild associations for change logging ---
+	oldAssociations := make(map[string]string)
+	oldGuildRows, err := db.Query("SELECT name, guild_name FROM characters WHERE guild_name IS NOT NULL")
+	if err != nil {
+		log.Printf("⚠️ [Guilds] Could not fetch old guild associations for comparison: %v", err)
+	} else {
+		for oldGuildRows.Next() {
+			var charName, guildName string
+			if err := oldGuildRows.Scan(&charName, &guildName); err == nil {
+				oldAssociations[charName] = guildName
+			}
+		}
+		oldGuildRows.Close() // Close the rows connection immediately after use
+	}
+
 	tx, errDb := db.Begin()
 	if errDb != nil {
 		log.Printf("❌ [Guilds][DB] Failed to begin transaction for guilds update: %v", errDb)
@@ -757,31 +776,10 @@ type CharacterZenyInfo struct {
 
 func scrapeZeny() {
 	log.Println("💰 [Zeny] Starting Zeny ranking scrape...")
+	// ... (Web scraping logic is unchanged)
 	const maxRetries = 3
 	const retryDelay = 3 * time.Second
 	client := &http.Client{Timeout: 45 * time.Second}
-
-	// --- PRE-FETCH EXISTING DATA ---
-	log.Println("    -> [DB] Fetching existing character zeny data for activity comparison...")
-	existingCharacters := make(map[string]CharacterZenyInfo)
-	rows, err := db.Query("SELECT name, zeny, last_active FROM characters")
-	if err != nil {
-		log.Printf("❌ [Zeny][DB] Failed to query existing characters for comparison: %v", err)
-	} else {
-		defer rows.Close()
-		for rows.Next() {
-			var name string
-			var info CharacterZenyInfo
-			if err := rows.Scan(&name, &info.Zeny, &info.LastActive); err != nil {
-				log.Printf("    -> [DB] WARN: Failed to scan existing zeny row: %v", err)
-				continue
-			}
-			existingCharacters[name] = info
-		}
-		if enableZenyScraperDebugLogs {
-			log.Printf("    -> [DB] Found %d existing character records for comparison.", len(existingCharacters))
-		}
-	}
 
 	// --- DETERMINE TOTAL PAGES ---
 	var lastPage = 1
@@ -919,6 +917,32 @@ func scrapeZeny() {
 		return
 	}
 
+	// --- MODIFICATION: ACQUIRE DATABASE LOCK ---
+	dbMutex.Lock()
+	defer dbMutex.Unlock()
+
+	// --- PRE-FETCH EXISTING DATA ---
+	log.Println("    -> [DB] Fetching existing character zeny data for activity comparison...")
+	existingCharacters := make(map[string]CharacterZenyInfo)
+	rows, err := db.Query("SELECT name, zeny, last_active FROM characters")
+	if err != nil {
+		log.Printf("❌ [Zeny][DB] Failed to query existing characters for comparison: %v", err)
+	} else {
+		defer rows.Close()
+		for rows.Next() {
+			var name string
+			var info CharacterZenyInfo
+			if err := rows.Scan(&name, &info.Zeny, &info.LastActive); err != nil {
+				log.Printf("    -> [DB] WARN: Failed to scan existing zeny row: %v", err)
+				continue
+			}
+			existingCharacters[name] = info
+		}
+		if enableZenyScraperDebugLogs {
+			log.Printf("    -> [DB] Found %d existing character records for comparison.", len(existingCharacters))
+		}
+	}
+
 	// --- UPDATE DATABASE ---
 	tx, err := db.Begin()
 	if err != nil {
@@ -1009,6 +1033,7 @@ func scrapeZeny() {
 
 func scrapeData() {
 	log.Println("🚀 [Market] Starting scrape...")
+	// ... (Web scraping logic is unchanged)
 	// Compile regexes once for efficiency.
 	reRefineMid := regexp.MustCompile(`\s(\+\d+)`)
 	reRefineStart := regexp.MustCompile(`^(\+\d+)\s`)
@@ -1161,6 +1186,11 @@ func scrapeData() {
 	})
 
 	log.Printf("🔎 [Market] Scrape parsed. Found %d unique item names.", len(scrapedItemsByName))
+
+	// --- MODIFICATION: ACQUIRE DATABASE LOCK ---
+	dbMutex.Lock()
+	defer dbMutex.Unlock()
+
 	tx, err := db.Begin()
 	if err != nil {
 		log.Printf("❌ [Market] Failed to begin transaction: %v", err)
@@ -1344,6 +1374,7 @@ func areItemSetsIdentical(setA, setB []Item) bool {
 // scrapeMvpKills scrapes the MVP kill rankings using regex against the raw HTTP response.
 func scrapeMvpKills() {
 	log.Println("☠️  [MVP] Starting MVP kill count scrape...")
+	// ... (Web scraping logic is unchanged)
 	const maxRetries = 3
 	const retryDelay = 3 * time.Second
 
@@ -1495,6 +1526,10 @@ func scrapeMvpKills() {
 		log.Println("⚠️ [MVP] No MVP kills found after scrape. Skipping database update.")
 		return
 	}
+
+	// --- MODIFICATION: ACQUIRE DATABASE LOCK ---
+	dbMutex.Lock()
+	defer dbMutex.Unlock()
 
 	tx, err := db.Begin()
 	if err != nil {
@@ -1662,3 +1697,4 @@ func startBackgroundJobs() {
 		}
 	}()
 }
+
