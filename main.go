@@ -28,6 +28,7 @@ func main() {
 	http.HandleFunc("/guilds", guildHandler)         // Shows guild rankings.
 	http.HandleFunc("/mvp-kills", mvpKillsHandler)   // Shows MVP kill rankings.
 	http.HandleFunc("/character", characterDetailHandler)
+	http.HandleFunc("/character-changelog", characterChangelogHandler) // ADDED
 
 	// Start the web server.
 	port := "8080"

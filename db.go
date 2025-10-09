@@ -189,6 +189,33 @@ func initDB(filepath string) (*sql.DB, error) {
 		return nil, fmt.Errorf("could not create character_mvp_kills table: %w", err)
 	}
 
+	// SQL statement to create the 'character_changelog' table.
+	createChangelogTableSQL := `CREATE TABLE IF NOT EXISTS character_changelog (
+		"id" INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+		"character_name" TEXT NOT NULL,
+		"change_time" TEXT NOT NULL,
+		"activity_description" TEXT NOT NULL,
+		FOREIGN KEY(character_name) REFERENCES characters(name) ON DELETE CASCADE ON UPDATE CASCADE
+	);`
+	if _, err = db.Exec(createChangelogTableSQL); err != nil {
+		return nil, fmt.Errorf("could not create character_changelog table: %w", err)
+	}
+
+	// SQL statement to create the 'v_character_changelog' view.
+	createChangelogViewSQL := `CREATE VIEW IF NOT EXISTS v_character_changelog AS
+		SELECT
+			id,
+			character_name,
+			change_time,
+			activity_description
+		FROM
+			character_changelog
+		ORDER BY
+			change_time DESC;`
+	if _, err = db.Exec(createChangelogViewSQL); err != nil {
+		return nil, fmt.Errorf("could not create v_character_changelog view: %w", err)
+	}
+
 	// After all tables are ensured to exist, apply any pending migrations.
 	if err := applyMigrations(db); err != nil {
 		return nil, err
@@ -196,3 +223,4 @@ func initDB(filepath string) (*sql.DB, error) {
 
 	return db, nil
 }
+

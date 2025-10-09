@@ -319,3 +319,25 @@ type CharacterDetailPageData struct {
 	MvpHeaders     []MvpHeader
 	LastScrapeTime string
 }
+
+// CharacterChangelog holds a record of a change to a character.
+type CharacterChangelog struct {
+	ID                  int
+	CharacterName       string
+	ActivityDescription string
+	ChangeTime          string
+}
+
+// CharacterChangelogPageData holds data for the character changelog page.
+type CharacterChangelogPageData struct {
+	ChangelogEntries []CharacterChangelog
+	LastScrapeTime   string
+	// Pagination
+	CurrentPage int
+	TotalPages  int
+	PrevPage    int
+	NextPage    int
+	HasPrevPage bool
+	HasNextPage bool
+}
+

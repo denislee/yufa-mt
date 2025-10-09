@@ -1899,3 +1899,91 @@ func characterDetailHandler(w http.ResponseWriter, r *http.Request) {
 
 	tmpl.Execute(w, data)
 }
+
+// characterChangelogHandler serves the page for recent character changes.
+func characterChangelogHandler(w http.ResponseWriter, r *http.Request) {
+	// 1. Get page parameter
+	pageStr := r.URL.Query().Get("page")
+	page, err := strconv.Atoi(pageStr)
+	if err != nil || page < 1 {
+		page = 1
+	}
+	const entriesPerPage = 100 // Define how many entries per page
+
+	// 2. Get total event count for pagination
+	var totalEntries int
+	err = db.QueryRow("SELECT COUNT(*) FROM character_changelog").Scan(&totalEntries)
+	if err != nil {
+		http.Error(w, "Could not count changelog entries", http.StatusInternalServerError)
+		log.Printf("❌ Could not count changelog entries: %v", err)
+		return
+	}
+
+	// 3. Calculate pagination details
+	totalPages := 0
+	if totalEntries > 0 {
+		totalPages = int(math.Ceil(float64(totalEntries) / float64(entriesPerPage)))
+	}
+	if page > totalPages && totalPages > 0 {
+		page = totalPages
+	}
+	if page < 1 {
+		page = 1
+	}
+	offset := (page - 1) * entriesPerPage
+	if offset < 0 {
+		offset = 0
+	}
+
+	// 4. Query for paginated events
+	changelogRows, err := db.Query(`
+        SELECT character_name, change_time, activity_description
+        FROM character_changelog
+        ORDER BY change_time DESC
+        LIMIT ? OFFSET ?`, entriesPerPage, offset)
+	if err != nil {
+		http.Error(w, "Could not query for character changelog", http.StatusInternalServerError)
+		log.Printf("❌ Could not query for character changelog: %v", err)
+		return
+	}
+	defer changelogRows.Close()
+
+	var changelogEntries []CharacterChangelog
+	for changelogRows.Next() {
+		var entry CharacterChangelog
+		var timestampStr string
+		if err := changelogRows.Scan(&entry.CharacterName, &timestampStr, &entry.ActivityDescription); err != nil {
+			log.Printf("⚠️ Failed to scan character changelog row: %v", err)
+			continue
+		}
+
+		parsedTime, err := time.Parse(time.RFC3339, timestampStr)
+		if err == nil {
+			entry.ChangeTime = parsedTime.Format("2006-01-02 15:04:05")
+		} else {
+			entry.ChangeTime = timestampStr
+		}
+
+		changelogEntries = append(changelogEntries, entry)
+	}
+
+	tmpl, err := template.ParseFiles("character_changelog.html")
+	if err != nil {
+		http.Error(w, "Could not load character changelog template", http.StatusInternalServerError)
+		log.Printf("❌ Could not load character_changelog.html template: %v", err)
+		return
+	}
+
+	// 5. Populate data struct with pagination info
+	data := CharacterChangelogPageData{
+		ChangelogEntries: changelogEntries,
+		LastScrapeTime:   getLastCharacterScrapeTime(), // Use character scrape time as it's most relevant
+		CurrentPage:      page,
+		TotalPages:       totalPages,
+		PrevPage:         page - 1,
+		NextPage:         page + 1,
+		HasPrevPage:      page > 1,
+		HasNextPage:      page < totalPages,
+	}
+	tmpl.Execute(w, data)
+}
