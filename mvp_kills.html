@@ -74,7 +74,7 @@
                             {{range .Headers}}
                             <th class="px-2 py-3 text-center">
                                 <a href="/mvp-kills?sort_by={{.MobID}}&order={{if eq $currentSort .MobID}}{{$revOrder}}{{else}}DESC{{end}}" class="flex flex-col items-center justify-end h-full">
-                                    <div class="relative w-8 h-8 mb-2">
+                                    <div class="relative w-6 h-6 mb-2">
                                      {{if ne "total" .MobID}}   
                                     <img src="https://projetoyufa.com/_next/image?url=%2Fimages%2Fmvp%2F{{.MobID}}.png&w=1920&q=75" alt="{{.MobName}}" class="mx-auto" style="image-rendering: pixelated;">
                                         <!-- <img src="https://static.divine-pride.net/images/mobs/png/{{.MobID}}.png" alt="{{.MobName}}" class="mx-auto h-12" style="image-rendering: pixelated;"> -->
@@ -90,7 +90,10 @@
                     <tbody class="text-gray-700 text-xs">
                         {{range .Players}}
                         <tr class="border-b border-gray-200 hover:bg-gray-50">
-                            <td class="px-3 py-2 font-semibold sticky left-0 bg-white hover:bg-gray-50 z-10 w-48 truncate">{{.CharacterName}}</td>
+                            <td class="px-3 py-2 font-semibold sticky left-0 bg-white hover:bg-gray-50 z-10 w-48 truncate">
+                                    <a href="/character?name={{.CharacterName}}" class="text-blue-600 hover:underline">
+                                    {{.CharacterName}}</a>
+                            </td>
                             <td class="px-2 py-2 text-center font-bold">{{.TotalKills}}</td>
                              {{$playerKills := .Kills}}
                             {{range slice $.Headers 1}}
