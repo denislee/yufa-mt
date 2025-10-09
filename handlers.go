@@ -2071,9 +2071,15 @@ func guildDetailHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// --- 1. Get query parameters for sorting members ---
+	// --- 1. Get query parameters for sorting members and changelog pagination ---
 	sortBy := r.URL.Query().Get("sort_by")
 	order := r.URL.Query().Get("order")
+	clPageStr := r.URL.Query().Get("cl_page")
+	clPage, err := strconv.Atoi(clPageStr)
+	if err != nil || clPage < 1 {
+		clPage = 1
+	}
+	const entriesPerPage = 25
 
 	// --- 2. Fetch main guild data ---
 	var g Guild
@@ -2086,7 +2092,7 @@ func guildDetailHandler(w http.ResponseWriter, r *http.Request) {
         FROM guilds
         WHERE name = ?`
 
-	err := db.QueryRow(guildQuery, guildName).Scan(&g.Name, &g.Level, &g.Experience, &g.Master, &g.EmblemURL, &g.MemberCount, &g.TotalZeny, &g.AvgBaseLevel)
+	err = db.QueryRow(guildQuery, guildName).Scan(&g.Name, &g.Level, &g.Experience, &g.Master, &g.EmblemURL, &g.MemberCount, &g.TotalZeny, &g.AvgBaseLevel)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			http.Error(w, "Guild not found", http.StatusNotFound)
@@ -2163,7 +2169,66 @@ func guildDetailHandler(w http.ResponseWriter, r *http.Request) {
 		classDistJSON = []byte("{}") // empty object on error
 	}
 
-	// --- 6. Load template and send data ---
+	// --- 6. Fetch Guild Changelog (paginated) ---
+	var totalChangelogEntries int
+	likePattern := "%" + guildName + "%"
+	countQuery := "SELECT COUNT(*) FROM character_changelog WHERE activity_description LIKE ?"
+	err = db.QueryRow(countQuery, likePattern).Scan(&totalChangelogEntries)
+	if err != nil {
+		http.Error(w, "Could not count guild changelog entries", http.StatusInternalServerError)
+		log.Printf("❌ Could not count changelog entries for guild '%s': %v", guildName, err)
+		return
+	}
+
+	// Calculate pagination details
+	clTotalPages := 0
+	if totalChangelogEntries > 0 {
+		clTotalPages = int(math.Ceil(float64(totalChangelogEntries) / float64(entriesPerPage)))
+	}
+	if clPage > clTotalPages && clTotalPages > 0 {
+		clPage = clTotalPages
+	}
+	if clPage < 1 {
+		clPage = 1
+	}
+	offset := (clPage - 1) * entriesPerPage
+	if offset < 0 {
+		offset = 0
+	}
+
+	// Query for paginated changelog entries
+	var changelogEntries []CharacterChangelog
+	changelogQuery := `
+        SELECT change_time, character_name, activity_description
+        FROM character_changelog
+        WHERE activity_description LIKE ?
+        ORDER BY change_time DESC
+        LIMIT ? OFFSET ?`
+	changelogRows, err := db.Query(changelogQuery, likePattern, entriesPerPage, offset)
+	if err != nil {
+		http.Error(w, "Could not query for guild changelog", http.StatusInternalServerError)
+		log.Printf("❌ Could not query for guild changelog for '%s': %v", guildName, err)
+		return
+	}
+	defer changelogRows.Close()
+
+	for changelogRows.Next() {
+		var entry CharacterChangelog
+		var timestampStr string
+		if err := changelogRows.Scan(&timestampStr, &entry.CharacterName, &entry.ActivityDescription); err != nil {
+			log.Printf("⚠️ Failed to scan guild changelog row: %v", err)
+			continue
+		}
+		parsedTime, err := time.Parse(time.RFC3339, timestampStr)
+		if err == nil {
+			entry.ChangeTime = parsedTime.Format("2006-01-02 15:04:05")
+		} else {
+			entry.ChangeTime = timestampStr
+		}
+		changelogEntries = append(changelogEntries, entry)
+	}
+
+	// --- 7. Load template and send data ---
 	funcMap := template.FuncMap{
 		"toggleOrder": func(currentOrder string) string {
 			if currentOrder == "ASC" {
@@ -2209,6 +2274,13 @@ func guildDetailHandler(w http.ResponseWriter, r *http.Request) {
 		Order:                 order,
 		ClassDistributionJSON: template.JS(classDistJSON),
 		HasChartData:          len(classDistribution) > 1,
+		ChangelogEntries:      changelogEntries,
+		ChangelogCurrentPage:  clPage,
+		ChangelogTotalPages:   clTotalPages,
+		ChangelogPrevPage:     clPage - 1,
+		ChangelogNextPage:     clPage + 1,
+		HasChangelogPrevPage:  clPage > 1,
+		HasChangelogNextPage:  clPage < clTotalPages,
 	}
 
 	tmpl.Execute(w, data)

@@ -81,7 +81,7 @@
                 <p class="text-2xl font-bold text-green-600">{{.Guild.TotalZeny | formatZeny}}z</p>
             </div>
         </div>
-        
+
         <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
             <div class="lg:col-span-2 bg-white shadow-lg rounded-lg overflow-hidden">
                 <h2 class="text-xl font-bold p-4 border-b">Guild Members</h2>
@@ -131,6 +131,64 @@
                 {{end}}
             </div>
         </div>
+
+        {{if .ChangelogEntries}}
+        <div class="mt-6 bg-white shadow-lg rounded-lg overflow-hidden">
+            <h2 class="text-xl font-bold p-4 border-b">Guild Activity Log</h2>
+            <div class="overflow-x-auto">
+                <table class="min-w-full leading-normal">
+                    <thead>
+                        <tr class="border-b-2 border-gray-200 bg-gray-50 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                            <th class="px-3 py-2">Timestamp</th>
+                            <th class="px-3 py-2">Character</th>
+                            <th class="px-3 py-2">Activity</th>
+                        </tr>
+                    </thead>
+                    <tbody class="text-gray-700 text-xs">
+                        {{range .ChangelogEntries}}
+                        <tr class="border-b border-gray-200 hover:bg-gray-50">
+                            <td class="px-3 py-2 whitespace-nowrap">{{.ChangeTime}}</td>
+                            <td class="px-3 py-2">
+                                <a href="/character?name={{.CharacterName | urlquery}}" class="font-semibold hover:underline">{{.CharacterName}}</a>
+                            </td>
+                            <td class="px-3 py-2">{{.ActivityDescription}}</td>
+                        </tr>
+                        {{end}}
+                    </tbody>
+                </table>
+            </div>
+            {{if gt .ChangelogTotalPages 1}}
+            <div class="px-5 py-3 bg-white border-t flex flex-col xs:flex-row items-center xs:justify-between">
+                <div class="flex items-center">
+                    {{if .HasChangelogPrevPage}}
+                        <a href="/guild?name={{$.Guild.Name | urlquery}}&sort_by={{$.SortBy}}&order={{$.Order}}&cl_page={{.ChangelogPrevPage}}" class="text-sm bg-gray-200 hover:bg-gray-300 text-gray-800 font-semibold py-1 px-3 rounded-l">
+                            Prev
+                        </a>
+                    {{else}}
+                        <span class="text-sm bg-gray-100 text-gray-400 font-semibold py-1 px-3 rounded-l cursor-not-allowed">
+                            Prev
+                        </span>
+                    {{end}}
+                    
+                    <span class="text-xs xs:text-sm text-gray-700 px-4">
+                        Page {{.ChangelogCurrentPage}} of {{.ChangelogTotalPages}}
+                    </span>
+
+                    {{if .HasChangelogNextPage}}
+                        <a href="/guild?name={{$.Guild.Name | urlquery}}&sort_by={{$.SortBy}}&order={{$.Order}}&cl_page={{.ChangelogNextPage}}" class="text-sm bg-gray-200 hover:bg-gray-300 text-gray-800 font-semibold py-1 px-3 rounded-r">
+                            Next
+                        </a>
+                    {{else}}
+                        <span class="text-sm bg-gray-100 text-gray-400 font-semibold py-1 px-3 rounded-r cursor-not-allowed">
+                            Next
+                        </span>
+                    {{end}}
+                </div>
+            </div>
+            {{end}}
+        </div>
+        {{end}}
+
     </div>
 
     <script>
@@ -140,7 +198,7 @@
                 var menu = document.getElementById('mobile-menu');
                 menu.classList.toggle('hidden');
             });
-    
+
             // Zeny formatting
             document.querySelectorAll('[data-zeny]').forEach(cell => {
                 const zeny = parseInt(cell.dataset.zeny, 10);

@@ -108,7 +108,7 @@ type RMSDrop struct {
 	Rate    string `json:"Rate"`
 }
 
-// EventDefinition defines a recurring event with a name, time, and days of the week.
+// EventDefinition defines a recurring event with a name, a time, and days of the week.
 type EventDefinition struct {
 	Name      string
 	StartTime string // "HH:MM"
@@ -312,6 +312,14 @@ type GuildDetailPageData struct {
 	// Sorting for members table
 	SortBy string
 	Order  string
+	// Changelog data and pagination
+	ChangelogEntries     []CharacterChangelog
+	ChangelogCurrentPage int
+	ChangelogTotalPages  int
+	ChangelogPrevPage    int
+	ChangelogNextPage    int
+	HasChangelogPrevPage bool
+	HasChangelogNextPage bool
 }
 
 // MvpKillPageData holds all data needed for the MVP kill rankings page.
