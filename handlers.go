@@ -1782,11 +1782,19 @@ func characterDetailHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Get changelog page parameter
+	clPageStr := r.URL.Query().Get("cl_page")
+	clPage, err := strconv.Atoi(clPageStr)
+	if err != nil || clPage < 1 {
+		clPage = 1
+	}
+	const entriesPerPage = 25 // A reasonable number for this page
+
 	// --- 1. Fetch main character data ---
 	var p PlayerCharacter
 	var lastUpdatedStr, lastActiveStr string
 	query := `SELECT rank, name, base_level, job_level, experience, class, guild_name, zeny, last_updated, last_active FROM characters WHERE name = ?`
-	err := db.QueryRow(query, charName).Scan(
+	err = db.QueryRow(query, charName).Scan(
 		&p.Rank, &p.Name, &p.BaseLevel, &p.JobLevel, &p.Experience, &p.Class, &p.GuildName, &p.Zeny, &lastUpdatedStr, &lastActiveStr,
 	)
 	if err != nil {
@@ -1860,13 +1868,80 @@ func characterDetailHandler(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// --- 4. Prepare data and render template ---
+	// --- 4. Fetch Character Changelog (paginated) ---
+	var totalChangelogEntries int
+	countQuery := "SELECT COUNT(*) FROM character_changelog WHERE character_name = ?"
+	err = db.QueryRow(countQuery, charName).Scan(&totalChangelogEntries)
+	if err != nil {
+		http.Error(w, "Could not count changelog entries", http.StatusInternalServerError)
+		log.Printf("❌ Could not count changelog entries for '%s': %v", charName, err)
+		return
+	}
+
+	// Calculate pagination details
+	clTotalPages := 0
+	if totalChangelogEntries > 0 {
+		clTotalPages = int(math.Ceil(float64(totalChangelogEntries) / float64(entriesPerPage)))
+	}
+	if clPage > clTotalPages && clTotalPages > 0 {
+		clPage = clTotalPages
+	}
+	if clPage < 1 {
+		clPage = 1
+	}
+	offset := (clPage - 1) * entriesPerPage
+	if offset < 0 {
+		offset = 0
+	}
+
+	// Query for paginated changelog entries
+	var changelogEntries []CharacterChangelog
+	changelogQuery := `
+        SELECT change_time, activity_description
+        FROM character_changelog
+        WHERE character_name = ?
+        ORDER BY change_time DESC
+        LIMIT ? OFFSET ?`
+	changelogRows, err := db.Query(changelogQuery, charName, entriesPerPage, offset)
+	if err != nil {
+		http.Error(w, "Could not query for character changelog", http.StatusInternalServerError)
+		log.Printf("❌ Could not query for character changelog for '%s': %v", charName, err)
+		return
+	}
+	defer changelogRows.Close()
+
+	for changelogRows.Next() {
+		var entry CharacterChangelog
+		var timestampStr string
+		if err := changelogRows.Scan(&timestampStr, &entry.ActivityDescription); err != nil {
+			log.Printf("⚠️ Failed to scan character changelog row: %v", err)
+			continue
+		}
+
+		entry.CharacterName = charName // Not needed from query, we already know it
+		parsedTime, err := time.Parse(time.RFC3339, timestampStr)
+		if err == nil {
+			entry.ChangeTime = parsedTime.Format("2006-01-02 15:04:05")
+		} else {
+			entry.ChangeTime = timestampStr
+		}
+		changelogEntries = append(changelogEntries, entry)
+	}
+
+	// --- 5. Prepare data and render template ---
 	data := CharacterDetailPageData{
-		Character:      p,
-		Guild:          guild,
-		MvpKills:       mvpKills,
-		MvpHeaders:     mvpHeaders,
-		LastScrapeTime: getLastCharacterScrapeTime(),
+		Character:            p,
+		Guild:                guild,
+		MvpKills:             mvpKills,
+		MvpHeaders:           mvpHeaders,
+		LastScrapeTime:       getLastCharacterScrapeTime(),
+		ChangelogEntries:     changelogEntries,
+		ChangelogCurrentPage: clPage,
+		ChangelogTotalPages:  clTotalPages,
+		ChangelogPrevPage:    clPage - 1,
+		ChangelogNextPage:    clPage + 1,
+		HasChangelogPrevPage: clPage > 1,
+		HasChangelogNextPage: clPage < clTotalPages,
 	}
 
 	funcMap := template.FuncMap{
@@ -1987,3 +2062,4 @@ func characterChangelogHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	tmpl.Execute(w, data)
 }
+

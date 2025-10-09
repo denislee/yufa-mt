@@ -318,6 +318,14 @@ type CharacterDetailPageData struct {
 	MvpKills       MvpKillEntry
 	MvpHeaders     []MvpHeader
 	LastScrapeTime string
+	// Changelog data and pagination
+	ChangelogEntries     []CharacterChangelog
+	ChangelogCurrentPage int
+	ChangelogTotalPages  int
+	ChangelogPrevPage    int
+	ChangelogNextPage    int
+	HasChangelogPrevPage bool
+	HasChangelogNextPage bool
 }
 
 // CharacterChangelog holds a record of a change to a character.

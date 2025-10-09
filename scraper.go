@@ -411,19 +411,27 @@ func scrapePlayerCharacters() {
 	for _, p := range allPlayers {
 		lastActiveTime := updateTime
 		if oldPlayer, exists := existingPlayers[p.Name]; exists {
-			leveledUp := false
+			baseLeveledUp := false
 			if p.BaseLevel > oldPlayer.BaseLevel {
 				logCharacterActivity(tx, p.Name, fmt.Sprintf("Leveled up to Base Level %d!", p.BaseLevel))
-				leveledUp = true
+				baseLeveledUp = true
 			}
 			if p.JobLevel > oldPlayer.JobLevel {
 				logCharacterActivity(tx, p.Name, fmt.Sprintf("Leveled up to Job Level %d!", p.JobLevel))
-				leveledUp = true
 			}
-			// Only log EXP gain if the character didn't level up, to avoid redundant logs.
-			if !leveledUp && p.Experience > oldPlayer.Experience {
-				logCharacterActivity(tx, p.Name, fmt.Sprintf("Gained experience (%.2f%%).", p.Experience))
+
+			// Only log EXP gain/loss if the character didn't gain a BASE level.
+			// This correctly handles cases where experience resets after a level up.
+			if !baseLeveledUp {
+				expDelta := p.Experience - oldPlayer.Experience
+				// Use a small tolerance to avoid logging negligible floating point differences
+				if expDelta > 0.001 {
+					logCharacterActivity(tx, p.Name, fmt.Sprintf("Gained %.2f%% experience (now at %.2f%%).", expDelta, p.Experience))
+				} else if expDelta < -0.001 {
+					logCharacterActivity(tx, p.Name, fmt.Sprintf("Lost %.2f%% experience (now at %.2f%%).", -expDelta, p.Experience))
+				}
 			}
+
 			if p.Class != oldPlayer.Class {
 				logCharacterActivity(tx, p.Name, fmt.Sprintf("Changed class from '%s' to '%s'.", oldPlayer.Class, p.Class))
 			}
