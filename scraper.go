@@ -28,7 +28,7 @@ const enableZenyScraperDebugLogs = false
 const enableMarketScraperDebugLogs = false
 
 // Added a shared slice of MVP IDs for the scraper and database logic to use.
-var mvpMobIDs = []string{
+var mvpMobIDsScrape = []string{
 	"1038", "1039", "1046", "1059", "1086", "1087", "1112", "1115", "1147",
 	"1150", "1157", "1159", "1190", "1251", "1252", "1272", "1312", "1373",
 	"1389", "1418", "1492", "1511",
@@ -1322,11 +1322,11 @@ func scrapeMvpKills() {
 				charName := block[1]
 				mvpsJSON := block[4]
 
-				if enableMvpScraperDebugLogs {
-					for i := 0; i < len(block); i++ {
-						log.Printf("    -> [MVP] block[%d]: %s", i, block[i])
-					}
-				}
+				// if enableMvpScraperDebugLogs {
+				// 	for i := 0; i < len(block); i++ {
+				// 		log.Printf("    -> [MVP] block[%d]: %s", i, block[i])
+				// 	}
+				// }
 
 				if enableMvpScraperDebugLogs {
 					log.Printf("    -> [MVP] Found player: %s", charName)
@@ -1377,7 +1377,7 @@ func scrapeMvpKills() {
 	columnNames := []string{"character_name"}
 	valuePlaceholders := []string{"?"}
 	updateSetters := []string{}
-	for _, mobID := range mvpMobIDs {
+	for _, mobID := range mvpMobIDsScrape {
 		colName := fmt.Sprintf("mvp_%s", mobID)
 		columnNames = append(columnNames, colName)
 		valuePlaceholders = append(valuePlaceholders, "?")
@@ -1413,7 +1413,7 @@ func scrapeMvpKills() {
 		}
 
 		params := []interface{}{charName}
-		for _, mobID := range mvpMobIDs {
+		for _, mobID := range mvpMobIDsScrape {
 			if count, ok := kills[mobID]; ok {
 				params = append(params, count)
 			} else {

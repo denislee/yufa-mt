@@ -168,14 +168,14 @@ func initDB(filepath string) (*sql.DB, error) {
 	}
 
 	// SQL statement to create the 'character_mvp_kills' table.
-	mvpMobIDs := []string{
+	mvpMobIDsDb := []string{
 		"1038", "1039", "1046", "1059", "1086", "1087", "1112", "1115", "1147",
 		"1150", "1157", "1159", "1190", "1251", "1252", "1272", "1312", "1373",
 		"1389", "1418", "1492", "1511",
 	}
 	var mvpColumns []string
 	mvpColumns = append(mvpColumns, `"character_name" TEXT NOT NULL PRIMARY KEY`)
-	for _, mobID := range mvpMobIDs {
+	for _, mobID := range mvpMobIDsDb {
 		mvpColumns = append(mvpColumns, fmt.Sprintf(`"mvp_%s" INTEGER NOT NULL DEFAULT 0`, mobID))
 	}
 

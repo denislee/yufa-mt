@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Yufa Market Tracker - MVP Kills</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        html { font-size: 110%; }
+        .container { max-width: 95% !important; }
+        .rotate-45-and--translate { transform: translateY(2px) translateX(4px) rotate(45deg); }
+        th span {
+            writing-mode: vertical-lr;
+            white-space: nowrap;
+        }
+    </style>
+</head>
+<body class="bg-gray-100 text-gray-800 text-sm sm:text-base">
+
+    <nav class="bg-white shadow-sm sticky top-0 z-10">
+        <div class="container mx-auto px-4">
+            <div class="flex justify-between items-center py-2">
+                <div class="text-xl font-semibold text-gray-700">Yufa Market Tracker</div>
+                <div class="hidden md:flex space-x-4">
+                    <a href="/" class="text-gray-600 hover:text-blue-500">Summary</a>
+                    <a href="/full-list" class="text-gray-600 hover:text-blue-500">Full List</a>
+                    <a href="/activity" class="text-gray-600 hover:text-blue-500">Activity</a>
+                    <a href="/players" class="text-gray-600 hover:text-blue-500">Player Count</a>
+                    <a href="/characters" class="text-gray-600 hover:text-blue-500">Characters</a>
+                    <a href="/guilds" class="text-gray-600 hover:text-blue-500">Guilds</a>
+                    <a href="/mvp-kills" class="text-blue-500 font-bold">MVP Kills</a>
+                </div>
+                <div class="md:hidden flex items-center">
+                    <button id="mobile-menu-button" class="text-gray-600 hover:text-gray-800 focus:outline-none">
+                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16m-7 6h7"></path></svg>
+                    </button>
+                </div>
+            </div>
+        </div>
+        <div id="mobile-menu" class="hidden md:hidden border-t border-gray-200">
+            <a href="/" class="block py-2 px-4 text-sm text-gray-600 hover:bg-gray-50">Summary</a>
+            <a href="/full-list" class="block py-2 px-4 text-sm text-gray-600 hover:bg-gray-50">Full List</a>
+            <a href="/activity" class="block py-2 px-4 text-sm text-gray-600 hover:bg-gray-50">Activity</a>
+            <a href="/players" class="block py-2 px-4 text-sm text-gray-600 hover:bg-gray-50">Player Count</a>
+            <a href="/characters" class="block py-2 px-4 text-sm text-gray-600 hover:bg-gray-50">Characters</a>
+            <a href="/guilds" class="block py-2 px-4 text-sm text-gray-600 hover:bg-gray-50">Guilds</a>
+            <a href="/mvp-kills" class="block py-2 px-4 text-sm bg-blue-50 text-blue-600 font-semibold">MVP Kills</a>
+        </div>
+    </nav>
+
+    <div class="container mx-auto px-4 py-6">
+        <div class="flex flex-col sm:flex-row justify-between sm:items-center gap-2 mb-4 border-b border-gray-200 pb-3">
+            <h1 class="text-2xl font-bold text-gray-800">MVP Kill Rankings</h1>
+            <div class="text-sm text-gray-500">Last Updated: {{.LastScrapeTime}}</div>
+        </div>
+
+        <p class="text-sm text-gray-600 mb-3">Showing <strong>{{ len .Players }}</strong> characters with MVP kills.</p>
+
+        <div class="bg-white shadow-lg rounded-lg overflow-hidden">
+            <div class="overflow-x-auto">
+                <table class="min-w-full leading-normal">
+                    <thead>
+                        <tr class="border-b-2 border-gray-200 bg-gray-50 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                            {{$currentSort := .SortBy}}
+                            {{$currentOrder := .Order}}
+                            {{$revOrder := toggleOrder $currentOrder}}
+
+                            <th class="px-3 py-3 sticky left-0 bg-gray-50 z-10 w-48">
+                                <a href="/mvp-kills?sort_by=name&order={{if eq $currentSort "name"}}{{$revOrder}}{{else}}ASC{{end}}">
+                                    Character Name {{if eq $currentSort "name"}}{{if eq $currentOrder "ASC"}}<span class="text-gray-400">▲</span>{{else}}<span class="text-gray-400">▼</span>{{end}}{{end}}
+                                </a>
+                            </th>
+
+                            {{range .Headers}}
+                            <th class="px-2 py-3 text-center">
+                                <a href="/mvp-kills?sort_by={{.MobID}}&order={{if eq $currentSort .MobID}}{{$revOrder}}{{else}}DESC{{end}}" class="flex flex-col items-center justify-end h-full">
+                                    <div class="relative w-6 h-12 mb-2">
+                                     {{if ne "total" .MobID}}   
+                                        <img src="https://static.divine-pride.net/images/mobs/png/{{.MobID}}.png" alt="{{.MobName}}" class="mx-auto h-12" style="image-rendering: pixelated;">
+                                    {{end}}
+                                    </div>
+                                    <span class="text-center">{{.MobName}}</span>
+                                    {{if eq $currentSort .MobID}}{{if eq $currentOrder "ASC"}}<span class="text-gray-400">▲</span>{{else}}<span class="text-gray-400">▼</span>{{end}}{{end}}
+                                </a>
+                            </th>
+                            {{end}}
+                        </tr>
+                    </thead>
+                    <tbody class="text-gray-700 text-xs">
+                        {{range .Players}}
+                        <tr class="border-b border-gray-200 hover:bg-gray-50">
+                            <td class="px-3 py-2 font-semibold sticky left-0 bg-white hover:bg-gray-50 z-10 w-48 truncate">{{.CharacterName}}</td>
+                            <td class="px-2 py-2 text-center font-bold">{{.TotalKills}}</td>
+                             {{$playerKills := .Kills}}
+                            {{range slice $.Headers 1}}
+                            <td class="px-2 py-2 text-center {{if gt (getKillCount $playerKills .MobID) 0}}font-medium text-gray-800{{else}}text-gray-400{{end}}">
+                                {{getKillCount $playerKills .MobID}}
+                            </td>
+                            {{end}}
+                        </tr>
+                        {{end}}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+    <script>
+        document.getElementById('mobile-menu-button').addEventListener('click', function() {
+            var menu = document.getElementById('mobile-menu');
+            menu.classList.toggle('hidden');
+        });
+    </script>
+</body>
+</html>

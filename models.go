@@ -153,6 +153,19 @@ type Guild struct {
 	AvgBaseLevel float64
 }
 
+// MvpKillEntry holds the kill counts for a single character.
+type MvpKillEntry struct {
+	CharacterName string
+	TotalKills    int
+	Kills         map[string]int // Map of MobID to Kill Count
+}
+
+// MvpHeader defines a column header for the MVP kills table.
+type MvpHeader struct {
+	MobID   string
+	MobName string
+}
+
 // --- Page Data Structs for HTML Templates ---
 
 // SummaryPageData holds all data needed for the main summary page template.
@@ -287,5 +300,14 @@ type GuildPageData struct {
 	TotalGuilds int
 	HasPrevPage bool
 	HasNextPage bool
+}
+
+// MvpKillPageData holds all data needed for the MVP kill rankings page.
+type MvpKillPageData struct {
+	Players        []MvpKillEntry
+	Headers        []MvpHeader
+	SortBy         string
+	Order          string
+	LastScrapeTime string
 }
 

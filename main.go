@@ -26,6 +26,7 @@ func main() {
 	http.HandleFunc("/players", playerCountHandler)  // Shows a graph of online player counts over time.
 	http.HandleFunc("/characters", characterHandler) // Shows player characters.
 	http.HandleFunc("/guilds", guildHandler)         // Shows guild rankings.
+	http.HandleFunc("/mvp-kills", mvpKillsHandler)   // Shows MVP kill rankings.
 
 	// Start the web server.
 	port := "8080"

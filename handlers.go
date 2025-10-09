@@ -30,6 +30,37 @@ var definedEvents = []EventDefinition{
 	},
 }
 
+var mvpMobIDs = []string{
+	"1038", "1039", "1046", "1059", "1086", "1087", "1112", "1115", "1147",
+	"1150", "1157", "1159", "1190", "1251", "1252", "1272", "1312", "1373",
+	"1389", "1418", "1492", "1511",
+}
+
+var mvpNames = map[string]string{
+	"1038": "Osiris",
+	"1039": "Baphomet",
+	"1046": "Doppelganger",
+	"1059": "Mistress",
+	"1086": "Golden Thief Bug",
+	"1087": "Orc Hero",
+	"1112": "Drake",
+	"1115": "Eddga",
+	"1147": "Maya",
+	"1150": "Moonlight Flower",
+	"1157": "Pharaoh",
+	"1159": "Phreeoni",
+	"1190": "Orc Lord",
+	"1251": "Stormy Knight",
+	"1252": "Hatii",
+	"1272": "Dark Lord",
+	"1312": "Turtle General",
+	"1373": "Lord of Death",
+	"1389": "Dracula",
+	"1418": "Evil Snake Lord",
+	"1492": "Incantation Samurai",
+	"1511": "Amon Ra",
+}
+
 // generateEventIntervals creates a list of event occurrences within a given time window,
 // but only for days that have corresponding data points.
 func generateEventIntervals(viewStart, viewEnd time.Time, events []EventDefinition, activeDates map[string]struct{}) []map[string]interface{} {
@@ -1607,3 +1638,136 @@ func guildHandler(w http.ResponseWriter, r *http.Request) {
 	tmpl.Execute(w, data)
 }
 
+// mvpKillsHandler serves the page for MVP kill rankings.
+func mvpKillsHandler(w http.ResponseWriter, r *http.Request) {
+	sortBy := r.URL.Query().Get("sort_by")
+	order := r.URL.Query().Get("order")
+
+	// --- 1. Build Headers ---
+	headers := []MvpHeader{
+		{MobID: "total", MobName: "Total Kills"},
+	}
+	for _, mobID := range mvpMobIDs {
+		headers = append(headers, MvpHeader{
+			MobID:   mobID,
+			MobName: mvpNames[mobID],
+		})
+	}
+
+	// --- 2. Handle Sorting ---
+	var orderByClause string
+	allowedSort := false
+	if sortBy != "" {
+		if sortBy == "name" {
+			allowedSort = true
+			orderByClause = "character_name"
+		} else if sortBy == "total" {
+			// Create the SUM expression for total kills
+			var sumParts []string
+			for _, mobID := range mvpMobIDs {
+				sumParts = append(sumParts, fmt.Sprintf("mvp_%s", mobID))
+			}
+			orderByClause = fmt.Sprintf("(%s)", strings.Join(sumParts, " + "))
+			allowedSort = true
+		} else {
+			// Check if sorting by a specific MVP ID
+			for _, mobID := range mvpMobIDs {
+				if sortBy == mobID {
+					orderByClause = fmt.Sprintf("mvp_%s", mobID)
+					allowedSort = true
+					break
+				}
+			}
+		}
+	}
+
+	if !allowedSort {
+		// Default sort by total kills
+		var sumParts []string
+		for _, mobID := range mvpMobIDs {
+			sumParts = append(sumParts, fmt.Sprintf("mvp_%s", mobID))
+		}
+		orderByClause = fmt.Sprintf("(%s)", strings.Join(sumParts, " + "))
+		sortBy = "total"
+		order = "DESC"
+	} else {
+		if strings.ToUpper(order) != "DESC" {
+			order = "ASC"
+		}
+	}
+
+	// --- 3. Fetch Data ---
+	query := fmt.Sprintf("SELECT * FROM character_mvp_kills ORDER BY %s %s", orderByClause, order)
+	rows, err := db.Query(query)
+	if err != nil {
+		http.Error(w, "Could not query MVP kills", http.StatusInternalServerError)
+		log.Printf("❌ Could not query for MVP kills: %v", err)
+		return
+	}
+	defer rows.Close()
+
+	// --- 4. Process Rows with Dynamic Columns ---
+	cols, _ := rows.Columns()
+	var players []MvpKillEntry
+
+	for rows.Next() {
+		columns := make([]interface{}, len(cols))
+		columnPointers := make([]interface{}, len(cols))
+		for i := range columns {
+			columnPointers[i] = &columns[i]
+		}
+
+		if err := rows.Scan(columnPointers...); err != nil {
+			log.Printf("⚠️ Failed to scan MVP kill row: %v", err)
+			continue
+		}
+
+		player := MvpKillEntry{
+			Kills: make(map[string]int),
+		}
+		totalKills := 0
+
+		for i, colName := range cols {
+			val := columns[i]
+			if colName == "character_name" {
+				player.CharacterName = val.(string)
+			} else if strings.HasPrefix(colName, "mvp_") {
+				mobID := strings.TrimPrefix(colName, "mvp_")
+				killCount := int(val.(int64))
+				player.Kills[mobID] = killCount
+				totalKills += killCount
+			}
+		}
+		player.TotalKills = totalKills
+		players = append(players, player)
+	}
+
+	// --- 5. Render Template ---
+	funcMap := template.FuncMap{
+		"toggleOrder": func(currentOrder string) string {
+			if currentOrder == "ASC" {
+				return "DESC"
+			}
+			return "ASC"
+		},
+		"getKillCount": func(kills map[string]int, mobID string) int {
+			return kills[mobID]
+		},
+	}
+
+	tmpl, err := template.New("mvp_kills.html").Funcs(funcMap).ParseFiles("mvp_kills.html")
+	if err != nil {
+		http.Error(w, "Could not load mvp_kills template", http.StatusInternalServerError)
+		log.Printf("❌ Could not load mvp_kills.html template: %v", err)
+		return
+	}
+
+	data := MvpKillPageData{
+		Players:        players,
+		Headers:        headers,
+		SortBy:         sortBy,
+		Order:          order,
+		LastScrapeTime: getLastCharacterScrapeTime(), // MVP data is scraped with characters
+	}
+	tmpl.Execute(w, data)
+}
