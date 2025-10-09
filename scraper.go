@@ -430,6 +430,8 @@ func scrapePlayerCharacters() {
 				} else if expDelta < -0.001 {
 					logCharacterActivity(tx, p.Name, fmt.Sprintf("Lost %.2f%% experience (now at %.2f%%).", -expDelta, p.Experience))
 				}
+			} else {
+				logCharacterActivity(tx, p.Name, fmt.Sprintf("Gained %.2f%% experience (now at %.2f%%).", p.Experience, p.Experience))
 			}
 
 			if p.Class != oldPlayer.Class {
