@@ -3,6 +3,7 @@ package main
 import (
 	"database/sql"
 	"fmt"
+	"strings"
 
 	_ "github.com/mattn/go-sqlite3" // SQLite driver
 )
@@ -166,6 +167,28 @@ func initDB(filepath string) (*sql.DB, error) {
 		return nil, fmt.Errorf("could not create characters table: %w", err)
 	}
 
+	// SQL statement to create the 'character_mvp_kills' table.
+	mvpMobIDs := []string{
+		"1038", "1039", "1046", "1059", "1086", "1087", "1112", "1115", "1147",
+		"1150", "1157", "1159", "1190", "1251", "1252", "1272", "1312", "1373",
+		"1389", "1418", "1492", "1511",
+	}
+	var mvpColumns []string
+	mvpColumns = append(mvpColumns, `"character_name" TEXT NOT NULL PRIMARY KEY`)
+	for _, mobID := range mvpMobIDs {
+		mvpColumns = append(mvpColumns, fmt.Sprintf(`"mvp_%s" INTEGER NOT NULL DEFAULT 0`, mobID))
+	}
+
+	createMvpKillsTableSQL := fmt.Sprintf(`
+	CREATE TABLE IF NOT EXISTS character_mvp_kills (
+		%s,
+		FOREIGN KEY(character_name) REFERENCES characters(name) ON DELETE CASCADE ON UPDATE CASCADE
+	);`, strings.Join(mvpColumns, ",\n\t\t"))
+
+	if _, err = db.Exec(createMvpKillsTableSQL); err != nil {
+		return nil, fmt.Errorf("could not create character_mvp_kills table: %w", err)
+	}
+
 	// After all tables are ensured to exist, apply any pending migrations.
 	if err := applyMigrations(db); err != nil {
 		return nil, err
@@ -173,4 +196,3 @@ func initDB(filepath string) (*sql.DB, error) {
 
 	return db, nil
 }
-

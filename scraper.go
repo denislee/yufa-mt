@@ -23,8 +23,16 @@ import (
 const enablePlayerCountDebugLogs = false
 const enableCharacterScraperDebugLogs = false
 const enableGuildScraperDebugLogs = true
+const enableMvpScraperDebugLogs = true // Added constant
 const enableZenyScraperDebugLogs = false
 const enableMarketScraperDebugLogs = false
+
+// Added a shared slice of MVP IDs for the scraper and database logic to use.
+var mvpMobIDs = []string{
+	"1038", "1039", "1046", "1059", "1086", "1087", "1112", "1115", "1147",
+	"1150", "1157", "1159", "1190", "1251", "1252", "1272", "1312", "1373",
+	"1389", "1418", "1492", "1511",
+}
 
 // newOptimizedAllocator creates a new chromedp allocator context with optimized flags
 // for scraping, disabling unnecessary resources like images to improve performance.
@@ -1196,6 +1204,236 @@ func areItemSetsIdentical(setA, setB []Item) bool {
 	return true
 }
 
+// scrapeMvpKills scrapes the MVP kill rankings using regex against the raw HTTP response.
+func scrapeMvpKills() {
+	log.Println("☠️  [MVP] Starting MVP kill count scrape...")
+	const maxRetries = 3
+	const retryDelay = 3 * time.Second
+
+	// This regex targets the JSON-like data structure found in the page's source,
+	// capturing the character name and the array of their MVP kills.
+	//	playerBlockRegex := regexp.MustCompile(`{"id":\d+,"char_id":\d+,"name":"([^"]+)","class":\d+,"level":\d+,"job_level":\d+,"mvps":(\[.*?\])}`)
+	playerBlockRegex := regexp.MustCompile(`{\\"rank\\":\d+,\\"total_kills\\":\d+,\\"char_id\\":\d+,\\"name\\":\\"([^"]+)\\",\\"base_level\\":\d+,\\"job_level\\":\d+,\\"class\\":\d+,\\"hair\\":\d+,\\"hair_color\\":\d+,\\"clothes_color\\":\d+,\\"head_top\\":\d+,\\"head_mid\\":\d+,\\"head_bottom\\":\d+,\\"robe\\":\d+,\\"weapon\\":\d+,\\"sex\\":\\"([^"]+)\\",\\"guild\\":{\\"guild_id\\":\d+,\\"name\\":\\"([^"])+\\"},\\"mvp_kills\\":(\[.*?\])}`)
+	// This regex parses individual MVP entries within the captured array.
+	mvpKillsRegex := regexp.MustCompile(`{\\"mob_id\\":(\d+),\\"kills\\":(\d+)}`)
+
+	client := &http.Client{Timeout: 45 * time.Second}
+
+	// --- Determine total number of pages ---
+	var lastPage = 1
+	log.Println("☠️  [MVP] Determining total number of pages...")
+	firstPageURL := "https://projetoyufa.com/rankings/mvp?page=1"
+
+	req, err := http.NewRequest("GET", firstPageURL, nil)
+	if err != nil {
+		log.Printf("❌ [MVP] Failed to create request for page 1: %v", err)
+		return
+	}
+	req.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/5.0 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36")
+
+	resp, err := client.Do(req)
+	if err != nil {
+		log.Printf("⚠️ [MVP] Could not fetch page 1 to determine page count. Assuming one page. Error: %v", err)
+	} else {
+		bodyBytes, readErr := io.ReadAll(resp.Body)
+		resp.Body.Close()
+		if readErr != nil {
+			log.Printf("⚠️ [MVP] Failed to read page 1 body. Assuming one page. Error: %v", readErr)
+		} else {
+			pageRegex := regexp.MustCompile(`page=(\d+)`)
+			matches := pageRegex.FindAllStringSubmatch(string(bodyBytes), -1)
+			for _, match := range matches {
+				if len(match) > 1 {
+					if p, pErr := strconv.Atoi(match[1]); pErr == nil {
+						if p > lastPage {
+							lastPage = p
+						}
+					}
+				}
+			}
+		}
+	}
+	log.Printf("✅ [MVP] Found %d total pages to scrape.", lastPage)
+
+	// map[characterName]map[mobID]killCount
+	allMvpKills := make(map[string]map[string]int)
+	var mu sync.Mutex
+	var wg sync.WaitGroup
+	sem := make(chan struct{}, 5)
+
+	log.Printf("☠️  [MVP] Scraping all %d pages...", lastPage)
+	for page := 1; page <= lastPage; page++ {
+		wg.Add(1)
+		sem <- struct{}{}
+		go func(p int) {
+			defer wg.Done()
+			defer func() { <-sem }()
+
+			var bodyContent string
+			pageScrapedSuccessfully := false
+
+			for attempt := 1; attempt <= maxRetries; attempt++ {
+				url := fmt.Sprintf("https://projetoyufa.com/rankings/mvp?page=%d", p)
+				req, reqErr := http.NewRequest("GET", url, nil)
+				if reqErr != nil {
+					log.Printf("    -> ❌ [MVP] Error creating request for page %d: %v", p, reqErr)
+					time.Sleep(retryDelay)
+					continue
+				}
+				req.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/5.0 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36")
+
+				resp, doErr := client.Do(req)
+				if doErr != nil {
+					log.Printf("    -> ❌ [MVP] Error on page %d (attempt %d/%d): %v", p, attempt, maxRetries, doErr)
+					time.Sleep(retryDelay)
+					continue
+				}
+
+				bodyBytes, readErr := io.ReadAll(resp.Body)
+				resp.Body.Close()
+				if readErr != nil {
+					log.Printf("    -> ❌ [MVP] Failed to read body for page %d: %v", p, readErr)
+					time.Sleep(retryDelay)
+					continue
+				}
+
+				bodyContent = string(bodyBytes)
+				pageScrapedSuccessfully = true
+				break
+			}
+
+			if !pageScrapedSuccessfully {
+				log.Printf("    -> ❌ [MVP] All retries failed for page %d.", p)
+				return
+			}
+
+			playerBlocks := playerBlockRegex.FindAllStringSubmatch(bodyContent, -1)
+			if len(playerBlocks) == 0 {
+				log.Printf("    -> ⚠️ [MVP] No player data blocks found on page %d.", p)
+				return
+			}
+
+			if enableMvpScraperDebugLogs {
+				log.Printf("    -> [MVP] playerBlocks: %s", playerBlocks)
+			}
+
+			pageKills := make(map[string]map[string]int)
+			for _, block := range playerBlocks {
+				charName := block[1]
+				mvpsJSON := block[4]
+
+				if enableMvpScraperDebugLogs {
+					for i := 0; i < len(block); i++ {
+						log.Printf("    -> [MVP] block[%d]: %s", i, block[i])
+					}
+				}
+
+				if enableMvpScraperDebugLogs {
+					log.Printf("    -> [MVP] Found player: %s", charName)
+				}
+
+				playerKills := make(map[string]int)
+				killMatches := mvpKillsRegex.FindAllStringSubmatch(mvpsJSON, -1)
+
+				if enableMvpScraperDebugLogs {
+					log.Printf("    -> [MVP] killMatches: %s", killMatches)
+				}
+
+				for _, killMatch := range killMatches {
+					mobID := killMatch[1]
+					killCount, _ := strconv.Atoi(killMatch[2])
+					playerKills[mobID] = killCount
+				}
+				pageKills[charName] = playerKills
+			}
+
+			if len(pageKills) > 0 {
+				mu.Lock()
+				for charName, kills := range pageKills {
+					allMvpKills[charName] = kills
+				}
+				mu.Unlock()
+			}
+			log.Printf("    -> [MVP] Scraped page %d/%d, found %d characters with MVP kills.", p, lastPage, len(pageKills))
+		}(page)
+	}
+
+	wg.Wait()
+	log.Printf("✅ [MVP] Finished scraping all pages. Found %d unique characters with MVP kills.", len(allMvpKills))
+
+	if len(allMvpKills) == 0 {
+		log.Println("⚠️ [MVP] No MVP kills found after scrape. Skipping database update.")
+		return
+	}
+
+	tx, err := db.Begin()
+	if err != nil {
+		log.Printf("❌ [MVP][DB] Failed to begin transaction: %v", err)
+		return
+	}
+	defer tx.Rollback()
+
+	// Prepare the dynamic UPSERT statement
+	columnNames := []string{"character_name"}
+	valuePlaceholders := []string{"?"}
+	updateSetters := []string{}
+	for _, mobID := range mvpMobIDs {
+		colName := fmt.Sprintf("mvp_%s", mobID)
+		columnNames = append(columnNames, colName)
+		valuePlaceholders = append(valuePlaceholders, "?")
+		updateSetters = append(updateSetters, fmt.Sprintf("%s=excluded.%s", colName, colName))
+	}
+
+	sql := fmt.Sprintf(`
+		INSERT INTO character_mvp_kills (%s)
+		VALUES (%s)
+		ON CONFLICT(character_name) DO UPDATE SET %s
+	`, strings.Join(columnNames, ", "), strings.Join(valuePlaceholders, ", "), strings.Join(updateSetters, ", "))
+
+	stmt, err := tx.Prepare(sql)
+	if err != nil {
+		log.Printf("❌ [MVP][DB] Failed to prepare MVP kills upsert statement: %v", err)
+		return
+	}
+	defer stmt.Close()
+
+	for charName, kills := range allMvpKills {
+		// Ensure the character exists in the main 'characters' table first to satisfy the FOREIGN KEY constraint.
+		var exists int
+		err := tx.QueryRow("SELECT COUNT(*) FROM characters WHERE name = ?", charName).Scan(&exists)
+		if err != nil {
+			log.Printf("    -> [MVP][DB] WARN: Could not check for existence of character '%s': %v. Skipping.", charName, err)
+			continue
+		}
+		if exists == 0 {
+			if enableMvpScraperDebugLogs {
+				log.Printf("    -> [MVP][DB] Character '%s' not found in main table. Skipping MVP data insert.", charName)
+			}
+			continue
+		}
+
+		params := []interface{}{charName}
+		for _, mobID := range mvpMobIDs {
+			if count, ok := kills[mobID]; ok {
+				params = append(params, count)
+			} else {
+				params = append(params, 0) // Default to 0 if not found in scraped data
+			}
+		}
+
+		if _, err := stmt.Exec(params...); err != nil {
+			log.Printf("    -> [MVP][DB] WARN: Failed to upsert MVP kills for player %s: %v", charName, err)
+		}
+	}
+
+	if err := tx.Commit(); err != nil {
+		log.Printf("❌ [MVP][DB] Failed to commit transaction: %v", err)
+		return
+	}
+	log.Printf("✅ [MVP] Saved/updated MVP kill records for %d characters.", len(allMvpKills))
+	log.Printf("✅ [MVP] Scrape and update process complete.")
+}
+
 func startBackgroundJobs() {
 	go func() {
 		ticker := time.NewTicker(3 * time.Minute)
@@ -1232,7 +1470,6 @@ func startBackgroundJobs() {
 	go func() {
 		ticker := time.NewTicker(1 * time.Hour)
 		defer ticker.Stop()
-		scrapeGuilds()
 		for {
 			log.Printf("🕒 [Job] Waiting for the next 60-minute guild schedule...")
 			<-ticker.C
@@ -1249,5 +1486,15 @@ func startBackgroundJobs() {
 			scrapeZeny()
 		}
 	}()
-}
 
+	go func() {
+		scrapeMvpKills()
+		ticker := time.NewTicker(1 * time.Hour)
+		defer ticker.Stop()
+		for {
+			log.Printf("🕒 [Job] Waiting for the next 60-minute MVP kill count schedule...")
+			<-ticker.C
+			scrapeMvpKills()
+		}
+	}()
+}
