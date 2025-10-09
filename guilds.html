@@ -121,7 +121,7 @@
                                 </div>
                             </td>
                             <td class="px-2 sm:px-3 py-2">{{.Level}}</td>
-                            <td class="px-2 sm:px-3 py-2">{{.Master}}</td>
+                            <td class="px-2 sm:px-3 py-2"><a href="/character?name={{.Master | urlquery}}" class="text-blue-600 hover:underline">{{.Master}}</a></td>
                             <td class="px-2 sm:px-3 py-2">{{.MemberCount}}</td>
                             <td class="px-2 sm:px-3 py-2">{{formatZeny .TotalZeny}}</td>
                             <td class="px-2 sm:px-3 py-2">{{formatAvgLevel .AvgBaseLevel}}</td>
