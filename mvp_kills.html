@@ -74,9 +74,10 @@
                             {{range .Headers}}
                             <th class="px-2 py-3 text-center">
                                 <a href="/mvp-kills?sort_by={{.MobID}}&order={{if eq $currentSort .MobID}}{{$revOrder}}{{else}}DESC{{end}}" class="flex flex-col items-center justify-end h-full">
-                                    <div class="relative w-6 h-12 mb-2">
+                                    <div class="relative w-8 h-8 mb-2">
                                      {{if ne "total" .MobID}}   
-                                        <img src="https://static.divine-pride.net/images/mobs/png/{{.MobID}}.png" alt="{{.MobName}}" class="mx-auto h-12" style="image-rendering: pixelated;">
+                                    <img src="https://projetoyufa.com/_next/image?url=%2Fimages%2Fmvp%2F{{.MobID}}.png&w=1920&q=75" alt="{{.MobName}}" class="mx-auto" style="image-rendering: pixelated;">
+                                        <!-- <img src="https://static.divine-pride.net/images/mobs/png/{{.MobID}}.png" alt="{{.MobName}}" class="mx-auto h-12" style="image-rendering: pixelated;"> -->
                                     {{end}}
                                     </div>
                                     <span class="text-center">{{.MobName}}</span>
