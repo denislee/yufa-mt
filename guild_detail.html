@@ -238,10 +238,10 @@
             {{if .HasChartData}}
             const ctx = document.getElementById('classDistributionChart');
             const chartData = {{.ClassDistributionJSON}};
-            
+
             // Sort the data from highest to lowest
             const sortedChartData = Object.entries(chartData).sort(([, a], [, b]) => b - a);
-            const labels = sortedChartData.map(([label]) => label);
+            const labels = sortedChartData.map(([label, value]) => `${label} (${value})`);
             const data = sortedChartData.map(([, value]) => value);
 
             const colors = [
