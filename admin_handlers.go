@@ -39,6 +39,22 @@ func adminHandler(w http.ResponseWriter, r *http.Request) {
 		Message: r.URL.Query().Get("msg"),
 	}
 
+	// Fetch all guilds for the emblem update dropdown
+	guildRows, err := db.Query("SELECT name, COALESCE(emblem_url, '') FROM guilds ORDER BY name ASC")
+	if err != nil {
+		log.Printf("⚠️ Could not query for guild list for admin page: %v", err)
+	} else {
+		defer guildRows.Close()
+		for guildRows.Next() {
+			var info GuildInfo
+			if err := guildRows.Scan(&info.Name, &info.EmblemURL); err != nil {
+				log.Printf("⚠️ Failed to scan guild info for admin page: %v", err)
+				continue
+			}
+			stats.AllGuilds = append(stats.AllGuilds, info)
+		}
+	}
+
 	// Gather statistics from the database
 	_ = db.QueryRow("SELECT COUNT(*) FROM items").Scan(&stats.TotalItems)
 	_ = db.QueryRow("SELECT COUNT(*) FROM items WHERE is_available = 1").Scan(&stats.AvailableItems)
@@ -172,3 +188,4 @@ func adminClearLastActiveHandler(w http.ResponseWriter, r *http.Request) {
 
 	http.Redirect(w, r, "/admin?msg="+msg, http.StatusSeeOther)
 }
+

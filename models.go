@@ -371,9 +371,16 @@ type CharacterChangelogPageData struct {
 	HasNextPage bool
 }
 
+// GuildInfo holds basic info for the admin dropdown.
+type GuildInfo struct {
+	Name      string
+	EmblemURL string
+}
+
 // AdminDashboardData holds statistics for the admin dashboard.
 type AdminDashboardData struct {
 	Message               string
+	AllGuilds             []GuildInfo
 	TotalItems            int
 	AvailableItems        int
 	UniqueItems           int
@@ -388,3 +395,4 @@ type AdminDashboardData struct {
 	LastCharacterScrape   string
 	LastGuildScrape       string
 }
+
