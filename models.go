@@ -338,6 +338,7 @@ type CharacterDetailPageData struct {
 	MvpKills       MvpKillEntry
 	MvpHeaders     []MvpHeader
 	LastScrapeTime string
+	GuildHistory   []CharacterChangelog
 	// Changelog data and pagination
 	ChangelogEntries     []CharacterChangelog
 	ChangelogCurrentPage int

@@ -1868,6 +1868,41 @@ func characterDetailHandler(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	// --- ADDED: Fetch Guild History ---
+	var guildHistory []CharacterChangelog
+	guildHistoryQuery := `
+		SELECT change_time, activity_description
+		FROM character_changelog
+		WHERE character_name = ? AND (activity_description LIKE '%joined guild%' OR activity_description LIKE '%left guild%')
+		ORDER BY change_time DESC`
+	guildHistoryRows, err := db.Query(guildHistoryQuery, charName)
+	if err != nil {
+		// Log error but don't fail the page load
+		log.Printf("⚠️ Could not query for guild history for '%s': %v", charName, err)
+	} else {
+		defer guildHistoryRows.Close()
+		for guildHistoryRows.Next() {
+			var entry CharacterChangelog
+			var timestampStr string
+			if err := guildHistoryRows.Scan(&timestampStr, &entry.ActivityDescription); err != nil {
+				log.Printf("⚠️ Failed to scan guild history row: %v", err)
+				continue
+			}
+
+			parsedTime, err := time.Parse(time.RFC3339, timestampStr)
+			if err == nil {
+				entry.ChangeTime = parsedTime.Format("2006-01-02 15:04")
+			} else {
+				entry.ChangeTime = timestampStr
+			}
+			guildHistory = append(guildHistory, entry)
+		}
+	}
+	// --- END of addition ---
+
+	// --- 4. Fetch Character Changelog (paginated) ---
+	// ... (rest of the function) ...
+
 	// --- 4. Fetch Character Changelog (paginated) ---
 	var totalChangelogEntries int
 	countQuery := "SELECT COUNT(*) FROM character_changelog WHERE character_name = ?"
@@ -1934,6 +1969,7 @@ func characterDetailHandler(w http.ResponseWriter, r *http.Request) {
 		Guild:                guild,
 		MvpKills:             mvpKills,
 		MvpHeaders:           mvpHeaders,
+		GuildHistory:         guildHistory,
 		LastScrapeTime:       getLastCharacterScrapeTime(),
 		ChangelogEntries:     changelogEntries,
 		ChangelogCurrentPage: clPage,
@@ -2285,4 +2321,3 @@ func guildDetailHandler(w http.ResponseWriter, r *http.Request) {
 
 	tmpl.Execute(w, data)
 }
-

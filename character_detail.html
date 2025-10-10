@@ -190,6 +190,21 @@
                      <p class="text-gray-500 mt-4">This character is not in a guild.</p>
                 </div>
                 {{end}}
+                <div class="bg-white p-4 rounded-lg shadow mt-6">
+                    <h2 class="text-xl font-semibold mb-2">Guild History</h2>
+                    {{if .GuildHistory}}
+                    <div class="mt-4 space-y-3">
+                        {{range .GuildHistory}}
+                        <div class="flex items-start space-x-3">
+                            <div class="text-xs text-gray-400 font-mono whitespace-nowrap pt-1">{{.ChangeTime}}</div>
+                            <div class="text-sm text-gray-700">{{.ActivityDescription}}</div>
+                        </div>
+                        {{end}}
+                    </div>
+                    {{else}}
+                    <p class="text-gray-500 mt-4">No guild history recorded.</p>
+                    {{end}}
+                </div>
             </div>
         </div>
     </div>
