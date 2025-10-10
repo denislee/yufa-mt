@@ -7,6 +7,7 @@ import (
 	"log"
 	"net/http"
 	"net/url"
+	"time"
 )
 
 // The admin user remains constant.
@@ -143,6 +144,30 @@ func adminUpdateGuildEmblemHandler(w http.ResponseWriter, r *http.Request) {
 		} else {
 			msg = fmt.Sprintf("Emblem+for+'%s'+updated+successfully.", url.QueryEscape(guildName))
 		}
+	}
+
+	http.Redirect(w, r, "/admin?msg="+msg, http.StatusSeeOther)
+}
+
+// adminClearLastActiveHandler resets the last_active timestamp for all characters.
+func adminClearLastActiveHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Redirect(w, r, "/admin", http.StatusSeeOther)
+		return
+	}
+
+	var msg string
+	// The 'characters' table schema specifies last_active is NOT NULL.
+	// We'll use the zero value for time, formatted according to RFC3339.
+	zeroTime := time.Time{}.Format(time.RFC3339)
+
+	result, err := db.Exec("UPDATE characters SET last_active = ?", zeroTime)
+	if err != nil {
+		log.Printf("❌ Failed to clear last_active times: %v", err)
+		msg = "Database+error+while+clearing+activity+times."
+	} else {
+		rowsAffected, _ := result.RowsAffected()
+		msg = fmt.Sprintf("Successfully+reset+last_active+time+for+%d+characters.", rowsAffected)
 	}
 
 	http.Redirect(w, r, "/admin?msg="+msg, http.StatusSeeOther)

@@ -48,7 +48,8 @@ func main() {
 	// --- ADMIN ROUTES ---
 	http.HandleFunc("/admin", basicAuth(adminHandler))
 	http.HandleFunc("/admin/cache", basicAuth(adminCacheActionHandler))
-	http.HandleFunc("/admin/guild/update-emblem", basicAuth(adminUpdateGuildEmblemHandler)) // ADDED THIS LINE
+	http.HandleFunc("/admin/guild/update-emblem", basicAuth(adminUpdateGuildEmblemHandler))
+	http.HandleFunc("/admin/character/clear-last-active", basicAuth(adminClearLastActiveHandler))
 	// Manual Scraper Triggers
 	http.HandleFunc("/admin/scrape/market", basicAuth(adminTriggerScrapeHandler(scrapeData, "Market")))
 	http.HandleFunc("/admin/scrape/players", basicAuth(adminTriggerScrapeHandler(scrapeAndStorePlayerCount, "Player-Count")))
