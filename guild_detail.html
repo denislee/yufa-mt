@@ -89,16 +89,12 @@
                     <table class="min-w-full leading-normal">
                         <thead>
                             <tr class="border-b-2 border-gray-200 bg-gray-50 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
-                                {{$guildName := .Guild.Name | urlquery}}
-                                {{$currentSort := .SortBy}}
-                                {{$currentOrder := .Order}}
-                                {{$revOrder := toggleOrder $currentOrder}}
-                                <th class="px-3 py-2"><a href="/guild?name={{$guildName}}&sort_by=name&order={{if eq $currentSort "name"}}{{$revOrder}}{{else}}ASC{{end}}">Name {{if eq $currentSort "name"}}{{if eq $currentOrder "ASC"}}▲{{else}}▼{{end}}{{end}}</a></th>
-                                <th class="px-3 py-2"><a href="/guild?name={{$guildName}}&sort_by=class&order={{if eq $currentSort "class"}}{{$revOrder}}{{else}}ASC{{end}}">Class {{if eq $currentSort "class"}}{{if eq $currentOrder "ASC"}}▲{{else}}▼{{end}}{{end}}</a></th>
-                                <th class="px-3 py-2"><a href="/guild?name={{$guildName}}&sort_by=base_level&order={{if eq $currentSort "base_level"}}{{$revOrder}}{{else}}DESC{{end}}">Base {{if eq $currentSort "base_level"}}{{if eq $currentOrder "ASC"}}▲{{else}}▼{{end}}{{end}}</a></th>
-                                <th class="px-3 py-2"><a href="/guild?name={{$guildName}}&sort_by=job_level&order={{if eq $currentSort "job_level"}}{{$revOrder}}{{else}}DESC{{end}}">Job {{if eq $currentSort "job_level"}}{{if eq $currentOrder "ASC"}}▲{{else}}▼{{end}}{{end}}</a></th>
-                                <th class="px-3 py-2"><a href="/guild?name={{$guildName}}&sort_by=zeny&order={{if eq $currentSort "zeny"}}{{$revOrder}}{{else}}DESC{{end}}">Zeny {{if eq $currentSort "zeny"}}{{if eq $currentOrder "ASC"}}▲{{else}}▼{{end}}{{end}}</a></th>
-                                <th class="px-3 py-2"><a href="/guild?name={{$guildName}}&sort_by=last_active&order={{if eq $currentSort "last_active"}}{{$revOrder}}{{else}}DESC{{end}}">Last Active {{if eq $currentSort "last_active"}}{{if eq $currentOrder "ASC"}}▲{{else}}▼{{end}}{{end}}</a></th>
+                                <th class="px-3 py-2"><a href="/guild?name={{.Guild.Name | urlquery}}&sort_by=name&order={{if eq .SortBy "name"}}{{toggleOrder .Order}}{{else}}ASC{{end}}&cl_page={{.ChangelogCurrentPage}}">Name {{if eq .SortBy "name"}}{{if eq .Order "ASC"}}▲{{else}}▼{{end}}{{end}}</a></th>
+                                <th class="px-3 py-2"><a href="/guild?name={{.Guild.Name | urlquery}}&sort_by=class&order={{if eq .SortBy "class"}}{{toggleOrder .Order}}{{else}}ASC{{end}}&cl_page={{.ChangelogCurrentPage}}">Class {{if eq .SortBy "class"}}{{if eq .Order "ASC"}}▲{{else}}▼{{end}}{{end}}</a></th>
+                                <th class="px-3 py-2"><a href="/guild?name={{.Guild.Name | urlquery}}&sort_by=base_level&order={{if eq .SortBy "base_level"}}{{toggleOrder .Order}}{{else}}DESC{{end}}&cl_page={{.ChangelogCurrentPage}}">Base {{if eq .SortBy "base_level"}}{{if eq .Order "ASC"}}▲{{else}}▼{{end}}{{end}}</a></th>
+                                <th class="px-3 py-2"><a href="/guild?name={{.Guild.Name | urlquery}}&sort_by=job_level&order={{if eq .SortBy "job_level"}}{{toggleOrder .Order}}{{else}}DESC{{end}}&cl_page={{.ChangelogCurrentPage}}">Job {{if eq .SortBy "job_level"}}{{if eq .Order "ASC"}}▲{{else}}▼{{end}}{{end}}</a></th>
+                                <th class="px-3 py-2"><a href="/guild?name={{.Guild.Name | urlquery}}&sort_by=zeny&order={{if eq .SortBy "zeny"}}{{toggleOrder .Order}}{{else}}DESC{{end}}&cl_page={{.ChangelogCurrentPage}}">Zeny {{if eq .SortBy "zeny"}}{{if eq .Order "ASC"}}▲{{else}}▼{{end}}{{end}}</a></th>
+                                <th class="px-3 py-2"><a href="/guild?name={{.Guild.Name | urlquery}}&sort_by=last_active&order={{if eq .SortBy "last_active"}}{{toggleOrder .Order}}{{else}}DESC{{end}}&cl_page={{.ChangelogCurrentPage}}">Last Active {{if eq .SortBy "last_active"}}{{if eq .Order "ASC"}}▲{{else}}▼{{end}}{{end}}</a></th>
                             </tr>
                         </thead>
                         <tbody class="text-gray-700 text-xs">
@@ -106,7 +102,7 @@
                             <tr class="border-b border-gray-200 hover:bg-gray-50">
                                 <td class="px-3 py-2">
                                     <a href="/character?name={{.Name | urlquery}}" class="font-semibold hover:underline">{{.Name}}</a>
-                                    {{if .IsGuildLeader}}<span title="Guild Leader" class="ml-1">👑</span>{{end}}
+                                    {{if .IsGuildLeader}}<span title="Guild Leader" class="ml-1"> ⭐</span>{{end}}
                                 </td>
                                 <td class="px-3 py-2">{{.Class}}</td>
                                 <td class="px-3 py-2">{{.BaseLevel}}</td>
