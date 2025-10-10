@@ -22,7 +22,7 @@ import (
 // These constants control verbose logging for each specific scraper module.
 const enablePlayerCountDebugLogs = false
 const enableCharacterScraperDebugLogs = false
-const enableGuildScraperDebugLogs = true
+const enableGuildScraperDebugLogs = false
 const enableMvpScraperDebugLogs = false
 const enableZenyScraperDebugLogs = false
 const enableMarketScraperDebugLogs = false
@@ -1611,17 +1611,30 @@ func scrapeMvpKills() {
 			}
 			existingKillCount := existingKills[mobID]
 
+			// --- MODIFICATION START ---
+			// Compare the new value with the existing one. Only update if the new value is greater.
+			// This prevents overwriting correct data with stale data from a slow-updating ranking page.
+			finalKillCount := newKillCount
+			if existingKillCount > newKillCount {
+				finalKillCount = existingKillCount // Keep the higher, existing value
+				if enableMvpScraperDebugLogs {
+					log.Printf("    -> [MVP] Stale data for %s on MVP %s. DB has %d, scrape has %d. Keeping DB value.", charName, mobID, existingKillCount, newKillCount)
+				}
+			}
+			// --- MODIFICATION END ---
+
 			// Log the change if the kill count has increased
-			// doesnt seems to be working
-			if newKillCount > existingKillCount {
+			if finalKillCount > existingKillCount {
+
+				log.Printf("    -> [MVP] Stale data for %s on MVP %s. DB has %d, scrape has %d. updating DB value.", charName, mobID, existingKillCount, newKillCount)
 				// mvpName, ok := mvpNamesScraper[mobID]
 				// if !ok {
 				// 	mvpName = fmt.Sprintf("MVP %s", mobID)
 				// }
-				// logCharacterActivity(tx, charName, fmt.Sprintf("Defeated %s. (Total: %d)", mvpName, newKillCount))
+				//logCharacterActivity(tx, charName, fmt.Sprintf("Defeated %s. (Total: %d)", mvpName, finalKillCount))
 			}
 
-			params = append(params, newKillCount)
+			params = append(params, finalKillCount) // Use the determined final value
 		}
 
 		if _, err := stmt.Exec(params...); err != nil {
