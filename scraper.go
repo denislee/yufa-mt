@@ -676,23 +676,30 @@ func scrapeGuilds() {
 	}
 	defer tx.Rollback()
 
-	log.Println("    -> [DB] Clearing and repopulating 'guilds' table...")
-	if _, err := tx.Exec("DELETE FROM guilds"); err != nil {
-		log.Printf("❌ [Guilds][DB] Failed to clear guilds table: %v", err)
-		return
-	}
-
-	guildStmt, err := tx.Prepare(`INSERT INTO guilds (rank, name, level, experience, master, emblem_url, last_updated) VALUES (?, ?, ?, ?, ?, ?, ?)`)
+	// --- MODIFICATION START ---
+	// Changed the logic from "DELETE then INSERT" to "UPSERT" to preserve existing data like emblem_url.
+	log.Println("    -> [DB] Upserting guild information into 'guilds' table...")
+	guildStmt, err := tx.Prepare(`
+		INSERT INTO guilds (rank, name, level, experience, master, emblem_url, last_updated)
+		VALUES (?, ?, ?, ?, ?, ?, ?)
+		ON CONFLICT(name) DO UPDATE SET
+			level=excluded.level,
+			master=excluded.master,
+			last_updated=excluded.last_updated
+	`)
 	if err != nil {
-		log.Printf("❌ [Guilds][DB] Failed to prepare guilds insert statement: %v", err)
+		log.Printf("❌ [Guilds][DB] Failed to prepare guilds upsert statement: %v", err)
 		return
 	}
+	// --- MODIFICATION END ---
 	defer guildStmt.Close()
 
 	updateTime := time.Now().Format(time.RFC3339)
 	for _, g := range allGuilds {
+		// The emblem_url from the scrape (g.EmblemURL) will only be used for new guild entries.
+		// For existing guilds, the ON CONFLICT clause prevents it from being updated, preserving the old value.
 		if _, err := guildStmt.Exec(0, g.Name, g.Level, g.Experience, g.Master, g.EmblemURL, updateTime); err != nil {
-			log.Printf("    -> [DB] WARN: Failed to insert guild '%s': %v", g.Name, err)
+			log.Printf("    -> [DB] WARN: Failed to upsert guild '%s': %v", g.Name, err)
 		}
 	}
 
@@ -1697,4 +1704,3 @@ func startBackgroundJobs() {
 		}
 	}()
 }
-
