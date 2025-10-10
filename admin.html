@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admin Dashboard - Yufa Market Tracker</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-100 text-gray-800">
+
+    <nav class="bg-white shadow-sm sticky top-0 z-10">
+        <div class="container mx-auto px-4">
+            <div class="flex justify-between items-center py-2">
+                <div class="text-xl font-semibold text-gray-700">Yufa Tracker - <span class="text-red-600">Admin Area</span></div>
+                <div>
+                    <a href="/" class="text-gray-600 hover:text-blue-500">Back to Site</a>
+                </div>
+            </div>
+        </div>
+    </nav>
+
+    <div class="container mx-auto px-4 py-6">
+        <h1 class="text-3xl font-bold text-gray-800 mb-6">Admin Dashboard</h1>
+
+        {{if .Message}}
+        <div class="bg-green-100 border border-green-400 text-green-700 px-4 py-3 rounded relative mb-4" role="alert">
+            <span class="block sm:inline">{{.Message}}</span>
+        </div>
+        {{end}}
+
+        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+            <div class="bg-white p-6 rounded-lg shadow">
+                <h3 class="text-gray-500 text-sm font-medium uppercase">Market Items</h3>
+                <p class="text-3xl font-bold">{{.TotalItems}} <span class="text-lg font-normal">Total</span></p>
+                <p class="text-xl font-semibold">{{.AvailableItems}} <span class="text-base font-normal">Available</span></p>
+                <p class="text-xl font-semibold">{{.UniqueItems}} <span class="text-base font-normal">Unique</span></p>
+            </div>
+            <div class="bg-white p-6 rounded-lg shadow">
+                <h3 class="text-gray-500 text-sm font-medium uppercase">Player & Guilds</h3>
+                <p class="text-3xl font-bold">{{.TotalCharacters}} <span class="text-lg font-normal">Characters</span></p>
+                <p class="text-xl font-semibold">{{.TotalGuilds}} <span class="text-base font-normal">Guilds</span></p>
+                 <p class="text-xl font-semibold">{{.ChangelogEntries}} <span class="text-base font-normal">Changelog Events</span></p>
+            </div>
+            <div class="bg-white p-6 rounded-lg shadow">
+                <h3 class="text-gray-500 text-sm font-medium uppercase">System Data</h3>
+                <p class="text-3xl font-bold">{{.CachedItems}} <span class="text-lg font-normal">Cached Items</span></p>
+                <p class="text-xl font-semibold">{{.PlayerHistoryEntries}} <span class="text-base font-normal">Player Samples</span></p>
+                <p class="text-xl font-semibold">{{.MarketEvents}} <span class="text-base font-normal">Market Events</span></p>
+            </div>
+            <div class="bg-white p-6 rounded-lg shadow">
+                <h3 class="text-gray-500 text-sm font-medium uppercase">Last Scrape Times</h3>
+                <p class="text-sm"><strong>Market:</strong> {{.LastMarketScrape}}</p>
+                <p class="text-sm"><strong>Player Count:</strong> {{.LastPlayerCountScrape}}</p>
+                <p class="text-sm"><strong>Characters/MVP:</strong> {{.LastCharacterScrape}}</p>
+                <p class="text-sm"><strong>Guilds:</strong> {{.LastGuildScrape}}</p>
+            </div>
+        </div>
+
+        <div class="bg-white p-6 rounded-lg shadow mb-8">
+            <h2 class="text-xl font-bold mb-4">Manual Scrapers</h2>
+            <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
+                <form action="/admin/scrape/market" method="POST">
+                    <button type="submit" class="w-full bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded">Trigger Market Scrape</button>
+                </form>
+                 <form action="/admin/scrape/players" method="POST">
+                    <button type="submit" class="w-full bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded">Trigger Player Count</button>
+                </form>
+                <form action="/admin/scrape/characters" method="POST">
+                    <button type="submit" class="w-full bg-green-500 hover:bg-green-700 text-white font-bold py-2 px-4 rounded">Trigger Character Scrape</button>
+                </form>
+                <form action="/admin/scrape/guilds" method="POST">
+                    <button type="submit" class="w-full bg-green-500 hover:bg-green-700 text-white font-bold py-2 px-4 rounded">Trigger Guild Scrape</button>
+                </form>
+                <form action="/admin/scrape/zeny" method="POST">
+                    <button type="submit" class="w-full bg-green-500 hover:bg-green-700 text-white font-bold py-2 px-4 rounded">Trigger Zeny Scrape</button>
+                </form>
+                <form action="/admin/scrape/mvp" method="POST">
+                    <button type="submit" class="w-full bg-green-500 hover:bg-green-700 text-white font-bold py-2 px-4 rounded">Trigger MVP Scrape</button>
+                </form>
+            </div>
+        </div>
+
+        <div class="bg-white p-6 rounded-lg shadow">
+            <h2 class="text-xl font-bold mb-4">Item Cache Management (RMS)</h2>
+            <div class="flex space-x-4">
+                 <form action="/admin/cache" method="POST">
+                    <input type="hidden" name="action" value="repopulate">
+                    <button type="submit" class="bg-indigo-500 hover:bg-indigo-700 text-white font-bold py-2 px-4 rounded">Repopulate Missing Items</button>
+                </form>
+                <form action="/admin/cache" method="POST" onsubmit="return confirm('Are you sure you want to delete all cached item data?');">
+                    <input type="hidden" name="action" value="clear">
+                    <button type="submit" class="bg-red-500 hover:bg-red-700 text-white font-bold py-2 px-4 rounded">Clear Entire Cache</button>
+                </form>
+            </div>
+        </div>
+    </div>
+</body>
+</html>

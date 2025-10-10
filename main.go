@@ -3,6 +3,7 @@ package main
 import (
 	"log"
 	"net/http"
+	"time"
 )
 
 func main() {
@@ -13,6 +14,19 @@ func main() {
 		log.Fatalf("❌ Failed to initialize database: %v", err)
 	}
 	defer db.Close()
+
+	// --- DYNAMIC PASSWORD GENERATION ---
+	// Generate and set the dynamic admin password for this session.
+	adminPass = generateRandomPassword(16) // Sets the package-level variable in admin_handlers.go
+
+	// Log the password after a 5-second delay.
+	go func() {
+		time.Sleep(5 * time.Second)
+		log.Println("==================================================")
+		log.Printf("👤 Admin User: %s", adminUser)
+		log.Printf("🔑 Admin Pass: %s", adminPass)
+		log.Println("==================================================")
+	}()
 
 	// Start background tasks.
 	go populateMissingCachesOnStartup() // Verifies and populates the item details cache on startup.
@@ -30,6 +44,17 @@ func main() {
 	http.HandleFunc("/mvp-kills", mvpKillsHandler)   // Shows MVP kill rankings.
 	http.HandleFunc("/character", characterDetailHandler)
 	http.HandleFunc("/character-changelog", characterChangelogHandler)
+
+	// --- ADMIN ROUTES ---
+	http.HandleFunc("/admin", basicAuth(adminHandler))
+	http.HandleFunc("/admin/cache", basicAuth(adminCacheActionHandler))
+	// Manual Scraper Triggers
+	http.HandleFunc("/admin/scrape/market", basicAuth(adminTriggerScrapeHandler(scrapeData, "Market")))
+	http.HandleFunc("/admin/scrape/players", basicAuth(adminTriggerScrapeHandler(scrapeAndStorePlayerCount, "Player-Count")))
+	http.HandleFunc("/admin/scrape/characters", basicAuth(adminTriggerScrapeHandler(scrapePlayerCharacters, "Character")))
+	http.HandleFunc("/admin/scrape/guilds", basicAuth(adminTriggerScrapeHandler(scrapeGuilds, "Guild")))
+	http.HandleFunc("/admin/scrape/zeny", basicAuth(adminTriggerScrapeHandler(scrapeZeny, "Zeny")))
+	http.HandleFunc("/admin/scrape/mvp", basicAuth(adminTriggerScrapeHandler(scrapeMvpKills, "MVP")))
 
 	// Start the web server.
 	port := "8080"

@@ -369,3 +369,20 @@ type CharacterChangelogPageData struct {
 	HasNextPage bool
 }
 
+// AdminDashboardData holds statistics for the admin dashboard.
+type AdminDashboardData struct {
+	Message               string
+	TotalItems            int
+	AvailableItems        int
+	UniqueItems           int
+	CachedItems           int
+	TotalCharacters       int
+	TotalGuilds           int
+	PlayerHistoryEntries  int
+	MarketEvents          int
+	ChangelogEntries      int
+	LastMarketScrape      string
+	LastPlayerCountScrape string
+	LastCharacterScrape   string
+	LastGuildScrape       string
+}
