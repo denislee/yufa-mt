@@ -339,6 +339,7 @@ type CharacterDetailPageData struct {
 	MvpHeaders     []MvpHeader
 	LastScrapeTime string
 	GuildHistory   []CharacterChangelog
+	ClassImageURL  string
 	// Changelog data and pagination
 	ChangelogEntries     []CharacterChangelog
 	ChangelogCurrentPage int

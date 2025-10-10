@@ -33,14 +33,19 @@
 
     <div class="container mx-auto px-4 py-6">
         <div class="flex flex-col sm:flex-row justify-between sm:items-center gap-2 mb-4 border-b border-gray-200 pb-3">
-            <div>
-                <h1 class="text-3xl font-bold text-gray-800 flex items-center">
-                    {{.Character.Name}}
-                    {{if .Character.IsGuildLeader}}
-                        <span title="Guild Leader" class="ml-2 text-xl">⭐</span>
-                    {{end}}
-                </h1>
-                <p class="text-lg text-gray-600">{{.Character.Class}}</p>
+            <div class="flex items-center gap-4">
+                {{if .ClassImageURL}}
+                <img src="{{.ClassImageURL}}" alt="{{.Character.Class}}" class="h-16 w-16 bg-gray-200 p-1 rounded-md">
+                {{end}}
+                <div>
+                    <h1 class="text-3xl font-bold text-gray-800 flex items-center">
+                        {{.Character.Name}}
+                        {{if .Character.IsGuildLeader}}
+                            <span title="Guild Leader" class="ml-2 text-xl">⭐</span>
+                        {{end}}
+                    </h1>
+                    <p class="text-lg text-gray-600">{{.Character.Class}}</p>
+                </div>
             </div>
             <div class="text-sm text-gray-500">Last updated: {{.LastScrapeTime}}</div>
         </div>

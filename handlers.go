@@ -1782,6 +1782,31 @@ func characterDetailHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Define the class image map
+	classImages := map[string]string{
+		"Aprendiz":       "https://static.wikia.nocookie.net/ragnarok-online-encyclopedia/images/8/8b/Icon_jobs_0.png",
+		"Super Aprendiz": "https://static.wikia.nocookie.net/ragnarok-online-encyclopedia/images/c/c7/Icon_jobs_4001.png",
+		"Arqueiro":       "https://static.wikia.nocookie.net/ragnarok-online-encyclopedia/images/9/97/Icon_jobs_3.png",
+		"Espadachim":     "https://static.wikia.nocookie.net/ragnarok-online-encyclopedia/images/5/5b/Icon_jobs_1.png",
+		"Gatuno":         "https://static.wikia.nocookie.net/ragnarok-online-encyclopedia/images/3/3c/Icon_jobs_6.png",
+		"Mago":           "https://static.wikia.nocookie.net/ragnarok-online-encyclopedia/images/9/99/Icon_jobs_2.png",
+		"Mercador":       "https://static.wikia.nocookie.net/ragnarok-online-encyclopedia/images/9/9e/Icon_jobs_5.png",
+		"Noviço":         "https://static.wikia.nocookie.net/ragnarok-online-encyclopedia/images/c/c5/Icon_jobs_4.png",
+		"Alquimista":     "https://static.wikia.nocookie.net/ragnarok-online-encyclopedia/images/c/c7/Icon_jobs_18.png",
+		"Arruaceiro":     "https://static.wikia.nocookie.net/ragnarok-online-encyclopedia/images/4/48/Icon_jobs_17.png",
+		"Bardo":          "https://static.wikia.nocookie.net/ragnarok-online-encyclopedia/images/6/69/Icon_jobs_19.png",
+		"Bruxo":          "https://static.wikia.nocookie.net/ragnarok-online-encyclopedia/images/0/09/Icon_jobs_9.png",
+		"Cavaleiro":      "https://static.wikia.nocookie.net/ragnarok-online-encyclopedia/images/1/1d/Icon_jobs_7.png",
+		"Caçador":        "https://static.wikia.nocookie.net/ragnarok-online-encyclopedia/images/e/eb/Icon_jobs_11.png",
+		"Ferreiro":       "https://static.wikia.nocookie.net/ragnarok-online-encyclopedia/images/7/7b/Icon_jobs_10.png",
+		"Mercenário":     "https://static.wikia.nocookie.net/ragnarok-online-encyclopedia/images/9/9c/Icon_jobs_12.png",
+		"Monge":          "https://static.wikia.nocookie.net/ragnarok-online-encyclopedia/images/4/44/Icon_jobs_15.png",
+		"Odalisca":       "https://static.wikia.nocookie.net/ragnarok-online-encyclopedia/images/d/dc/Icon_jobs_20.png",
+		"Sacerdote":      "https://static.wikia.nocookie.net/ragnarok-online-encyclopedia/images/3/3a/Icon_jobs_8.png",
+		"Sábio":          "https://static.wikia.nocookie.net/ragnarok-online-encyclopedia/images/0/0e/Icon_jobs_16.png",
+		"Templário":      "https://static.wikia.nocookie.net/ragnarok-online-encyclopedia/images/e/e1/Icon_jobs_14.png",
+	}
+
 	// Get changelog page parameter
 	clPageStr := r.URL.Query().Get("cl_page")
 	clPage, err := strconv.Atoi(clPageStr)
@@ -1891,7 +1916,8 @@ func characterDetailHandler(w http.ResponseWriter, r *http.Request) {
 
 			parsedTime, err := time.Parse(time.RFC3339, timestampStr)
 			if err == nil {
-				entry.ChangeTime = parsedTime.Format("2006-01-02 15:04")
+				//				entry.ChangeTime = parsedTime.Format("2006-01-02 15:04")
+				entry.ChangeTime = parsedTime.Format("2006-01-02")
 			} else {
 				entry.ChangeTime = timestampStr
 			}
@@ -1971,6 +1997,7 @@ func characterDetailHandler(w http.ResponseWriter, r *http.Request) {
 		MvpHeaders:           mvpHeaders,
 		GuildHistory:         guildHistory,
 		LastScrapeTime:       getLastCharacterScrapeTime(),
+		ClassImageURL:        classImages[p.Class],
 		ChangelogEntries:     changelogEntries,
 		ChangelogCurrentPage: clPage,
 		ChangelogTotalPages:  clTotalPages,
