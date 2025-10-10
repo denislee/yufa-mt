@@ -48,6 +48,7 @@ func main() {
 	// --- ADMIN ROUTES ---
 	http.HandleFunc("/admin", basicAuth(adminHandler))
 	http.HandleFunc("/admin/cache", basicAuth(adminCacheActionHandler))
+	http.HandleFunc("/admin/guild/update-emblem", basicAuth(adminUpdateGuildEmblemHandler)) // ADDED THIS LINE
 	// Manual Scraper Triggers
 	http.HandleFunc("/admin/scrape/market", basicAuth(adminTriggerScrapeHandler(scrapeData, "Market")))
 	http.HandleFunc("/admin/scrape/players", basicAuth(adminTriggerScrapeHandler(scrapeAndStorePlayerCount, "Player-Count")))
@@ -63,4 +64,3 @@ func main() {
 		log.Fatalf("❌ Failed to start web server: %v", err)
 	}
 }
-

@@ -6,6 +6,7 @@ import (
 	"html/template"
 	"log"
 	"net/http"
+	"net/url"
 )
 
 // The admin user remains constant.
@@ -103,6 +104,45 @@ func adminCacheActionHandler(w http.ResponseWriter, r *http.Request) {
 		msg = "Cache+repopulation+started+in+background."
 	default:
 		msg = "Unknown+cache+action."
+	}
+
+	http.Redirect(w, r, "/admin?msg="+msg, http.StatusSeeOther)
+}
+
+// adminUpdateGuildEmblemHandler handles the request to update a guild's emblem URL.
+func adminUpdateGuildEmblemHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Redirect(w, r, "/admin", http.StatusSeeOther)
+		return
+	}
+
+	if err := r.ParseForm(); err != nil {
+		http.Redirect(w, r, "/admin?msg=Error+parsing+form.", http.StatusSeeOther)
+		return
+	}
+
+	guildName := r.FormValue("guild_name")
+	emblemURL := r.FormValue("emblem_url")
+	var msg string
+
+	if guildName == "" || emblemURL == "" {
+		msg = "Guild+name+and+URL+cannot+be+empty."
+		http.Redirect(w, r, "/admin?msg="+msg, http.StatusSeeOther)
+		return
+	}
+
+	// Execute the update query
+	result, err := db.Exec("UPDATE guilds SET emblem_url = ? WHERE name = ?", emblemURL, guildName)
+	if err != nil {
+		log.Printf("❌ Failed to update emblem for guild '%s': %v", guildName, err)
+		msg = "Database+error+occurred."
+	} else {
+		rowsAffected, _ := result.RowsAffected()
+		if rowsAffected == 0 {
+			msg = fmt.Sprintf("Guild+'%s'+not+found.", url.QueryEscape(guildName))
+		} else {
+			msg = fmt.Sprintf("Emblem+for+'%s'+updated+successfully.", url.QueryEscape(guildName))
+		}
 	}
 
 	http.Redirect(w, r, "/admin?msg="+msg, http.StatusSeeOther)
