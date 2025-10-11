@@ -85,7 +85,7 @@ func main() {
 	if err != nil {
 		log.Printf("⚠️ Could not write admin password to file: %v", err)
 	} else {
-		log.Println("🔑 Admin password saved to admin_password.txt")
+		log.Println("🔑 Admin password saved to pwd.txt")
 	}
 
 	// Log the password after a 5-second delay.
