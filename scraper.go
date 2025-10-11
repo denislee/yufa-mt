@@ -1040,7 +1040,6 @@ func scrapeZeny() {
 
 func scrapeData() {
 	log.Println("🚀 [Market] Starting scrape...")
-	// ... (Web scraping logic is unchanged)
 	// Compile regexes once for efficiency.
 	reRefineMid := regexp.MustCompile(`\s(\+\d+)`)
 	reRefineStart := regexp.MustCompile(`^(\+\d+)\s`)
@@ -1117,12 +1116,14 @@ func scrapeData() {
 
 	retrievalTime := time.Now().Format(time.RFC3339)
 	scrapedItemsByName := make(map[string][]Item)
+	activeSellers := make(map[string]bool) // ADDED: Keep track of active sellers
 
 	doc.Find(`div[data-slot="card"]`).Each(func(i int, s *goquery.Selection) {
 		shopName := strings.TrimSpace(s.Find(`div[data-slot="card-title"]`).Text())
 		sellerName := strings.TrimSpace(s.Find("svg.lucide-user").Next().Text())
 		mapName := strings.TrimSpace(s.Find("svg.lucide-map-pin").Next().Text())
 		mapCoordinates := strings.TrimSpace(s.Find("svg.lucide-copy").Next().Text())
+		activeSellers[sellerName] = true // ADDED: Populate the set of active sellers
 
 		if enableMarketScraperDebugLogs == true {
 			log.Printf("[Market] shop name: %s, seller name: %s, map_name: %s, mapcoord: %s", shopName, sellerName, mapName, mapCoordinates)
@@ -1211,7 +1212,31 @@ func scrapeData() {
 		return
 	}
 
-	rows, err := tx.Query("SELECT DISTINCT name_of_the_item FROM items WHERE is_available = 1")
+	// --- ADDED: Pre-calculate old store sizes for context ---
+	dbStoreSizes := make(map[string]int)
+	sellerItems := make(map[string]map[string]bool)
+	rows, err := tx.Query("SELECT seller_name, name_of_the_item FROM items WHERE is_available = 1")
+	if err != nil {
+		log.Printf("❌ [Market] Could not pre-query seller item counts: %v", err)
+	} else {
+		for rows.Next() {
+			var sellerName, itemName string
+			if err := rows.Scan(&sellerName, &itemName); err != nil {
+				continue
+			}
+			if _, ok := sellerItems[sellerName]; !ok {
+				sellerItems[sellerName] = make(map[string]bool)
+			}
+			sellerItems[sellerName][itemName] = true
+		}
+		rows.Close()
+		for seller, items := range sellerItems {
+			dbStoreSizes[seller] = len(items)
+		}
+	}
+	// --- END ADDITION ---
+
+	rows, err = tx.Query("SELECT DISTINCT name_of_the_item FROM items WHERE is_available = 1")
 	if err != nil {
 		log.Printf("❌ [Market] Could not get list of available items: %v", err)
 		return
@@ -1247,6 +1272,38 @@ func scrapeData() {
 			lastAvailableItems = append(lastAvailableItems, item)
 		}
 		rows.Close()
+
+		// --- MODIFIED: Log specific removal reasons when an item group is updated ---
+		if !areItemSetsIdentical(currentScrapedItems, lastAvailableItems) {
+			currentSet := make(map[comparableItem]bool)
+			for _, item := range currentScrapedItems {
+				currentSet[toComparable(item)] = true
+			}
+
+			for _, lastItem := range lastAvailableItems {
+				if _, found := currentSet[toComparable(lastItem)]; !found {
+					// This specific listing was removed. Log the reason.
+					eventType := "REMOVED"
+					if _, sellerIsActive := activeSellers[lastItem.SellerName]; sellerIsActive {
+						eventType = "SOLD"
+					} else if dbStoreSizes[lastItem.SellerName] == 1 {
+						eventType = "REMOVED_SINGLE"
+					}
+
+					// MODIFIED: Include details in the event log
+					details, _ := json.Marshal(map[string]interface{}{
+						"price":    lastItem.Price,
+						"quantity": lastItem.Quantity,
+						"seller":   lastItem.SellerName,
+					})
+					_, err := tx.Exec(`INSERT INTO market_events (event_timestamp, event_type, item_name, item_id, details) VALUES (?, ?, ?, ?, ?)`, retrievalTime, eventType, lastItem.Name, lastItem.ItemID, string(details))
+					if err != nil {
+						log.Printf("❌ [Market] Failed to log %s event for %s: %v", eventType, lastItem.Name, err)
+					}
+				}
+			}
+		}
+		// --- END MODIFICATION ---
 
 		if areItemSetsIdentical(currentScrapedItems, lastAvailableItems) {
 			itemsUnchanged++
@@ -1316,19 +1373,50 @@ func scrapeData() {
 		}
 	}
 
+	// --- REVISED: This entire loop is replaced to provide better context ---
 	itemsRemoved := 0
 	for name := range dbAvailableNames {
 		if _, foundInScrape := scrapedItemsByName[name]; !foundInScrape {
-			var itemID int
-			err := tx.QueryRow("SELECT item_id FROM items WHERE name_of_the_item = ? AND item_id > 0 LIMIT 1", name).Scan(&itemID)
+			// This item name has completely disappeared from the market.
+			var removedListings []Item
+			// MODIFIED: Query for price and quantity as well
+			rows, err := tx.Query("SELECT name_of_the_item, item_id, seller_name, price, quantity FROM items WHERE name_of_the_item = ? AND is_available = 1", name)
 			if err != nil {
-				log.Printf("⚠️ [Market] Could not find item_id for removed item '%s', logging event with item_id 0: %v", name, err)
-				itemID = 0
+				log.Printf("⚠️ [Market] Could not query details for removed item '%s': %v", name, err)
+				continue
 			}
-			_, err = tx.Exec(`INSERT INTO market_events (event_timestamp, event_type, item_name, item_id, details) VALUES (?, 'REMOVED', ?, ?, '{}')`, retrievalTime, name, itemID)
-			if err != nil {
-				log.Printf("❌ [Market] Failed to log REMOVED event for %s: %v", name, err)
+
+			for rows.Next() {
+				var listing Item
+				// MODIFIED: Scan the new fields
+				if err := rows.Scan(&listing.Name, &listing.ItemID, &listing.SellerName, &listing.Price, &listing.Quantity); err != nil {
+					continue
+				}
+				removedListings = append(removedListings, listing)
 			}
+			rows.Close()
+
+			for _, listing := range removedListings {
+				// The logic is the same: check if the seller is still active with other items.
+				eventType := "REMOVED"
+				if _, sellerIsActive := activeSellers[listing.SellerName]; sellerIsActive {
+					eventType = "SOLD"
+				} else if dbStoreSizes[listing.SellerName] == 1 {
+					eventType = "REMOVED_SINGLE"
+				}
+
+				// MODIFIED: Include details in the event log
+				details, _ := json.Marshal(map[string]interface{}{
+					"price":    listing.Price,
+					"quantity": listing.Quantity,
+					"seller":   listing.SellerName,
+				})
+				_, err = tx.Exec(`INSERT INTO market_events (event_timestamp, event_type, item_name, item_id, details) VALUES (?, ?, ?, ?, ?)`, retrievalTime, eventType, name, listing.ItemID, string(details))
+				if err != nil {
+					log.Printf("❌ [Market] Failed to log %s event for removed item %s: %v", eventType, name, err)
+				}
+			}
+
 			if _, err := tx.Exec("UPDATE items SET is_available = 0 WHERE name_of_the_item = ?", name); err != nil {
 				log.Printf("❌ [Market] Failed to mark disappeared item %s as unavailable: %v", name, err)
 			} else {
@@ -1336,6 +1424,7 @@ func scrapeData() {
 			}
 		}
 	}
+	// --- END REVISION ---
 
 	if err := tx.Commit(); err != nil {
 		log.Printf("❌ [Market] Failed to commit transaction: %v", err)
@@ -1343,37 +1432,35 @@ func scrapeData() {
 	}
 	log.Printf("✅ [Market] Scrape complete. Unchanged: %d groups. Updated: %d groups. Newly Added: %d groups. Removed: %d groups.", itemsUnchanged, itemsUpdated, itemsAdded, itemsRemoved)
 }
+
+// Helper function to create a comparable representation of an item, used for set comparison.
+func toComparable(item Item) comparableItem {
+	return comparableItem{
+		Name:           item.Name,
+		ItemID:         item.ItemID, // Corrected from item.ID
+		Quantity:       item.Quantity,
+		Price:          item.Price,
+		StoreName:      item.StoreName,
+		SellerName:     item.SellerName,
+		MapName:        item.MapName,
+		MapCoordinates: item.MapCoordinates,
+	}
+}
+
+// areItemSetsIdentical is modified to use the new helper and fix a bug.
 func areItemSetsIdentical(setA, setB []Item) bool {
 	if len(setA) != len(setB) {
 		return false
 	}
-	makeComparable := func(items []Item) []comparableItem {
-		comp := make([]comparableItem, len(items))
-		for i, item := range items {
-			comp[i] = comparableItem{
-				Name:           item.Name,
-				ItemID:         item.ID,
-				Quantity:       item.Quantity,
-				Price:          item.Price,
-				StoreName:      item.StoreName,
-				SellerName:     item.SellerName,
-				MapName:        item.MapName,
-				MapCoordinates: item.MapCoordinates,
-			}
-		}
-		return comp
-	}
-	compA := makeComparable(setA)
-	compB := makeComparable(setB)
 	counts := make(map[comparableItem]int)
-	for _, item := range compA {
-		counts[item]++
+	for _, item := range setA {
+		counts[toComparable(item)]++
 	}
-	for _, item := range compB {
-		if counts[item] == 0 {
+	for _, item := range setB {
+		if counts[toComparable(item)] == 0 {
 			return false
 		}
-		counts[item]--
+		counts[toComparable(item)]--
 	}
 	return true
 }
