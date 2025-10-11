@@ -1474,7 +1474,7 @@ func scrapeMvpKills() {
 
 	// This regex targets the JSON-like data structure found in the page's source,
 	// capturing the character name and the array of their MVP kills.
-	playerBlockRegex := regexp.MustCompile(`{\\"rank\\":\d+,\\"total_kills\\":\d+,\\"char_id\\":\d+,\\"name\\":\\"([^"]+)\\",\\"base_level\\":\d+,\\"job_level\\":\d+,\\"class\\":\d+,\\"hair\\":\d+,\\"hair_color\\":\d+,\\"clothes_color\\":\d+,\\"head_top\\":\d+,\\"head_mid\\":\d+,\\"head_bottom\\":\d+,\\"robe\\":\d+,\\"weapon\\":\d+,\\"sex\\":\\"([^"]+)\\",\\"guild\\":{\\"guild_id\\":\d+,\\"name\\":\\"([^"])+\\"},\\"mvp_kills\\":(\[.*?\])}`)
+	playerBlockRegex := regexp.MustCompile(`\\"name\\":\\"([^"]+)\\".*?\\"mvp_kills\\":\[(.*?)]`)
 	// This regex parses individual MVP entries within the captured array.
 	mvpKillsRegex := regexp.MustCompile(`{\\"mob_id\\":(\d+),\\"kills\\":(\d+)}`)
 
@@ -1563,6 +1563,8 @@ func scrapeMvpKills() {
 				break
 			}
 
+			//log.Printf("    -> [MVP] body content page %d: %s", page, bodyContent)
+
 			if !pageScrapedSuccessfully {
 				log.Printf("    -> ❌ [MVP] All retries failed for page %d.", p)
 				return
@@ -1581,7 +1583,7 @@ func scrapeMvpKills() {
 			pageKills := make(map[string]map[string]int)
 			for _, block := range playerBlocks {
 				charName := block[1]
-				mvpsJSON := block[4]
+				mvpsJSON := block[2]
 
 				if enableMvpScraperDebugLogs {
 					log.Printf("    -> [MVP] Found player: %s", charName)
