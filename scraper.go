@@ -1474,7 +1474,7 @@ func scrapeMvpKills() {
 
 	// This regex targets the JSON-like data structure found in the page's source,
 	// capturing the character name and the array of their MVP kills.
-	playerBlockRegex := regexp.MustCompile(`\\"name\\":\\"([^"]+)\\".*?\\"mvp_kills\\":\[(.*?)]`)
+	playerBlockRegex := regexp.MustCompile(`\\"name\\":\\"([^"]+)\\",\\"base_level\\".*?\\"mvp_kills\\":\[(.*?)]`)
 	// This regex parses individual MVP entries within the captured array.
 	mvpKillsRegex := regexp.MustCompile(`{\\"mob_id\\":(\d+),\\"kills\\":(\d+)}`)
 
