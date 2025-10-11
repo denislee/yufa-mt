@@ -121,6 +121,7 @@ func main() {
 	http.HandleFunc("/admin/cache", basicAuth(adminCacheActionHandler))
 	http.HandleFunc("/admin/guild/update-emblem", basicAuth(adminUpdateGuildEmblemHandler))
 	http.HandleFunc("/admin/character/clear-last-active", basicAuth(adminClearLastActiveHandler))
+	http.HandleFunc("/admin/character/clear-mvp-kills", basicAuth(adminClearMvpKillsHandler))
 	// Manual Scraper Triggers
 	http.HandleFunc("/admin/scrape/market", basicAuth(adminTriggerScrapeHandler(scrapeData, "Market")))
 	http.HandleFunc("/admin/scrape/players", basicAuth(adminTriggerScrapeHandler(scrapeAndStorePlayerCount, "Player-Count")))
@@ -136,3 +137,4 @@ func main() {
 		log.Fatalf("❌ Failed to start web server: %v", err)
 	}
 }
+
