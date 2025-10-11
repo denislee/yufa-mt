@@ -271,6 +271,14 @@ func summaryHandler(w http.ResponseWriter, r *http.Request) {
 		items = append(items, item)
 	}
 
+	// Get total visitor count for the footer
+	var totalVisitors int
+	err = db.QueryRow("SELECT COUNT(*) FROM visitors").Scan(&totalVisitors)
+	if err != nil {
+		log.Printf("⚠️ Could not query for total visitors: %v", err)
+		totalVisitors = 0 // Default to 0 on error
+	}
+
 	// Create a FuncMap to register the "lower" function.
 	funcMap := template.FuncMap{
 		"lower": strings.ToLower,
@@ -294,6 +302,7 @@ func summaryHandler(w http.ResponseWriter, r *http.Request) {
 		LastScrapeTime: getLastScrapeTime(),
 		ItemTypes:      itemTypes,
 		SelectedType:   selectedType,
+		TotalVisitors:  totalVisitors,
 	}
 	tmpl.Execute(w, data)
 }

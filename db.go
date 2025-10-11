@@ -216,6 +216,35 @@ func initDB(filepath string) (*sql.DB, error) {
 		return nil, fmt.Errorf("could not create v_character_changelog view: %w", err)
 	}
 
+	// SQL statement for the 'visitors' table.
+	createVisitorsTableSQL := `
+	CREATE TABLE IF NOT EXISTS visitors (
+		"visitor_hash" TEXT NOT NULL PRIMARY KEY,
+		"first_visit" TEXT NOT NULL,
+		"last_visit" TEXT NOT NULL
+	);`
+	if _, err = db.Exec(createVisitorsTableSQL); err != nil {
+		return nil, fmt.Errorf("could not create visitors table: %w", err)
+	}
+
+	// ADDED: SQL statement for the 'page_views' table.
+	createPageViewsTableSQL := `
+	CREATE TABLE IF NOT EXISTS page_views (
+		"id" INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+		"visitor_hash" TEXT NOT NULL,
+		"page_path" TEXT NOT NULL,
+		"view_timestamp" TEXT NOT NULL
+	);`
+	if _, err = db.Exec(createPageViewsTableSQL); err != nil {
+		return nil, fmt.Errorf("could not create page_views table: %w", err)
+	}
+
+	// ADDED: Add an index for faster lookups on page_path
+	createPageIndexSQL := `CREATE INDEX IF NOT EXISTS idx_page_path ON page_views (page_path);`
+	if _, err = db.Exec(createPageIndexSQL); err != nil {
+		return nil, fmt.Errorf("could not create index on page_views: %w", err)
+	}
+
 	// After all tables are ensured to exist, apply any pending migrations.
 	if err := applyMigrations(db); err != nil {
 		return nil, err

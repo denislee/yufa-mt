@@ -178,6 +178,7 @@ type SummaryPageData struct {
 	LastScrapeTime string
 	ItemTypes      []ItemTypeTab
 	SelectedType   string
+	TotalVisitors  int
 }
 
 // PageData holds data for the detailed full list view template.
@@ -377,6 +378,13 @@ type GuildInfo struct {
 	EmblemURL string
 }
 
+// PageViewEntry holds data for a single recent page view.
+type PageViewEntry struct {
+	Path        string
+	Timestamp   string
+	VisitorHash string
+}
+
 // AdminDashboardData holds statistics for the admin dashboard.
 type AdminDashboardData struct {
 	Message               string
@@ -394,5 +402,10 @@ type AdminDashboardData struct {
 	LastPlayerCountScrape string
 	LastCharacterScrape   string
 	LastGuildScrape       string
+	TotalVisitors         int
+	VisitorsToday         int
+	MostVisitedPage       string
+	MostVisitedPageCount  int
+	RecentPageViews       []PageViewEntry
 }
 

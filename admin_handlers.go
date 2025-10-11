@@ -2,6 +2,7 @@ package main
 
 import (
 	"crypto/subtle"
+	"database/sql"
 	"fmt"
 	"html/template"
 	"log"
@@ -65,6 +66,62 @@ func adminHandler(w http.ResponseWriter, r *http.Request) {
 	_ = db.QueryRow("SELECT COUNT(*) FROM player_history").Scan(&stats.PlayerHistoryEntries)
 	_ = db.QueryRow("SELECT COUNT(*) FROM market_events").Scan(&stats.MarketEvents)
 	_ = db.QueryRow("SELECT COUNT(*) FROM character_changelog").Scan(&stats.ChangelogEntries)
+	_ = db.QueryRow("SELECT COUNT(*) FROM visitors").Scan(&stats.TotalVisitors)
+	_ = db.QueryRow("SELECT COUNT(*) FROM visitors WHERE date(last_visit) = date('now', 'localtime')").Scan(&stats.VisitorsToday)
+
+	// Get most visited page
+	err = db.QueryRow(`
+		SELECT page_path, COUNT(page_path) as Cnt
+		FROM page_views
+		GROUP BY page_path
+		ORDER BY Cnt DESC
+		LIMIT 1
+	`).Scan(&stats.MostVisitedPage, &stats.MostVisitedPageCount)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			stats.MostVisitedPage = "N/A"
+			stats.MostVisitedPageCount = 0
+		} else {
+			log.Printf("⚠️ Could not query for most visited page: %v", err)
+			stats.MostVisitedPage = "Error"
+			stats.MostVisitedPageCount = 0
+		}
+	}
+
+	// Get recent page views
+	var recentViews []PageViewEntry
+	viewRows, err := db.Query(`
+		SELECT page_path, view_timestamp, visitor_hash
+		FROM page_views
+		ORDER BY view_timestamp DESC
+		LIMIT 15
+	`)
+	if err != nil {
+		log.Printf("⚠️ Could not query for recent page views: %v", err)
+	} else {
+		defer viewRows.Close()
+		for viewRows.Next() {
+			var entry PageViewEntry
+			var timestampStr string
+			if err := viewRows.Scan(&entry.Path, &timestampStr, &entry.VisitorHash); err != nil {
+				log.Printf("⚠️ Failed to scan page view row: %v", err)
+				continue
+			}
+			// Format the timestamp
+			parsedTime, parseErr := time.Parse(time.RFC3339, timestampStr)
+			if parseErr == nil {
+				entry.Timestamp = parsedTime.Format("15:04:05") // Just show HH:MM:SS
+			} else {
+				entry.Timestamp = "Invalid Time"
+			}
+			// Truncate the hash for cleaner display
+			if len(entry.VisitorHash) > 12 {
+				entry.VisitorHash = entry.VisitorHash[:12]
+			}
+			recentViews = append(recentViews, entry)
+		}
+	}
+	stats.RecentPageViews = recentViews
 
 	// Get last scrape times
 	stats.LastMarketScrape = getLastScrapeTime()

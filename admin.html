@@ -42,10 +42,14 @@
                  <p class="text-xl font-semibold">{{.ChangelogEntries}} <span class="text-base font-normal">Changelog Events</span></p>
             </div>
             <div class="bg-white p-6 rounded-lg shadow">
-                <h3 class="text-gray-500 text-sm font-medium uppercase">System Data</h3>
-                <p class="text-3xl font-bold">{{.CachedItems}} <span class="text-lg font-normal">Cached Items</span></p>
-                <p class="text-xl font-semibold">{{.PlayerHistoryEntries}} <span class="text-base font-normal">Player Samples</span></p>
-                <p class="text-xl font-semibold">{{.MarketEvents}} <span class="text-base font-normal">Market Events</span></p>
+                <h3 class="text-gray-500 text-sm font-medium uppercase">Site Traffic & System</h3>
+                <p class="text-3xl font-bold">{{.TotalVisitors}} <span class="text-lg font-normal">Total Visitors</span></p>
+                <p class="text-xl font-semibold">{{.VisitorsToday}} <span class="text-base font-normal">Visitors Today</span></p>
+                <p class="text-sm mt-1"><strong>Top Page:</strong> {{.MostVisitedPage}} ({{.MostVisitedPageCount}} views)</p>
+                <hr class="my-2 border-gray-200">
+                <p class="text-sm mt-1"><strong>Cached Items:</strong> {{.CachedItems}}</p>
+                <p class="text-sm"><strong>Player Samples:</strong> {{.PlayerHistoryEntries}}</p>
+                <p class="text-sm"><strong>Market Events:</strong> {{.MarketEvents}}</p>
             </div>
             <div class="bg-white p-6 rounded-lg shadow">
                 <h3 class="text-gray-500 text-sm font-medium uppercase">Last Scrape Times</h3>
@@ -56,82 +60,114 @@
             </div>
         </div>
 
-        <div class="bg-white p-6 rounded-lg shadow mb-8">
-            <h2 class="text-xl font-bold mb-4">Manual Scrapers</h2>
-            <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
-                <form action="/admin/scrape/market" method="POST">
-                    <button type="submit" class="w-full bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded">Market Scrape</button>
-                </form>
-                 <form action="/admin/scrape/players" method="POST">
-                    <button type="submit" class="w-full bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded">Player Count</button>
-                </form>
-                <form action="/admin/scrape/characters" method="POST">
-                    <button type="submit" class="w-full bg-green-500 hover:bg-green-700 text-white font-bold py-2 px-4 rounded">Character Scrape</button>
-                </form>
-                <form action="/admin/scrape/guilds" method="POST">
-                    <button type="submit" class="w-full bg-green-500 hover:bg-green-700 text-white font-bold py-2 px-4 rounded">Guild Scrape</button>
-                </form>
-                <form action="/admin/scrape/zeny" method="POST">
-                    <button type="submit" class="w-full bg-green-500 hover:bg-green-700 text-white font-bold py-2 px-4 rounded">Zeny Scrape</button>
-                </form>
-                <form action="/admin/scrape/mvp" method="POST">
-                    <button type="submit" class="w-full bg-green-500 hover:bg-green-700 text-white font-bold py-2 px-4 rounded">MVP Scrape</button>
-                </form>
+        <div class="grid grid-cols-1 xl:grid-cols-2 gap-8">
+            <div>
+                <div class="bg-white p-6 rounded-lg shadow mb-8">
+                    <h2 class="text-xl font-bold mb-4">Manual Scrapers</h2>
+                    <div class="grid grid-cols-2 md:grid-cols-3 gap-4">
+                        <form action="/admin/scrape/market" method="POST">
+                            <button type="submit" class="w-full bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded">Market Scrape</button>
+                        </form>
+                         <form action="/admin/scrape/players" method="POST">
+                            <button type="submit" class="w-full bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded">Player Count</button>
+                        </form>
+                        <form action="/admin/scrape/characters" method="POST">
+                            <button type="submit" class="w-full bg-green-500 hover:bg-green-700 text-white font-bold py-2 px-4 rounded">Character Scrape</button>
+                        </form>
+                        <form action="/admin/scrape/guilds" method="POST">
+                            <button type="submit" class="w-full bg-green-500 hover:bg-green-700 text-white font-bold py-2 px-4 rounded">Guild Scrape</button>
+                        </form>
+                        <form action="/admin/scrape/zeny" method="POST">
+                            <button type="submit" class="w-full bg-green-500 hover:bg-green-700 text-white font-bold py-2 px-4 rounded">Zeny Scrape</button>
+                        </form>
+                        <form action="/admin/scrape/mvp" method="POST">
+                            <button type="submit" class="w-full bg-green-500 hover:bg-green-700 text-white font-bold py-2 px-4 rounded">MVP Scrape</button>
+                        </form>
+                    </div>
+                </div>
+
+                <div class="bg-white p-6 rounded-lg shadow mb-8">
+                    <h2 class="text-xl font-bold mb-4">Guild Emblem Management</h2>
+                    <form action="/admin/guild/update-emblem" method="POST" class="flex flex-col md:flex-row items-end gap-4">
+                        <div class="flex-grow w-full">
+                            <label for="guild_select" class="block text-sm font-medium text-gray-700">Guild Name</label>
+                            <select name="guild_name" id="guild_select" required
+                                   class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm">
+                                <option value="">-- Select a Guild --</option>
+                                {{range .AllGuilds}}
+                                <option value="{{.Name}}" data-emblem="{{.EmblemURL}}">{{.Name}}</option>
+                                {{end}}
+                            </select>
+                        </div>
+                        <div class="flex-grow w-full">
+                            <label for="emblem_url" class="block text-sm font-medium text-gray-700">New Emblem URL</label>
+                            <input type="url" name="emblem_url" id="emblem_url" required placeholder="https://..."
+                                   class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm">
+                        </div>
+                        <button type="submit" class="w-full md:w-auto bg-purple-500 hover:bg-purple-700 text-white font-bold py-2 px-4 rounded">Update Emblem</button>
+                    </form>
+                    <div id="emblem-preview-container" class="mt-4" style="display: none;">
+                        <h4 class="text-sm font-medium text-gray-700">Current Emblem:</h4>
+                        <div class="flex items-center gap-4 mt-2">
+                            <img id="emblem_preview_image" src="" alt="Emblem Preview" class="h-10 w-10 bg-gray-200 rounded">
+                            <p id="current_emblem_url" class="text-sm text-gray-500 break-all"></p>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="bg-white p-6 rounded-lg shadow mb-8">
+                    <h2 class="text-xl font-bold mb-4">Character Data Management</h2>
+                    <p class="text-sm text-gray-600 mb-4">This action will reset the "Last Active" time for ALL characters. This is useful for clearing activity data before a server event or maintenance.</p>
+                    <form action="/admin/character/clear-last-active" method="POST" onsubmit="return confirm('DANGER: Are you sure you want to reset all character last active times? This cannot be undone.');">
+                        <button type="submit" class="bg-orange-500 hover:bg-orange-700 text-white font-bold py-2 px-4 rounded">Reset All Last Active Times</button>
+                    </form>
+                </div>
+
+                <div class="bg-white p-6 rounded-lg shadow">
+                    <h2 class="text-xl font-bold mb-4">Item Cache Management (RMS)</h2>
+                    <div class="flex space-x-4">
+                         <form action="/admin/cache" method="POST">
+                            <input type="hidden" name="action" value="repopulate">
+                            <button type="submit" class="bg-indigo-500 hover:bg-indigo-700 text-white font-bold py-2 px-4 rounded">Repopulate Missing Items</button>
+                        </form>
+                        <form action="/admin/cache" method="POST" onsubmit="return confirm('Are you sure you want to delete all cached item data?');">
+                            <input type="hidden" name="action" value="clear">
+                            <button type="submit" class="bg-red-500 hover:bg-red-700 text-white font-bold py-2 px-4 rounded">Clear Entire Cache</button>
+                        </form>
+                    </div>
+                </div>
+            </div>
+
+            <div>
+                <div class="bg-white p-6 rounded-lg shadow">
+                    <h2 class="text-xl font-bold mb-4">Recent Page Views</h2>
+                    <div class="overflow-x-auto">
+                        <table class="min-w-full text-sm">
+                            <thead>
+                                <tr class="border-b-2 border-gray-200">
+                                    <th class="text-left font-semibold text-gray-600 uppercase tracking-wider py-2">Page</th>
+                                    <th class="text-left font-semibold text-gray-600 uppercase tracking-wider py-2">Time</th>
+                                    <th class="text-left font-semibold text-gray-600 uppercase tracking-wider py-2">Visitor ID</th>
+                                </tr>
+                            </thead>
+                            <tbody class="divide-y divide-gray-200">
+                                {{range .RecentPageViews}}
+                                <tr>
+                                    <td class="py-2 pr-2 font-mono truncate" title="{{.Path}}">{{.Path}}</td>
+                                    <td class="py-2 pr-2 text-gray-500 whitespace-nowrap">{{.Timestamp}}</td>
+                                    <td class="py-2 pr-2 text-gray-500 font-mono" title="{{.VisitorHash}}">{{.VisitorHash}}...</td>
+                                </tr>
+                                {{else}}
+                                <tr>
+                                    <td colspan="3" class="py-4 text-center text-gray-500">No recent page views found.</td>
+                                </tr>
+                                {{end}}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
             </div>
         </div>
-
-        <div class="bg-white p-6 rounded-lg shadow mb-8">
-            <h2 class="text-xl font-bold mb-4">Guild Emblem Management</h2>
-            <form action="/admin/guild/update-emblem" method="POST" class="flex flex-col md:flex-row items-end gap-4">
-                <div class="flex-grow w-full">
-                    <label for="guild_select" class="block text-sm font-medium text-gray-700">Guild Name</label>
-                    <select name="guild_name" id="guild_select" required
-                           class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm">
-                        <option value="">-- Select a Guild --</option>
-                        {{range .AllGuilds}}
-                        <option value="{{.Name}}" data-emblem="{{.EmblemURL}}">{{.Name}}</option>
-                        {{end}}
-                    </select>
-                </div>
-                <div class="flex-grow w-full">
-                    <label for="emblem_url" class="block text-sm font-medium text-gray-700">New Emblem URL</label>
-                    <input type="url" name="emblem_url" id="emblem_url" required placeholder="https://..."
-                           class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm">
-                </div>
-                <button type="submit" class="w-full md:w-auto bg-purple-500 hover:bg-purple-700 text-white font-bold py-2 px-4 rounded">Update Emblem</button>
-            </form>
-            <div id="emblem-preview-container" class="mt-4" style="display: none;">
-                <h4 class="text-sm font-medium text-gray-700">Current Emblem:</h4>
-                <div class="flex items-center gap-4 mt-2">
-                    <img id="emblem_preview_image" src="" alt="Emblem Preview" class="h-10 w-10 bg-gray-200 rounded">
-                    <p id="current_emblem_url" class="text-sm text-gray-500 break-all"></p>
-                </div>
-            </div>
-        </div>
-
-
-        <div class="bg-white p-6 rounded-lg shadow mb-8">
-            <h2 class="text-xl font-bold mb-4">Character Data Management</h2>
-            <p class="text-sm text-gray-600 mb-4">This action will reset the "Last Active" time for ALL characters. This is useful for clearing activity data before a server event or maintenance.</p>
-            <form action="/admin/character/clear-last-active" method="POST" onsubmit="return confirm('DANGER: Are you sure you want to reset all character last active times? This cannot be undone.');">
-                <button type="submit" class="bg-orange-500 hover:bg-orange-700 text-white font-bold py-2 px-4 rounded">Reset All Last Active Times</button>
-            </form>
-        </div>
-
-        <div class="bg-white p-6 rounded-lg shadow">
-            <h2 class="text-xl font-bold mb-4">Item Cache Management (RMS)</h2>
-            <div class="flex space-x-4">
-                 <form action="/admin/cache" method="POST">
-                    <input type="hidden" name="action" value="repopulate">
-                    <button type="submit" class="bg-indigo-500 hover:bg-indigo-700 text-white font-bold py-2 px-4 rounded">Repopulate Missing Items</button>
-                </form>
-                <form action="/admin/cache" method="POST" onsubmit="return confirm('Are you sure you want to delete all cached item data?');">
-                    <input type="hidden" name="action" value="clear">
-                    <button type="submit" class="bg-red-500 hover:bg-red-700 text-white font-bold py-2 px-4 rounded">Clear Entire Cache</button>
-                </form>
-            </div>
-        </div>
-
     </div>
 
     <script>
