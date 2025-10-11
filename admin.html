@@ -153,6 +153,7 @@
                                     <th class="text-left font-semibold text-gray-600 uppercase tracking-wider py-2">Page</th>
                                     <th class="text-left font-semibold text-gray-600 uppercase tracking-wider py-2">Time</th>
                                     <th class="text-left font-semibold text-gray-600 uppercase tracking-wider py-2">Visitor ID</th>
+                                    <th class="text-left font-semibold text-gray-600 uppercase tracking-wider py-2">Action</th>
                                 </tr>
                             </thead>
                             <tbody class="divide-y divide-gray-200">
@@ -160,11 +161,19 @@
                                 <tr>
                                     <td class="py-2 pr-2 font-mono truncate" title="{{.Path}}">{{.Path}}</td>
                                     <td class="py-2 pr-2 text-gray-500 whitespace-nowrap">{{.Timestamp}}</td>
-                                    <td class="py-2 pr-2 text-gray-500 font-mono" title="{{.VisitorHash}}">{{.VisitorHash}}...</td>
+                                    <td class="py-2 pr-2 text-gray-500 font-mono" title="{{.VisitorHash}}">{{.ShortHash}}...</td>
+                                    <td class="py-2 pr-2">
+                                        <form action="/admin/views/delete-visitor" method="POST" onsubmit="return confirm('Are you sure you want to remove ALL records for this visitor? This cannot be undone.');">
+                                            <input type="hidden" name="visitor_hash" value="{{.VisitorHash}}">
+                                            <button type="submit" class="text-xs bg-red-500 hover:bg-red-700 text-white font-bold py-1 px-2 rounded">
+                                                Remove
+                                            </button>
+                                        </form>
+                                    </td>
                                 </tr>
                                 {{else}}
                                 <tr>
-                                    <td colspan="3" class="py-4 text-center text-gray-500">No recent page views found.</td>
+                                    <td colspan="4" class="py-4 text-center text-gray-500">No recent page views found.</td>
                                 </tr>
                                 {{end}}
                             </tbody>

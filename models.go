@@ -388,6 +388,14 @@ type PageViewEntry struct {
 	VisitorHash string
 }
 
+// ShortHash returns a truncated version of the VisitorHash for display.
+func (p PageViewEntry) ShortHash() string {
+	if len(p.VisitorHash) > 12 {
+		return p.VisitorHash[:12]
+	}
+	return p.VisitorHash
+}
+
 // AdminDashboardData holds statistics for the admin dashboard.
 type AdminDashboardData struct {
 	Message               string
@@ -411,3 +419,4 @@ type AdminDashboardData struct {
 	MostVisitedPageCount  int
 	RecentPageViews       []PageViewEntry
 }
+

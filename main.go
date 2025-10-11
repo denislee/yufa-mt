@@ -118,6 +118,7 @@ func main() {
 	// --- ADMIN ROUTES ---
 	// Admin routes are NOT tracked.
 	http.HandleFunc("/admin", basicAuth(adminHandler))
+	http.HandleFunc("/admin/views/delete-visitor", basicAuth(adminDeleteVisitorViewsHandler))
 	http.HandleFunc("/admin/cache", basicAuth(adminCacheActionHandler))
 	http.HandleFunc("/admin/guild/update-emblem", basicAuth(adminUpdateGuildEmblemHandler))
 	http.HandleFunc("/admin/character/clear-last-active", basicAuth(adminClearLastActiveHandler))

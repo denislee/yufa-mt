@@ -114,10 +114,6 @@ func adminHandler(w http.ResponseWriter, r *http.Request) {
 			} else {
 				entry.Timestamp = "Invalid Time"
 			}
-			// Truncate the hash for cleaner display
-			if len(entry.VisitorHash) > 12 {
-				entry.VisitorHash = entry.VisitorHash[:12]
-			}
 			recentViews = append(recentViews, entry)
 		}
 	}
@@ -262,6 +258,70 @@ func adminClearMvpKillsHandler(w http.ResponseWriter, r *http.Request) {
 		rowsAffected, _ := result.RowsAffected()
 		msg = fmt.Sprintf("Successfully+deleted+%d+MVP+kill+records.", rowsAffected)
 		log.Printf("👤 Admin cleared all MVP kill data (%d records).", rowsAffected)
+	}
+
+	http.Redirect(w, r, "/admin?msg="+msg, http.StatusSeeOther)
+}
+
+// adminDeleteVisitorViewsHandler deletes all records for a specific visitor.
+func adminDeleteVisitorViewsHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Redirect(w, r, "/admin", http.StatusSeeOther)
+		return
+	}
+
+	if err := r.ParseForm(); err != nil {
+		http.Redirect(w, r, "/admin?msg=Error+parsing+form.", http.StatusSeeOther)
+		return
+	}
+
+	visitorHash := r.FormValue("visitor_hash")
+	var msg string
+
+	if visitorHash == "" {
+		msg = "Error:+Missing+visitor+hash."
+		http.Redirect(w, r, "/admin?msg="+msg, http.StatusSeeOther)
+		return
+	}
+
+	// Use a transaction to ensure both tables are updated correctly.
+	tx, err := db.Begin()
+	if err != nil {
+		log.Printf("❌ Failed to begin transaction for deleting visitor: %v", err)
+		http.Redirect(w, r, "/admin?msg=Database+error+occurred.", http.StatusSeeOther)
+		return
+	}
+
+	// Delete from page_views first
+	_, err = tx.Exec("DELETE FROM page_views WHERE visitor_hash = ?", visitorHash)
+	if err != nil {
+		tx.Rollback()
+		log.Printf("❌ Failed to delete from page_views for hash %s: %v", visitorHash, err)
+		http.Redirect(w, r, "/admin?msg=Database+error+on+page_views.", http.StatusSeeOther)
+		return
+	}
+
+	// Then delete from the main visitors table
+	result, err := tx.Exec("DELETE FROM visitors WHERE visitor_hash = ?", visitorHash)
+	if err != nil {
+		tx.Rollback()
+		log.Printf("❌ Failed to delete from visitors for hash %s: %v", visitorHash, err)
+		http.Redirect(w, r, "/admin?msg=Database+error+on+visitors.", http.StatusSeeOther)
+		return
+	}
+
+	if err := tx.Commit(); err != nil {
+		log.Printf("❌ Failed to commit transaction for deleting visitor: %v", err)
+		http.Redirect(w, r, "/admin?msg=Database+commit+error.", http.StatusSeeOther)
+		return
+	}
+
+	rowsAffected, _ := result.RowsAffected()
+	if rowsAffected > 0 {
+		msg = "Visitor+records+removed+successfully."
+		log.Printf("👤 Admin removed all data for visitor with hash starting with %s...", visitorHash[:12])
+	} else {
+		msg = "Visitor+not+found+or+already+removed."
 	}
 
 	http.Redirect(w, r, "/admin?msg="+msg, http.StatusSeeOther)
