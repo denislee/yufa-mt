@@ -50,15 +50,15 @@ func visitorTracker(next http.HandlerFunc) http.HandlerFunc {
 			log.Printf("⚠️ Visitor tracking error: %v", err)
 		}
 
-		// ADDED: Log the specific page view.
-		pagePath := r.URL.Path
+		// Log the specific page view, now including query parameters.
+		pageURI := r.URL.RequestURI()
 		_, err = db.Exec(`
 			INSERT INTO page_views (visitor_hash, page_path, view_timestamp)
 			VALUES (?, ?, ?);
-		`, visitorHash, pagePath, now)
+		`, visitorHash, pageURI, now)
 
 		if err != nil {
-			log.Printf("⚠️ Page view tracking error for path %s: %v", pagePath, err)
+			log.Printf("⚠️ Page view tracking error for path %s: %v", pageURI, err)
 		}
 
 		// Call the next handler in the chain
