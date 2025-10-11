@@ -503,29 +503,51 @@ func fullListHandler(w http.ResponseWriter, r *http.Request) {
 
 // activityHandler serves the page for recent market activity.
 func activityHandler(w http.ResponseWriter, r *http.Request) {
-	// 1. Get page parameter
+	// 1. Get parameters
 	pageStr := r.URL.Query().Get("page")
+	searchQuery := r.URL.Query().Get("query")
+	soldOnlyStr := r.URL.Query().Get("sold_only")
+	soldOnly := soldOnlyStr == "true"
+
 	page, err := strconv.Atoi(pageStr)
 	if err != nil || page < 1 {
 		page = 1
 	}
 	const eventsPerPage = 50 // Define how many events per page
 
-	// 2. Get total event count for pagination
+	// 2. Build dynamic WHERE clause
+	var whereConditions []string
+	var params []interface{}
+	if searchQuery != "" {
+		whereConditions = append(whereConditions, "item_name LIKE ?")
+		params = append(params, "%"+searchQuery+"%")
+	}
+	if soldOnly {
+		whereConditions = append(whereConditions, "event_type = ?")
+		params = append(params, "SOLD")
+	}
+
+	whereClause := ""
+	if len(whereConditions) > 0 {
+		whereClause = "WHERE " + strings.Join(whereConditions, " AND ")
+	}
+
+	// 3. Get total event count for pagination using the same filters
 	var totalEvents int
-	err = db.QueryRow("SELECT COUNT(*) FROM market_events").Scan(&totalEvents)
+	countQuery := fmt.Sprintf("SELECT COUNT(*) FROM market_events %s", whereClause)
+	err = db.QueryRow(countQuery, params...).Scan(&totalEvents)
 	if err != nil {
 		http.Error(w, "Could not count market events", http.StatusInternalServerError)
 		log.Printf("❌ Could not count market events: %v", err)
 		return
 	}
 
-	// 3. Calculate pagination details
+	// 4. Calculate pagination details
 	totalPages := 0
 	if totalEvents > 0 {
 		totalPages = int(math.Ceil(float64(totalEvents) / float64(eventsPerPage)))
 	}
-	if page > totalPages {
+	if page > totalPages && totalPages > 0 {
 		page = totalPages
 	}
 	if page < 1 {
@@ -533,12 +555,17 @@ func activityHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	offset := (page - 1) * eventsPerPage
 
-	// 4. Query for paginated events
-	eventRows, err := db.Query(`
+	// 5. Query for paginated events with filters
+	query := fmt.Sprintf(`
         SELECT event_timestamp, event_type, item_name, item_id, details
         FROM market_events
+        %s
         ORDER BY event_timestamp DESC
-        LIMIT ? OFFSET ?`, eventsPerPage, offset)
+        LIMIT ? OFFSET ?`, whereClause)
+
+	// Append pagination params to the existing filter params
+	finalParams := append(params, eventsPerPage, offset)
+	eventRows, err := db.Query(query, finalParams...)
 	if err != nil {
 		http.Error(w, "Could not query for market events", http.StatusInternalServerError)
 		log.Printf("❌ Could not query for market events: %v", err)
@@ -575,10 +602,12 @@ func activityHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// 5. Populate data struct with pagination info
+	// 6. Populate data struct with pagination and filter info
 	data := ActivityPageData{
 		MarketEvents:   marketEvents,
 		LastScrapeTime: getLastScrapeTime(),
+		SearchQuery:    searchQuery,
+		SoldOnly:       soldOnly,
 		CurrentPage:    page,
 		TotalPages:     totalPages,
 		PrevPage:       page - 1,

@@ -202,6 +202,9 @@ type PageData struct {
 type ActivityPageData struct {
 	MarketEvents   []MarketEvent
 	LastScrapeTime string
+	// Search and Filter
+	SearchQuery string
+	SoldOnly    bool
 	// Pagination
 	CurrentPage int
 	TotalPages  int
@@ -408,4 +411,3 @@ type AdminDashboardData struct {
 	MostVisitedPageCount  int
 	RecentPageViews       []PageViewEntry
 }
-
