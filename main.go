@@ -114,6 +114,7 @@ func main() {
 	http.HandleFunc("/mvp-kills", visitorTracker(mvpKillsHandler))
 	http.HandleFunc("/character", visitorTracker(characterDetailHandler))
 	http.HandleFunc("/character-changelog", visitorTracker(characterChangelogHandler))
+	http.HandleFunc("/store", visitorTracker(storeDetailHandler))
 
 	// --- ADMIN ROUTES ---
 	// Admin routes are NOT tracked.
@@ -138,4 +139,3 @@ func main() {
 		log.Fatalf("❌ Failed to start web server: %v", err)
 	}
 }
-

@@ -1,0 +1,163 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Store: {{.StoreName}} - Yufa Market Tracker</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        html { font-size: 110%; }
+        .container {
+            max-width: 95% !important;
+        }
+    </style>
+</head>
+<body class="bg-gray-100 text-gray-800 text-sm sm:text-base">
+
+    <nav class="bg-white shadow-sm sticky top-0 z-10">
+        <div class="container mx-auto px-4">
+            <div class="flex justify-between items-center py-2">
+                <div class="text-xl font-semibold text-gray-700">Yufa Market Tracker</div>
+                <div class="hidden md:flex space-x-4">
+                    <a href="/" class="text-gray-600 hover:text-blue-500">Summary</a>
+                    <a href="/full-list" class="text-gray-600 hover:text-blue-500">Full List</a>
+                    <a href="/activity" class="text-gray-600 hover:text-blue-500">Activity</a>
+                    <a href="/players" class="text-gray-600 hover:text-blue-500">Player Count</a>
+                    <a href="/characters" class="text-gray-600 hover:text-blue-500">Characters</a>
+                    <a href="/guilds" class="text-gray-600 hover:text-blue-500">Guilds</a>
+                    <a href="/mvp-kills" class="text-gray-600 hover:text-blue-500">MVP Kills</a>
+                </div>
+                <div class="md:hidden flex items-center">
+                    <button id="mobile-menu-button" class="text-gray-600 hover:text-gray-800 focus:outline-none">
+                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16m-7 6h7"></path></svg>
+                    </button>
+                </div>
+            </div>
+        </div>
+        <div id="mobile-menu" class="hidden md:hidden border-t border-gray-200">
+            <a href="/" class="block py-2 px-4 text-sm text-gray-600 hover:bg-gray-50">Summary</a>
+            <a href="/full-list" class="block py-2 px-4 text-sm text-gray-600 hover:bg-gray-50">Full List</a>
+            <a href="/activity" class="block py-2 px-4 text-sm text-gray-600 hover:bg-gray-50">Activity</a>
+            <a href="/players" class="block py-2 px-4 text-sm text-gray-600 hover:bg-gray-50">Player Count</a>
+            <a href="/characters" class="block py-2 px-4 text-sm text-gray-600 hover:bg-gray-50">Characters</a>
+            <a href="/guilds" class="block py-2 px-4 text-sm text-gray-600 hover:bg-gray-50">Guilds</a>
+            <a href="/mvp-kills" class=" block py-2 px-4 text-sm text-gray-600 hover:bg-gray-50">MVP Kills</a>
+        </div>
+    </nav>
+
+    <div class="container mx-auto px-4 py-6">
+        <div class="flex flex-col sm:flex-row justify-between sm:items-center gap-2 mb-4 border-b border-gray-200 pb-3">
+            <div>
+                <h1 class="text-2xl font-bold text-gray-800">Store Details</h1>
+                <p class="text-lg text-gray-600">{{.StoreName}}</p>
+            </div>
+            <div id="last-updated" class="text-sm text-gray-500" data-timestamp="{{.LastScrapeTime}}"></div>
+        </div>
+
+        <p class="text-sm text-gray-600 mb-3">Showing <strong>{{ len .Items }}</strong> available items in this store.</p>
+
+        <div class="bg-white shadow-lg rounded-lg overflow-hidden">
+            <div class="overflow-x-auto">
+                 <table class="min-w-full leading-normal">
+                    <thead>
+                        <tr class="border-b-2 border-gray-200 bg-gray-50 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                            {{$storeName := .StoreName}}{{$currentSort := .SortBy}}{{$currentOrder := .Order}}{{$revOrder := "ASC"}}{{if eq $currentOrder "ASC"}}{{$revOrder = "DESC"}}{{end}}
+                            <th class="px-2 sm:px-3 py-2"><a href="/store?name={{$storeName | urlquery}}&sort_by=name&order={{if eq $currentSort "name"}}{{$revOrder}}{{else}}ASC{{end}}">Item Name {{if eq $currentSort "name"}}{{if eq $currentOrder "ASC"}}<span class="text-gray-400">▲</span>{{else}}<span class="text-gray-400">▼</span>{{end}}{{end}}</a></th>
+                            <th class="px-2 sm:px-3 py-2"><a href="/store?name={{$storeName | urlquery}}&sort_by=quantity&order={{if eq $currentSort "quantity"}}{{$revOrder}}{{else}}ASC{{end}}">Qty {{if eq $currentSort "quantity"}}{{if eq $currentOrder "ASC"}}<span class="text-gray-400">▲</span>{{else}}<span class="text-gray-400">▼</span>{{end}}{{end}}</a></th>
+                            <th class="px-2 sm:px-3 py-2"><a href="/store?name={{$storeName | urlquery}}&sort_by=price&order={{if eq $currentSort "price"}}{{$revOrder}}{{else}}DESC{{end}}">Price {{if eq $currentSort "price"}}{{if eq $currentOrder "ASC"}}<span class="text-gray-400">▲</span>{{else}}<span class="text-gray-400">▼</span>{{end}}{{end}}</a></th>
+                            <th class="px-2 sm:px-3 py-2">Seller</th>
+                            <th class="px-2 sm:px-3 py-2">Map</th>
+                            <th class="px-2 sm:px-3 py-2">Coords</th>
+                            <th class="px-2 sm:px-3 py-2">Scanned</th>
+                        </tr>
+                    </thead>
+                    <tbody class="text-gray-700 text-xs">
+                        {{range .Items}}
+                        <tr class="border-b border-gray-200 hover:bg-gray-50">
+                            <td class="px-2 sm:px-3 py-2"><div class="flex items-center"><img src="https://static.divine-pride.net/images/items/item/{{.ItemID}}.png" alt="" class="w-6 h-6 mr-2" style="image-rendering: pixelated;"> <a href="/item?name={{.Name | urlquery}}" class="font-semibold hover:underline">{{.Name}}</a></div></td>
+                            <td class="px-2 sm:px-3 py-2">{{.Quantity}}</td>
+                            <td class="px-2 sm:px-3 py-2 font-semibold text-green-700">{{.Price}}</td>
+                            <td class="px-2 sm:px-3 py-2">{{.SellerName}}</td>
+                            <td class="px-2 sm:px-3 py-2">{{.MapName}}</td>
+                            <td class="px-2 sm:px-3 py-2"><a href="#" onclick="copyNavi(event, '{{.MapName}}', '{{.MapCoordinates}}')" title="Click to copy /navi command" class="hover:underline">{{.MapCoordinates}}</a></td>
+                            <td class="px-2 sm:px-3 py-2">{{.Timestamp}}</td>
+                        </tr>
+                        {{end}}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+    
+    <script>
+        function copyNavi(event, mapName, coordinates) {
+            event.preventDefault();
+            const formattedCoords = coordinates.trim().replace('(', '').replace(')', '').replace(',', '/');
+            const command = `/navi ${mapName.trim()} ${formattedCoords}`;
+            navigator.clipboard.writeText(command).then(() => {
+                const originalElement = event.target;
+                const originalText = originalElement.innerText;
+                originalElement.innerText = 'Copied!';
+                originalElement.style.color = '#16a34a'; /* Tailwind green-600 */
+                setTimeout(() => {
+                    originalElement.innerText = originalText;
+                    originalElement.style.color = '';
+                }, 1500);
+            }).catch(err => {
+                console.error('Failed to copy command: ', err);
+            });
+        }
+
+        document.addEventListener('DOMContentLoaded', () => {
+            // Mobile menu toggle
+            document.getElementById('mobile-menu-button').addEventListener('click', function() {
+                var menu = document.getElementById('mobile-menu');
+                menu.classList.toggle('hidden');
+            });
+
+            // Last updated time ago logic
+            const lastUpdateElement = document.getElementById('last-updated');
+            if (lastUpdateElement) {
+                const timestampStr = lastUpdateElement.dataset.timestamp;
+
+                if (!timestampStr || timestampStr === 'Never' || timestampStr === '') {
+                    lastUpdateElement.textContent = 'Updated: never';
+                    return;
+                }
+
+                const lastUpdateDate = new Date(timestampStr);
+                const formattedTimestamp = lastUpdateDate.toLocaleString([], {
+                    year: 'numeric', month: 'short', day: 'numeric',
+                    hour: '2-digit', minute: '2-digit'
+                });
+
+                const updateTimeAgo = () => {
+                    const now = new Date();
+                    const secondsPast = Math.floor((now.getTime() - lastUpdateDate.getTime()) / 1000);
+                    let timeAgoString;
+
+                    if (secondsPast < 5) {
+                        timeAgoString = 'just now';
+                    } else if (secondsPast < 60) {
+                        timeAgoString = `${secondsPast}s ago`;
+                    } else if (secondsPast < 3600) {
+                        const minutes = Math.floor(secondsPast / 60);
+                        timeAgoString = `${minutes}m ago`;
+                    } else if (secondsPast < 86400) {
+                        const hours = Math.floor(secondsPast / 3600);
+                        timeAgoString = `${hours}h ago`;
+                    } else {
+                        const days = Math.floor(secondsPast / 86400);
+                        timeAgoString = `${days}d ago`;
+                    }
+                    lastUpdateElement.innerHTML = `Updated: ${timeAgoString} <span class="text-gray-400 font-normal">(${formattedTimestamp})</span>`;
+                };
+
+                updateTimeAgo();
+                setInterval(updateTimeAgo, 30000);
+            }
+        });
+    </script>
+</body>
+</html>

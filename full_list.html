@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -127,7 +128,7 @@
                             {{if index $.VisibleColumns "item_id"}}<td class="px-2 sm:px-3 py-2">{{.ItemID}}</td>{{end}}
                             {{if index $.VisibleColumns "quantity"}}<td class="px-2 sm:px-3 py-2">{{.Quantity}}</td>{{end}}
                             <td class="px-2 sm:px-3 py-2">{{.Price}}</td>
-                            {{if index $.VisibleColumns "store_name"}}<td class="px-2 sm:px-3 py-2 max-w-48 truncate" title="{{.StoreName}}"><a href="/full-list?only_available=true&store_name={{.StoreName | urlquery}}" class="hover:underline">{{.StoreName}}</a></td>{{end}}
+                            {{if index $.VisibleColumns "store_name"}}<td class="px-2 sm:px-3 py-2 max-w-48 truncate" title="{{.StoreName}}"><a href="/store?name={{.StoreName | urlquery}}" class="hover:underline">{{.StoreName}}</a></td>{{end}}
                             {{if index $.VisibleColumns "seller_name"}}<td class="px-2 sm:px-3 py-2">{{.SellerName}}</td>{{end}}
                             {{if index $.VisibleColumns "map_name"}}<td class="px-2 sm:px-3 py-2">{{.MapName}}</td>{{end}}
                             {{if index $.VisibleColumns "map_coordinates"}}<td class="px-2 sm:px-3 py-2"><a href="#" onclick="copyNavi(event, '{{.MapName}}', '{{.MapCoordinates}}')" title="Click to copy /navi command" class="hover:underline">{{.MapCoordinates}}</a></td>{{end}}
@@ -227,3 +228,5 @@
     </script>
 </body>
 </html>
+
+

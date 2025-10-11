@@ -326,6 +326,16 @@ type GuildDetailPageData struct {
 	HasChangelogNextPage bool
 }
 
+// ADDED: StoreDetailPageData holds all data for the single store view.
+type StoreDetailPageData struct {
+	StoreName      string
+	Items          []Item
+	LastScrapeTime string
+	// Sorting
+	SortBy string
+	Order  string
+}
+
 // MvpKillPageData holds all data needed for the MVP kill rankings page.
 type MvpKillPageData struct {
 	Players        []MvpKillEntry
@@ -419,4 +429,3 @@ type AdminDashboardData struct {
 	MostVisitedPageCount  int
 	RecentPageViews       []PageViewEntry
 }
-

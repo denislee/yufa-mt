@@ -2386,3 +2386,95 @@ func guildDetailHandler(w http.ResponseWriter, r *http.Request) {
 
 	tmpl.Execute(w, data)
 }
+
+// ADDED: storeDetailHandler serves the detailed information page for a single store.
+func storeDetailHandler(w http.ResponseWriter, r *http.Request) {
+	storeName := r.URL.Query().Get("name")
+	if storeName == "" {
+		http.Error(w, "Store name is required", http.StatusBadRequest)
+		return
+	}
+
+	// Get query parameters for sorting
+	sortBy := r.URL.Query().Get("sort_by")
+	order := r.URL.Query().Get("order")
+
+	// Handle Sorting
+	allowedSorts := map[string]string{
+		"name":     "name_of_the_item",
+		"item_id":  "item_id",
+		"quantity": "quantity",
+		"price":    "CAST(REPLACE(price, ',', '') AS INTEGER)",
+	}
+	orderByClause, ok := allowedSorts[sortBy]
+	if !ok {
+		orderByClause, sortBy = "CAST(REPLACE(price, ',', '') AS INTEGER)", "price" // Default sort
+		order = "DESC"
+	} else {
+		if strings.ToUpper(order) != "DESC" {
+			order = "ASC"
+		}
+	}
+	orderByFullClause := fmt.Sprintf("ORDER BY %s %s", orderByClause, order)
+
+	// Fetch all available items from the specified store
+	query := fmt.Sprintf(`
+		SELECT id, name_of_the_item, item_id, quantity, price, store_name, seller_name, date_and_time_retrieved, map_name, map_coordinates, is_available
+		FROM items
+		WHERE store_name = ? AND is_available = 1
+		%s
+	`, orderByFullClause)
+
+	rows, err := db.Query(query, storeName)
+	if err != nil {
+		http.Error(w, "Could not query for store items", http.StatusInternalServerError)
+		log.Printf("❌ Could not query for items in store '%s': %v", storeName, err)
+		return
+	}
+	defer rows.Close()
+
+	var items []Item
+	for rows.Next() {
+		var item Item
+		var retrievedTime string
+		err := rows.Scan(&item.ID, &item.Name, &item.ItemID, &item.Quantity, &item.Price, &item.StoreName, &item.SellerName, &retrievedTime, &item.MapName, &item.MapCoordinates, &item.IsAvailable)
+		if err != nil {
+			log.Printf("⚠️ Failed to scan store item row: %v", err)
+			continue
+		}
+		parsedTime, err := time.Parse(time.RFC3339, retrievedTime)
+		if err == nil {
+			item.Timestamp = parsedTime.Format("2006-01-02 15:04")
+		} else {
+			item.Timestamp = retrievedTime
+		}
+		items = append(items, item)
+	}
+
+	// Load template and send data
+	funcMap := template.FuncMap{
+		"toggleOrder": func(currentOrder string) string {
+			if currentOrder == "ASC" {
+				return "DESC"
+			}
+			return "ASC"
+		},
+	}
+
+	tmpl, err := template.New("store_detail.html").Funcs(funcMap).ParseFiles("store_detail.html")
+	if err != nil {
+		http.Error(w, "Could not load store detail template", http.StatusInternalServerError)
+		log.Printf("❌ Could not load store_detail.html template: %v", err)
+		return
+	}
+
+	data := StoreDetailPageData{
+		StoreName:      storeName,
+		Items:          items,
+		LastScrapeTime: getLastScrapeTime(),
+		SortBy:         sortBy,
+		Order:          order,
+	}
+
+	tmpl.Execute(w, data)
+}
