@@ -7,6 +7,7 @@ import (
 	"log"
 	"net"
 	"net/http"
+	"os"
 	"strings"
 	"time"
 )
@@ -79,6 +80,14 @@ func main() {
 	// Generate and set the dynamic admin password for this session.
 	adminPass = generateRandomPassword(16) // Sets the package-level variable in admin_handlers.go
 
+	// Write the password to a local file.
+	err = os.WriteFile("pwd.txt", []byte(adminPass), 0644)
+	if err != nil {
+		log.Printf("⚠️ Could not write admin password to file: %v", err)
+	} else {
+		log.Println("🔑 Admin password saved to admin_password.txt")
+	}
+
 	// Log the password after a 5-second delay.
 	go func() {
 		time.Sleep(5 * time.Second)
@@ -127,4 +136,3 @@ func main() {
 		log.Fatalf("❌ Failed to start web server: %v", err)
 	}
 }
-
