@@ -121,6 +121,11 @@
                     <form action="/admin/character/clear-last-active" method="POST" onsubmit="return confirm('DANGER: Are you sure you want to reset all character last active times? This cannot be undone.');">
                         <button type="submit" class="bg-orange-500 hover:bg-orange-700 text-white font-bold py-2 px-4 rounded">Reset All Last Active Times</button>
                     </form>
+                    <hr class="my-4 border-gray-200">
+                    <p class="text-sm text-gray-600 mb-4">This action will delete ALL MVP kill records from the database. This is useful if the server's rankings have been reset or are bugged.</p>
+                    <form action="/admin/character/clear-mvp-kills" method="POST" onsubmit="return confirm('DANGER: Are you sure you want to delete all MVP kill data? This cannot be undone.');">
+                        <button type="submit" class="bg-red-600 hover:bg-red-800 text-white font-bold py-2 px-4 rounded">Clear All MVP Kills</button>
+                    </form>
                 </div>
 
                 <div class="bg-white p-6 rounded-lg shadow">

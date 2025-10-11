@@ -246,3 +246,24 @@ func adminClearLastActiveHandler(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, "/admin?msg="+msg, http.StatusSeeOther)
 }
 
+// adminClearMvpKillsHandler truncates the character_mvp_kills table.
+func adminClearMvpKillsHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Redirect(w, r, "/admin", http.StatusSeeOther)
+		return
+	}
+
+	var msg string
+	result, err := db.Exec("DELETE FROM character_mvp_kills")
+	if err != nil {
+		log.Printf("❌ Failed to clear MVP kills table: %v", err)
+		msg = "Database+error+while+clearing+MVP+kills."
+	} else {
+		rowsAffected, _ := result.RowsAffected()
+		msg = fmt.Sprintf("Successfully+deleted+%d+MVP+kill+records.", rowsAffected)
+		log.Printf("👤 Admin cleared all MVP kill data (%d records).", rowsAffected)
+	}
+
+	http.Redirect(w, r, "/admin?msg="+msg, http.StatusSeeOther)
+}
+
