@@ -8,6 +8,7 @@ import (
 	"log"
 	"net/http"
 	"net/url"
+	"strconv"
 	"time"
 )
 
@@ -88,14 +89,43 @@ func adminHandler(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// Get recent page views
+	// --- Pagination for Recent Page Views ---
+	const viewsPerPage = 20
+	pageStr := r.URL.Query().Get("page")
+	page, err := strconv.Atoi(pageStr)
+	if err != nil || page < 1 {
+		page = 1
+	}
+
+	var totalViews int
+	err = db.QueryRow("SELECT COUNT(*) FROM page_views").Scan(&totalViews)
+	if err != nil {
+		log.Printf("⚠️ Could not query for total page views count: %v", err)
+	}
+
+	stats.PageViewsTotal = totalViews
+	stats.PageViewsTotalPages = (totalViews + viewsPerPage - 1) / viewsPerPage
+	stats.PageViewsCurrentPage = page
+
+	if page > 1 {
+		stats.PageViewsHasPrevPage = true
+		stats.PageViewsPrevPage = page - 1
+	}
+	if page < stats.PageViewsTotalPages {
+		stats.PageViewsHasNextPage = true
+		stats.PageViewsNextPage = page + 1
+	}
+
+	offset := (page - 1) * viewsPerPage
+
+	// Get recent page views (now with pagination)
 	var recentViews []PageViewEntry
 	viewRows, err := db.Query(`
 		SELECT page_path, view_timestamp, visitor_hash
 		FROM page_views
 		ORDER BY view_timestamp DESC
-		LIMIT 15
-	`)
+		LIMIT ? OFFSET ?
+	`, viewsPerPage, offset)
 	if err != nil {
 		log.Printf("⚠️ Could not query for recent page views: %v", err)
 	} else {

@@ -431,4 +431,13 @@ type AdminDashboardData struct {
 	MostVisitedPage       string
 	MostVisitedPageCount  int
 	RecentPageViews       []PageViewEntry
+	// Pagination for Recent Page Views
+	PageViewsCurrentPage int
+	PageViewsTotalPages  int
+	PageViewsHasPrevPage bool
+	PageViewsHasNextPage bool
+	PageViewsPrevPage    int
+	PageViewsNextPage    int
+	PageViewsTotal       int
 }
+
