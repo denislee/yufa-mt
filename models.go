@@ -329,6 +329,9 @@ type GuildDetailPageData struct {
 // ADDED: StoreDetailPageData holds all data for the single store view.
 type StoreDetailPageData struct {
 	StoreName      string
+	SellerName     string
+	MapName        string
+	MapCoordinates string
 	Items          []Item
 	LastScrapeTime string
 	// Sorting

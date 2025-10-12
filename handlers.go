@@ -2387,9 +2387,6 @@ func guildDetailHandler(w http.ResponseWriter, r *http.Request) {
 	tmpl.Execute(w, data)
 }
 
-// ... (inside package main)
-
-// ADDED: storeDetailHandler serves the detailed information page for a single store.
 // ADDED: storeDetailHandler serves the detailed information page for a single store.
 func storeDetailHandler(w http.ResponseWriter, r *http.Request) {
 	storeName := r.URL.Query().Get("name")
@@ -2477,6 +2474,14 @@ func storeDetailHandler(w http.ResponseWriter, r *http.Request) {
 	// If no timestamp or seller is found, the items slice will correctly remain empty.
 	// --- REVISED LOGIC END ---
 
+	// Populate common store info for the header card
+	var sellerName, mapName, mapCoords string
+	if len(items) > 0 {
+		sellerName = items[0].SellerName
+		mapName = strings.ToLower(items[0].MapName) // Ensure map name is lowercase for URL
+		mapCoords = items[0].MapCoordinates
+	}
+
 	// Load template and send data
 	funcMap := template.FuncMap{
 		"toggleOrder": func(currentOrder string) string {
@@ -2496,6 +2501,9 @@ func storeDetailHandler(w http.ResponseWriter, r *http.Request) {
 
 	data := StoreDetailPageData{
 		StoreName:      storeName,
+		SellerName:     sellerName,
+		MapName:        mapName,
+		MapCoordinates: mapCoords,
 		Items:          items,
 		LastScrapeTime: getLastScrapeTime(),
 		SortBy:         sortBy,
