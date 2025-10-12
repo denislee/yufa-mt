@@ -71,6 +71,7 @@
                 {{range .MarketEvents}}
                 <li class="p-3 flex flex-col sm:flex-row sm:items-center sm:space-x-3 gap-1">
                     <span class="text-xs text-gray-500 w-24 flex-shrink-0 whitespace-nowrap">{{.Timestamp}}</span>
+
                     {{if eq .EventType "ADDED"}}
                         <span class="flex items-start gap-2 text-xs">
                             <span class="text-green-500 mt-0.5">➕</span>
@@ -81,10 +82,11 @@
                                 </div>
                                 <span>was added for sale.</span>
                                 {{if .Details.price}}
-                                <small class="text-gray-500">({{.Details.price}} zeny, Qty: {{printf "%.0f" .Details.quantity}} by {{.Details.seller}})</small>
+                                <small class="text-gray-500">({{.Details.price}} zeny, Qty: {{printf "%.0f" .Details.quantity}} by {{.Details.seller}} in <a href="/store?name={{.Details.store_name | urlquery}}" class="hover:underline text-blue-600">{{.Details.store_name}}</a>)</small>
                                 {{end}}
                             </div>
                         </span>
+
                     {{else if eq .EventType "REMOVED"}}
                         <span class="flex items-start gap-2 text-xs text-gray-500">
                             <span class="mt-0.5">➖</span>
@@ -95,7 +97,7 @@
                                 </div>
                                 <span>is no longer for sale.</span>
                                 {{if .Details.price}}
-                                <small class="text-gray-500">({{.Details.price}} zeny, Qty: {{printf "%.0f" .Details.quantity}} by {{.Details.seller}})</small>
+                                <small class="text-gray-500">({{.Details.price}} zeny, Qty: {{printf "%.0f" .Details.quantity}} by {{.Details.seller}} in <a href="/store?name={{.Details.store_name | urlquery}}" class="hover:underline text-blue-600">{{.Details.store_name}}</a>)</small>
                                 {{end}}
                             </div>
                         </span>
@@ -110,7 +112,7 @@
                                 </div>
                                 <span>was sold.</span>
                                 {{if .Details.price}}
-                                <small class="text-gray-500">({{.Details.price}} zeny, Qty: {{printf "%.0f" .Details.quantity}} by {{.Details.seller}})</small>
+                                <small class="text-gray-500">({{.Details.price}} zeny, Qty: {{printf "%.0f" .Details.quantity}} by {{.Details.seller}} in <a href="/store?name={{.Details.store_name | urlquery}}" class="hover:underline text-blue-600">{{.Details.store_name}}</a>)</small>
                                 {{end}}
                             </div>
                         </span>
@@ -124,7 +126,7 @@
                                     <a href="/item?name={{.ItemName | urlquery}}" class="hover:underline">{{.ItemName}}</a>
                                 </div>
                                 <span>is no longer for sale.</span>
-                                <small class="text-gray-400">({{.Details.price}} zeny, Qty: {{printf "%.0f" .Details.quantity}} by {{.Details.seller}} — Vendor logged off or item was sold)</small>
+                                <small class="text-gray-400">({{.Details.price}} zeny, Qty: {{printf "%.0f" .Details.quantity}} by {{.Details.seller}} in <a href="/store?name={{.Details.store_name | urlquery}}" class="hover:underline text-blue-500">{{.Details.store_name}}</a> — Vendor logged off or item was sold)</small>
                             </div>
                         </span>
 
@@ -138,7 +140,7 @@
                                     <img src="https://static.divine-pride.net/images/items/item/{{.ItemID}}.png" alt="" class="w-5 h-5 mr-1.5" style="image-rendering: pixelated;">
                                     <a href="/item?name={{.ItemName | urlquery}}" class="hover:underline">{{.ItemName}}</a>!
                                 </div>
-                                <small class="text-gray-500">({{.Details.price}} zeny, Qty: {{printf "%.0f" .Details.quantity}} by {{.Details.seller}})</small>
+                                <small class="text-gray-500">({{.Details.price}} zeny, Qty: {{printf "%.0f" .Details.quantity}} by {{.Details.seller}} in <a href="/store?name={{.Details.store_name | urlquery}}" class="hover:underline text-blue-600">{{.Details.store_name}}</a>)</small>
                             </div>
                         </span>
                     {{end}}

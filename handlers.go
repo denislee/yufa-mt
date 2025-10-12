@@ -2387,6 +2387,9 @@ func guildDetailHandler(w http.ResponseWriter, r *http.Request) {
 	tmpl.Execute(w, data)
 }
 
+// ... (inside package main)
+
+// ADDED: storeDetailHandler serves the detailed information page for a single store.
 // ADDED: storeDetailHandler serves the detailed information page for a single store.
 func storeDetailHandler(w http.ResponseWriter, r *http.Request) {
 	storeName := r.URL.Query().Get("name")
@@ -2417,39 +2420,62 @@ func storeDetailHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	orderByFullClause := fmt.Sprintf("ORDER BY %s %s", orderByClause, order)
 
-	// Fetch all available items from the specified store
-	query := fmt.Sprintf(`
-		SELECT id, name_of_the_item, item_id, quantity, price, store_name, seller_name, date_and_time_retrieved, map_name, map_coordinates, is_available
-		FROM items
-		WHERE store_name = ? AND is_available = 1
-		%s
-	`, orderByFullClause)
-
-	rows, err := db.Query(query, storeName)
-	if err != nil {
-		http.Error(w, "Could not query for store items", http.StatusInternalServerError)
-		log.Printf("❌ Could not query for items in store '%s': %v", storeName, err)
-		return
-	}
-	defer rows.Close()
-
+	// --- REVISED LOGIC START ---
 	var items []Item
-	for rows.Next() {
-		var item Item
-		var retrievedTime string
-		err := rows.Scan(&item.ID, &item.Name, &item.ItemID, &item.Quantity, &item.Price, &item.StoreName, &item.SellerName, &retrievedTime, &item.MapName, &item.MapCoordinates, &item.IsAvailable)
-		if err != nil {
-			log.Printf("⚠️ Failed to scan store item row: %v", err)
-			continue
-		}
-		parsedTime, err := time.Parse(time.RFC3339, retrievedTime)
+
+	// Step 1: Find the last timestamp this store NAME was seen by the scraper.
+	var lastSeenTimestamp sql.NullString
+	err := db.QueryRow("SELECT MAX(date_and_time_retrieved) FROM items WHERE store_name = ?", storeName).Scan(&lastSeenTimestamp)
+
+	// If a timestamp was found, proceed to identify the specific store instance (seller).
+	if err == nil && lastSeenTimestamp.Valid {
+		// Step 2: Find the specific seller associated with that store at that exact timestamp.
+		// This is crucial for disambiguating between different sellers using the same store name.
+		var sellerNameAtLastSighting string
+		err := db.QueryRow("SELECT seller_name FROM items WHERE store_name = ? AND date_and_time_retrieved = ? LIMIT 1", storeName, lastSeenTimestamp.String).Scan(&sellerNameAtLastSighting)
+
 		if err == nil {
-			item.Timestamp = parsedTime.Format("2006-01-02 15:04")
-		} else {
-			item.Timestamp = retrievedTime
+			// Step 3: Fetch all items from that specific store instance (identified by name, seller, and timestamp).
+			query := fmt.Sprintf(`
+				SELECT id, name_of_the_item, item_id, quantity, price, store_name, seller_name, date_and_time_retrieved, map_name, map_coordinates, is_available
+				FROM items
+				WHERE store_name = ? AND seller_name = ? AND date_and_time_retrieved = ?
+				%s
+			`, orderByFullClause)
+
+			rows, err := db.Query(query, storeName, sellerNameAtLastSighting, lastSeenTimestamp.String)
+			if err != nil {
+				http.Error(w, "Could not query for last known store items", http.StatusInternalServerError)
+				log.Printf("❌ Could not query for items in store '%s' (seller: %s) at timestamp %s: %v", storeName, sellerNameAtLastSighting, lastSeenTimestamp.String, err)
+				return
+			}
+			defer rows.Close()
+
+			for rows.Next() {
+				var item Item
+				var retrievedTime string
+				if err := rows.Scan(&item.ID, &item.Name, &item.ItemID, &item.Quantity, &item.Price, &item.StoreName, &item.SellerName, &retrievedTime, &item.MapName, &item.MapCoordinates, &item.IsAvailable); err != nil {
+					log.Printf("⚠️ Failed to scan store item row: %v", err)
+					continue
+				}
+				parsedTime, err := time.Parse(time.RFC3339, retrievedTime)
+				if err == nil {
+					item.Timestamp = parsedTime.Format("2006-01-02 15:04")
+				} else {
+					item.Timestamp = retrievedTime
+				}
+				items = append(items, item)
+			}
+		} else if err != sql.ErrNoRows {
+			// Log an actual error, but not the "not found" case.
+			log.Printf("⚠️ Could not determine seller for store '%s' at timestamp %s: %v", storeName, lastSeenTimestamp.String, err)
 		}
-		items = append(items, item)
+	} else if err != nil && err != sql.ErrNoRows {
+		// Log an actual error, but not the "not found" case.
+		log.Printf("⚠️ Could not query for last seen timestamp for store '%s': %v", storeName, err)
 	}
+	// If no timestamp or seller is found, the items slice will correctly remain empty.
+	// --- REVISED LOGIC END ---
 
 	// Load template and send data
 	funcMap := template.FuncMap{

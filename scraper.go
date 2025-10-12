@@ -1292,9 +1292,10 @@ func scrapeData() {
 
 					// MODIFIED: Include details in the event log
 					details, _ := json.Marshal(map[string]interface{}{
-						"price":    lastItem.Price,
-						"quantity": lastItem.Quantity,
-						"seller":   lastItem.SellerName,
+						"price":      lastItem.Price,
+						"quantity":   lastItem.Quantity,
+						"seller":     lastItem.SellerName,
+						"store_name": lastItem.StoreName, // ADDED
 					})
 					_, err := tx.Exec(`INSERT INTO market_events (event_timestamp, event_type, item_name, item_id, details) VALUES (?, ?, ?, ?, ?)`, retrievalTime, eventType, lastItem.Name, lastItem.ItemID, string(details))
 					if err != nil {
@@ -1332,7 +1333,12 @@ func scrapeData() {
 			itemsAdded++
 			if len(currentScrapedItems) > 0 {
 				firstItem := currentScrapedItems[0]
-				details, _ := json.Marshal(map[string]interface{}{"price": firstItem.Price, "quantity": firstItem.Quantity, "seller": firstItem.SellerName})
+				details, _ := json.Marshal(map[string]interface{}{
+					"price":      firstItem.Price,
+					"quantity":   firstItem.Quantity,
+					"seller":     firstItem.SellerName,
+					"store_name": firstItem.StoreName, // ADDED
+				})
 				_, err := tx.Exec(`INSERT INTO market_events (event_timestamp, event_type, item_name, item_id, details) VALUES (?, 'ADDED', ?, ?, ?)`, retrievalTime, itemName, firstItem.ItemID, string(details))
 				if err != nil {
 					log.Printf("❌ [Market] Failed to log ADDED event for %s: %v", itemName, err)
@@ -1362,7 +1368,12 @@ func scrapeData() {
 			}
 
 			if lowestPriceInBatch != -1 && (!historicalLowestPrice.Valid || int64(lowestPriceInBatch) < historicalLowestPrice.Int64) {
-				details, _ := json.Marshal(map[string]interface{}{"price": lowestPriceListingInBatch.Price, "quantity": lowestPriceListingInBatch.Quantity, "seller": lowestPriceListingInBatch.SellerName})
+				details, _ := json.Marshal(map[string]interface{}{
+					"price":      lowestPriceListingInBatch.Price,
+					"quantity":   lowestPriceListingInBatch.Quantity,
+					"seller":     lowestPriceListingInBatch.SellerName,
+					"store_name": lowestPriceListingInBatch.StoreName, // ADDED
+				})
 				_, err := tx.Exec(`INSERT INTO market_events (event_timestamp, event_type, item_name, item_id, details) VALUES (?, 'NEW_LOW', ?, ?, ?)`, retrievalTime, itemName, lowestPriceListingInBatch.ItemID, string(details))
 				if err != nil {
 					log.Printf("❌ [Market] Failed to log NEW_LOW event for %s: %v", itemName, err)
@@ -1380,7 +1391,7 @@ func scrapeData() {
 			// This item name has completely disappeared from the market.
 			var removedListings []Item
 			// MODIFIED: Query for price and quantity as well
-			rows, err := tx.Query("SELECT name_of_the_item, item_id, seller_name, price, quantity FROM items WHERE name_of_the_item = ? AND is_available = 1", name)
+			rows, err := tx.Query("SELECT name_of_the_item, item_id, seller_name, price, quantity, store_name FROM items WHERE name_of_the_item = ? AND is_available = 1", name)
 			if err != nil {
 				log.Printf("⚠️ [Market] Could not query details for removed item '%s': %v", name, err)
 				continue
@@ -1389,7 +1400,7 @@ func scrapeData() {
 			for rows.Next() {
 				var listing Item
 				// MODIFIED: Scan the new fields
-				if err := rows.Scan(&listing.Name, &listing.ItemID, &listing.SellerName, &listing.Price, &listing.Quantity); err != nil {
+				if err := rows.Scan(&listing.Name, &listing.ItemID, &listing.SellerName, &listing.Price, &listing.Quantity, &listing.StoreName); err != nil {
 					continue
 				}
 				removedListings = append(removedListings, listing)
@@ -1407,9 +1418,10 @@ func scrapeData() {
 
 				// MODIFIED: Include details in the event log
 				details, _ := json.Marshal(map[string]interface{}{
-					"price":    listing.Price,
-					"quantity": listing.Quantity,
-					"seller":   listing.SellerName,
+					"price":      listing.Price,
+					"quantity":   listing.Quantity,
+					"seller":     listing.SellerName,
+					"store_name": listing.StoreName, // ADDED
 				})
 				_, err = tx.Exec(`INSERT INTO market_events (event_timestamp, event_type, item_name, item_id, details) VALUES (?, ?, ?, ?, ?)`, retrievalTime, eventType, name, listing.ItemID, string(details))
 				if err != nil {
@@ -1806,3 +1818,4 @@ func startBackgroundJobs() {
 		}
 	}()
 }
+

@@ -135,7 +135,7 @@
                         <tr class="border-b border-gray-200 hover:bg-gray-50 {{if not .IsAvailable}}opacity-60{{end}}" title="{{if not .IsAvailable}}This specific listing is no longer available{{end}}">
                             <td class="px-2 sm:px-3 py-2">{{.Price}}</td>
                             <td class="px-2 sm:px-3 py-2">{{.Quantity}}</td>
-                            <td class="px-2 sm:px-3 py-2 max-w-48 truncate" title="{{.StoreName}}"><a href="/full-list?only_available=true&store_name={{.StoreName | urlquery}}" class="hover:underline">{{.StoreName}}</a></td>
+                            <td class="px-2 sm:px-3 py-2 max-w-48 truncate" title="{{.StoreName}}"><a href="/store?name={{.StoreName | urlquery}}" class="hover:underline">{{.StoreName}}</a></td>
                             <td class="px-2 sm:px-3 py-2">{{.SellerName}}</td>
                             <td class="px-2 sm:px-3 py-2"><a href="#" onclick="copyNavi(event, '{{.MapName}}', '{{.MapCoordinates}}')" title="Click to copy /navi command" class="hover:underline">{{.MapName}} {{.MapCoordinates}}</a></td>
                             <td class="px-2 sm:px-3 py-2">{{.Timestamp}}</td>
@@ -212,7 +212,7 @@
             document.getElementById('lowest-quantity-val').textContent = currentLowestData.Quantity.toLocaleString();
             storeLink.textContent = currentLowestData.StoreName;
             storeLink.title = currentLowestData.StoreName;
-            storeLink.href = `/full-list?only_available=true&store_name=${encodeURIComponent(currentLowestData.StoreName)}`;
+            storeLink.href = `/store?name=${encodeURIComponent(currentLowestData.StoreName)}`;
             document.getElementById('lowest-seller-val').textContent = currentLowestData.SellerName;
             document.getElementById('lowest-location-val').innerHTML = `<a href="#" onclick="copyNavi(event, '${mapName.replace(/'/g, "\\'")}', '${mapCoords.replace(/'/g, "\\'")}')" title="Click to copy /navi command" class="hover:underline">${mapName} ${mapCoords}</a>`;
             document.getElementById('lowest-date-val').textContent = currentLowestData.Timestamp;
@@ -225,7 +225,7 @@
             document.getElementById('highest-quantity-val').textContent = currentHighestData.Quantity.toLocaleString();
             storeLink.textContent = currentHighestData.StoreName;
             storeLink.title = currentHighestData.StoreName;
-            storeLink.href = `/full-list?only_available=true&store_name=${encodeURIComponent(currentHighestData.StoreName)}`;
+            storeLink.href = `/store?name=${encodeURIComponent(currentHighestData.StoreName)}`;
             document.getElementById('highest-seller-val').textContent = currentHighestData.SellerName;
             document.getElementById('highest-location-val').innerHTML = `<a href="#" onclick="copyNavi(event, '${mapName.replace(/'/g, "\\'")}', '${mapCoords.replace(/'/g, "\\'")}')" title="Click to copy /navi command" class="hover:underline">${mapName} ${mapCoords}</a>`;
             document.getElementById('highest-date-val').textContent = currentHighestData.Timestamp;
