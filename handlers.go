@@ -1773,9 +1773,16 @@ func mvpKillsHandler(w http.ResponseWriter, r *http.Request) {
 				player.CharacterName = val.(string)
 			} else if strings.HasPrefix(colName, "mvp_") {
 				mobID := strings.TrimPrefix(colName, "mvp_")
-				killCount := int(val.(int64))
-				player.Kills[mobID] = killCount
-				totalKills += killCount
+				originalKillCount := int(val.(int64))
+
+				// MODIFICATION: Subtract 3 from the kill count for display, ensuring it's not negative.
+				displayKillCount := originalKillCount - 3
+				if displayKillCount < 0 {
+					displayKillCount = 0
+				}
+
+				player.Kills[mobID] = displayKillCount
+				totalKills += displayKillCount // Add the modified value to the total
 			}
 		}
 		player.TotalKills = totalKills
