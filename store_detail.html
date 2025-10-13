@@ -55,7 +55,7 @@
         </div>
 
         {{if .Items}}
-        <div class="flex flex-col lg:flex-row gap-6">
+        <div class="flex flex-col md:flex-row gap-6">
 
             <div class="flex-1 min-w-0">
                 <p class="text-sm text-gray-600 mb-3">Showing the <strong>{{ len .Items }}</strong> items last seen in this store. Faded items are no longer available.</p>
@@ -68,7 +68,6 @@
                                     <th class="px-2 sm:px-3 py-2"><a href="/store?name={{$storeName | urlquery}}&sort_by=name&order={{if eq $currentSort "name"}}{{$revOrder}}{{else}}ASC{{end}}">Item Name {{if eq $currentSort "name"}}{{if eq $currentOrder "ASC"}}<span class="text-gray-400">▲</span>{{else}}<span class="text-gray-400">▼</span>{{end}}{{end}}</a></th>
                                     <th class="px-2 sm:px-3 py-2"><a href="/store?name={{$storeName | urlquery}}&sort_by=quantity&order={{if eq $currentSort "quantity"}}{{$revOrder}}{{else}}ASC{{end}}">Qty {{if eq $currentSort "quantity"}}{{if eq $currentOrder "ASC"}}<span class="text-gray-400">▲</span>{{else}}<span class="text-gray-400">▼</span>{{end}}{{end}}</a></th>
                                     <th class="px-2 sm:px-3 py-2"><a href="/store?name={{$storeName | urlquery}}&sort_by=price&order={{if eq $currentSort "price"}}{{$revOrder}}{{else}}DESC{{end}}">Price {{if eq $currentSort "price"}}{{if eq $currentOrder "ASC"}}<span class="text-gray-400">▲</span>{{else}}<span class="text-gray-400">▼</span>{{end}}{{end}}</a></th>
-                                    <th class="px-2 sm:px-3 py-2">Scanned</th>
                                 </tr>
                             </thead>
                             <tbody class="text-gray-700 text-xs">
@@ -77,7 +76,6 @@
                                     <td class="px-2 sm:px-3 py-2"><div class="flex items-center"><img src="https://static.divine-pride.net/images/items/item/{{.ItemID}}.png" alt="" class="w-6 h-6 mr-2" style="image-rendering: pixelated;"> <a href="/item?name={{.Name | urlquery}}" class="font-semibold hover:underline">{{.Name}}</a></div></td>
                                     <td class="px-2 sm:px-3 py-2">{{.Quantity}}</td>
                                     <td class="px-2 sm:px-3 py-2 font-semibold text-green-700">{{.Price}}</td>
-                                    <td class="px-2 sm:px-3 py-2">{{.Timestamp}}</td>
                                 </tr>
                                 {{end}}
                             </tbody>
@@ -86,11 +84,15 @@
                 </div>
             </div>
 
-            <div>
-                <div class="bg-white shadow-md rounded-lg p-4">
+            <div class="md:w-72 flex-shrink-0">
+                <div class="bg-white shadow-md rounded-lg p-4 sticky top-20">
                     <div>
                         <h3 class="text-xs font-semibold text-gray-500 uppercase tracking-wider">Seller</h3>
                         <p class="text-lg font-medium text-gray-800">{{.SellerName}}</p>
+                    </div>
+                    <div class="mt-4">
+                        <h3 class="text-xs font-semibold text-gray-500 uppercase tracking-wider">Last Seen</h3>
+                        <p class="text-lg font-medium text-gray-800">{{ (index .Items 0).Timestamp }}</p>
                     </div>
                     <div class="mt-4">
                         <h3 class="text-xs font-semibold text-gray-500 uppercase tracking-wider">Location</h3>
@@ -113,6 +115,7 @@
                     </div>
                 </div>
             </div>
+
         </div>
         {{end}}
 
@@ -137,55 +140,50 @@
             });
         }
 
-function positionMapMarkers() {
-    const containers = document.querySelectorAll('.map-container');
-    containers.forEach(container => {
-        const img = container.querySelector('img');
-        const marker = container.querySelector('.marker');
-        const coordsStr = container.dataset.coords;
+        function positionMapMarkers() {
+            const containers = document.querySelectorAll('.map-container');
+            containers.forEach(container => {
+                const img = container.querySelector('img');
+                const marker = container.querySelector('.marker');
+                const coordsStr = container.dataset.coords;
 
-        if (!marker || !coordsStr) return;
+                if (!marker || !coordsStr) return;
 
-        const match = coordsStr.match(/\((\d+),\s*(\d+)\)/);
-        if (!match) {
-            marker.style.display = 'none';
-            return;
+                const match = coordsStr.match(/\((\d+),\s*(\d+)\)/);
+                if (!match) {
+                    marker.style.display = 'none';
+                    return;
+                }
+
+                const x = parseInt(match[1], 10);
+                const y = parseInt(match[2], 10);
+
+                const positionMarker = () => {
+                    const mapWidth = img.naturalWidth - 100;
+                    const mapHeight = img.naturalHeight - 100;
+
+                    if (mapWidth > 0 && mapHeight > 0) {
+                        const leftPercent = (x / mapWidth) * 100;
+                        const topPercent = ((mapHeight - y) / mapHeight) * 100;
+
+                        marker.style.left = `${leftPercent}%`;
+                        marker.style.top = `${topPercent}%`;
+                        marker.style.display = 'block';
+                    } else {
+                        marker.style.display = 'none';
+                    }
+                };
+
+                if (img.complete && img.naturalHeight !== 0) {
+                    positionMarker();
+                } else {
+                    img.onload = positionMarker;
+                    img.onerror = () => {
+                        marker.style.display = 'none';
+                    };
+                }
+            });
         }
-
-        const x = parseInt(match[1], 10);
-        const y = parseInt(match[2], 10);
-
-        const positionMarker = () => {
-            const mapWidth = img.naturalWidth;
-            const mapHeight = img.naturalHeight;
-
-            if (mapWidth > 0 && mapHeight > 0) {
-                // The X-coordinate (left-to-right) is calculated as a simple percentage.
-                const leftPercent = (x / mapWidth) * 100;
-
-                // The Y-coordinate (top-to-bottom) must be inverted.
-                // We subtract the game's y-coordinate from the map's total height
-                // to convert from a bottom-left origin to a top-left origin.
-                const topPercent = ((mapHeight - y) / mapHeight) * 100;
-
-                marker.style.left = `${leftPercent}%`;
-                marker.style.top = `${topPercent}%`;
-                marker.style.display = 'block';
-            } else {
-                marker.style.display = 'none';
-            }
-        };
-
-        if (img.complete && img.naturalHeight !== 0) {
-            positionMarker();
-        } else {
-            img.onload = positionMarker;
-            img.onerror = () => {
-                marker.style.display = 'none';
-            };
-        }
-    });
-}
 
         document.addEventListener('DOMContentLoaded', () => {
             // Mobile menu toggle
