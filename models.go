@@ -508,3 +508,11 @@ func (tp TradingPost) CreatedAgo() string {
 	return fmt.Sprintf("%d days ago", int(d.Hours()/24))
 }
 
+// ADDED: TradingPostFormPageData holds data for the new/edit post form.
+type TradingPostFormPageData struct {
+	Title     string
+	ActionURL string
+	Post      TradingPost
+	EditToken string // To pass the token to the edit form for re-submission
+	Message   string // For showing errors
+}

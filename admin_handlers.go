@@ -193,7 +193,7 @@ func adminHandler(w http.ResponseWriter, r *http.Request) {
 		defer postRows.Close()
 
 		var posts []TradingPost
-		postMap := make(map[int]*TradingPost)
+		postMap := make(map[int]int)
 		var postIDs []interface{}
 
 		for postRows.Next() {
@@ -207,7 +207,7 @@ func adminHandler(w http.ResponseWriter, r *http.Request) {
 			post.Items = []TradingPostItem{}
 
 			posts = append(posts, post)
-			postMap[post.ID] = &posts[len(posts)-1]
+			postMap[post.ID] = len(posts) - 1
 			postIDs = append(postIDs, post.ID)
 		}
 
@@ -229,8 +229,8 @@ func adminHandler(w http.ResponseWriter, r *http.Request) {
 						continue
 					}
 
-					if post, ok := postMap[postID]; ok {
-						post.Items = append(post.Items, item)
+					if index, ok := postMap[postID]; ok {
+						posts[index].Items = append(posts[index].Items, item)
 					}
 				}
 			}

@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>New Trading Post - Yufa Market Tracker</title>
+    <title>{{.Title}} - Yufa Market Tracker</title>
     <script src="https://cdn.tailwindcss.com"></script>
 </head>
 <body class="bg-gray-100 text-gray-800">
@@ -18,35 +18,62 @@
     </nav>
 
     <div class="container mx-auto px-4 py-8 max-w-3xl">
-        <h1 class="text-3xl font-bold text-gray-800 mb-2">Create a New Trading Post</h1>
+        <h1 class="text-3xl font-bold text-gray-800 mb-2">{{.Title}}</h1>
         <p class="text-gray-600 mb-6">List one or more items you are buying or selling.</p>
         
-        <form action="/trading-post/new" method="POST" class="bg-white p-6 sm:p-8 rounded-lg shadow-lg">
+        <form action="{{.ActionURL}}" method="POST" class="bg-white p-6 sm:p-8 rounded-lg shadow-lg">
             
+            {{/* Pass the token forward in a hidden field during an edit->update action */}}
+            {{if .EditToken}}
+            <input type="hidden" name="edit_token" value="{{.EditToken}}">
+            {{end}}
+
             <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
                 <div>
                     <label class="block text-sm font-bold text-gray-700 mb-2">Post Type</label>
                     <div class="flex items-center space-x-6">
                         <label class="flex items-center">
-                            <input type="radio" name="post_type" value="selling" class="h-4 w-4 text-red-600 border-gray-300 focus:ring-red-500" checked required>
+                            <input type="radio" name="post_type" value="selling" class="h-4 w-4 text-red-600 border-gray-300 focus:ring-red-500" {{if eq .Post.PostType "selling"}}checked{{end}} required>
                             <span class="ml-2 text-red-700 font-semibold">I am Selling</span>
                         </label>
                         <label class="flex items-center">
-                            <input type="radio" name="post_type" value="buying" class="h-4 w-4 text-green-600 border-gray-300 focus:ring-green-500" required>
+                            <input type="radio" name="post_type" value="buying" class="h-4 w-4 text-green-600 border-gray-300 focus:ring-green-500" {{if eq .Post.PostType "buying"}}checked{{end}} required>
                             <span class="ml-2 text-green-700 font-semibold">I am Buying</span>
                         </label>
                     </div>
                 </div>
                  <div>
                     <label for="character_name" class="block text-sm font-bold text-gray-700 mb-1">Your Character Name</label>
-                    <input type="text" id="character_name" name="character_name" placeholder="Your in-game name" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500" required>
+                    <input type="text" id="character_name" name="character_name" value="{{.Post.CharacterName}}" placeholder="Your in-game name" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500" required>
                 </div>
             </div>
 
             <div class="border-t border-gray-200 pt-4 mt-4">
                 <h2 class="text-lg font-bold text-gray-700 mb-3">Items to Trade</h2>
                 <div id="items-container" class="space-y-4">
+                    {{/* If editing, pre-render the existing items */}}
+                    {{range $index, $item := .Post.Items}}
+                    <div class="item-row p-3 border border-gray-200 rounded-md grid grid-cols-1 md:grid-cols-12 gap-3 items-end">
+                        <div class="md:col-span-5">
+                            <label for="item_name_{{$index}}" class="text-xs font-medium text-gray-600 block">Item Name</label>
+                            <input type="text" name="item_name[]" id="item_name_{{$index}}" value="{{$item.ItemName}}" placeholder="e.g., Jellopy" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm text-sm" required>
+                        </div>
+                        <div class="md:col-span-3">
+                            <label for="quantity_{{$index}}" class="text-xs font-medium text-gray-600 block">Quantity</label>
+                            <input type="number" name="quantity[]" id="quantity_{{$index}}" value="{{$item.Quantity}}" placeholder="100" min="1" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm text-sm" required>
+                        </div>
+                        <div class="md:col-span-3">
+                            <label for="price_{{$index}}" class="text-xs font-medium text-gray-600 block">Price (ea)</label>
+                            <input type="number" name="price[]" id="price_{{$index}}" value="{{$item.Price}}" placeholder="50000" min="1" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm text-sm" required>
+                        </div>
+                        <div class="md:col-span-1">
+                            <button type="button" class="remove-item-btn w-full bg-red-500 hover:bg-red-600 text-white p-2 rounded-md" title="Remove Item">
+                                <svg class="w-4 h-4 mx-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
+                            </button>
+                        </div>
                     </div>
+                    {{end}}
+                </div>
                 <button type="button" id="add-item-btn" class="mt-4 bg-gray-200 hover:bg-gray-300 text-gray-700 text-sm font-bold py-2 px-4 rounded-md flex items-center gap-2">
                     <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"></path></svg>
                     Add Another Item
@@ -58,18 +85,18 @@
                 <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
                     <div>
                         <label for="contact_info" class="block text-sm font-bold text-gray-700 mb-1">Contact Info</label>
-                        <input type="text" id="contact_info" name="contact_info" placeholder="e.g., Discord: myname#1234" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500">
+                        <input type="text" id="contact_info" name="contact_info" value="{{.Post.ContactInfo.String}}" placeholder="e.g., Discord: myname#1234" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500">
                     </div>
                      <div>
                         <label for="notes" class="block text-sm font-bold text-gray-700 mb-1">Notes</label>
-                        <textarea id="notes" name="notes" rows="2" placeholder="e.g., Online in the evenings." class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500"></textarea>
+                        <textarea id="notes" name="notes" rows="2" placeholder="e.g., Online in the evenings." class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500">{{.Post.Notes.String}}</textarea>
                     </div>
                 </div>
             </div>
 
             <div class="mt-8 border-t border-gray-200 pt-6">
                 <button type="submit" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-4 rounded-md shadow-lg transition duration-300 ease-in-out transform hover:-translate-y-px">
-                    Submit Post
+                    {{if .EditToken}}Save Changes{{else}}Submit Post{{end}}
                 </button>
             </div>
         </form>
@@ -79,7 +106,15 @@
     document.addEventListener('DOMContentLoaded', () => {
         const container = document.getElementById('items-container');
         const addButton = document.getElementById('add-item-btn');
-        let itemCount = 0;
+        // Start counting from the number of rows already rendered by the server
+        let itemCount = document.querySelectorAll('.item-row').length;
+
+        function attachRemoveListener(button) {
+            button.addEventListener('click', () => {
+                // Find the closest parent with the 'item-row' class and remove it
+                button.closest('.item-row').remove();
+            });
+        }
 
         function createItemRow() {
             const index = itemCount++;
@@ -105,16 +140,19 @@
                 </div>
             `;
             container.appendChild(div);
-
-            div.querySelector('.remove-item-btn').addEventListener('click', () => {
-                div.remove();
-            });
+            // Attach listener to the new button
+            attachRemoveListener(div.querySelector('.remove-item-btn'));
         }
+
+        // Attach listeners to all remove buttons already on the page (for edit mode)
+        document.querySelectorAll('.remove-item-btn').forEach(attachRemoveListener);
 
         addButton.addEventListener('click', createItemRow);
 
-        // Add the first row automatically on page load
-        createItemRow();
+        // If it's a new post (no items rendered by server), add the first row automatically
+        if (itemCount === 0) {
+            createItemRow();
+        }
     });
 </script>
 

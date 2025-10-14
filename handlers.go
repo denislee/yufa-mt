@@ -2587,7 +2587,8 @@ func tradingPostListHandler(w http.ResponseWriter, r *http.Request) {
 	defer postRows.Close()
 
 	var posts []TradingPost
-	postMap := make(map[int]*TradingPost)
+	// MODIFIED: The map now stores the index of the post in the slice, not a pointer.
+	postMap := make(map[int]int)
 	var postIDs []interface{}
 
 	for postRows.Next() {
@@ -2599,13 +2600,12 @@ func tradingPostListHandler(w http.ResponseWriter, r *http.Request) {
 			continue
 		}
 
-		// BUG FIX: The CreatedAt field should hold the raw RFC3339 string from the DB
-		// for the CreatedAgo() method to work correctly.
 		post.CreatedAt = createdAtStr
 		post.Items = []TradingPostItem{} // Initialize empty slice
 
 		posts = append(posts, post)
-		postMap[post.ID] = &posts[len(posts)-1]
+		// MODIFIED: Store the index (len-1) in the map. This is stable even if the slice reallocates.
+		postMap[post.ID] = len(posts) - 1
 		postIDs = append(postIDs, post.ID)
 	}
 
@@ -2630,8 +2630,9 @@ func tradingPostListHandler(w http.ResponseWriter, r *http.Request) {
 				continue
 			}
 
-			if post, ok := postMap[postID]; ok {
-				post.Items = append(post.Items, item)
+			// MODIFIED: Look up the index from the map and modify the slice element directly.
+			if index, ok := postMap[postID]; ok {
+				posts[index].Items = append(posts[index].Items, item)
 			}
 		}
 	}
@@ -2651,7 +2652,6 @@ func tradingPostListHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 // tradingPostFormHandler handles both displaying the form and processing the submission.
-
 func tradingPostFormHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method == http.MethodPost {
 		r.ParseForm()
@@ -2773,20 +2773,28 @@ func tradingPostFormHandler(w http.ResponseWriter, r *http.Request) {
 		tmpl.Execute(w, successData)
 
 	} else {
-		// --- SHOW THE FORM ---
+		// --- SHOW THE FORM for creating a NEW post ---
 		tmpl, err := template.ParseFiles("trading_post_form.html")
 		if err != nil {
 			http.Error(w, "Could not load form template", http.StatusInternalServerError)
 			return
 		}
-		tmpl.Execute(w, nil)
+		// Prepare data for a new post form
+		data := TradingPostFormPageData{
+			Title:     "Create a New Trading Post",
+			ActionURL: "/trading-post/new",
+			Post: TradingPost{
+				PostType: "selling", // Default to selling for new posts
+			},
+		}
+		tmpl.Execute(w, data)
 	}
 }
 
 // tradingPostManageHandler will handle the deletion logic. (Edit is similar)
 func tradingPostManageHandler(w http.ResponseWriter, r *http.Request) {
-	postID := r.URL.Query().Get("id")
-	action := r.URL.Query().Get("action") // "edit" or "delete"
+	postIDStr := r.URL.Query().Get("id")
+	action := r.URL.Query().Get("action") // "edit", "delete", or "update"
 
 	if r.Method == http.MethodPost {
 		r.ParseForm()
@@ -2794,48 +2802,179 @@ func tradingPostManageHandler(w http.ResponseWriter, r *http.Request) {
 
 		// 1. Retrieve the stored hash for the post
 		var tokenHash string
-		err := db.QueryRow("SELECT edit_token_hash FROM trading_posts WHERE id = ?", postID).Scan(&tokenHash)
+		err := db.QueryRow("SELECT edit_token_hash FROM trading_posts WHERE id = ?", postIDStr).Scan(&tokenHash)
 		if err != nil {
-			http.Error(w, "Post not found.", http.StatusNotFound)
+			http.Error(w, "Post not found or invalid ID.", http.StatusNotFound)
 			return
 		}
 
 		// 2. Compare the user's token with the stored hash
 		err = bcrypt.CompareHashAndPassword([]byte(tokenHash), []byte(token))
 		if err != nil {
-			// Passwords do not match
-			http.Error(w, "Invalid edit/delete key.", http.StatusForbidden)
+			// Passwords do not match. Re-render the management page with an error.
+			tmpl, _ := template.ParseFiles("trading_post_manage.html")
+			data := map[string]string{
+				"PostID": postIDStr,
+				"Action": action,
+				"Error":  "Invalid Edit/Delete Key provided.",
+			}
+			w.WriteHeader(http.StatusForbidden)
+			tmpl.Execute(w, data)
 			return
 		}
 
 		// 3. If they match, perform the action
-		if action == "delete" {
-			_, err := db.Exec("DELETE FROM trading_posts WHERE id = ?", postID)
+		switch action {
+		case "delete":
+			_, err := db.Exec("DELETE FROM trading_posts WHERE id = ?", postIDStr)
 			if err != nil {
 				http.Error(w, "Failed to delete post.", http.StatusInternalServerError)
 				return
 			}
+			// Consider rendering a simple success page instead of just text
 			fmt.Fprintln(w, "Post successfully deleted. You can now close this page.")
-		} else if action == "edit" {
-			// TODO: Implement edit logic. It would involve showing the form
-			// pre-filled with data and then running an UPDATE query.
-			fmt.Fprintln(w, "Edit functionality not yet implemented.")
-		} else {
+
+		case "edit":
+			// --- TOKEN IS VALID: Fetch data and show the pre-filled form ---
+			var post TradingPost
+			var createdAtStr string
+			err := db.QueryRow(`
+                SELECT id, post_type, character_name, contact_info, notes, created_at
+                FROM trading_posts WHERE id = ?`, postIDStr).
+				Scan(&post.ID, &post.PostType, &post.CharacterName, &post.ContactInfo, &post.Notes, &createdAtStr)
+
+			if err != nil {
+				http.Error(w, "Could not retrieve post to edit.", http.StatusInternalServerError)
+				log.Printf("❌ Failed to fetch post for edit: %v", err)
+				return
+			}
+			post.CreatedAt = createdAtStr
+
+			// Fetch associated items
+			itemRows, err := db.Query("SELECT item_name, quantity, price FROM trading_post_items WHERE post_id = ?", postIDStr)
+			if err != nil {
+				http.Error(w, "Could not retrieve post items.", http.StatusInternalServerError)
+				return
+			}
+			defer itemRows.Close()
+
+			var items []TradingPostItem
+			for itemRows.Next() {
+				var item TradingPostItem
+				if err := itemRows.Scan(&item.ItemName, &item.Quantity, &item.Price); err != nil {
+					log.Printf("⚠️ Failed to scan item for edit: %v", err)
+					continue
+				}
+				items = append(items, item)
+			}
+			post.Items = items
+
+			// Prepare data for the template
+			data := TradingPostFormPageData{
+				Title:     "Edit Your Trading Post",
+				ActionURL: fmt.Sprintf("/trading-post/manage?action=update&id=%s", postIDStr),
+				Post:      post,
+				EditToken: token, // Pass the validated token to the form in a hidden field
+			}
+
+			tmpl, err := template.ParseFiles("trading_post_form.html")
+			if err != nil {
+				http.Error(w, "Could not load form template", http.StatusInternalServerError)
+				return
+			}
+			tmpl.Execute(w, data)
+
+		case "update":
+			// --- TOKEN IS VALID: Process the submitted edit form ---
+			tx, err := db.Begin()
+			if err != nil {
+				http.Error(w, "Failed to start transaction.", http.StatusInternalServerError)
+				return
+			}
+
+			// Sanitize and update the main post
+			postType := r.FormValue("post_type")
+			if postType != "selling" && postType != "buying" {
+				http.Error(w, "Invalid post type.", http.StatusBadRequest)
+				return
+			}
+			characterName := sanitizeString(r.FormValue("character_name"), nameSanitizer)
+			contactInfo := sanitizeString(r.FormValue("contact_info"), contactSanitizer)
+			notes := sanitizeString(r.FormValue("notes"), notesSanitizer)
+
+			_, err = tx.Exec(`
+                UPDATE trading_posts SET post_type=?, character_name=?, contact_info=?, notes=?
+                WHERE id=?
+            `, postType, characterName, contactInfo, notes, postIDStr)
+			if err != nil {
+				tx.Rollback()
+				http.Error(w, "Failed to update post.", http.StatusInternalServerError)
+				return
+			}
+
+			// Delete old items
+			_, err = tx.Exec("DELETE FROM trading_post_items WHERE post_id = ?", postIDStr)
+			if err != nil {
+				tx.Rollback()
+				http.Error(w, "Failed to clear old items.", http.StatusInternalServerError)
+				return
+			}
+
+			// Insert new items
+			itemNames := r.Form["item_name[]"]
+			quantities := r.Form["quantity[]"]
+			prices := r.Form["price[]"]
+
+			stmt, err := tx.Prepare("INSERT INTO trading_post_items (post_id, item_name, quantity, price) VALUES (?, ?, ?, ?)")
+			if err != nil {
+				tx.Rollback()
+				http.Error(w, "Database preparation failed.", http.StatusInternalServerError)
+				return
+			}
+			defer stmt.Close()
+
+			for i, rawItemName := range itemNames {
+				itemName := sanitizeString(rawItemName, itemSanitizer)
+				if strings.TrimSpace(itemName) == "" {
+					continue
+				}
+				quantity, _ := strconv.Atoi(quantities[i])
+				price, _ := strconv.ParseInt(prices[i], 10, 64)
+
+				if quantity <= 0 || price <= 0 {
+					tx.Rollback()
+					http.Error(w, "All items must have a valid quantity and price.", http.StatusBadRequest)
+					return
+				}
+				_, err := stmt.Exec(postIDStr, itemName, quantity, price)
+				if err != nil {
+					tx.Rollback()
+					http.Error(w, "Failed to save updated items.", http.StatusInternalServerError)
+					return
+				}
+			}
+
+			if err := tx.Commit(); err != nil {
+				http.Error(w, "Failed to finalize transaction.", http.StatusInternalServerError)
+				return
+			}
+
+			http.Redirect(w, r, "/trading-post", http.StatusSeeOther)
+
+		default:
 			http.Error(w, "Invalid action.", http.StatusBadRequest)
 		}
 
 	} else {
 		// --- SHOW THE MANAGEMENT FORM (to enter the token) ---
-		// You will need to create `trading_post_manage.html`
 		tmpl, err := template.ParseFiles("trading_post_manage.html")
 		if err != nil {
 			http.Error(w, "Could not load management template", http.StatusInternalServerError)
 			return
 		}
 
-		// Pass the Post ID and Action to the template
 		data := map[string]string{
-			"PostID": postID,
+			"PostID": postIDStr,
 			"Action": action,
 		}
 		tmpl.Execute(w, data)
