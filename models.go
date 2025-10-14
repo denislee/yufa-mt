@@ -440,6 +440,22 @@ type AdminDashboardData struct {
 	PageViewsPrevPage    int
 	PageViewsNextPage    int
 	PageViewsTotal       int
+	// ADDED: Trading Posts
+	RecentTradingPosts     []TradingPost
+	TradingPostCurrentPage int
+	TradingPostTotalPages  int
+	TradingPostHasPrevPage bool
+	TradingPostHasNextPage bool
+	TradingPostPrevPage    int
+	TradingPostNextPage    int
+	TradingPostTotal       int
+}
+
+// ADDED: AdminEditPostPageData holds data for the admin post edit page.
+type AdminEditPostPageData struct {
+	Post           TradingPost
+	LastScrapeTime string
+	Message        string
 }
 
 // in models.go
@@ -491,3 +507,4 @@ func (tp TradingPost) CreatedAgo() string {
 	}
 	return fmt.Sprintf("%d days ago", int(d.Hours()/24))
 }
+

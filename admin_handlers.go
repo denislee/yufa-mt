@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/url"
 	"strconv"
+	"strings"
 	"time"
 )
 
@@ -148,6 +149,94 @@ func adminHandler(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	stats.RecentPageViews = recentViews
+
+	// --- Pagination for Trading Posts ---
+	const postsPerPage = 10
+	tpPageStr := r.URL.Query().Get("tp_page")
+	tpPage, err := strconv.Atoi(tpPageStr)
+	if err != nil || tpPage < 1 {
+		tpPage = 1
+	}
+
+	var totalPosts int
+	err = db.QueryRow("SELECT COUNT(*) FROM trading_posts").Scan(&totalPosts)
+	if err != nil {
+		log.Printf("⚠️ Could not query for total trading posts count: %v", err)
+	}
+
+	stats.TradingPostTotal = totalPosts
+	stats.TradingPostTotalPages = (totalPosts + postsPerPage - 1) / postsPerPage
+	stats.TradingPostCurrentPage = tpPage
+
+	if tpPage > 1 {
+		stats.TradingPostHasPrevPage = true
+		stats.TradingPostPrevPage = tpPage - 1
+	}
+	if tpPage < stats.TradingPostTotalPages {
+		stats.TradingPostHasNextPage = true
+		stats.TradingPostNextPage = tpPage + 1
+	}
+
+	tpOffset := (tpPage - 1) * postsPerPage
+
+	// Fetch paginated posts
+	postQuery := `
+        SELECT id, post_type, character_name, contact_info, created_at, notes 
+        FROM trading_posts
+        ORDER BY created_at DESC
+        LIMIT ? OFFSET ?`
+
+	postRows, err := db.Query(postQuery, postsPerPage, tpOffset)
+	if err != nil {
+		log.Printf("⚠️ Admin Trading Post query error: %v", err)
+	} else {
+		defer postRows.Close()
+
+		var posts []TradingPost
+		postMap := make(map[int]*TradingPost)
+		var postIDs []interface{}
+
+		for postRows.Next() {
+			var post TradingPost
+			var createdAtStr string
+			if err := postRows.Scan(&post.ID, &post.PostType, &post.CharacterName, &post.ContactInfo, &createdAtStr, &post.Notes); err != nil {
+				log.Printf("⚠️ Failed to scan admin trading post row: %v", err)
+				continue
+			}
+			post.CreatedAt = createdAtStr
+			post.Items = []TradingPostItem{}
+
+			posts = append(posts, post)
+			postMap[post.ID] = &posts[len(posts)-1]
+			postIDs = append(postIDs, post.ID)
+		}
+
+		// Fetch items for the retrieved posts
+		if len(postIDs) > 0 {
+			placeholders := strings.Repeat("?,", len(postIDs)-1) + "?"
+			itemQuery := fmt.Sprintf("SELECT post_id, item_name, quantity, price FROM trading_post_items WHERE post_id IN (%s)", placeholders)
+
+			itemRows, err := db.Query(itemQuery, postIDs...)
+			if err != nil {
+				log.Printf("⚠️ Admin Trading Post item query error: %v", err)
+			} else {
+				defer itemRows.Close()
+				for itemRows.Next() {
+					var item TradingPostItem
+					var postID int
+					if err := itemRows.Scan(&postID, &item.ItemName, &item.Quantity, &item.Price); err != nil {
+						log.Printf("⚠️ Failed to scan admin trading post item row: %v", err)
+						continue
+					}
+
+					if post, ok := postMap[postID]; ok {
+						post.Items = append(post.Items, item)
+					}
+				}
+			}
+		}
+		stats.RecentTradingPosts = posts
+	}
 
 	// Get last scrape times
 	stats.LastMarketScrape = getLastScrapeTime()
@@ -355,5 +444,182 @@ func adminDeleteVisitorViewsHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	http.Redirect(w, r, "/admin?msg="+msg, http.StatusSeeOther)
+}
+
+// ADDED: adminDeleteTradingPostHandler removes a trading post.
+func adminDeleteTradingPostHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Redirect(w, r, "/admin", http.StatusSeeOther)
+		return
+	}
+
+	if err := r.ParseForm(); err != nil {
+		http.Redirect(w, r, "/admin?msg=Error+parsing+form.", http.StatusSeeOther)
+		return
+	}
+
+	postID := r.FormValue("post_id")
+	var msg string
+
+	if postID == "" {
+		msg = "Error:+Missing+post+ID."
+	} else {
+		// The schema has ON DELETE CASCADE, so deleting the post will delete its items.
+		result, err := db.Exec("DELETE FROM trading_posts WHERE id = ?", postID)
+		if err != nil {
+			msg = "Database+error+occurred+while+deleting+post."
+			log.Printf("❌ Failed to delete trading post with ID %s: %v", postID, err)
+		} else {
+			rowsAffected, _ := result.RowsAffected()
+			if rowsAffected > 0 {
+				msg = "Trading+post+deleted+successfully."
+				log.Printf("👤 Admin deleted trading post with ID %s.", postID)
+			} else {
+				msg = "Trading+post+not+found."
+			}
+		}
+	}
+
+	http.Redirect(w, r, "/admin?msg="+msg, http.StatusSeeOther)
+}
+
+// ADDED: adminEditTradingPostHandler allows editing or displaying an edit form for a trading post.
+func adminEditTradingPostHandler(w http.ResponseWriter, r *http.Request) {
+	postIDStr := r.URL.Query().Get("id")
+	postID, err := strconv.Atoi(postIDStr)
+	if err != nil {
+		http.Error(w, "Invalid Post ID", http.StatusBadRequest)
+		return
+	}
+
+	if r.Method == http.MethodPost {
+		// --- HANDLE FORM SUBMISSION ---
+		if err := r.ParseForm(); err != nil {
+			http.Error(w, "Failed to parse form", http.StatusBadRequest)
+			return
+		}
+
+		// Begin a transaction
+		tx, err := db.Begin()
+		if err != nil {
+			http.Error(w, "Failed to start database transaction.", http.StatusInternalServerError)
+			return
+		}
+
+		// 1. Update the main post record
+		_, err = tx.Exec(`
+			UPDATE trading_posts SET post_type=?, character_name=?, contact_info=?, notes=? WHERE id=?
+		`, r.FormValue("post_type"), r.FormValue("character_name"), r.FormValue("contact_info"), r.FormValue("notes"), postID)
+		if err != nil {
+			tx.Rollback()
+			http.Error(w, "Failed to update post.", http.StatusInternalServerError)
+			log.Printf("❌ Failed to update trading post %d: %v", postID, err)
+			return
+		}
+
+		// 2. Delete all existing items for this post
+		_, err = tx.Exec("DELETE FROM trading_post_items WHERE post_id = ?", postID)
+		if err != nil {
+			tx.Rollback()
+			http.Error(w, "Failed to clear old items.", http.StatusInternalServerError)
+			log.Printf("❌ Failed to delete old items for post %d: %v", postID, err)
+			return
+		}
+
+		// 3. Loop through submitted items and re-insert them
+		itemNames := r.Form["item_name[]"]
+		quantities := r.Form["quantity[]"]
+		prices := r.Form["price[]"]
+
+		if len(itemNames) > 0 {
+			stmt, err := tx.Prepare("INSERT INTO trading_post_items (post_id, item_name, quantity, price) VALUES (?, ?, ?, ?)")
+			if err != nil {
+				tx.Rollback()
+				http.Error(w, "Database preparation failed.", http.StatusInternalServerError)
+				return
+			}
+			defer stmt.Close()
+
+			for i, itemName := range itemNames {
+				if strings.TrimSpace(itemName) == "" {
+					continue
+				}
+				quantity, _ := strconv.Atoi(quantities[i])
+				price, _ := strconv.ParseInt(strings.ReplaceAll(prices[i], ",", ""), 10, 64)
+
+				if quantity <= 0 || price < 0 {
+					continue
+				}
+
+				_, err := stmt.Exec(postID, itemName, quantity, price)
+				if err != nil {
+					tx.Rollback()
+					http.Error(w, "Failed to save one of the items.", http.StatusInternalServerError)
+					log.Printf("❌ Failed to insert trading post item for post %d: %v", postID, err)
+					return
+				}
+			}
+		}
+
+		// 4. Commit transaction
+		if err := tx.Commit(); err != nil {
+			http.Error(w, "Failed to finalize transaction.", http.StatusInternalServerError)
+			return
+		}
+
+		log.Printf("👤 Admin edited trading post with ID %d.", postID)
+		http.Redirect(w, r, "/admin?msg=Trading+post+updated+successfully.", http.StatusSeeOther)
+
+	} else {
+		// --- SHOW THE EDIT FORM ---
+		// 1. Fetch the post
+		var post TradingPost
+		var createdAtStr string
+		err := db.QueryRow(`
+			SELECT id, post_type, character_name, contact_info, created_at, notes 
+			FROM trading_posts WHERE id = ?
+		`, postID).Scan(&post.ID, &post.PostType, &post.CharacterName, &post.ContactInfo, &createdAtStr, &post.Notes)
+
+		if err != nil {
+			if err == sql.ErrNoRows {
+				http.Error(w, "Post not found", http.StatusNotFound)
+			} else {
+				http.Error(w, "Database query failed", http.StatusInternalServerError)
+			}
+			return
+		}
+		post.CreatedAt = createdAtStr
+
+		// 2. Fetch its items
+		itemRows, err := db.Query("SELECT item_name, quantity, price FROM trading_post_items WHERE post_id = ?", postID)
+		if err != nil {
+			http.Error(w, "Database item query failed", http.StatusInternalServerError)
+			return
+		}
+		defer itemRows.Close()
+
+		for itemRows.Next() {
+			var item TradingPostItem
+			if err := itemRows.Scan(&item.ItemName, &item.Quantity, &item.Price); err != nil {
+				log.Printf("⚠️ Failed to scan trading post item row for edit: %v", err)
+				continue
+			}
+			post.Items = append(post.Items, item)
+		}
+
+		// 3. Render template
+		tmpl, err := template.ParseFiles("admin_edit_post.html")
+		if err != nil {
+			http.Error(w, "Could not load edit template", http.StatusInternalServerError)
+			log.Printf("❌ Could not load admin_edit_post.html: %v", err)
+			return
+		}
+
+		data := AdminEditPostPageData{
+			Post:           post,
+			LastScrapeTime: getLastScrapeTime(),
+		}
+		tmpl.Execute(w, data)
+	}
 }
 

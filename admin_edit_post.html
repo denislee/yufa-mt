@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Edit Trading Post - Admin</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-100 text-gray-800">
+    <nav class="bg-white shadow-sm sticky top-0 z-10">
+        <div class="container mx-auto px-4">
+            <div class="flex justify-between items-center py-2">
+                <div class="text-xl font-semibold text-gray-700">Yufa Tracker - <span class="text-red-600">Admin Edit Post</span></div>
+                <div>
+                    <a href="/admin" class="text-gray-600 hover:text-blue-500">Back to Admin</a>
+                    <a href="/" class="ml-4 text-gray-600 hover:text-blue-500">Back to Site</a>
+                </div>
+            </div>
+        </div>
+    </nav>
+
+    <div class="container mx-auto p-4 md:p-8">
+        <h1 class="text-2xl font-bold mb-6">Editing Post #{{.Post.ID}}</h1>
+
+        <form method="POST" action="/admin/trading-post/edit?id={{.Post.ID}}" class="bg-white p-6 rounded-lg shadow-md space-y-6">
+            
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div>
+                    <label for="character_name" class="block text-sm font-medium text-gray-700">Character Name</label>
+                    <input type="text" name="character_name" id="character_name" value="{{.Post.CharacterName}}" required class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm">
+                </div>
+
+                <div>
+                    <label for="post_type" class="block text-sm font-medium text-gray-700">Post Type</label>
+                    <select name="post_type" id="post_type" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm">
+                        <option value="selling" {{if eq .Post.PostType "selling"}}selected{{end}}>Selling</option>
+                        <option value="buying" {{if eq .Post.PostType "buying"}}selected{{end}}>Buying</option>
+                    </select>
+                </div>
+            </div>
+            <div>
+                <label for="contact_info" class="block text-sm font-medium text-gray-700">Contact Info (Optional)</label>
+                <input type="text" name="contact_info" id="contact_info" value="{{if .Post.ContactInfo.Valid}}{{.Post.ContactInfo.String}}{{end}}" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm">
+            </div>
+             <div>
+                <label for="notes" class="block text-sm font-medium text-gray-700">Notes (Optional)</label>
+                <textarea name="notes" id="notes" rows="3" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm">{{if .Post.Notes.Valid}}{{.Post.Notes.String}}{{end}}</textarea>
+            </div>
+
+            <hr/>
+
+            <h2 class="text-lg font-semibold">Items</h2>
+            <div id="items-container" class="space-y-4">
+                {{range .Post.Items}}
+                <div class="item-row grid grid-cols-12 gap-2 items-center">
+                    <div class="col-span-6">
+                        <label class="text-xs text-gray-600">Item Name</label>
+                        <input type="text" name="item_name[]" value="{{.ItemName}}" required class="mt-1 block w-full rounded-md border-gray-300 shadow-sm text-sm">
+                    </div>
+                    <div class="col-span-2">
+                        <label class="text-xs text-gray-600">Quantity</label>
+                        <input type="number" name="quantity[]" value="{{.Quantity}}" min="1" required class="mt-1 block w-full rounded-md border-gray-300 shadow-sm text-sm">
+                    </div>
+                    <div class="col-span-3">
+                        <label class="text-xs text-gray-600">Price</label>
+                        <input type="number" name="price[]" value="{{.Price}}" min="0" required class="mt-1 block w-full rounded-md border-gray-300 shadow-sm text-sm">
+                    </div>
+                    <div class="col-span-1 flex items-end">
+                        <button type="button" class="remove-item-btn bg-red-500 text-white rounded px-2 py-1 text-xs mt-5">Remove</button>
+                    </div>
+                </div>
+                {{end}}
+            </div>
+
+            <button type="button" id="add-item-btn" class="bg-green-500 hover:bg-green-600 text-white font-bold py-2 px-4 rounded text-sm">Add Item</button>
+            
+            <div class="flex justify-end pt-4">
+                 <a href="/admin" class="bg-gray-200 hover:bg-gray-300 text-gray-800 font-bold py-2 px-4 rounded mr-4">Cancel</a>
+                <button type="submit" class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded">Save Changes</button>
+            </div>
+        </form>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            const itemsContainer = document.getElementById('items-container');
+            const addItemBtn = document.getElementById('add-item-btn');
+
+            function createItemRow() {
+                const div = document.createElement('div');
+                div.className = 'item-row grid grid-cols-12 gap-2 items-center';
+                div.innerHTML = `
+                    <div class="col-span-6">
+                        <label class="text-xs text-gray-600">Item Name</label>
+                        <input type="text" name="item_name[]" required class="mt-1 block w-full rounded-md border-gray-300 shadow-sm text-sm">
+                    </div>
+                    <div class="col-span-2">
+                        <label class="text-xs text-gray-600">Quantity</label>
+                        <input type="number" name="quantity[]" value="1" min="1" required class="mt-1 block w-full rounded-md border-gray-300 shadow-sm text-sm">
+                    </div>
+                    <div class="col-span-3">
+                        <label class="text-xs text-gray-600">Price</label>
+                        <input type="number" name="price[]" value="0" min="0" required class="mt-1 block w-full rounded-md border-gray-300 shadow-sm text-sm">
+                    </div>
+                    <div class="col-span-1 flex items-end">
+                        <button type="button" class="remove-item-btn bg-red-500 text-white rounded px-2 py-1 text-xs mt-5">Remove</button>
+                    </div>
+                `;
+                return div;
+            }
+
+            addItemBtn.addEventListener('click', function() {
+                itemsContainer.appendChild(createItemRow());
+            });
+
+            itemsContainer.addEventListener('click', function(e) {
+                if (e.target && e.target.classList.contains('remove-item-btn')) {
+                    e.target.closest('.item-row').remove();
+                }
+            });
+        });
+    </script>
+</body>
+</html>
