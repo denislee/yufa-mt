@@ -2417,6 +2417,9 @@ func guildDetailHandler(w http.ResponseWriter, r *http.Request) {
 // storeDetailHandler serves the detailed information page for a single store.
 func storeDetailHandler(w http.ResponseWriter, r *http.Request) {
 	storeName := r.URL.Query().Get("name")
+	// ADDED: Get seller name from the URL query to differentiate between stores with the same name.
+	sellerNameQuery := r.URL.Query().Get("seller")
+
 	if storeName == "" {
 		http.Error(w, "Store name is required", http.StatusBadRequest)
 		return
@@ -2447,23 +2450,31 @@ func storeDetailHandler(w http.ResponseWriter, r *http.Request) {
 	var items []Item
 	var sellerName, mapName, mapCoords, mostRecentTimestampStr string
 
-	// Step 1: Find the full signature (seller, map, coords, timestamp) of the most recent
-	// instance of this store. This defines the specific store "session" we want to display.
-	err := db.QueryRow(`
+	// MODIFIED: Step 1: Find the full signature of the specific store instance.
+	// The query is now built dynamically to include the seller's name if provided.
+	var signatureQueryArgs []interface{}
+	signatureQuery := `
 		SELECT seller_name, map_name, map_coordinates, date_and_time_retrieved
 		FROM items
 		WHERE store_name = ?
+	`
+	signatureQueryArgs = append(signatureQueryArgs, storeName)
+
+	// If a seller is specified, add it to the WHERE clause to find the correct store.
+	if sellerNameQuery != "" {
+		signatureQuery += " AND seller_name = ?"
+		signatureQueryArgs = append(signatureQueryArgs, sellerNameQuery)
+	}
+
+	signatureQuery += `
 		ORDER BY date_and_time_retrieved DESC, id DESC
 		LIMIT 1
-	`, storeName).Scan(&sellerName, &mapName, &mapCoords, &mostRecentTimestampStr)
+	`
+	err := db.QueryRow(signatureQuery, signatureQueryArgs...).Scan(&sellerName, &mapName, &mapCoords, &mostRecentTimestampStr)
 
 	// Step 2: If a store instance was found, fetch its unique items.
 	if err == nil {
-		// MODIFIED QUERY: This query now uses a Common Table Expression (CTE) and the ROW_NUMBER()
-		// window function. It partitions the data by item name and orders by the internal ID
-		// to find the most recent entry for each unique item within the specific store session.
-		// It then selects only the top-ranked row (rn=1) for each item, effectively de-duplicating
-		// by name and keeping the latest version.
+		// This part of the logic remains the same, as it now uses the correctly identified signature.
 		query := fmt.Sprintf(`
 			WITH RankedItems AS (
 				SELECT
@@ -2492,7 +2503,6 @@ func storeDetailHandler(w http.ResponseWriter, r *http.Request) {
 		for rows.Next() {
 			var item Item
 			var retrievedTime string
-			// Scan the row. The selected `id` now correctly maps to `item.ID`.
 			if err := rows.Scan(&item.ID, &item.Name, &item.ItemID, &item.Quantity, &item.Price, &item.StoreName, &item.SellerName, &retrievedTime, &item.MapName, &item.MapCoordinates, &item.IsAvailable); err != nil {
 				log.Printf("⚠️ Failed to scan store item row: %v", err)
 				continue
@@ -2505,7 +2515,7 @@ func storeDetailHandler(w http.ResponseWriter, r *http.Request) {
 	} else if err != sql.ErrNoRows {
 		// Log any database error other than the store not being found.
 		http.Error(w, "Database error finding store", http.StatusInternalServerError)
-		log.Printf("⚠️ Database error looking for store '%s': %v", storeName, err)
+		log.Printf("⚠️ Database error looking for store '%s' by seller '%s': %v", storeName, sellerNameQuery, err)
 		return
 	}
 	// If err is sql.ErrNoRows, the 'items' slice remains empty, and the page will correctly show "No items found".

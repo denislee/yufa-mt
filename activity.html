@@ -100,7 +100,7 @@
                                 </div>
                                 <span>was added for sale.</span>
                                 {{if .Details.price}}
-                                <small class="text-gray-500">({{.Details.price}} zeny, Qty: {{printf "%.0f" .Details.quantity}} by <a href="/character?name={{.Details.seller | urlquery}}" class="hover:underline text-blue-600">{{.Details.seller}}</a> in <a href="/store?name={{.Details.store_name | urlquery}}" class="hover:underline text-blue-600">{{.Details.store_name}}</a>)</small>
+                                <small class="text-gray-500">({{.Details.price}} zeny, Qty: {{printf "%.0f" .Details.quantity}} by <a href="/character?name={{.Details.seller | urlquery}}" class="hover:underline text-blue-600">{{.Details.seller}}</a> in <a href="/store?name={{.Details.store_name | urlquery}}&seller={{.Details.seller | urlquery}}" class="hover:underline text-blue-600">{{.Details.store_name}}</a>)</small>
                                 {{end}}
                             </div>
                         </span>
@@ -115,7 +115,7 @@
                                 </div>
                                 <span>is no longer for sale.</span>
                                 {{if .Details.price}}
-                                <small class="text-gray-500">({{.Details.price}} zeny, Qty: {{printf "%.0f" .Details.quantity}} by <a href="/character?name={{.Details.seller | urlquery}}" class="hover:underline text-blue-600">{{.Details.seller}}</a> in <a href="/store?name={{.Details.store_name | urlquery}}" class="hover:underline text-blue-600">{{.Details.store_name}}</a>)</small>
+                                <small class="text-gray-500">({{.Details.price}} zeny, Qty: {{printf "%.0f" .Details.quantity}} by <a href="/character?name={{.Details.seller | urlquery}}" class="hover:underline text-blue-600">{{.Details.seller}}</a> in <a href="/store?name={{.Details.store_name | urlquery}}&seller={{.Details.seller | urlquery}}" class="hover:underline text-blue-600">{{.Details.store_name}}</a>)</small>
                                 {{end}}
                             </div>
                         </span>
@@ -130,7 +130,7 @@
                                 </div>
                                 <span>was sold.</span>
                                 {{if .Details.price}}
-                                <small class="text-gray-500">({{.Details.price}} zeny, Qty: {{printf "%.0f" .Details.quantity}} by <a href="/character?name={{.Details.seller | urlquery}}" class="hover:underline text-blue-600">{{.Details.seller}}</a> in <a href="/store?name={{.Details.store_name | urlquery}}" class="hover:underline text-blue-600">{{.Details.store_name}}</a>)</small>
+                                <small class="text-gray-500">({{.Details.price}} zeny, Qty: {{printf "%.0f" .Details.quantity}} by <a href="/character?name={{.Details.seller | urlquery}}" class="hover:underline text-blue-600">{{.Details.seller}}</a> in <a href="/store?name={{.Details.store_name | urlquery}}&seller={{.Details.seller | urlquery}}" class="hover:underline text-blue-600">{{.Details.store_name}}</a>)</small>
                                 {{end}}
                             </div>
                         </span>
@@ -144,7 +144,7 @@
                                     <a href="/item?name={{.ItemName | urlquery}}" class="hover:underline">{{.ItemName}}</a>
                                 </div>
                                 <span>is no longer for sale.</span>
-                                <small class="text-gray-400">({{.Details.price}} zeny, Qty: {{printf "%.0f" .Details.quantity}} by <a href="/character?name={{.Details.seller | urlquery}}" class="hover:underline text-blue-500">{{.Details.seller}}</a> in <a href="/store?name={{.Details.store_name | urlquery}}" class="hover:underline text-blue-500">{{.Details.store_name}}</a> — Vendor logged off or item was sold)</small>
+                                <small class="text-gray-400">({{.Details.price}} zeny, Qty: {{printf "%.0f" .Details.quantity}} by <a href="/character?name={{.Details.seller | urlquery}}" class="hover:underline text-blue-500">{{.Details.seller}}</a> in <a href="/store?name={{.Details.store_name | urlquery}}&seller={{.Details.seller | urlquery}}" class="hover:underline text-blue-500">{{.Details.store_name}}</a> — Vendor logged off or item was sold)</small>
                             </div>
                         </span>
 
@@ -158,7 +158,7 @@
                                     <img src="https://static.divine-pride.net/images/items/item/{{.ItemID}}.png" alt="" class="w-5 h-5 mr-1.5" style="image-rendering: pixelated;">
                                     <a href="/item?name={{.ItemName | urlquery}}" class="hover:underline">{{.ItemName}}</a>!
                                 </div>
-                                <small class="text-gray-500">({{.Details.price}} zeny, Qty: {{printf "%.0f" .Details.quantity}} by <a href="/character?name={{.Details.seller | urlquery}}" class="hover:underline text-blue-600">{{.Details.seller}}</a> in <a href="/store?name={{.Details.store_name | urlquery}}" class="hover:underline text-blue-600">{{.Details.store_name}}</a>)</small>
+                                <small class="text-gray-500">({{.Details.price}} zeny, Qty: {{printf "%.0f" .Details.quantity}} by <a href="/character?name={{.Details.seller | urlquery}}" class="hover:underline text-blue-600">{{.Details.seller}}</a> in <a href="/store?name={{.Details.store_name | urlquery}}&seller={{.Details.seller | urlquery}}" class="hover:underline text-blue-600">{{.Details.store_name}}</a>)</small>
                             </div>
                         </span>
                     {{end}}
