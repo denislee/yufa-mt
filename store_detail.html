@@ -18,14 +18,23 @@
         <div class="container mx-auto px-4">
             <div class="flex justify-between items-center py-2">
                 <div class="text-xl font-semibold text-gray-700">Yufa Market Tracker</div>
-                <div class="hidden md:flex space-x-4">
-                    <a href="/" class="text-gray-600 hover:text-blue-500">Summary</a>
-                    <a href="/full-list" class="text-gray-600 hover:text-blue-500">Full List</a>
-                    <a href="/activity" class="text-gray-600 hover:text-blue-500">Activity</a>
-                    <a href="/players" class="text-gray-600 hover:text-blue-500">Player Count</a>
-                    <a href="/characters" class="text-gray-600 hover:text-blue-500">Characters</a>
-                    <a href="/guilds" class="text-gray-600 hover:text-blue-500">Guilds</a>
-                    <a href="/mvp-kills" class="text-gray-600 hover:text-blue-500">MVP Kills</a>
+                <div class="hidden md:flex items-center space-x-1">
+                    <a href="/" class="text-sm text-gray-600 hover:bg-gray-100 px-3 py-2 rounded-md">Summary</a>
+                    <a href="/full-list" class="text-sm text-gray-600 hover:bg-gray-100 px-3 py-2 rounded-md">Full List</a>
+                    <a href="/activity" class="text-sm text-gray-600 hover:bg-gray-100 px-3 py-2 rounded-md">Activity</a>
+                    <a href="/trading-post" class="text-sm text-gray-600 hover:bg-gray-100 px-3 py-2 rounded-md">Trading Post</a>
+                    <a href="/players" class="text-sm text-gray-600 hover:bg-gray-100 px-3 py-2 rounded-md">Player Count</a>
+                    <div class="relative" id="ranking-dropdown-menu">
+                        <button id="ranking-dropdown-button" class="text-sm text-gray-600 hover:bg-gray-100 px-3 py-2 rounded-md flex items-center">
+                            <span>Ranking</span>
+                            <svg class="w-4 h-4 ml-1" fill="currentColor" viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg"><path fill-rule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clip-rule="evenodd"></path></svg>
+                        </button>
+                        <div id="ranking-dropdown-content" class="dropdown-content hidden absolute right-0 mt-2 w-48 bg-white rounded-md shadow-lg py-1 z-20 ring-1 ring-black ring-opacity-5">
+                            <a href="/characters" class="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">Characters</a>
+                            <a href="/guilds" class="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">Guilds</a>
+                            <a href="/mvp-kills" class="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">MVP Kills</a>
+                        </div>
+                    </div>
                 </div>
                 <div class="md:hidden flex items-center">
                     <button id="mobile-menu-button" class="text-gray-600 hover:text-gray-800 focus:outline-none">
@@ -38,10 +47,19 @@
             <a href="/" class="block py-2 px-4 text-sm text-gray-600 hover:bg-gray-50">Summary</a>
             <a href="/full-list" class="block py-2 px-4 text-sm text-gray-600 hover:bg-gray-50">Full List</a>
             <a href="/activity" class="block py-2 px-4 text-sm text-gray-600 hover:bg-gray-50">Activity</a>
+            <a href="/trading-post" class="block py-2 px-4 text-sm text-gray-600 hover:bg-gray-50">Trading Post</a>
             <a href="/players" class="block py-2 px-4 text-sm text-gray-600 hover:bg-gray-50">Player Count</a>
-            <a href="/characters" class="block py-2 px-4 text-sm text-gray-600 hover:bg-gray-50">Characters</a>
-            <a href="/guilds" class="block py-2 px-4 text-sm text-gray-600 hover:bg-gray-50">Guilds</a>
-            <a href="/mvp-kills" class=" block py-2 px-4 text-sm text-gray-600 hover:bg-gray-50">MVP Kills</a>
+            <details class="group">
+                <summary class="py-2 px-4 text-sm text-gray-600 hover:bg-gray-50 list-none flex justify-between cursor-pointer">
+                    <span>Ranking</span>
+                     <svg class="w-4 h-4 transition-transform duration-200 group-open:rotate-90" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path></svg>
+                </summary>
+                <div class="pl-4">
+                    <a href="/characters" class="block py-2 px-4 text-sm text-gray-600 hover:bg-gray-50">Characters</a>
+                    <a href="/guilds" class="block py-2 px-4 text-sm text-gray-600 hover:bg-gray-50">Guilds</a>
+                    <a href="/mvp-kills" class="block py-2 px-4 text-sm text-gray-600 hover:bg-gray-50">MVP Kills</a>
+                </div>
+            </details>
         </div>
     </nav>
 
@@ -186,16 +204,40 @@
         }
 
         document.addEventListener('DOMContentLoaded', () => {
-            // Mobile menu toggle
-            document.getElementById('mobile-menu-button').addEventListener('click', function() {
-                var menu = document.getElementById('mobile-menu');
-                menu.classList.toggle('hidden');
-            });
+            // --- Navigation Menu Logic ---
+            const mobileMenuButton = document.getElementById('mobile-menu-button');
+            const mobileMenu = document.getElementById('mobile-menu');
+            if (mobileMenuButton && mobileMenu) {
+                mobileMenuButton.addEventListener('click', function() {
+                    mobileMenu.classList.toggle('hidden');
+                });
+            }
 
-            // Position map markers
+            function setupDropdown(buttonId, contentId) {
+                const button = document.getElementById(buttonId);
+                const content = document.getElementById(contentId);
+                if (!button || !content) return;
+
+                button.addEventListener('click', (event) => {
+                    event.stopPropagation();
+                    document.querySelectorAll('.dropdown-content').forEach(el => {
+                        if (el.id !== contentId) el.classList.add('hidden');
+                    });
+                    content.classList.toggle('hidden');
+                });
+            }
+
+            setupDropdown('ranking-dropdown-button', 'ranking-dropdown-content');
+
+            window.addEventListener('click', () => {
+                document.querySelectorAll('.dropdown-content').forEach(el => {
+                    el.classList.add('hidden');
+                });
+            });
+            
+            // --- Page-Specific Logic ---
             positionMapMarkers();
 
-            // Last updated time ago logic
             const lastUpdateElement = document.getElementById('last-updated');
             if (lastUpdateElement) {
                 const timestampStr = lastUpdateElement.dataset.timestamp;
@@ -215,21 +257,12 @@
                     const now = new Date();
                     const secondsPast = Math.floor((now.getTime() - lastUpdateDate.getTime()) / 1000);
                     let timeAgoString;
-
-                    if (secondsPast < 5) {
-                        timeAgoString = 'just now';
-                    } else if (secondsPast < 60) {
-                        timeAgoString = `${secondsPast}s ago`;
-                    } else if (secondsPast < 3600) {
-                        const minutes = Math.floor(secondsPast / 60);
-                        timeAgoString = `${minutes}m ago`;
-                    } else if (secondsPast < 86400) {
-                        const hours = Math.floor(secondsPast / 3600);
-                        timeAgoString = `${hours}h ago`;
-                    } else {
-                        const days = Math.floor(secondsPast / 86400);
-                        timeAgoString = `${days}d ago`;
-                    }
+                    if (secondsPast < 5) timeAgoString = 'just now';
+                    else if (secondsPast < 60) timeAgoString = `${secondsPast}s ago`;
+                    else if (secondsPast < 3600) timeAgoString = `${Math.floor(secondsPast / 60)}m ago`;
+                    else if (secondsPast < 86400) timeAgoString = `${Math.floor(secondsPast / 3600)}h ago`;
+                    else timeAgoString = `${Math.floor(secondsPast / 86400)}d ago`;
+                    
                     lastUpdateElement.innerHTML = `Updated: ${timeAgoString} <span class="text-gray-400 font-normal">(${formattedTimestamp})</span>`;
                 };
 

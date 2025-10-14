@@ -18,15 +18,23 @@
         <div class="container mx-auto px-4">
             <div class="flex justify-between items-center py-2">
                 <div class="text-xl font-semibold text-gray-700">Yufa Market Tracker</div>
-                <div class="hidden md:flex space-x-4">
-                    <a href="/" class="text-gray-600 hover:text-blue-500">Summary</a>
-                    <a href="/full-list" class="text-gray-600 hover:text-blue-500">Full List</a>
-                    <a href="/activity" class="text-gray-600 hover:text-blue-500">Activity</a>
-                    <a href="/players" class="text-gray-600 hover:text-blue-500">Player Count</a>
-                    <a href="/characters" class="text-gray-600 hover:text-blue-500">Characters</a>
-                    <a href="/guilds" class="text-gray-600 hover:text-blue-500">Guilds</a>
-                    <a href="/mvp-kills" class="text-gray-600 hover:text-blue-500">MVP Kills</a>
-                    <a href="/trading-post" class="text-blue-500 font-bold">Trading Post</a>
+                <div class="hidden md:flex items-center space-x-1">
+                    <a href="/" class="text-sm text-gray-600 hover:bg-gray-100 px-3 py-2 rounded-md">Summary</a>
+                    <a href="/full-list" class="text-sm text-gray-600 hover:bg-gray-100 px-3 py-2 rounded-md">Full List</a>
+                    <a href="/activity" class="text-sm text-gray-600 hover:bg-gray-100 px-3 py-2 rounded-md">Activity</a>
+                    <a href="/trading-post" class="text-sm font-semibold text-blue-600 bg-blue-50 px-3 py-2 rounded-md">Trading Post</a>
+                    <a href="/players" class="text-sm text-gray-600 hover:bg-gray-100 px-3 py-2 rounded-md">Player Count</a>
+                    <div class="relative" id="ranking-dropdown-menu">
+                        <button id="ranking-dropdown-button" class="text-sm text-gray-600 hover:bg-gray-100 px-3 py-2 rounded-md flex items-center">
+                            <span>Ranking</span>
+                            <svg class="w-4 h-4 ml-1" fill="currentColor" viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg"><path fill-rule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clip-rule="evenodd"></path></svg>
+                        </button>
+                        <div id="ranking-dropdown-content" class="dropdown-content hidden absolute right-0 mt-2 w-48 bg-white rounded-md shadow-lg py-1 z-20 ring-1 ring-black ring-opacity-5">
+                            <a href="/characters" class="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">Characters</a>
+                            <a href="/guilds" class="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">Guilds</a>
+                            <a href="/mvp-kills" class="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">MVP Kills</a>
+                        </div>
+                    </div>
                 </div>
                 <div class="md:hidden flex items-center">
                     <button id="mobile-menu-button" class="text-gray-600 hover:text-gray-800 focus:outline-none">
@@ -39,11 +47,19 @@
             <a href="/" class="block py-2 px-4 text-sm text-gray-600 hover:bg-gray-50">Summary</a>
             <a href="/full-list" class="block py-2 px-4 text-sm text-gray-600 hover:bg-gray-50">Full List</a>
             <a href="/activity" class="block py-2 px-4 text-sm text-gray-600 hover:bg-gray-50">Activity</a>
-            <a href="/players" class="block py-2 px-4 text-sm text-gray-600 hover:bg-gray-50">Player Count</a>
-            <a href="/characters" class="block py-2 px-4 text-sm text-gray-600 hover:bg-gray-50">Characters</a>
-            <a href="/guilds" class="block py-2 px-4 text-sm text-gray-600 hover:bg-gray-50">Guilds</a>
-            <a href="/mvp-kills" class="block py-2 px-4 text-sm text-gray-600 hover:bg-gray-50">MVP Kills</a>
             <a href="/trading-post" class="block py-2 px-4 text-sm bg-blue-50 text-blue-600 font-semibold">Trading Post</a>
+            <a href="/players" class="block py-2 px-4 text-sm text-gray-600 hover:bg-gray-50">Player Count</a>
+            <details class="group">
+                <summary class="py-2 px-4 text-sm text-gray-600 hover:bg-gray-50 list-none flex justify-between cursor-pointer">
+                    <span>Ranking</span>
+                     <svg class="w-4 h-4 transition-transform duration-200 group-open:rotate-90" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path></svg>
+                </summary>
+                <div class="pl-4">
+                    <a href="/characters" class="block py-2 px-4 text-sm text-gray-600 hover:bg-gray-50">Characters</a>
+                    <a href="/guilds" class="block py-2 px-4 text-sm text-gray-600 hover:bg-gray-50">Guilds</a>
+                    <a href="/mvp-kills" class="block py-2 px-4 text-sm text-gray-600 hover:bg-gray-50">MVP Kills</a>
+                </div>
+            </details>
         </div>
     </nav>
 
@@ -58,6 +74,15 @@
             </a>
         </div>
         
+        <div class="mb-6">
+            <form action="/trading-post" method="GET" class="bg-white p-4 rounded-lg shadow-md">
+                <div class="flex items-center">
+                    <input type="text" name="query" id="query" class="flex-grow w-full px-3 py-2 border border-gray-300 rounded-l-md focus:outline-none focus:ring-blue-500 focus:border-blue-500" placeholder="Search by item name..." value="{{.SearchQuery}}">
+                    <button type="submit" class="bg-blue-500 hover:bg-blue-600 text-white font-bold py-2 px-4 rounded-r-md transition duration-300">Search</button>
+                </div>
+            </form>
+        </div>
+
         <div class="space-y-4">
             {{range .Posts}}
             <div class="bg-white shadow-lg rounded-lg overflow-hidden">
@@ -112,9 +137,38 @@
     
     <script>
         document.addEventListener('DOMContentLoaded', () => {
-            document.getElementById('mobile-menu-button').addEventListener('click', function() {
-                document.getElementById('mobile-menu').classList.toggle('hidden');
+            // --- Navigation Menu Logic ---
+            const mobileMenuButton = document.getElementById('mobile-menu-button');
+            const mobileMenu = document.getElementById('mobile-menu');
+            if (mobileMenuButton && mobileMenu) {
+                mobileMenuButton.addEventListener('click', function() {
+                    mobileMenu.classList.toggle('hidden');
+                });
+            }
+
+            function setupDropdown(buttonId, contentId) {
+                const button = document.getElementById(buttonId);
+                const content = document.getElementById(contentId);
+                if (!button || !content) return;
+
+                button.addEventListener('click', (event) => {
+                    event.stopPropagation();
+                    document.querySelectorAll('.dropdown-content').forEach(el => {
+                        if (el.id !== contentId) el.classList.add('hidden');
+                    });
+                    content.classList.toggle('hidden');
+                });
+            }
+
+            setupDropdown('ranking-dropdown-button', 'ranking-dropdown-content');
+
+            window.addEventListener('click', () => {
+                document.querySelectorAll('.dropdown-content').forEach(el => {
+                    el.classList.add('hidden');
+                });
             });
+            
+            // --- Page-Specific Logic ---
             document.querySelectorAll('[data-price]').forEach(elem => {
                 const price = parseInt(elem.dataset.price, 10);
                 if (!isNaN(price)) {

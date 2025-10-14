@@ -19,14 +19,23 @@
         <div class="container mx-auto px-4">
             <div class="flex justify-between items-center py-2">
                 <div class="text-xl font-semibold text-gray-700">Yufa Market Tracker</div>
-                <div class="hidden md:flex space-x-4">
-                    <a href="/" class="text-gray-600 hover:text-blue-500">Summary</a>
-                    <a href="/full-list" class="text-gray-600 hover:text-blue-500">Full List</a>
-                    <a href="/activity" class="text-gray-600 hover:text-blue-500">Activity</a>
-                    <a href="/players" class="text-gray-600 hover:text-blue-500">Player Count</a>
-                    <a href="/characters" class="text-gray-600 hover:text-blue-500">Characters</a>
-                    <a href="/guilds" class="text-gray-600 hover:text-blue-500">Guilds</a>
-                    <a href="/mvp-kills" class="text-gray-600 hover:text-blue-500">MVP Kills</a>
+                <div class="hidden md:flex items-center space-x-1">
+                    <a href="/" class="text-sm text-gray-600 hover:bg-gray-100 px-3 py-2 rounded-md">Summary</a>
+                    <a href="/full-list" class="text-sm text-gray-600 hover:bg-gray-100 px-3 py-2 rounded-md">Full List</a>
+                    <a href="/activity" class="text-sm text-gray-600 hover:bg-gray-100 px-3 py-2 rounded-md">Activity</a>
+                    <a href="/trading-post" class="text-sm text-gray-600 hover:bg-gray-100 px-3 py-2 rounded-md">Trading Post</a>
+                    <a href="/players" class="text-sm text-gray-600 hover:bg-gray-100 px-3 py-2 rounded-md">Player Count</a>
+                    <div class="relative" id="ranking-dropdown-menu">
+                        <button id="ranking-dropdown-button" class="text-sm text-gray-600 hover:bg-gray-100 px-3 py-2 rounded-md flex items-center">
+                            <span>Ranking</span>
+                            <svg class="w-4 h-4 ml-1" fill="currentColor" viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg"><path fill-rule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clip-rule="evenodd"></path></svg>
+                        </button>
+                        <div id="ranking-dropdown-content" class="dropdown-content hidden absolute right-0 mt-2 w-48 bg-white rounded-md shadow-lg py-1 z-20 ring-1 ring-black ring-opacity-5">
+                            <a href="/characters" class="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">Characters</a>
+                            <a href="/guilds" class="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">Guilds</a>
+                            <a href="/mvp-kills" class="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">MVP Kills</a>
+                        </div>
+                    </div>
                 </div>
                 <div class="md:hidden flex items-center">
                     <button id="mobile-menu-button" class="text-gray-600 hover:text-gray-800 focus:outline-none">
@@ -39,10 +48,19 @@
             <a href="/" class="block py-2 px-4 text-sm text-gray-600 hover:bg-gray-50">Summary</a>
             <a href="/full-list" class="block py-2 px-4 text-sm text-gray-600 hover:bg-gray-50">Full List</a>
             <a href="/activity" class="block py-2 px-4 text-sm text-gray-600 hover:bg-gray-50">Activity</a>
+            <a href="/trading-post" class="block py-2 px-4 text-sm text-gray-600 hover:bg-gray-50">Trading Post</a>
             <a href="/players" class="block py-2 px-4 text-sm text-gray-600 hover:bg-gray-50">Player Count</a>
-            <a href="/characters" class="block py-2 px-4 text-sm text-gray-600 hover:bg-gray-50">Characters</a>
-            <a href="/guilds" class="block py-2 px-4 text-sm text-gray-600 hover:bg-gray-50">Guilds</a>
-            <a href="/mvp-kills" class="block py-2 px-4 text-sm text-gray-600 hover:bg-gray-50">MVP Kills</a>
+            <details class="group">
+                <summary class="py-2 px-4 text-sm text-gray-600 hover:bg-gray-50 list-none flex justify-between cursor-pointer">
+                    <span>Ranking</span>
+                     <svg class="w-4 h-4 transition-transform duration-200 group-open:rotate-90" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path></svg>
+                </summary>
+                <div class="pl-4">
+                    <a href="/characters" class="block py-2 px-4 text-sm text-gray-600 hover:bg-gray-50">Characters</a>
+                    <a href="/guilds" class="block py-2 px-4 text-sm text-gray-600 hover:bg-gray-50">Guilds</a>
+                    <a href="/mvp-kills" class="block py-2 px-4 text-sm text-gray-600 hover:bg-gray-50">MVP Kills</a>
+                </div>
+            </details>
         </div>
     </nav>
 
@@ -180,15 +198,6 @@
     </div>
 
     <script>
-        const priceHistoryData = {{.PriceDataJSON}};
-        const currentLowestData = {{.CurrentLowestJSON}};
-        const currentHighestData = {{.CurrentHighestJSON}};
-        const overallLowest = {{.OverallLowest}};
-        const overallHighest = {{.OverallHighest}};
-
-        if (overallLowest > 0) document.getElementById('overall-lowest-display').textContent = `${overallLowest.toLocaleString()}z`;
-        if (overallHighest > 0) document.getElementById('overall-highest-display').textContent = `${overallHighest.toLocaleString()}z`;
-
         function copyNavi(event, mapName, coordinates) {
             event.preventDefault();
             const formattedCoords = coordinates.trim().replace(/[()]/g, '').replace(',', '/');
@@ -204,71 +213,106 @@
                 }, 1500);
             }).catch(err => console.error('Failed to copy command: ', err));
         }
-        
-        if (currentLowestData) {
-            const mapName = currentLowestData.MapName, mapCoords = currentLowestData.MapCoordinates;
-            const storeLink = document.getElementById('lowest-store-val');
-            document.getElementById('lowest-price-val').textContent = `${currentLowestData.Price.toLocaleString()}z`;
-            document.getElementById('lowest-quantity-val').textContent = currentLowestData.Quantity.toLocaleString();
-            storeLink.textContent = currentLowestData.StoreName;
-            storeLink.title = currentLowestData.StoreName;
-            storeLink.href = `/store?name=${encodeURIComponent(currentLowestData.StoreName)}`;
-            document.getElementById('lowest-seller-val').innerHTML = `<a href="/character?name=${encodeURIComponent(currentLowestData.SellerName)}" class="hover:underline">${currentLowestData.SellerName}</a>`;
-            document.getElementById('lowest-location-val').innerHTML = `<a href="#" onclick="copyNavi(event, '${mapName.replace(/'/g, "\\'")}', '${mapCoords.replace(/'/g, "\\'")}')" title="Click to copy /navi command" class="hover:underline">${mapName} ${mapCoords}</a>`;
-            document.getElementById('lowest-date-val').textContent = currentLowestData.Timestamp;
-        }
 
-        if (currentHighestData) {
-            const mapName = currentHighestData.MapName, mapCoords = currentHighestData.MapCoordinates;
-            const storeLink = document.getElementById('highest-store-val');
-            document.getElementById('highest-price-val').textContent = `${currentHighestData.Price.toLocaleString()}z`;
-            document.getElementById('highest-quantity-val').textContent = currentHighestData.Quantity.toLocaleString();
-            storeLink.textContent = currentHighestData.StoreName;
-            storeLink.title = currentHighestData.StoreName;
-            storeLink.href = `/store?name=${encodeURIComponent(currentHighestData.StoreName)}`;
-            document.getElementById('highest-seller-val').innerHTML = `<a href="/character?name=${encodeURIComponent(currentHighestData.SellerName)}" class="hover:underline">${currentHighestData.SellerName}</a>`;
-            document.getElementById('highest-location-val').innerHTML = `<a href="#" onclick="copyNavi(event, '${mapName.replace(/'/g, "\\'")}', '${mapCoords.replace(/'/g, "\\'")}')" title="Click to copy /navi command" class="hover:underline">${mapName} ${mapCoords}</a>`;
-            document.getElementById('highest-date-val').textContent = currentHighestData.Timestamp;
-        }
+        document.addEventListener('DOMContentLoaded', () => {
+            // --- Navigation Menu Logic ---
+            const mobileMenuButton = document.getElementById('mobile-menu-button');
+            const mobileMenu = document.getElementById('mobile-menu');
+            if (mobileMenuButton && mobileMenu) {
+                mobileMenuButton.addEventListener('click', function() {
+                    mobileMenu.classList.toggle('hidden');
+                });
+            }
 
-        const labels = priceHistoryData.map(p => p.Timestamp);
-        const lowestPrices = priceHistoryData.map(p => p.LowestPrice);
-        const highestPrices = priceHistoryData.map(p => p.HighestPrice);
+            function setupDropdown(buttonId, contentId) {
+                const button = document.getElementById(buttonId);
+                const content = document.getElementById(contentId);
+                if (!button || !content) return;
 
-        const ctx = document.getElementById('priceChart').getContext('2d');
-        new Chart(ctx, {
-            type: 'line',
-            data: {
-                labels: labels,
-                datasets: [
-                    { label: 'Lowest Price', data: lowestPrices, borderColor: 'rgba(22, 163, 74, 1)', backgroundColor: 'rgba(22, 163, 74, 0.2)', borderWidth: 2, fill: false, tension: 0.1 },
-                    { label: 'Highest Price', data: highestPrices, borderColor: 'rgba(220, 38, 38, 1)', backgroundColor: 'rgba(220, 38, 38, 0.2)', borderWidth: 2, fill: false, tension: 0.1 }
-                ]
-            },
-            options: {
-                scales: { y: { beginAtZero: false, ticks: { callback: value => value.toLocaleString() + 'z' } } },
-                plugins: {
-                    tooltip: {
-                        callbacks: {
-                            label: context => `${context.dataset.label || ''}: ${context.parsed.y !== null ? context.parsed.y.toLocaleString() + 'z' : ''}`,
-                            afterLabel: context => {
-                                const dp = priceHistoryData[context.dataIndex];
-                                if (!dp) return '';
-                                if (context.dataset.label === 'Lowest Price') return [`  Store: ${dp.LowestStoreName}`, `  Qty: ${dp.LowestQuantity.toLocaleString()}, Seller: ${dp.LowestSellerName}`];
-                                if (context.dataset.label === 'Highest Price') return [`  Store: ${dp.HighestStoreName}`, `  Qty: ${dp.HighestQuantity.toLocaleString()}, Seller: ${dp.HighestSellerName}`];
-                                return [];
+                button.addEventListener('click', (event) => {
+                    event.stopPropagation();
+                    document.querySelectorAll('.dropdown-content').forEach(el => {
+                        if (el.id !== contentId) el.classList.add('hidden');
+                    });
+                    content.classList.toggle('hidden');
+                });
+            }
+
+            setupDropdown('ranking-dropdown-button', 'ranking-dropdown-content');
+
+            window.addEventListener('click', () => {
+                document.querySelectorAll('.dropdown-content').forEach(el => {
+                    el.classList.add('hidden');
+                });
+            });
+
+            // --- Page-Specific Logic ---
+            const priceHistoryData = {{.PriceDataJSON}};
+            const currentLowestData = {{.CurrentLowestJSON}};
+            const currentHighestData = {{.CurrentHighestJSON}};
+            const overallLowest = {{.OverallLowest}};
+            const overallHighest = {{.OverallHighest}};
+
+            if (overallLowest > 0) document.getElementById('overall-lowest-display').textContent = `${overallLowest.toLocaleString()}z`;
+            if (overallHighest > 0) document.getElementById('overall-highest-display').textContent = `${overallHighest.toLocaleString()}z`;
+            
+            if (currentLowestData) {
+                const mapName = currentLowestData.MapName, mapCoords = currentLowestData.MapCoordinates;
+                const storeLink = document.getElementById('lowest-store-val');
+                document.getElementById('lowest-price-val').textContent = `${currentLowestData.Price.toLocaleString()}z`;
+                document.getElementById('lowest-quantity-val').textContent = currentLowestData.Quantity.toLocaleString();
+                storeLink.textContent = currentLowestData.StoreName;
+                storeLink.title = currentLowestData.StoreName;
+                storeLink.href = `/store?name=${encodeURIComponent(currentLowestData.StoreName)}`;
+                document.getElementById('lowest-seller-val').innerHTML = `<a href="/character?name=${encodeURIComponent(currentLowestData.SellerName)}" class="hover:underline">${currentLowestData.SellerName}</a>`;
+                document.getElementById('lowest-location-val').innerHTML = `<a href="#" onclick="copyNavi(event, '${mapName.replace(/'/g, "\\'")}', '${mapCoords.replace(/'/g, "\\'")}')" title="Click to copy /navi command" class="hover:underline">${mapName} ${mapCoords}</a>`;
+                document.getElementById('lowest-date-val').textContent = currentLowestData.Timestamp;
+            }
+
+            if (currentHighestData) {
+                const mapName = currentHighestData.MapName, mapCoords = currentHighestData.MapCoordinates;
+                const storeLink = document.getElementById('highest-store-val');
+                document.getElementById('highest-price-val').textContent = `${currentHighestData.Price.toLocaleString()}z`;
+                document.getElementById('highest-quantity-val').textContent = currentHighestData.Quantity.toLocaleString();
+                storeLink.textContent = currentHighestData.StoreName;
+                storeLink.title = currentHighestData.StoreName;
+                storeLink.href = `/store?name=${encodeURIComponent(currentHighestData.StoreName)}`;
+                document.getElementById('highest-seller-val').innerHTML = `<a href="/character?name=${encodeURIComponent(currentHighestData.SellerName)}" class="hover:underline">${currentHighestData.SellerName}</a>`;
+                document.getElementById('highest-location-val').innerHTML = `<a href="#" onclick="copyNavi(event, '${mapName.replace(/'/g, "\\'")}', '${mapCoords.replace(/'/g, "\\'")}')" title="Click to copy /navi command" class="hover:underline">${mapName} ${mapCoords}</a>`;
+                document.getElementById('highest-date-val').textContent = currentHighestData.Timestamp;
+            }
+
+            const labels = priceHistoryData.map(p => p.Timestamp);
+            const lowestPrices = priceHistoryData.map(p => p.LowestPrice);
+            const highestPrices = priceHistoryData.map(p => p.HighestPrice);
+
+            const ctx = document.getElementById('priceChart').getContext('2d');
+            new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: labels,
+                    datasets: [
+                        { label: 'Lowest Price', data: lowestPrices, borderColor: 'rgba(22, 163, 74, 1)', backgroundColor: 'rgba(22, 163, 74, 0.2)', borderWidth: 2, fill: false, tension: 0.1 },
+                        { label: 'Highest Price', data: highestPrices, borderColor: 'rgba(220, 38, 38, 1)', backgroundColor: 'rgba(220, 38, 38, 0.2)', borderWidth: 2, fill: false, tension: 0.1 }
+                    ]
+                },
+                options: {
+                    scales: { y: { beginAtZero: false, ticks: { callback: value => value.toLocaleString() + 'z' } } },
+                    plugins: {
+                        tooltip: {
+                            callbacks: {
+                                label: context => `${context.dataset.label || ''}: ${context.parsed.y !== null ? context.parsed.y.toLocaleString() + 'z' : ''}`,
+                                afterLabel: context => {
+                                    const dp = priceHistoryData[context.dataIndex];
+                                    if (!dp) return '';
+                                    if (context.dataset.label === 'Lowest Price') return [`  Store: ${dp.LowestStoreName}`, `  Qty: ${dp.LowestQuantity.toLocaleString()}, Seller: ${dp.LowestSellerName}`];
+                                    if (context.dataset.label === 'Highest Price') return [`  Store: ${dp.HighestStoreName}`, `  Qty: ${dp.HighestQuantity.toLocaleString()}, Seller: ${dp.HighestSellerName}`];
+                                    return [];
+                                }
                             }
                         }
                     }
                 }
-            }
-        });
-        
-        document.addEventListener('DOMContentLoaded', () => {
-            // Mobile menu toggle
-            document.getElementById('mobile-menu-button').addEventListener('click', function() {
-                var menu = document.getElementById('mobile-menu');
-                menu.classList.toggle('hidden');
             });
 
             const timeAgoSpan = document.getElementById('time-ago');

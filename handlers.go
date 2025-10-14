@@ -2544,11 +2544,24 @@ func generateSecretToken(length int) (string, error) {
 
 // tradingPostListHandler displays the list of all trading posts.
 func tradingPostListHandler(w http.ResponseWriter, r *http.Request) {
-	// 1. Get all parent posts
-	postRows, err := db.Query(`
+	// 1. Get search query from URL.
+	searchQuery := r.URL.Query().Get("query")
+
+	// 2. Build the query for posts with an optional WHERE clause for searching.
+	var postParams []interface{}
+	postQuery := `
         SELECT id, post_type, character_name, contact_info, created_at, notes 
-        FROM trading_posts ORDER BY created_at DESC
-    `)
+        FROM trading_posts`
+
+	if searchQuery != "" {
+		postQuery += ` WHERE id IN (SELECT DISTINCT post_id FROM trading_post_items WHERE item_name LIKE ?)`
+		postParams = append(postParams, "%"+searchQuery+"%")
+	}
+
+	postQuery += ` ORDER BY created_at DESC`
+
+	// 3. Execute query to get parent posts.
+	postRows, err := db.Query(postQuery, postParams...)
 	if err != nil {
 		http.Error(w, "Database query failed", http.StatusInternalServerError)
 		log.Printf("❌ Trading Post query error: %v", err)
@@ -2557,7 +2570,8 @@ func tradingPostListHandler(w http.ResponseWriter, r *http.Request) {
 	defer postRows.Close()
 
 	var posts []TradingPost
-	postMap := make(map[int]*TradingPost) // Map to easily add items to posts
+	postMap := make(map[int]*TradingPost)
+	var postIDs []interface{}
 
 	for postRows.Next() {
 		var post TradingPost
@@ -2568,32 +2582,40 @@ func tradingPostListHandler(w http.ResponseWriter, r *http.Request) {
 			continue
 		}
 
-		parsedTime, _ := time.Parse(time.RFC3339, createdAtStr)
-		post.CreatedAt = parsedTime.Format("2006-01-02 15:04")
+		// BUG FIX: The CreatedAt field should hold the raw RFC3339 string from the DB
+		// for the CreatedAgo() method to work correctly.
+		post.CreatedAt = createdAtStr
 		post.Items = []TradingPostItem{} // Initialize empty slice
 
 		posts = append(posts, post)
 		postMap[post.ID] = &posts[len(posts)-1]
+		postIDs = append(postIDs, post.ID)
 	}
 
-	// 2. Get all items and map them to their parent posts
-	itemRows, err := db.Query("SELECT post_id, item_name, quantity, price FROM trading_post_items")
-	if err != nil {
-		http.Error(w, "Database item query failed", http.StatusInternalServerError)
-		return
-	}
-	defer itemRows.Close()
+	// 4. If any posts were found, fetch their associated items.
+	if len(postIDs) > 0 {
+		// Create a placeholder string like "?,?,?" for the IN clause.
+		placeholders := strings.Repeat("?,", len(postIDs)-1) + "?"
+		itemQuery := fmt.Sprintf("SELECT post_id, item_name, quantity, price FROM trading_post_items WHERE post_id IN (%s)", placeholders)
 
-	for itemRows.Next() {
-		var item TradingPostItem
-		var postID int
-		if err := itemRows.Scan(&postID, &item.ItemName, &item.Quantity, &item.Price); err != nil {
-			log.Printf("⚠️ Failed to scan trading post item row: %v", err)
-			continue
+		itemRows, err := db.Query(itemQuery, postIDs...)
+		if err != nil {
+			http.Error(w, "Database item query failed", http.StatusInternalServerError)
+			return
 		}
+		defer itemRows.Close()
 
-		if post, ok := postMap[postID]; ok {
-			post.Items = append(post.Items, item)
+		for itemRows.Next() {
+			var item TradingPostItem
+			var postID int
+			if err := itemRows.Scan(&postID, &item.ItemName, &item.Quantity, &item.Price); err != nil {
+				log.Printf("⚠️ Failed to scan trading post item row: %v", err)
+				continue
+			}
+
+			if post, ok := postMap[postID]; ok {
+				post.Items = append(post.Items, item)
+			}
 		}
 	}
 
@@ -2606,6 +2628,7 @@ func tradingPostListHandler(w http.ResponseWriter, r *http.Request) {
 	data := TradingPostPageData{
 		Posts:          posts,
 		LastScrapeTime: getLastScrapeTime(),
+		SearchQuery:    searchQuery,
 	}
 	tmpl.Execute(w, data)
 }
