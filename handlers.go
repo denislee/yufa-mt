@@ -3061,7 +3061,7 @@ type ItemSearchResult struct {
 	ImageURL string `json:"ImageURL"`
 }
 
-// apiItemSearchHandler searches for items by name from the cache.
+// apiItemSearchHandler searches for items by name from the cache, with a fallback to a live RMS scrape.
 func apiItemSearchHandler(w http.ResponseWriter, r *http.Request) {
 	query := r.URL.Query().Get("query")
 	if len(query) < 3 { // Don't search for very short strings
@@ -3069,7 +3069,7 @@ func apiItemSearchHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Search the cache for matching items
+	// 1. Search the local cache first for a fast response
 	rows, err := db.Query(`
 		SELECT item_id, name, image_url 
 		FROM rms_item_cache 
@@ -3092,6 +3092,29 @@ func apiItemSearchHandler(w http.ResponseWriter, r *http.Request) {
 			continue
 		}
 		results = append(results, item)
+	}
+
+	// 2. If the cache returns no results, fall back to a live scrape
+	if len(results) == 0 {
+		log.Printf("ℹ️ API search cache MISS for '%s'. Performing live scrape...", query)
+		scrapedResults, scrapeErr := scrapeRMSItemSearch(query)
+		if scrapeErr != nil {
+			log.Printf("⚠️ API live scrape for '%s' failed: %v", query, scrapeErr)
+			// Don't return an error to the user, just an empty result set
+		} else {
+			results = scrapedResults
+			// 3. Asynchronously cache the new results for future searches
+			if len(results) > 0 {
+				go func() {
+					for _, item := range results {
+						// This function already checks if the item exists, so it's safe to call.
+						scrapeAndCacheItemIfNotExists(item.ID, item.Name)
+						time.Sleep(500 * time.Millisecond) // Be polite
+					}
+					log.Printf("✅ Finished background caching for '%s' search results.", query)
+				}()
+			}
+		}
 	}
 
 	w.Header().Set("Content-Type", "application/json")

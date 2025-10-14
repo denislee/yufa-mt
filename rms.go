@@ -6,7 +6,9 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"net/url"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 
@@ -252,4 +254,77 @@ func populateMissingCachesOnStartup() {
 	}
 
 	log.Println("✅ [Cache Verification] Finished populating missing cache entries.")
+}
+
+// scrapeRMSItemSearch performs a live search on ratemyserver.net for an item by name by parsing the HTML results page.
+func scrapeRMSItemSearch(query string) ([]ItemSearchResult, error) {
+	// 1. Construct the URL for the standard HTML search results page
+
+	rmsURL := fmt.Sprintf("https://ratemyserver.net/index.php?iname=%s&page=item_db&quick=1&isearch=Search", url.QueryEscape(query))
+	log.Printf("➡️ [RMS HTML Search] Performing live search for: '%s'", query)
+	log.Printf("   URL: %s", rmsURL)
+
+	client := http.Client{Timeout: 10 * time.Second}
+	res, err := client.Get(rmsURL)
+	if err != nil {
+		log.Printf("❌ [RMS HTML Search] Failed to get URL: %v", err)
+		return nil, fmt.Errorf("failed to get search URL: %w", err)
+	}
+	defer res.Body.Close()
+
+	if res.StatusCode != 200 {
+		log.Printf("⚠️ [RMS HTML Search] Received non-200 status code: %d %s", res.StatusCode, res.Status)
+		return nil, fmt.Errorf("status code error: %d %s", res.StatusCode, res.Status)
+	}
+
+	// 2. Parse the HTML document using goquery
+	doc, err := goquery.NewDocumentFromReader(res.Body)
+	if err != nil {
+		log.Printf("❌ [RMS HTML Search] Failed to parse search HTML: %v", err)
+		return nil, fmt.Errorf("failed to parse search HTML: %w", err)
+	}
+
+	var results []ItemSearchResult
+	idRegex := regexp.MustCompile(`Item ID# (\d+)`)
+
+	// 3. Find each result container and extract the data
+	log.Printf("   [RMS HTML Search] Searching for result containers in HTML...")
+	doc.Find("div[style*='display: flex']").Each(func(i int, s *goquery.Selection) {
+		var result ItemSearchResult
+		var found bool
+
+		// 4. Extract the full text content of the div
+		fullText := s.Text()
+		log.Printf("   [RMS HTML Search] Processing block %d: Raw text -> \"%s\"", i+1, strings.TrimSpace(fullText))
+
+		matches := idRegex.FindStringSubmatch(fullText)
+
+		// 5. Use the regex to find the Item ID
+		if len(matches) > 1 {
+			id, _ := strconv.Atoi(matches[1])
+			result.ID = id
+			found = true
+
+			// 6. Extract the item name from the first <b> tag
+			result.Name = strings.TrimSpace(s.Find("b").First().Text())
+
+			// 7. Construct the image URL
+			result.ImageURL = fmt.Sprintf("https://divine-pride.net/img/items/collection/iRO/%d", id)
+			log.Printf("   [RMS HTML Search]   -> Extracted: ID=%d, Name='%s'", result.ID, result.Name)
+		} else {
+			log.Printf("   [RMS HTML Search]   -> No Item ID found in block %d.", i+1)
+		}
+
+		// 8. Add the successfully parsed item to our results
+		if found && result.ID > 0 && result.Name != "" {
+			results = append(results, result)
+		}
+	})
+
+	if len(results) == 0 {
+		log.Printf("   [RMS HTML Search] No valid items were parsed from the page.")
+	}
+
+	log.Printf("✅ [RMS HTML Search] Found %d item(s) for query: '%s'", len(results), query)
+	return results, nil
 }
