@@ -2613,7 +2613,7 @@ func tradingPostListHandler(w http.ResponseWriter, r *http.Request) {
 	if len(postIDs) > 0 {
 		// Create a placeholder string like "?,?,?" for the IN clause.
 		placeholders := strings.Repeat("?,", len(postIDs)-1) + "?"
-		itemQuery := fmt.Sprintf("SELECT post_id, item_name, quantity, price FROM trading_post_items WHERE post_id IN (%s)", placeholders)
+		itemQuery := fmt.Sprintf("SELECT post_id, item_name, item_id, quantity, price, currency FROM trading_post_items WHERE post_id IN (%s)", placeholders)
 
 		itemRows, err := db.Query(itemQuery, postIDs...)
 		if err != nil {
@@ -2625,7 +2625,7 @@ func tradingPostListHandler(w http.ResponseWriter, r *http.Request) {
 		for itemRows.Next() {
 			var item TradingPostItem
 			var postID int
-			if err := itemRows.Scan(&postID, &item.ItemName, &item.Quantity, &item.Price); err != nil {
+			if err := itemRows.Scan(&postID, &item.ItemName, &item.ItemID, &item.Quantity, &item.Price, &item.Currency); err != nil {
 				log.Printf("⚠️ Failed to scan trading post item row: %v", err)
 				continue
 			}
@@ -2710,16 +2710,18 @@ func tradingPostFormHandler(w http.ResponseWriter, r *http.Request) {
 
 		// 5. Loop through submitted items, sanitize them, and insert them
 		itemNames := r.Form["item_name[]"]
+		itemIDs := r.Form["item_id[]"]
 		quantities := r.Form["quantity[]"]
 		prices := r.Form["price[]"]
+		currencies := r.Form["currency[]"]
 
-		if len(itemNames) == 0 || len(itemNames) != len(quantities) || len(itemNames) != len(prices) {
+		if len(itemNames) == 0 || len(itemNames) != len(quantities) || len(itemNames) != len(prices) || len(itemNames) != len(currencies) || len(itemNames) != len(itemIDs) {
 			tx.Rollback()
 			http.Error(w, "Invalid or missing item data. At least one item is required.", http.StatusBadRequest)
 			return
 		}
 
-		stmt, err := tx.Prepare("INSERT INTO trading_post_items (post_id, item_name, quantity, price) VALUES (?, ?, ?, ?)")
+		stmt, err := tx.Prepare("INSERT INTO trading_post_items (post_id, item_name, item_id, quantity, price, currency) VALUES (?, ?, ?, ?, ?, ?)")
 		if err != nil {
 			tx.Rollback()
 			http.Error(w, "Database preparation failed.", http.StatusInternalServerError)
@@ -2738,13 +2740,28 @@ func tradingPostFormHandler(w http.ResponseWriter, r *http.Request) {
 			quantity, _ := strconv.Atoi(quantities[i])
 			price, _ := strconv.ParseInt(prices[i], 10, 64)
 
+			// Handle optional Item ID
+			var itemID sql.NullInt64
+			if itemIDs[i] != "" {
+				id, err := strconv.ParseInt(itemIDs[i], 10, 64)
+				if err == nil && id > 0 {
+					itemID = sql.NullInt64{Int64: id, Valid: true}
+				}
+			}
+
+			// Handle and validate currency
+			currency := currencies[i]
+			if currency != "zeny" && currency != "rmt" {
+				currency = "zeny" // Default to zeny if invalid value is submitted
+			}
+
 			if quantity <= 0 || price <= 0 {
 				tx.Rollback()
 				http.Error(w, "All items must have a valid quantity and price.", http.StatusBadRequest)
 				return
 			}
 			// Use the sanitized item name in the database query.
-			_, err := stmt.Exec(postID, itemName, quantity, price)
+			_, err := stmt.Exec(postID, itemName, itemID, quantity, price, currency)
 			if err != nil {
 				tx.Rollback()
 				http.Error(w, "Failed to save one of the items.", http.StatusInternalServerError)
@@ -2851,7 +2868,7 @@ func tradingPostManageHandler(w http.ResponseWriter, r *http.Request) {
 			post.CreatedAt = createdAtStr
 
 			// Fetch associated items
-			itemRows, err := db.Query("SELECT item_name, quantity, price FROM trading_post_items WHERE post_id = ?", postIDStr)
+			itemRows, err := db.Query("SELECT item_name, item_id, quantity, price, currency FROM trading_post_items WHERE post_id = ?", postIDStr)
 			if err != nil {
 				http.Error(w, "Could not retrieve post items.", http.StatusInternalServerError)
 				return
@@ -2861,7 +2878,7 @@ func tradingPostManageHandler(w http.ResponseWriter, r *http.Request) {
 			var items []TradingPostItem
 			for itemRows.Next() {
 				var item TradingPostItem
-				if err := itemRows.Scan(&item.ItemName, &item.Quantity, &item.Price); err != nil {
+				if err := itemRows.Scan(&item.ItemName, &item.ItemID, &item.Quantity, &item.Price, &item.Currency); err != nil {
 					log.Printf("⚠️ Failed to scan item for edit: %v", err)
 					continue
 				}
@@ -2922,10 +2939,12 @@ func tradingPostManageHandler(w http.ResponseWriter, r *http.Request) {
 
 			// Insert new items
 			itemNames := r.Form["item_name[]"]
+			itemIDs := r.Form["item_id[]"]
 			quantities := r.Form["quantity[]"]
 			prices := r.Form["price[]"]
+			currencies := r.Form["currency[]"]
 
-			stmt, err := tx.Prepare("INSERT INTO trading_post_items (post_id, item_name, quantity, price) VALUES (?, ?, ?, ?)")
+			stmt, err := tx.Prepare("INSERT INTO trading_post_items (post_id, item_name, item_id, quantity, price, currency) VALUES (?, ?, ?, ?, ?, ?)")
 			if err != nil {
 				tx.Rollback()
 				http.Error(w, "Database preparation failed.", http.StatusInternalServerError)
@@ -2941,12 +2960,29 @@ func tradingPostManageHandler(w http.ResponseWriter, r *http.Request) {
 				quantity, _ := strconv.Atoi(quantities[i])
 				price, _ := strconv.ParseInt(prices[i], 10, 64)
 
+				// Handle optional Item ID
+				var itemID sql.NullInt64
+				if i < len(itemIDs) && itemIDs[i] != "" {
+					id, err := strconv.ParseInt(itemIDs[i], 10, 64)
+					if err == nil && id > 0 {
+						itemID = sql.NullInt64{Int64: id, Valid: true}
+					}
+				}
+
+				// Handle and validate currency
+				var currency string
+				if i < len(currencies) && (currencies[i] == "zeny" || currencies[i] == "rmt") {
+					currency = currencies[i]
+				} else {
+					currency = "zeny" // Default
+				}
+
 				if quantity <= 0 || price <= 0 {
 					tx.Rollback()
 					http.Error(w, "All items must have a valid quantity and price.", http.StatusBadRequest)
 					return
 				}
-				_, err := stmt.Exec(postIDStr, itemName, quantity, price)
+				_, err := stmt.Exec(postIDStr, itemName, itemID, quantity, price, currency)
 				if err != nil {
 					tx.Rollback()
 					http.Error(w, "Failed to save updated items.", http.StatusInternalServerError)
@@ -2979,4 +3015,85 @@ func tradingPostManageHandler(w http.ResponseWriter, r *http.Request) {
 		}
 		tmpl.Execute(w, data)
 	}
+}
+
+// apiItemDetailsHandler serves item details as JSON for the form preview.
+func apiItemDetailsHandler(w http.ResponseWriter, r *http.Request) {
+	itemIDStr := r.URL.Query().Get("id")
+	if itemIDStr == "" {
+		http.Error(w, "Item ID is required", http.StatusBadRequest)
+		return
+	}
+
+	itemID, err := strconv.Atoi(itemIDStr)
+	if err != nil || itemID <= 0 {
+		http.Error(w, "Invalid Item ID format", http.StatusBadRequest)
+		return
+	}
+
+	// 1. Try to get details from the cache first.
+	itemDetails, err := getItemDetailsFromCache(itemID)
+	if err != nil {
+		// 2. If cache miss, scrape from the source.
+		log.Printf("ℹ️ API Cache MISS for item ID %d. Scraping RMS...", itemID)
+		itemDetails, err = scrapeRMSItemDetails(itemID)
+		if err != nil {
+			log.Printf("⚠️ API failed to scrape RateMyServer for item ID %d: %v", itemID, err)
+			// Return a specific error if the item is not found
+			http.Error(w, fmt.Sprintf("Item with ID %d not found.", itemID), http.StatusNotFound)
+			return
+		}
+		// 3. Save the newly scraped data to the cache for future requests.
+		if err := saveItemDetailsToCache(itemDetails); err != nil {
+			log.Printf("⚠️ API failed to save item ID %d to cache: %v", itemID, err)
+		}
+	}
+
+	// 4. Return the details as JSON.
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(itemDetails)
+}
+
+// ItemSearchResult is a lightweight struct for API search results.
+type ItemSearchResult struct {
+	ID       int    `json:"ID"`
+	Name     string `json:"Name"`
+	ImageURL string `json:"ImageURL"`
+}
+
+// apiItemSearchHandler searches for items by name from the cache.
+func apiItemSearchHandler(w http.ResponseWriter, r *http.Request) {
+	query := r.URL.Query().Get("query")
+	if len(query) < 3 { // Don't search for very short strings
+		http.Error(w, "Search query must be at least 3 characters long", http.StatusBadRequest)
+		return
+	}
+
+	// Search the cache for matching items
+	rows, err := db.Query(`
+		SELECT item_id, name, image_url 
+		FROM rms_item_cache 
+		WHERE name LIKE ? 
+		ORDER BY name 
+		LIMIT 20`,
+		"%"+query+"%")
+	if err != nil {
+		log.Printf("⚠️ API item search error: %v", err)
+		http.Error(w, "Database query failed", http.StatusInternalServerError)
+		return
+	}
+	defer rows.Close()
+
+	var results []ItemSearchResult
+	for rows.Next() {
+		var item ItemSearchResult
+		if err := rows.Scan(&item.ID, &item.Name, &item.ImageURL); err != nil {
+			log.Printf("⚠️ Failed to scan item search result: %v", err)
+			continue
+		}
+		results = append(results, item)
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(results)
 }

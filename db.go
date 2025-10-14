@@ -268,8 +268,10 @@ CREATE TABLE IF NOT EXISTS trading_post_items (
     "id" INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
     "post_id" INTEGER NOT NULL,
     "item_name" TEXT NOT NULL,
+    "item_id" INTEGER,
     "quantity" INTEGER NOT NULL,
     "price" INTEGER NOT NULL,
+    "currency" TEXT NOT NULL DEFAULT 'zeny',
     FOREIGN KEY(post_id) REFERENCES trading_posts(id) ON DELETE CASCADE
 );`
 	if _, err = db.Exec(createTradingPostItemsTableSQL); err != nil {

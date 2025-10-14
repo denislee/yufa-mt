@@ -461,10 +461,13 @@ type AdminEditPostPageData struct {
 // in models.go
 
 // ADDED: TradingPostItem represents one item within a larger post.
+// ADDED: TradingPostItem represents one item within a larger post.
 type TradingPostItem struct {
 	ItemName string
+	ItemID   sql.NullInt64 // To handle optional item ID
 	Quantity int
 	Price    int64
+	Currency string // "zeny" or "rmt"
 }
 
 // MODIFIED: TradingPost now holds post-level info and a slice of items.

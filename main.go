@@ -121,6 +121,10 @@ func main() {
 	http.HandleFunc("/trading-post/new", visitorTracker(tradingPostFormHandler))
 	http.HandleFunc("/trading-post/manage", visitorTracker(tradingPostManageHandler)) // For edit/delete actions
 
+	// ADDED: API route for item previews on the trading post form
+	http.HandleFunc("/api/item-details", visitorTracker(apiItemDetailsHandler))
+	http.HandleFunc("/api/item-search", visitorTracker(apiItemSearchHandler)) // ADD THIS LINE
+
 	// --- ADMIN ROUTES ---
 	// Admin routes are NOT tracked.
 	http.HandleFunc("/admin", basicAuth(adminHandler))
@@ -146,4 +150,3 @@ func main() {
 		log.Fatalf("❌ Failed to start web server: %v", err)
 	}
 }
-

@@ -19,7 +19,7 @@
 
     <div class="container mx-auto px-4 py-8 max-w-3xl">
         <h1 class="text-3xl font-bold text-gray-800 mb-2">{{.Title}}</h1>
-        <p class="text-gray-600 mb-6">List one or more items you are buying or selling.</p>
+        <p class="text-gray-600 mb-6">List one or more items you are buying or selling by their Item ID.</p>
         
         <form action="{{.ActionURL}}" method="POST" class="bg-white p-6 sm:p-8 rounded-lg shadow-lg">
             
@@ -53,21 +53,40 @@
                 <div id="items-container" class="space-y-4">
                     {{/* If editing, pre-render the existing items */}}
                     {{range $index, $item := .Post.Items}}
-                    <div class="item-row p-3 border border-gray-200 rounded-md grid grid-cols-1 md:grid-cols-12 gap-3 items-end">
-                        <div class="md:col-span-5">
-                            <label for="item_name_{{$index}}" class="text-xs font-medium text-gray-600 block">Item Name</label>
-                            <input type="text" name="item_name[]" id="item_name_{{$index}}" value="{{$item.ItemName}}" placeholder="e.g., Jellopy" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm text-sm" required>
+                    <div class="item-row p-3 border border-gray-200 rounded-md grid grid-cols-12 gap-x-3 gap-y-2 items-center">
+                        <div class="col-span-12 md:col-span-5">
+                            <div class="grid grid-cols-3 gap-2 items-end">
+                                <div class="col-span-1">
+                                    <label class="text-xs font-medium text-gray-600 block">
+                                        Item ID
+                                        <button type="button" class="search-item-btn text-blue-500 hover:underline font-normal">(Search)</button>
+                                    </label>
+                                    <input type="number" name="item_id[]" id="item_id_{{$index}}" value="{{if .ItemID.Valid}}{{.ItemID.Int64}}{{end}}" placeholder="501" min="1" class="item-id-input mt-1 block w-full rounded-md border-gray-300 shadow-sm text-sm" required>
+                                    <input type="hidden" name="item_name[]" value="{{$item.ItemName}}" class="item-name-hidden">
+                                </div>
+                                <div class="item-preview col-span-2 h-10 flex items-center p-1 bg-gray-50 rounded">
+                                    <span class="text-gray-400 text-sm">Enter ID...</span>
+                                </div>
+                            </div>
                         </div>
-                        <div class="md:col-span-3">
-                            <label for="quantity_{{$index}}" class="text-xs font-medium text-gray-600 block">Quantity</label>
-                            <input type="number" name="quantity[]" id="quantity_{{$index}}" value="{{$item.Quantity}}" placeholder="100" min="1" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm text-sm" required>
+                        <div class="col-span-4 md:col-span-1">
+                            <label for="quantity_{{$index}}" class="text-xs font-medium text-gray-600 block">Qty</label>
+                            <input type="number" name="quantity[]" id="quantity_{{$index}}" value="{{$item.Quantity}}" placeholder="1" min="1" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm text-sm" required>
                         </div>
-                        <div class="md:col-span-3">
+                        <div class="col-span-8 md:col-span-2">
                             <label for="price_{{$index}}" class="text-xs font-medium text-gray-600 block">Price (ea)</label>
                             <input type="number" name="price[]" id="price_{{$index}}" value="{{$item.Price}}" placeholder="50000" min="1" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm text-sm" required>
                         </div>
-                        <div class="md:col-span-1">
-                            <button type="button" class="remove-item-btn w-full bg-red-500 hover:bg-red-600 text-white p-2 rounded-md" title="Remove Item">
+                        <div class="col-span-8 md:col-span-3">
+                            <label for="currency_{{$index}}" class="text-xs font-medium text-gray-600 block">Currency</label>
+                            <select name="currency[]" id="currency_{{$index}}" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm text-sm h-10" required>
+                                <option value="zeny" {{if eq .Currency "zeny"}}selected{{end}}>Zeny</option>
+                                <option value="rmt" {{if eq .Currency "rmt"}}selected{{end}}>R$ (RMT)</option>
+                            </select>
+                        </div>
+                        <div class="col-span-4 md:col-span-1">
+                             <label class="text-xs font-medium text-gray-600 block">&nbsp;</label>
+                            <button type="button" class="remove-item-btn w-full bg-red-500 hover:bg-red-600 text-white p-2 rounded-md h-10" title="Remove Item">
                                 <svg class="w-4 h-4 mx-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
                             </button>
                         </div>
@@ -102,54 +121,226 @@
         </form>
     </div>
 
+    <div id="search-modal" class="hidden fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50">
+        <div class="relative top-20 mx-auto p-5 border w-full max-w-lg shadow-lg rounded-md bg-white">
+            <div class="mt-3">
+                <h3 class="text-lg leading-6 font-medium text-gray-900">Search for an Item</h3>
+                <div class="mt-2 flex gap-2">
+                    <input type="text" id="search-modal-query" class="flex-grow w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-blue-500 focus:border-blue-500" placeholder="Enter item name (e.g., jellopy)...">
+                    <button id="search-modal-button" class="bg-blue-500 hover:bg-blue-600 text-white font-bold py-2 px-4 rounded-md transition duration-300">Search</button>
+                </div>
+                <div id="search-modal-results" class="mt-4 max-h-60 overflow-y-auto">
+                    </div>
+                <div class="items-center px-4 py-3 mt-4 text-right">
+                    <button id="search-modal-close" class="px-4 py-2 bg-gray-200 text-gray-800 rounded-md hover:bg-gray-300">
+                        Close
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+
 <script>
     document.addEventListener('DOMContentLoaded', () => {
         const container = document.getElementById('items-container');
         const addButton = document.getElementById('add-item-btn');
-        // Start counting from the number of rows already rendered by the server
         let itemCount = document.querySelectorAll('.item-row').length;
+        let debounceTimer;
 
-        function attachRemoveListener(button) {
-            button.addEventListener('click', () => {
-                // Find the closest parent with the 'item-row' class and remove it
-                button.closest('.item-row').remove();
-            });
+        // --- Search Modal Elements and Logic ---
+        const searchModal = document.getElementById('search-modal');
+        const searchModalCloseBtn = document.getElementById('search-modal-close');
+        const searchModalQueryInput = document.getElementById('search-modal-query');
+        const searchModalSearchBtn = document.getElementById('search-modal-button');
+        const searchModalResultsContainer = document.getElementById('search-modal-results');
+        let currentTargetIdInput = null; // This will hold the input element we're targeting
+
+        function openSearchModal(targetInput) {
+            currentTargetIdInput = targetInput;
+            searchModal.classList.remove('hidden');
+            searchModalQueryInput.focus();
+        }
+
+        function closeSearchModal() {
+            searchModal.classList.add('hidden');
+            searchModalQueryInput.value = '';
+            searchModalResultsContainer.innerHTML = '';
+            currentTargetIdInput = null;
+        }
+
+        searchModalCloseBtn.addEventListener('click', closeSearchModal);
+
+        function performItemSearch() {
+            const query = searchModalQueryInput.value;
+            if (query.length < 3) {
+                searchModalResultsContainer.innerHTML = '<p class="p-4 text-center text-gray-500">Please enter at least 3 characters.</p>';
+                return;
+            }
+            searchModalResultsContainer.innerHTML = '<p class="p-4 text-center text-gray-500">Searching...</p>';
+
+            fetch(`/api/item-search?query=${encodeURIComponent(query)}`)
+                .then(response => {
+                    if (!response.ok) { throw new Error('Search failed'); }
+                    return response.json();
+                })
+                .then(data => {
+                    searchModalResultsContainer.innerHTML = '';
+                    if (data && data.length > 0) {
+                        const list = document.createElement('ul');
+                        list.className = 'divide-y divide-gray-200';
+                        data.forEach(item => {
+                            const li = document.createElement('li');
+                            li.className = 'p-2 hover:bg-gray-100 cursor-pointer flex items-center gap-3';
+                            li.dataset.itemId = item.ID;
+                            li.innerHTML = `
+                                <img src="${item.ImageURL}" alt="${item.Name}" class="h-8 w-8 object-contain flex-shrink-0">
+                                <div class="truncate">
+                                    <p class="font-semibold text-sm truncate" title="${item.Name}">${item.Name}</p>
+                                    <p class="text-xs text-gray-500">ID: ${item.ID}</p>
+                                </div>
+                            `;
+                            li.addEventListener('click', () => {
+                                if (currentTargetIdInput) {
+                                    currentTargetIdInput.value = item.ID;
+                                    currentTargetIdInput.dispatchEvent(new Event('change'));
+                                }
+                                closeSearchModal();
+                            });
+                            list.appendChild(li);
+                        });
+                        searchModalResultsContainer.appendChild(list);
+                    } else {
+                        searchModalResultsContainer.innerHTML = '<p class="p-4 text-center text-gray-500">No items found.</p>';
+                    }
+                })
+                .catch(error => {
+                    searchModalResultsContainer.innerHTML = `<p class="p-4 text-center text-red-500">${error.message}</p>`;
+                });
+        }
+
+        searchModalSearchBtn.addEventListener('click', performItemSearch);
+        searchModalQueryInput.addEventListener('keyup', (event) => {
+            if (event.key === 'Enter') { performItemSearch(); }
+        });
+
+
+        // --- Item Preview Logic ---
+        function fetchItemPreview(inputElement) {
+            const itemRow = inputElement.closest('.item-row');
+            const previewContainer = itemRow.querySelector('.item-preview');
+            const hiddenNameInput = itemRow.querySelector('.item-name-hidden');
+            const itemID = inputElement.value;
+
+            previewContainer.innerHTML = '<span class="text-gray-400 text-sm pl-1">...</span>';
+            hiddenNameInput.value = '';
+
+            if (!itemID || itemID <= 0) {
+                previewContainer.innerHTML = '<span class="text-gray-400 text-sm pl-1">Enter ID...</span>';
+                return;
+            }
+
+            clearTimeout(debounceTimer);
+            debounceTimer = setTimeout(() => {
+                fetch(`/api/item-details?id=${itemID}`)
+                    .then(response => {
+                        if (!response.ok) { return response.text().then(text => { throw new Error(text || 'Item not found') }); }
+                        return response.json();
+                    })
+                    .then(data => {
+                        if (data && data.Name && data.ImageURL) {
+                            previewContainer.innerHTML = `
+                                <div class="flex items-center gap-2">
+                                    <img src="${data.ImageURL}" alt="${data.Name}" class="h-8 w-8 object-contain">
+                                    <span class="font-semibold text-sm truncate" title="${data.Name}">${data.Name}</span>
+                                </div>`;
+                            hiddenNameInput.value = data.Name;
+                        } else {
+                            throw new Error('Invalid data received');
+                        }
+                    })
+                    .catch(error => {
+                        previewContainer.innerHTML = `<span class="text-red-500 text-xs pl-1">${error.message}</span>`;
+                        hiddenNameInput.value = '';
+                    });
+            }, 400);
+        }
+
+        // --- DOM Manipulation Logic ---
+        function attachRowListeners(rowElement) {
+            const idInput = rowElement.querySelector('.item-id-input');
+            idInput.addEventListener('keyup', () => fetchItemPreview(idInput));
+            idInput.addEventListener('change', () => fetchItemPreview(idInput));
+
+            const removeBtn = rowElement.querySelector('.remove-item-btn');
+            removeBtn.addEventListener('click', () => { rowElement.remove(); });
+
+            const searchBtn = rowElement.querySelector('.search-item-btn');
+            if (searchBtn) {
+                searchBtn.addEventListener('click', (e) => {
+                    e.preventDefault();
+                    openSearchModal(idInput);
+                });
+            }
         }
 
         function createItemRow() {
             const index = itemCount++;
             const div = document.createElement('div');
-            div.className = 'item-row p-3 border border-gray-200 rounded-md grid grid-cols-1 md:grid-cols-12 gap-3 items-end';
+            div.className = 'item-row p-3 border border-gray-200 rounded-md grid grid-cols-12 gap-x-3 gap-y-2 items-center';
             div.innerHTML = `
-                <div class="md:col-span-5">
-                    <label for="item_name_${index}" class="text-xs font-medium text-gray-600 block">Item Name</label>
-                    <input type="text" name="item_name[]" id="item_name_${index}" placeholder="e.g., Jellopy" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm text-sm" required>
+                <div class="col-span-12 md:col-span-5">
+                    <div class="grid grid-cols-3 gap-2 items-end">
+                        <div class="col-span-1">
+                            <label class="text-xs font-medium text-gray-600 block">
+                                Item ID
+                                <button type="button" class="search-item-btn text-blue-500 hover:underline font-normal">(Search)</button>
+                            </label>
+                            <input type="number" name="item_id[]" id="item_id_${index}" placeholder="501" min="1" class="item-id-input mt-1 block w-full rounded-md border-gray-300 shadow-sm text-sm" required>
+                            <input type="hidden" name="item_name[]" class="item-name-hidden">
+                        </div>
+                        <div class="item-preview col-span-2 h-10 flex items-center p-1 bg-gray-50 rounded">
+                            <span class="text-gray-400 text-sm pl-1">Enter ID...</span>
+                        </div>
+                    </div>
                 </div>
-                <div class="md:col-span-3">
-                    <label for="quantity_${index}" class="text-xs font-medium text-gray-600 block">Quantity</label>
-                    <input type="number" name="quantity[]" id="quantity_${index}" placeholder="100" min="1" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm text-sm" required>
+                <div class="col-span-4 md:col-span-1">
+                    <label for="quantity_${index}" class="text-xs font-medium text-gray-600 block">Qty</label>
+                    <input type="number" name="quantity[]" id="quantity_${index}" placeholder="1" min="1" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm text-sm" required>
                 </div>
-                <div class="md:col-span-3">
+                <div class="col-span-8 md:col-span-2">
                     <label for="price_${index}" class="text-xs font-medium text-gray-600 block">Price (ea)</label>
                     <input type="number" name="price[]" id="price_${index}" placeholder="50000" min="1" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm text-sm" required>
                 </div>
-                <div class="md:col-span-1">
-                    <button type="button" class="remove-item-btn w-full bg-red-500 hover:bg-red-600 text-white p-2 rounded-md" title="Remove Item">
+                <div class="col-span-8 md:col-span-3">
+                    <label for="currency_${index}" class="text-xs font-medium text-gray-600 block">Currency</label>
+                    <select name="currency[]" id="currency_${index}" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm text-sm h-10" required>
+                        <option value="zeny" selected>Zeny</option>
+                        <option value="rmt">R$ (RMT)</option>
+                    </select>
+                </div>
+                <div class="col-span-4 md:col-span-1">
+                    <label class="text-xs font-medium text-gray-600 block">&nbsp;</label>
+                    <button type="button" class="remove-item-btn w-full bg-red-500 hover:bg-red-600 text-white p-2 rounded-md h-10" title="Remove Item">
                         <svg class="w-4 h-4 mx-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
                     </button>
                 </div>
             `;
             container.appendChild(div);
-            // Attach listener to the new button
-            attachRemoveListener(div.querySelector('.remove-item-btn'));
+            attachRowListeners(div);
         }
 
-        // Attach listeners to all remove buttons already on the page (for edit mode)
-        document.querySelectorAll('.remove-item-btn').forEach(attachRemoveListener);
+        // --- Initial Setup ---
+        document.querySelectorAll('.item-row').forEach(row => {
+            attachRowListeners(row);
+            const idInput = row.querySelector('.item-id-input');
+            if (idInput && idInput.value) {
+                fetchItemPreview(idInput);
+            }
+        });
 
         addButton.addEventListener('click', createItemRow);
 
-        // If it's a new post (no items rendered by server), add the first row automatically
         if (itemCount === 0) {
             createItemRow();
         }

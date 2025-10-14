@@ -107,9 +107,12 @@
                     <ul class="divide-y divide-gray-200">
                         {{range .Items}}
                         <li class="py-2 grid grid-cols-12 gap-2 text-sm">
-                            <span class="col-span-6 font-semibold">{{.ItemName}}</span>
+                            <span class="col-span-6 font-semibold">
+                                {{.ItemName}}
+                                {{if .ItemID.Valid}}<span class="text-xs text-gray-400 font-normal ml-1">#{{.ItemID.Int64}}</span>{{end}}
+                            </span>
                             <span class="col-span-3 text-gray-600 text-right">{{.Quantity}}x</span>
-                            <span class="col-span-3 font-mono text-right" data-price="{{.Price}}"></span>
+                            <span class="col-span-3 font-mono text-right" data-price="{{.Price}}" data-currency="{{.Currency}}"></span>
                         </li>
                         {{end}}
                     </ul>
@@ -171,8 +174,17 @@
             // --- Page-Specific Logic ---
             document.querySelectorAll('[data-price]').forEach(elem => {
                 const price = parseInt(elem.dataset.price, 10);
+                const currency = elem.dataset.currency || 'zeny'; // Default to zeny
+
                 if (!isNaN(price)) {
-                    elem.textContent = `${price.toLocaleString()}z`;
+                    if (currency === 'rmt') {
+                        // Format as BRL (Brazilian Real)
+                        elem.textContent = price.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+                        elem.classList.add('text-blue-600'); // Style RMT differently
+                    } else {
+                        // Format as Zeny
+                        elem.textContent = `${price.toLocaleString()}z`;
+                    }
                 }
             });
         });
