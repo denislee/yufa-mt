@@ -6,6 +6,7 @@ require (
 	github.com/PuerkitoBio/goquery v1.10.3
 	github.com/chromedp/chromedp v0.14.1
 	github.com/mattn/go-sqlite3 v1.14.32
+	golang.org/x/crypto v0.37.0
 )
 
 require (

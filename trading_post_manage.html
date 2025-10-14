@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Manage Post - Yufa Market Tracker</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        .capitalize {
+            text-transform: capitalize;
+        }
+    </style>
+</head>
+<body class="bg-gray-100 text-gray-800">
+
+    <nav class="bg-white shadow-sm">
+        <div class="container mx-auto px-4">
+            <div class="flex justify-between items-center py-2">
+                <a href="/" class="text-xl font-semibold text-gray-700">Yufa Market Tracker</a>
+                <a href="/trading-post" class="text-blue-500 hover:underline">&larr; Back to Trading Post</a>
+            </div>
+        </div>
+    </nav>
+
+    <div class="container mx-auto px-4 py-10 max-w-lg">
+        <div class="bg-white p-8 rounded-lg shadow-lg">
+            <h1 class="text-2xl font-bold text-gray-800 text-center capitalize">{{.Action}} Your Post</h1>
+            <p class="text-gray-600 mt-2 text-center">To continue, please enter the Edit/Delete key that was provided when you created this post.</p>
+            
+            <form action="/trading-post/manage?action={{.Action}}&id={{.PostID}}" method="POST" class="mt-6">
+                <div>
+                    <label for="edit_token" class="block text-sm font-bold text-gray-700 mb-1">Edit/Delete Key</label>
+                    <input type="text" id="edit_token" name="edit_token" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500" required autofocus>
+                </div>
+                
+                <div class="mt-6">
+                    {{if eq .Action "delete"}}
+                    <button type="submit" class="w-full bg-red-600 hover:bg-red-700 text-white font-bold py-3 px-4 rounded-md shadow-lg transition duration-300">
+                        Confirm Deletion
+                    </button>
+                    {{else}}
+                     <button type="submit" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-4 rounded-md shadow-lg transition duration-300">
+                        Proceed to Edit
+                    </button>
+                    {{end}}
+                </div>
+            </form>
+        </div>
+    </div>
+</body>
+</html>

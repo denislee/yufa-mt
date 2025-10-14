@@ -245,6 +245,36 @@ func initDB(filepath string) (*sql.DB, error) {
 		return nil, fmt.Errorf("could not create index on page_views: %w", err)
 	}
 
+	// ADDED: SQL statement for the main 'trading_posts' table.
+	// This table holds info about the post itself, not the items.
+	createTradingPostsTableSQL := `
+CREATE TABLE IF NOT EXISTS trading_posts (
+    "id" INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+    "post_type" TEXT NOT NULL, -- 'buying' or 'selling'
+    "character_name" TEXT NOT NULL,
+    "contact_info" TEXT,
+    "notes" TEXT,
+    "created_at" TEXT NOT NULL,
+    "edit_token_hash" TEXT NOT NULL
+);`
+	if _, err = db.Exec(createTradingPostsTableSQL); err != nil {
+		return nil, fmt.Errorf("could not create trading_posts table: %w", err)
+	}
+
+	// ADDED: SQL statement for the 'trading_post_items' table.
+	// This table holds the individual items, linked to a post.
+	createTradingPostItemsTableSQL := `
+CREATE TABLE IF NOT EXISTS trading_post_items (
+    "id" INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+    "post_id" INTEGER NOT NULL,
+    "item_name" TEXT NOT NULL,
+    "quantity" INTEGER NOT NULL,
+    "price" INTEGER NOT NULL,
+    FOREIGN KEY(post_id) REFERENCES trading_posts(id) ON DELETE CASCADE
+);`
+	if _, err = db.Exec(createTradingPostItemsTableSQL); err != nil {
+		return nil, fmt.Errorf("could not create trading_post_items table: %w", err)
+	}
 	// After all tables are ensured to exist, apply any pending migrations.
 	if err := applyMigrations(db); err != nil {
 		return nil, err
@@ -252,4 +282,3 @@ func initDB(filepath string) (*sql.DB, error) {
 
 	return db, nil
 }
-

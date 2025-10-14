@@ -116,6 +116,11 @@ func main() {
 	http.HandleFunc("/character-changelog", visitorTracker(characterChangelogHandler))
 	http.HandleFunc("/store", visitorTracker(storeDetailHandler))
 
+	// ... after other http.HandleFunc calls
+	http.HandleFunc("/trading-post", visitorTracker(tradingPostListHandler))
+	http.HandleFunc("/trading-post/new", visitorTracker(tradingPostFormHandler))
+	http.HandleFunc("/trading-post/manage", visitorTracker(tradingPostManageHandler)) // For edit/delete actions
+
 	// --- ADMIN ROUTES ---
 	// Admin routes are NOT tracked.
 	http.HandleFunc("/admin", basicAuth(adminHandler))

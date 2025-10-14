@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Trading Post - Yufa Market Tracker</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        html { font-size: 110%; }
+        .container {
+            max-width: 95% !important;
+        }
+    </style>
+</head>
+<body class="bg-gray-100 text-gray-800 text-sm sm:text-base">
+
+    <nav class="bg-white shadow-sm sticky top-0 z-10">
+        <div class="container mx-auto px-4">
+            <div class="flex justify-between items-center py-2">
+                <div class="text-xl font-semibold text-gray-700">Yufa Market Tracker</div>
+                <div class="hidden md:flex space-x-4">
+                    <a href="/" class="text-gray-600 hover:text-blue-500">Summary</a>
+                    <a href="/full-list" class="text-gray-600 hover:text-blue-500">Full List</a>
+                    <a href="/activity" class="text-gray-600 hover:text-blue-500">Activity</a>
+                    <a href="/players" class="text-gray-600 hover:text-blue-500">Player Count</a>
+                    <a href="/characters" class="text-gray-600 hover:text-blue-500">Characters</a>
+                    <a href="/guilds" class="text-gray-600 hover:text-blue-500">Guilds</a>
+                    <a href="/mvp-kills" class="text-gray-600 hover:text-blue-500">MVP Kills</a>
+                    <a href="/trading-post" class="text-blue-500 font-bold">Trading Post</a>
+                </div>
+                <div class="md:hidden flex items-center">
+                    <button id="mobile-menu-button" class="text-gray-600 hover:text-gray-800 focus:outline-none">
+                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16m-7 6h7"></path></svg>
+                    </button>
+                </div>
+            </div>
+        </div>
+        <div id="mobile-menu" class="hidden md:hidden border-t border-gray-200">
+            <a href="/" class="block py-2 px-4 text-sm text-gray-600 hover:bg-gray-50">Summary</a>
+            <a href="/full-list" class="block py-2 px-4 text-sm text-gray-600 hover:bg-gray-50">Full List</a>
+            <a href="/activity" class="block py-2 px-4 text-sm text-gray-600 hover:bg-gray-50">Activity</a>
+            <a href="/players" class="block py-2 px-4 text-sm text-gray-600 hover:bg-gray-50">Player Count</a>
+            <a href="/characters" class="block py-2 px-4 text-sm text-gray-600 hover:bg-gray-50">Characters</a>
+            <a href="/guilds" class="block py-2 px-4 text-sm text-gray-600 hover:bg-gray-50">Guilds</a>
+            <a href="/mvp-kills" class="block py-2 px-4 text-sm text-gray-600 hover:bg-gray-50">MVP Kills</a>
+            <a href="/trading-post" class="block py-2 px-4 text-sm bg-blue-50 text-blue-600 font-semibold">Trading Post</a>
+        </div>
+    </nav>
+
+    <div class="container mx-auto px-4 py-6">
+        <div class="flex flex-col sm:flex-row justify-between sm:items-center gap-4 mb-4">
+            <div>
+                <h1 class="text-2xl font-bold text-gray-800">Trading Post</h1>
+                <p class="text-gray-600">Player-submitted buy and sell orders.</p>
+            </div>
+            <a href="/trading-post/new" class="bg-green-500 hover:bg-green-700 text-white font-bold py-2 px-4 rounded-md shadow transition duration-300 ease-in-out transform hover:-translate-y-px">
+                Create New Post
+            </a>
+        </div>
+        
+        <div class="space-y-4">
+            {{range .Posts}}
+            <div class="bg-white shadow-lg rounded-lg overflow-hidden">
+                <div class="p-4 border-b border-gray-200 bg-gray-50 flex flex-wrap justify-between items-center gap-2">
+                    <div class="flex items-center gap-4">
+                        {{if eq .PostType "selling"}}
+                            <span class="font-bold text-lg text-red-600">Selling</span>
+                        {{else}}
+                            <span class="font-bold text-lg text-green-600">Buying</span>
+                        {{end}}
+                        <div class="text-sm">
+                            <span class="font-semibold text-gray-800">{{.CharacterName}}</span>
+                            {{if .ContactInfo.Valid}}<span class="text-gray-500 ml-2">| {{.ContactInfo.String}}</span>{{end}}
+                        </div>
+                    </div>
+                    <div class="text-xs text-gray-500" title="{{.CreatedAt}}">
+                        {{.CreatedAgo}}
+                    </div>
+                </div>
+
+                <div class="p-4">
+                    <ul class="divide-y divide-gray-200">
+                        {{range .Items}}
+                        <li class="py-2 grid grid-cols-12 gap-2 text-sm">
+                            <span class="col-span-6 font-semibold">{{.ItemName}}</span>
+                            <span class="col-span-3 text-gray-600 text-right">{{.Quantity}}x</span>
+                            <span class="col-span-3 font-mono text-right" data-price="{{.Price}}"></span>
+                        </li>
+                        {{end}}
+                    </ul>
+                </div>
+                
+                {{if .Notes.Valid}}
+                <div class="px-4 pb-4 text-sm text-gray-600 border-t border-gray-100 pt-3">
+                    <strong>Notes:</strong> {{.Notes.String}}
+                </div>
+                {{end}}
+
+                <div class="bg-gray-50 p-2 text-right">
+                    <a href="/trading-post/manage?action=edit&id={{.ID}}" class="text-xs text-blue-500 hover:underline">Edit</a>
+                    <span class="mx-1 text-gray-300">|</span>
+                    <a href="/trading-post/manage?action=delete&id={{.ID}}" class="text-xs text-red-500 hover:underline">Delete</a>
+                </div>
+            </div>
+            {{else}}
+            <div class="text-center py-10 px-4 bg-white rounded-lg shadow">
+                <p class="text-gray-500">No trading posts found. Be the first to create one!</p>
+            </div>
+            {{end}}
+        </div>
+    </div>
+    
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            document.getElementById('mobile-menu-button').addEventListener('click', function() {
+                document.getElementById('mobile-menu').classList.toggle('hidden');
+            });
+            document.querySelectorAll('[data-price]').forEach(elem => {
+                const price = parseInt(elem.dataset.price, 10);
+                if (!isNaN(price)) {
+                    elem.textContent = `${price.toLocaleString()}z`;
+                }
+            });
+        });
+    </script>
+</body>
+</html>

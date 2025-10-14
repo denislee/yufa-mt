@@ -2,6 +2,7 @@ package main
 
 import (
 	"database/sql"
+	"fmt"
 	"html/template"
 	"time"
 )
@@ -441,3 +442,52 @@ type AdminDashboardData struct {
 	PageViewsTotal       int
 }
 
+// in models.go
+
+// ADDED: TradingPostItem represents one item within a larger post.
+type TradingPostItem struct {
+	ItemName string
+	Quantity int
+	Price    int64
+}
+
+// MODIFIED: TradingPost now holds post-level info and a slice of items.
+type TradingPost struct {
+	ID            int
+	PostType      string // "buying" or "selling"
+	CharacterName string
+	ContactInfo   sql.NullString
+	Notes         sql.NullString
+	CreatedAt     string
+	EditTokenHash string
+	Items         []TradingPostItem // A post can now have multiple items
+}
+
+// ADDED: TradingPostPageData holds data for the trading post list view.
+type TradingPostPageData struct {
+	Posts          []TradingPost
+	LastScrapeTime string // To keep the header consistent
+	// Add filter/sort/pagination fields here as needed
+	FilterType  string
+	SearchQuery string
+}
+
+// ADDED: TradingPostSuccessData holds data for the post-creation success page.
+type TradingPostSuccessData struct {
+	Post      TradingPost
+	EditToken string // The raw token to show the user ONCE
+}
+
+// ADDED: Helper to format creation time for display.
+func (tp TradingPost) CreatedAgo() string {
+	t, err := time.Parse(time.RFC3339, tp.CreatedAt)
+	if err != nil {
+		return "a while ago"
+	}
+
+	d := time.Since(t)
+	if d.Hours() < 24 {
+		return fmt.Sprintf("%d hours ago", int(d.Hours()))
+	}
+	return fmt.Sprintf("%d days ago", int(d.Hours()/24))
+}

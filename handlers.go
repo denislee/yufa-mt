@@ -1,9 +1,12 @@
 package main
 
 import (
+	"crypto/rand"
 	"database/sql"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"golang.org/x/crypto/bcrypt"
 	"html/template"
 	"log"
 	"math"
@@ -2526,4 +2529,260 @@ func storeDetailHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	tmpl.Execute(w, data)
+}
+
+// generateSecretToken creates a cryptographically secure random token.
+func generateSecretToken(length int) (string, error) {
+	bytes := make([]byte, length)
+	if _, err := rand.Read(bytes); err != nil {
+		return "", err
+	}
+	return hex.EncodeToString(bytes), nil
+}
+
+// --- Handlers ---
+
+// tradingPostListHandler displays the list of all trading posts.
+func tradingPostListHandler(w http.ResponseWriter, r *http.Request) {
+	// 1. Get all parent posts
+	postRows, err := db.Query(`
+        SELECT id, post_type, character_name, contact_info, created_at, notes 
+        FROM trading_posts ORDER BY created_at DESC
+    `)
+	if err != nil {
+		http.Error(w, "Database query failed", http.StatusInternalServerError)
+		log.Printf("❌ Trading Post query error: %v", err)
+		return
+	}
+	defer postRows.Close()
+
+	var posts []TradingPost
+	postMap := make(map[int]*TradingPost) // Map to easily add items to posts
+
+	for postRows.Next() {
+		var post TradingPost
+		var createdAtStr string
+		err := postRows.Scan(&post.ID, &post.PostType, &post.CharacterName, &post.ContactInfo, &createdAtStr, &post.Notes)
+		if err != nil {
+			log.Printf("⚠️ Failed to scan trading post row: %v", err)
+			continue
+		}
+
+		parsedTime, _ := time.Parse(time.RFC3339, createdAtStr)
+		post.CreatedAt = parsedTime.Format("2006-01-02 15:04")
+		post.Items = []TradingPostItem{} // Initialize empty slice
+
+		posts = append(posts, post)
+		postMap[post.ID] = &posts[len(posts)-1]
+	}
+
+	// 2. Get all items and map them to their parent posts
+	itemRows, err := db.Query("SELECT post_id, item_name, quantity, price FROM trading_post_items")
+	if err != nil {
+		http.Error(w, "Database item query failed", http.StatusInternalServerError)
+		return
+	}
+	defer itemRows.Close()
+
+	for itemRows.Next() {
+		var item TradingPostItem
+		var postID int
+		if err := itemRows.Scan(&postID, &item.ItemName, &item.Quantity, &item.Price); err != nil {
+			log.Printf("⚠️ Failed to scan trading post item row: %v", err)
+			continue
+		}
+
+		if post, ok := postMap[postID]; ok {
+			post.Items = append(post.Items, item)
+		}
+	}
+
+	tmpl, err := template.ParseFiles("trading_post.html")
+	if err != nil {
+		http.Error(w, "Could not load template", http.StatusInternalServerError)
+		return
+	}
+
+	data := TradingPostPageData{
+		Posts:          posts,
+		LastScrapeTime: getLastScrapeTime(),
+	}
+	tmpl.Execute(w, data)
+}
+
+// tradingPostFormHandler handles both displaying the form and processing the submission.
+func tradingPostFormHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method == http.MethodPost {
+		r.ParseForm()
+
+		// 1. Extract post-level data
+		postType := r.FormValue("post_type")
+		characterName := r.FormValue("character_name")
+		if postType == "" || characterName == "" {
+			http.Error(w, "Post type and character name are required.", http.StatusBadRequest)
+			return
+		}
+
+		// 2. Generate and hash the secret token
+		token, err := generateSecretToken(16)
+		if err != nil {
+			http.Error(w, "Could not generate security token.", http.StatusInternalServerError)
+			return
+		}
+		tokenHash, err := bcrypt.GenerateFromPassword([]byte(token), bcrypt.DefaultCost)
+		if err != nil {
+			http.Error(w, "Could not secure post.", http.StatusInternalServerError)
+			return
+		}
+
+		// 3. Begin a transaction
+		tx, err := db.Begin()
+		if err != nil {
+			http.Error(w, "Failed to start database transaction.", http.StatusInternalServerError)
+			return
+		}
+
+		// 4. Insert the main post record to get its ID
+		now := time.Now().Format(time.RFC3339)
+		res, err := tx.Exec(`
+            INSERT INTO trading_posts (post_type, character_name, contact_info, notes, created_at, edit_token_hash)
+            VALUES (?, ?, ?, ?, ?, ?)
+        `, postType, characterName, r.FormValue("contact_info"), r.FormValue("notes"), now, string(tokenHash))
+
+		if err != nil {
+			tx.Rollback()
+			http.Error(w, "Failed to save post.", http.StatusInternalServerError)
+			log.Printf("❌ Failed to insert trading post: %v", err)
+			return
+		}
+		postID, _ := res.LastInsertId()
+
+		// 5. Loop through submitted items and insert them
+		itemNames := r.Form["item_name[]"]
+		quantities := r.Form["quantity[]"]
+		prices := r.Form["price[]"]
+
+		if len(itemNames) == 0 || len(itemNames) != len(quantities) || len(itemNames) != len(prices) {
+			tx.Rollback()
+			http.Error(w, "Invalid or missing item data. At least one item is required.", http.StatusBadRequest)
+			return
+		}
+
+		// Prepare statement for inserting items
+		stmt, err := tx.Prepare("INSERT INTO trading_post_items (post_id, item_name, quantity, price) VALUES (?, ?, ?, ?)")
+		if err != nil {
+			tx.Rollback()
+			http.Error(w, "Database preparation failed.", http.StatusInternalServerError)
+			return
+		}
+		defer stmt.Close()
+
+		for i, itemName := range itemNames {
+			if strings.TrimSpace(itemName) == "" {
+				continue
+			} // Skip empty rows
+			quantity, _ := strconv.Atoi(quantities[i])
+			price, _ := strconv.ParseInt(prices[i], 10, 64)
+
+			if quantity <= 0 || price <= 0 {
+				tx.Rollback()
+				http.Error(w, "All items must have a valid quantity and price.", http.StatusBadRequest)
+				return
+			}
+			_, err := stmt.Exec(postID, itemName, quantity, price)
+			if err != nil {
+				tx.Rollback()
+				http.Error(w, "Failed to save one of the items.", http.StatusInternalServerError)
+				log.Printf("❌ Failed to insert trading post item: %v", err)
+				return
+			}
+		}
+
+		// 6. If all is well, commit the transaction
+		if err := tx.Commit(); err != nil {
+			http.Error(w, "Failed to finalize transaction.", http.StatusInternalServerError)
+			return
+		}
+
+		// 7. Show success page
+		tmpl, err := template.ParseFiles("trading_post_success.html")
+		if err != nil {
+			http.Error(w, "Could not load success template", http.StatusInternalServerError)
+			return
+		}
+
+		successData := map[string]string{
+			"ItemName":  "your items", // Generic message
+			"EditToken": token,
+		}
+		tmpl.Execute(w, successData)
+
+	} else {
+		// --- SHOW THE FORM ---
+		tmpl, err := template.ParseFiles("trading_post_form.html")
+		if err != nil {
+			http.Error(w, "Could not load form template", http.StatusInternalServerError)
+			return
+		}
+		tmpl.Execute(w, nil)
+	}
+}
+
+// tradingPostManageHandler will handle the deletion logic. (Edit is similar)
+func tradingPostManageHandler(w http.ResponseWriter, r *http.Request) {
+	postID := r.URL.Query().Get("id")
+	action := r.URL.Query().Get("action") // "edit" or "delete"
+
+	if r.Method == http.MethodPost {
+		r.ParseForm()
+		token := r.FormValue("edit_token")
+
+		// 1. Retrieve the stored hash for the post
+		var tokenHash string
+		err := db.QueryRow("SELECT edit_token_hash FROM trading_posts WHERE id = ?", postID).Scan(&tokenHash)
+		if err != nil {
+			http.Error(w, "Post not found.", http.StatusNotFound)
+			return
+		}
+
+		// 2. Compare the user's token with the stored hash
+		err = bcrypt.CompareHashAndPassword([]byte(tokenHash), []byte(token))
+		if err != nil {
+			// Passwords do not match
+			http.Error(w, "Invalid edit/delete key.", http.StatusForbidden)
+			return
+		}
+
+		// 3. If they match, perform the action
+		if action == "delete" {
+			_, err := db.Exec("DELETE FROM trading_posts WHERE id = ?", postID)
+			if err != nil {
+				http.Error(w, "Failed to delete post.", http.StatusInternalServerError)
+				return
+			}
+			fmt.Fprintln(w, "Post successfully deleted. You can now close this page.")
+		} else if action == "edit" {
+			// TODO: Implement edit logic. It would involve showing the form
+			// pre-filled with data and then running an UPDATE query.
+			fmt.Fprintln(w, "Edit functionality not yet implemented.")
+		} else {
+			http.Error(w, "Invalid action.", http.StatusBadRequest)
+		}
+
+	} else {
+		// --- SHOW THE MANAGEMENT FORM (to enter the token) ---
+		// You will need to create `trading_post_manage.html`
+		tmpl, err := template.ParseFiles("trading_post_manage.html")
+		if err != nil {
+			http.Error(w, "Could not load management template", http.StatusInternalServerError)
+			return
+		}
+
+		// Pass the Post ID and Action to the template
+		data := map[string]string{
+			"PostID": postID,
+			"Action": action,
+		}
+		tmpl.Execute(w, data)
+	}
 }
