@@ -623,3 +623,56 @@ func adminEditTradingPostHandler(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// adminClearTradingPostItemsHandler drops the trading_post_items table.
+func adminClearTradingPostItemsHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Redirect(w, r, "/admin", http.StatusSeeOther)
+		return
+	}
+
+	var msg string
+	// This now drops the entire table. It will be recreated on next app start.
+	_, err := db.Exec("DROP TABLE IF EXISTS trading_post_items")
+	if err != nil {
+		log.Printf("❌ Failed to drop trading_post_items table: %v", err)
+		msg = "Database+error+while+dropping+trading+post+items+table."
+	} else {
+		msg = "Successfully+dropped+the+trading_post_items+table."
+		log.Printf("👤 Admin dropped the trading_post_items table.")
+	}
+
+	http.Redirect(w, r, "/admin?msg="+msg, http.StatusSeeOther)
+}
+
+// adminClearTradingPostsHandler drops the trading_posts and trading_post_items tables.
+func adminClearTradingPostsHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Redirect(w, r, "/admin", http.StatusSeeOther)
+		return
+	}
+
+	var msg string
+	var err error
+
+	// Drop items table first due to foreign key constraint
+	_, err = db.Exec("DROP TABLE IF EXISTS trading_post_items")
+	if err != nil {
+		log.Printf("❌ Failed to drop trading_post_items table (dependency): %v", err)
+		msg = "Database+error+while+dropping+dependent+items+table."
+		http.Redirect(w, r, "/admin?msg="+msg, http.StatusSeeOther)
+		return
+	}
+
+	// Then, drop the posts table
+	_, err = db.Exec("DROP TABLE IF EXISTS trading_posts")
+	if err != nil {
+		log.Printf("❌ Failed to drop trading_posts table: %v", err)
+		msg = "Database+error+while+dropping+trading_posts+table."
+	} else {
+		msg = "Successfully+dropped+the+trading_posts+and+trading_post_items+tables."
+		log.Printf("👤 Admin dropped the trading_posts and trading_post_items tables.")
+	}
+
+	http.Redirect(w, r, "/admin?msg="+msg, http.StatusSeeOther)
+}
+

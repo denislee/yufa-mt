@@ -127,6 +127,19 @@
                         <button type="submit" class="bg-red-600 hover:bg-red-800 text-white font-bold py-2 px-4 rounded">Clear All MVP Kills</button>
                     </form>
                 </div>
+                
+                <div class="bg-white p-6 rounded-lg shadow mb-8">
+                    <h2 class="text-xl font-bold mb-4 text-red-700">Trading Post Data Management (DANGER)</h2>
+                    <p class="text-sm text-gray-600 mb-4">These actions permanently drop tables from the database. They will be recreated on application restart, but all data will be lost.</p>
+                    <div class="space-y-4">
+                        <form action="/admin/trading/clear-items" method="POST" onsubmit="return confirm('DANGER: Are you sure you want to completely DROP the `trading_post_items` table? The table will be gone until the application is restarted.');">
+                            <button type="submit" class="w-full bg-orange-500 hover:bg-orange-700 text-white font-bold py-2 px-4 rounded">Drop Trading Post Items Table</button>
+                        </form>
+                        <form action="/admin/trading/clear-posts" method="POST" onsubmit="return confirm('DANGER: Are you sure you want to completely DROP both the `trading_posts` and `trading_post_items` tables? This is a complete wipe and the tables will be gone until the application is restarted.');">
+                            <button type="submit" class="w-full bg-red-600 hover:bg-red-800 text-white font-bold py-2 px-4 rounded">Drop All Trading Post Tables</button>
+                        </form>
+                    </div>
+                </div>
 
                 <div class="bg-white p-6 rounded-lg shadow">
                     <h2 class="text-xl font-bold mb-4">Item Cache Management (RMS)</h2>
