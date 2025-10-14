@@ -2414,7 +2414,7 @@ func guildDetailHandler(w http.ResponseWriter, r *http.Request) {
 	tmpl.Execute(w, data)
 }
 
-// ADDED: storeDetailHandler serves the detailed information page for a single store.
+// storeDetailHandler serves the detailed information page for a single store.
 func storeDetailHandler(w http.ResponseWriter, r *http.Request) {
 	storeName := r.URL.Query().Get("name")
 	if storeName == "" {
@@ -2444,44 +2444,38 @@ func storeDetailHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	orderByFullClause := fmt.Sprintf("ORDER BY %s %s", orderByClause, order)
 
-	// --- FIXED LOGIC START ---
 	var items []Item
-	var sellerForQuery, timestampForQuery string
+	var sellerName, mapName, mapCoords, mostRecentTimestampStr string
 
-	// Step 1: Try to find the most recent ACTIVE store instance.
-	// An active store is one with at least one item currently available.
+	// Step 1: Find the full signature (seller, map, coords, timestamp) of the most recent
+	// instance of this store. This defines the specific store "session" we want to display.
 	err := db.QueryRow(`
-		SELECT seller_name, date_and_time_retrieved
+		SELECT seller_name, map_name, map_coordinates, date_and_time_retrieved
 		FROM items
-		WHERE store_name = ? AND is_available = 1
-		ORDER BY date_and_time_retrieved DESC
+		WHERE store_name = ?
+		ORDER BY date_and_time_retrieved DESC, id DESC
 		LIMIT 1
-	`, storeName).Scan(&sellerForQuery, &timestampForQuery)
+	`, storeName).Scan(&sellerName, &mapName, &mapCoords, &mostRecentTimestampStr)
 
-	// Step 2: If no active store is found, fall back to the last known (possibly inactive) store instance.
-	if err != nil { // This will be sql.ErrNoRows if no active store is found
-		err = db.QueryRow(`
-			SELECT seller_name, date_and_time_retrieved
-			FROM items
-			WHERE store_name = ?
-			ORDER BY date_and_time_retrieved DESC
-			LIMIT 1
-		`, storeName).Scan(&sellerForQuery, &timestampForQuery)
-	}
-
-	// Step 3: If we found a store instance (either active or inactive), fetch all its items from that specific time.
+	// Step 2: If a store instance was found, fetch all of its unique items.
 	if err == nil {
+		// This query fetches items from the specific store session identified in Step 1.
+		// It uses GROUP BY to de-duplicate items that might have been inserted multiple times
+		// in the same batch, selecting the one with the highest ID (the most recently inserted).
 		query := fmt.Sprintf(`
-			SELECT id, name_of_the_item, item_id, quantity, price, store_name, seller_name, date_and_time_retrieved, map_name, map_coordinates, is_available
+			SELECT
+				MAX(id), name_of_the_item, item_id, quantity, price, store_name, seller_name,
+				date_and_time_retrieved, map_name, map_coordinates, is_available
 			FROM items
-			WHERE store_name = ? AND seller_name = ? AND date_and_time_retrieved = ?
+			WHERE store_name = ? AND seller_name = ? AND map_name = ? AND map_coordinates = ? 
+			GROUP BY name_of_the_item, item_id, price, quantity
 			%s
 		`, orderByFullClause)
 
-		rows, err := db.Query(query, storeName, sellerForQuery, timestampForQuery)
-		if err != nil {
+		rows, queryErr := db.Query(query, storeName, sellerName, mapName, mapCoords)
+		if queryErr != nil {
 			http.Error(w, "Could not query for store items", http.StatusInternalServerError)
-			log.Printf("❌ Could not query for items in store '%s' (seller: %s, time: %s): %v", storeName, sellerForQuery, timestampForQuery, err)
+			log.Printf("❌ Could not query for items in store '%s': %v", storeName, queryErr)
 			return
 		}
 		defer rows.Close()
@@ -2489,33 +2483,23 @@ func storeDetailHandler(w http.ResponseWriter, r *http.Request) {
 		for rows.Next() {
 			var item Item
 			var retrievedTime string
+			// Scan the aggregated/grouped row. MAX(id) maps to item.ID.
 			if err := rows.Scan(&item.ID, &item.Name, &item.ItemID, &item.Quantity, &item.Price, &item.StoreName, &item.SellerName, &retrievedTime, &item.MapName, &item.MapCoordinates, &item.IsAvailable); err != nil {
 				log.Printf("⚠️ Failed to scan store item row: %v", err)
 				continue
 			}
 			parsedTime, _ := time.Parse(time.RFC3339, retrievedTime)
-			if err == nil {
-				item.Timestamp = parsedTime.Format("2006-01-02 15:04")
-			} else {
-				item.Timestamp = retrievedTime
-			}
+			item.Timestamp = parsedTime.Format("2006-01-02 15:04")
 			items = append(items, item)
 		}
-	} else if err != sql.ErrNoRows {
-		// Log any other database error that occurred during the fallback query.
-		log.Printf("⚠️ Could not find any store instance for '%s': %v", storeName, err)
-	}
-	// If err is sql.ErrNoRows here, it means the store name doesn't exist at all.
-	// The 'items' slice will be empty, and the template will handle it gracefully.
-	// --- FIXED LOGIC END ---
 
-	// Populate common store info for the header card
-	var sellerName, mapName, mapCoords string
-	if len(items) > 0 {
-		sellerName = items[0].SellerName
-		mapName = strings.ToLower(items[0].MapName) // Ensure map name is lowercase for URL
-		mapCoords = items[0].MapCoordinates
+	} else if err != sql.ErrNoRows {
+		// Log any database error other than the store not being found.
+		http.Error(w, "Database error finding store", http.StatusInternalServerError)
+		log.Printf("⚠️ Database error looking for store '%s': %v", storeName, err)
+		return
 	}
+	// If err is sql.ErrNoRows, the 'items' slice remains empty, and the page will correctly show "No items found".
 
 	// Load template and send data
 	funcMap := template.FuncMap{
@@ -2537,7 +2521,7 @@ func storeDetailHandler(w http.ResponseWriter, r *http.Request) {
 	data := StoreDetailPageData{
 		StoreName:      storeName,
 		SellerName:     sellerName,
-		MapName:        mapName,
+		MapName:        strings.ToLower(mapName), // Ensure map name is lowercase for URL
 		MapCoordinates: mapCoords,
 		Items:          items,
 		LastScrapeTime: getLastScrapeTime(),
