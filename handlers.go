@@ -2457,18 +2457,27 @@ func storeDetailHandler(w http.ResponseWriter, r *http.Request) {
 		LIMIT 1
 	`, storeName).Scan(&sellerName, &mapName, &mapCoords, &mostRecentTimestampStr)
 
-	// Step 2: If a store instance was found, fetch all of its unique items.
+	// Step 2: If a store instance was found, fetch its unique items.
 	if err == nil {
-		// This query fetches items from the specific store session identified in Step 1.
-		// It uses GROUP BY to de-duplicate items that might have been inserted multiple times
-		// in the same batch, selecting the one with the highest ID (the most recently inserted).
+		// MODIFIED QUERY: This query now uses a Common Table Expression (CTE) and the ROW_NUMBER()
+		// window function. It partitions the data by item name and orders by the internal ID
+		// to find the most recent entry for each unique item within the specific store session.
+		// It then selects only the top-ranked row (rn=1) for each item, effectively de-duplicating
+		// by name and keeping the latest version.
 		query := fmt.Sprintf(`
+			WITH RankedItems AS (
+				SELECT
+					id, name_of_the_item, item_id, quantity, price, store_name, seller_name,
+					date_and_time_retrieved, map_name, map_coordinates, is_available,
+					ROW_NUMBER() OVER(PARTITION BY name_of_the_item ORDER BY id DESC) as rn
+				FROM items
+				WHERE store_name = ? AND seller_name = ? AND map_name = ? AND map_coordinates = ?
+			)
 			SELECT
-				MAX(id), name_of_the_item, item_id, quantity, price, store_name, seller_name,
+				id, name_of_the_item, item_id, quantity, price, store_name, seller_name,
 				date_and_time_retrieved, map_name, map_coordinates, is_available
-			FROM items
-			WHERE store_name = ? AND seller_name = ? AND map_name = ? AND map_coordinates = ? 
-			GROUP BY name_of_the_item, item_id, price, quantity
+			FROM RankedItems
+			WHERE rn = 1
 			%s
 		`, orderByFullClause)
 
@@ -2483,7 +2492,7 @@ func storeDetailHandler(w http.ResponseWriter, r *http.Request) {
 		for rows.Next() {
 			var item Item
 			var retrievedTime string
-			// Scan the aggregated/grouped row. MAX(id) maps to item.ID.
+			// Scan the row. The selected `id` now correctly maps to `item.ID`.
 			if err := rows.Scan(&item.ID, &item.Name, &item.ItemID, &item.Quantity, &item.Price, &item.StoreName, &item.SellerName, &retrievedTime, &item.MapName, &item.MapCoordinates, &item.IsAvailable); err != nil {
 				log.Printf("⚠️ Failed to scan store item row: %v", err)
 				continue
