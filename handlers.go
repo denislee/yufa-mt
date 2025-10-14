@@ -12,6 +12,7 @@ import (
 	"math"
 	"net/http"
 	"net/url"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -31,6 +32,22 @@ var definedEvents = []EventDefinition{
 		EndTime:   "22:00",
 		Days:      []time.Weekday{time.Sunday},
 	},
+}
+
+var (
+	// Allows letters (upper/lower), numbers, and spaces.
+	nameSanitizer = regexp.MustCompile(`[^a-zA-Z0-9 ]+`)
+	// Allows letters, numbers, spaces, and common characters for contact info.
+	contactSanitizer = regexp.MustCompile(`[^a-zA-Z0-9\s:.,#@-]+`)
+	// Allows letters, numbers, spaces, and basic punctuation for notes.
+	notesSanitizer = regexp.MustCompile(`[^a-zA-Z0-9\s.,?!'-]+`)
+	// Allows letters, numbers, spaces, and characters common in item names.
+	itemSanitizer = regexp.MustCompile(`[^a-zA-Z0-9\s\[\]\+\-]+`)
+)
+
+// ADDED: A helper function to remove unwanted characters from a string.
+func sanitizeString(input string, sanitizer *regexp.Regexp) string {
+	return sanitizer.ReplaceAllString(input, "")
 }
 
 var mvpMobIDs = []string{
@@ -2634,15 +2651,26 @@ func tradingPostListHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 // tradingPostFormHandler handles both displaying the form and processing the submission.
+
 func tradingPostFormHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method == http.MethodPost {
 		r.ParseForm()
 
-		// 1. Extract post-level data
+		// 1. Extract, validate, and sanitize post-level data
 		postType := r.FormValue("post_type")
-		characterName := r.FormValue("character_name")
-		if postType == "" || characterName == "" {
-			http.Error(w, "Post type and character name are required.", http.StatusBadRequest)
+		// Instead of sanitizing, we validate post_type against a strict allowlist.
+		if postType != "selling" && postType != "buying" {
+			http.Error(w, "Invalid post type specified.", http.StatusBadRequest)
+			return
+		}
+
+		// Sanitize all other string inputs to remove potentially malicious characters.
+		characterName := sanitizeString(r.FormValue("character_name"), nameSanitizer)
+		contactInfo := sanitizeString(r.FormValue("contact_info"), contactSanitizer)
+		notes := sanitizeString(r.FormValue("notes"), notesSanitizer)
+
+		if strings.TrimSpace(characterName) == "" {
+			http.Error(w, "Character name is required.", http.StatusBadRequest)
 			return
 		}
 
@@ -2665,12 +2693,12 @@ func tradingPostFormHandler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		// 4. Insert the main post record to get its ID
+		// 4. Insert the main post record using the sanitized data
 		now := time.Now().Format(time.RFC3339)
 		res, err := tx.Exec(`
             INSERT INTO trading_posts (post_type, character_name, contact_info, notes, created_at, edit_token_hash)
             VALUES (?, ?, ?, ?, ?, ?)
-        `, postType, characterName, r.FormValue("contact_info"), r.FormValue("notes"), now, string(tokenHash))
+        `, postType, characterName, contactInfo, notes, now, string(tokenHash))
 
 		if err != nil {
 			tx.Rollback()
@@ -2680,7 +2708,7 @@ func tradingPostFormHandler(w http.ResponseWriter, r *http.Request) {
 		}
 		postID, _ := res.LastInsertId()
 
-		// 5. Loop through submitted items and insert them
+		// 5. Loop through submitted items, sanitize them, and insert them
 		itemNames := r.Form["item_name[]"]
 		quantities := r.Form["quantity[]"]
 		prices := r.Form["price[]"]
@@ -2691,7 +2719,6 @@ func tradingPostFormHandler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		// Prepare statement for inserting items
 		stmt, err := tx.Prepare("INSERT INTO trading_post_items (post_id, item_name, quantity, price) VALUES (?, ?, ?, ?)")
 		if err != nil {
 			tx.Rollback()
@@ -2700,10 +2727,14 @@ func tradingPostFormHandler(w http.ResponseWriter, r *http.Request) {
 		}
 		defer stmt.Close()
 
-		for i, itemName := range itemNames {
+		for i, rawItemName := range itemNames {
+			// Sanitize each item name from the list.
+			itemName := sanitizeString(rawItemName, itemSanitizer)
+
 			if strings.TrimSpace(itemName) == "" {
-				continue
-			} // Skip empty rows
+				continue // Skip empty rows that might result from sanitization.
+			}
+			// strconv functions inherently handle numeric validation.
 			quantity, _ := strconv.Atoi(quantities[i])
 			price, _ := strconv.ParseInt(prices[i], 10, 64)
 
@@ -2712,6 +2743,7 @@ func tradingPostFormHandler(w http.ResponseWriter, r *http.Request) {
 				http.Error(w, "All items must have a valid quantity and price.", http.StatusBadRequest)
 				return
 			}
+			// Use the sanitized item name in the database query.
 			_, err := stmt.Exec(postID, itemName, quantity, price)
 			if err != nil {
 				tx.Rollback()
