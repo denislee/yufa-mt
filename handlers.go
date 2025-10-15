@@ -46,11 +46,6 @@ var (
 	itemSanitizer = regexp.MustCompile(`[^a-zA-Z0-9\s\[\]\+\-]+`)
 )
 
-// ADDED: A helper function to remove unwanted characters from a string.
-func sanitizeString(input string, sanitizer *regexp.Regexp) string {
-	return sanitizer.ReplaceAllString(input, "")
-}
-
 var mvpMobIDs = []string{
 	"1038", "1039", "1046", "1059", "1086", "1087", "1112", "1115", "1147",
 	"1150", "1157", "1159", "1190", "1251", "1252", "1272", "1312", "1373",
@@ -82,24 +77,226 @@ var mvpNames = map[string]string{
 	"1511": "Amon Ra",
 }
 
-// generateEventIntervals creates a list of event occurrences within a given time window,
-// but only for days that have corresponding data points.
+// MvpKillCountOffset is a value subtracted from MVP kills for display purposes.
+const MvpKillCountOffset = 3
+
+// A single, reusable function map for all templates.
+var templateFuncs = template.FuncMap{
+	"lower": strings.ToLower,
+	"toggleOrder": func(currentOrder string) string {
+		if currentOrder == "ASC" {
+			return "DESC"
+		}
+		return "ASC"
+	},
+	"formatZeny": func(zeny int64) string {
+		s := strconv.FormatInt(zeny, 10)
+		if len(s) <= 3 {
+			return s
+		}
+		var result []string
+		for i := len(s); i > 0; i -= 3 {
+			start := i - 3
+			if start < 0 {
+				start = 0
+			}
+			result = append([]string{s[start:i]}, result...)
+		}
+		return strings.Join(result, ".")
+	},
+	"getKillCount": func(kills map[string]int, mobID string) int {
+		return kills[mobID]
+	},
+	"formatAvgLevel": func(level float64) string {
+		if level == 0 {
+			return "N/A"
+		}
+		return fmt.Sprintf("%.1f", level)
+	},
+}
+
+// -------------------------
+// -- HELPER FUNCTIONS --
+// -------------------------
+
+// renderTemplate is a helper to parse and execute templates, reducing boilerplate.
+func renderTemplate(w http.ResponseWriter, tmplFile string, data interface{}) {
+	tmpl, err := template.New(tmplFile).Funcs(templateFuncs).ParseFiles(tmplFile)
+	if err != nil {
+		log.Printf("❌ Could not load template '%s': %v", tmplFile, err)
+		http.Error(w, "Could not load template", http.StatusInternalServerError)
+		return
+	}
+	err = tmpl.Execute(w, data)
+	if err != nil {
+		log.Printf("❌ Could not execute template '%s': %v", tmplFile, err)
+		http.Error(w, "Could not render template", http.StatusInternalServerError)
+	}
+}
+
+// sanitizeString removes unwanted characters from a string based on a given regex sanitizer.
+// This is used to prevent injection attacks by enforcing a character whitelist.
+func sanitizeString(input string, sanitizer *regexp.Regexp) string {
+	return sanitizer.ReplaceAllString(input, "")
+}
+
+// getCombinedItemIDs performs a concurrent search on a remote database and the local DB
+// to find all relevant item IDs for a given search query.
+func getCombinedItemIDs(searchQuery string) ([]int, error) {
+	var wg sync.WaitGroup
+	scrapedIDsChan := make(chan []int, 1)
+	localIDsChan := make(chan []int, 1)
+
+	wg.Add(2)
+
+	// Goroutine 1: Scrape ragnarokdatabase.com
+	go func() {
+		defer wg.Done()
+		ids, err := scrapeRagnarokDatabaseSearch(searchQuery)
+		if err != nil {
+			log.Printf("⚠️ Concurrent scrape failed for '%s': %v", searchQuery, err)
+			scrapedIDsChan <- []int{} // Send empty slice on error
+			return
+		}
+		scrapedIDsChan <- ids
+	}()
+
+	// Goroutine 2: Search local DB by name for matching IDs
+	go func() {
+		defer wg.Done()
+		var ids []int
+		query := "SELECT DISTINCT item_id FROM items WHERE name_of_the_item LIKE ? AND item_id > 0"
+		rows, err := db.Query(query, "%"+searchQuery+"%")
+		if err != nil {
+			log.Printf("⚠️ Concurrent local ID search failed for '%s': %v", searchQuery, err)
+			localIDsChan <- []int{} // Send empty slice on error
+			return
+		}
+		defer rows.Close()
+		for rows.Next() {
+			var id int
+			if err := rows.Scan(&id); err == nil {
+				ids = append(ids, id)
+			}
+		}
+		localIDsChan <- ids
+	}()
+
+	wg.Wait()
+	close(scrapedIDsChan)
+	close(localIDsChan)
+
+	scrapedIDs := <-scrapedIDsChan
+	localIDs := <-localIDsChan
+
+	// Combine and de-duplicate IDs using a map
+	combinedIDs := make(map[int]struct{})
+	for _, id := range scrapedIDs {
+		combinedIDs[id] = struct{}{}
+	}
+	for _, id := range localIDs {
+		combinedIDs[id] = struct{}{}
+	}
+
+	if len(combinedIDs) == 0 {
+		return []int{}, nil
+	}
+
+	idList := make([]int, 0, len(combinedIDs))
+	for id := range combinedIDs {
+		idList = append(idList, id)
+	}
+	return idList, nil
+}
+
+// getItemTypeTabs queries the database for all unique item types to display as filter tabs.
+func getItemTypeTabs() []ItemTypeTab {
+	var itemTypes []ItemTypeTab
+	rows, err := db.Query("SELECT DISTINCT item_type FROM rms_item_cache WHERE item_type IS NOT NULL AND item_type != '' ORDER BY item_type ASC")
+	if err != nil {
+		log.Printf("⚠️ Could not query for item types: %v", err)
+		return itemTypes // Return empty slice on error
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var itemType string
+		if err := rows.Scan(&itemType); err != nil {
+			log.Printf("⚠️ Failed to scan item type: %v", err)
+			continue
+		}
+		itemTypes = append(itemTypes, mapItemTypeToTabData(itemType))
+	}
+	return itemTypes
+}
+
+// getLastUpdateTime is a generic helper to get the most recent timestamp from a table.
+func getLastUpdateTime(tableName, columnName string) string {
+	var lastTimestamp sql.NullString
+	query := fmt.Sprintf("SELECT MAX(%s) FROM %s", columnName, tableName)
+	err := db.QueryRow(query).Scan(&lastTimestamp)
+	if err != nil {
+		log.Printf("⚠️ Could not get last update time for %s: %v", tableName, err)
+	}
+	if lastTimestamp.Valid {
+		parsedTime, err := time.Parse(time.RFC3339, lastTimestamp.String)
+		if err == nil {
+			return parsedTime.Format("2006-01-02 15:04:05")
+		}
+	}
+	return "Never"
+}
+
+// Pagination holds all the data needed to render pagination controls.
+type Pagination struct {
+	CurrentPage int
+	TotalPages  int
+	PrevPage    int
+	NextPage    int
+	HasPrevPage bool
+	HasNextPage bool
+	Offset      int
+}
+
+// newPagination creates a Pagination object from the request and total item count.
+func newPagination(r *http.Request, totalItems int, itemsPerPage int) Pagination {
+	pageStr := r.FormValue("page")
+	page, err := strconv.Atoi(pageStr)
+	if err != nil || page < 1 {
+		page = 1
+	}
+
+	p := Pagination{}
+	if totalItems > 0 {
+		p.TotalPages = int(math.Ceil(float64(totalItems) / float64(itemsPerPage)))
+	}
+	if page > p.TotalPages && p.TotalPages > 0 {
+		page = p.TotalPages
+	}
+	if page < 1 {
+		page = 1
+	}
+	p.CurrentPage = page
+	p.Offset = (page - 1) * itemsPerPage
+	p.PrevPage = page - 1
+	p.NextPage = page + 1
+	p.HasPrevPage = page > 1
+	p.HasNextPage = page < p.TotalPages
+	return p
+}
+
+// generateEventIntervals creates a list of event occurrences within a given time window.
 func generateEventIntervals(viewStart, viewEnd time.Time, events []EventDefinition, activeDates map[string]struct{}) []map[string]interface{} {
 	var intervals []map[string]interface{}
-	// Normalize to the start of the day to ensure the loop includes the first day.
 	loc := viewStart.Location()
 	currentDay := time.Date(viewStart.Year(), viewStart.Month(), viewStart.Day(), 0, 0, 0, 0, loc)
 
 	for currentDay.Before(viewEnd) {
-		// --- THIS CHECK IS NOW RESTORED ---
-		// Check if the current day has any player data before generating event overlays.
 		dateStr := currentDay.Format("2006-01-02")
 		if _, exists := activeDates[dateStr]; !exists {
-			// Move to the next day if no data exists for the current one.
 			currentDay = currentDay.Add(24 * time.Hour)
 			continue
 		}
-		// --- END OF RESTORED CHECK ---
 
 		for _, event := range events {
 			isEventDay := false
@@ -111,7 +308,6 @@ func generateEventIntervals(viewStart, viewEnd time.Time, events []EventDefiniti
 			}
 
 			if isEventDay {
-				// Parse the event's start and end times for the current day.
 				eventStartStr := fmt.Sprintf("%s %s", currentDay.Format("2006-01-02"), event.StartTime)
 				eventEndStr := fmt.Sprintf("%s %s", currentDay.Format("2006-01-02"), event.EndTime)
 
@@ -119,10 +315,9 @@ func generateEventIntervals(viewStart, viewEnd time.Time, events []EventDefiniti
 				eventEnd, err2 := time.ParseInLocation("2006-01-02 15:04", eventEndStr, loc)
 
 				if err1 != nil || err2 != nil {
-					continue // Skip if times are invalid
+					continue
 				}
 
-				// Add the event only if it overlaps with the user's selected view window.
 				if eventStart.Before(viewEnd) && eventEnd.After(viewStart) {
 					intervals = append(intervals, map[string]interface{}{
 						"name":  event.Name,
@@ -132,7 +327,6 @@ func generateEventIntervals(viewStart, viewEnd time.Time, events []EventDefiniti
 				}
 			}
 		}
-		// Move to the next day.
 		currentDay = currentDay.Add(24 * time.Hour)
 	}
 	return intervals
@@ -144,1054 +338,39 @@ func mapItemTypeToTabData(typeName string) ItemTypeTab {
 	switch typeName {
 	case "Ammunition":
 		tab.ShortName = ""
-		tab.IconItemID = 1750 // Arrow
+		tab.IconItemID = 1750
 	case "Armor":
 		tab.ShortName = ""
-		tab.IconItemID = 2316 // Cotton Shirt
+		tab.IconItemID = 2316
 	case "Card":
 		tab.ShortName = ""
-		tab.IconItemID = 4133 // Poring Card
+		tab.IconItemID = 4133
 	case "Delayed-Consumable":
 		tab.ShortName = ""
-		tab.IconItemID = 610 // Blue Potion
+		tab.IconItemID = 610
 	case "Healing Item":
 		tab.ShortName = ""
-		tab.IconItemID = 501 // Red Potion
+		tab.IconItemID = 501
 	case "Miscellaneous":
 		tab.ShortName = ""
-		tab.IconItemID = 909 // Jellopy
+		tab.IconItemID = 909
 	case "Monster Egg":
 		tab.ShortName = ""
-		tab.IconItemID = 9001 // Poring Egg
+		tab.IconItemID = 9001
 	case "Pet Armor":
 		tab.ShortName = ""
-		tab.IconItemID = 5183 // B.B. Cap
+		tab.IconItemID = 5183
 	case "Taming Item":
 		tab.ShortName = ""
-		tab.IconItemID = 632 // Unripe Apple
+		tab.IconItemID = 632
 	case "Usable Item":
 		tab.ShortName = ""
-		tab.IconItemID = 603 // Fly Wing
+		tab.IconItemID = 603
 	case "Weapon":
 		tab.ShortName = ""
-		tab.IconItemID = 1162 // Main Gauche
+		tab.IconItemID = 1162
 	}
 	return tab
-}
-
-// summaryHandler serves the main summary page (renamed from viewHandler)
-
-func summaryHandler(w http.ResponseWriter, r *http.Request) {
-	if err := r.ParseForm(); err != nil {
-		http.Error(w, "Failed to parse form", http.StatusBadRequest)
-		return
-	}
-	// 1. Get parameters from the request
-	searchQuery := r.FormValue("query")
-	sortBy := r.FormValue("sort_by")
-	order := r.FormValue("order")
-	selectedType := r.FormValue("type")
-
-	// Default to "only available" unless a form was submitted with the box unchecked.
-	formSubmitted := len(r.Form) > 0
-	showAll := false
-	if formSubmitted && r.FormValue("only_available") != "true" {
-		showAll = true
-	}
-
-	// Get all unique item types for the tabs
-	var itemTypes []ItemTypeTab
-	typeRows, err := db.Query("SELECT DISTINCT item_type FROM rms_item_cache WHERE item_type IS NOT NULL AND item_type != '' ORDER BY item_type ASC")
-	if err != nil {
-		log.Printf("⚠️ Could not query for item types: %v", err)
-	} else {
-		defer typeRows.Close()
-		for typeRows.Next() {
-			var itemType string
-			if err := typeRows.Scan(&itemType); err != nil {
-				log.Printf("⚠️ Failed to scan item type: %v", err)
-				continue
-			}
-			itemTypes = append(itemTypes, mapItemTypeToTabData(itemType))
-		}
-	}
-
-	// 2. Build the query dynamically
-	params := []interface{}{}
-	baseQuery := `
-        SELECT
-            i.name_of_the_item,
-            MIN(i.item_id) as item_id,
-            MIN(CASE WHEN i.is_available = 1 THEN CAST(REPLACE(i.price, ',', '') AS INTEGER) ELSE NULL END) as lowest_price,
-            MAX(CASE WHEN i.is_available = 1 THEN CAST(REPLACE(i.price, ',', '') AS INTEGER) ELSE NULL END) as highest_price,
-            SUM(CASE WHEN i.is_available = 1 THEN 1 ELSE 0 END) as listing_count
-        FROM items i
-        LEFT JOIN rms_item_cache rms ON i.item_id = rms.item_id
-    `
-
-	var whereConditions []string
-	isNumericSearch := false
-	if searchQuery != "" {
-		_, err := strconv.Atoi(searchQuery)
-		isNumericSearch = (err == nil)
-	}
-
-	// --- MODIFIED CONCURRENT SEARCH LOGIC ---
-	if searchQuery != "" && !isNumericSearch {
-		var wg sync.WaitGroup
-		scrapedIDsChan := make(chan []int, 1)
-		localIDsChan := make(chan []int, 1)
-
-		wg.Add(2)
-
-		// Goroutine 1: Scrape ragnarokdatabase.com
-		go func() {
-			defer wg.Done()
-			ids, err := scrapeRagnarokDatabaseSearch(searchQuery)
-			if err != nil {
-				log.Printf("⚠️ Concurrent scrape failed for '%s': %v", searchQuery, err)
-				scrapedIDsChan <- []int{} // Send empty slice on error
-				return
-			}
-			scrapedIDsChan <- ids
-		}()
-
-		// Goroutine 2: Search local DB by name for matching IDs
-		go func() {
-			defer wg.Done()
-			var ids []int
-			query := "SELECT DISTINCT item_id FROM items WHERE name_of_the_item LIKE ? AND item_id > 0"
-			rows, err := db.Query(query, "%"+searchQuery+"%")
-			if err != nil {
-				log.Printf("⚠️ Concurrent local ID search failed for '%s': %v", searchQuery, err)
-				localIDsChan <- []int{} // Send empty slice on error
-				return
-			}
-			defer rows.Close()
-			for rows.Next() {
-				var id int
-				if err := rows.Scan(&id); err == nil {
-					ids = append(ids, id)
-				}
-			}
-			localIDsChan <- ids
-		}()
-
-		wg.Wait()
-		close(scrapedIDsChan)
-		close(localIDsChan)
-
-		scrapedIDs := <-scrapedIDsChan
-		localIDs := <-localIDsChan
-
-		// Combine and de-duplicate IDs using a map
-		combinedIDs := make(map[int]struct{})
-		for _, id := range scrapedIDs {
-			combinedIDs[id] = struct{}{}
-		}
-		for _, id := range localIDs {
-			combinedIDs[id] = struct{}{}
-		}
-
-		if len(combinedIDs) > 0 {
-			var idList []int
-			for id := range combinedIDs {
-				idList = append(idList, id)
-			}
-			// Build IN clause for the final query
-			placeholders := strings.Repeat("?,", len(idList)-1) + "?"
-			whereConditions = append(whereConditions, fmt.Sprintf("i.item_id IN (%s)", placeholders))
-			for _, id := range idList {
-				params = append(params, id)
-			}
-		} else {
-			// If no IDs were found anywhere, add a condition that will return no results
-			whereConditions = append(whereConditions, "1 = 0")
-		}
-
-	} else if searchQuery != "" && isNumericSearch {
-		// Original logic for numeric (item ID) search
-		whereConditions = append(whereConditions, "i.item_id = ?")
-		params = append(params, searchQuery)
-	}
-	// --- END OF MODIFIED LOGIC ---
-
-	if selectedType != "" {
-		whereConditions = append(whereConditions, "rms.item_type = ?")
-		params = append(params, selectedType)
-	}
-
-	whereClause := ""
-	if len(whereConditions) > 0 {
-		whereClause = "WHERE " + strings.Join(whereConditions, " AND ")
-	}
-
-	groupByClause := " GROUP BY i.name_of_the_item"
-
-	havingClause := ""
-	if !showAll {
-		havingClause = " HAVING listing_count > 0"
-	}
-
-	// 3. Handle sorting securely
-	allowedSorts := map[string]string{
-		"name":          "i.name_of_the_item",
-		"item_id":       "item_id",
-		"listings":      "listing_count",
-		"lowest_price":  "lowest_price",
-		"highest_price": "highest_price",
-	}
-	orderByClause, ok := allowedSorts[sortBy]
-	if !ok {
-		sortBy = "highest_price"
-		orderByClause = allowedSorts[sortBy]
-		order = "DESC"
-	} else {
-		if strings.ToUpper(order) != "DESC" {
-			order = "ASC"
-		}
-	}
-
-	// Append ORDER BY to the query, with a secondary sort for stability
-	query := fmt.Sprintf("%s %s %s %s ORDER BY %s %s, i.name_of_the_item ASC;", baseQuery, whereClause, groupByClause, havingClause, orderByClause, order)
-
-	rows, err := db.Query(query, params...)
-	if err != nil {
-		http.Error(w, "Database query for summary failed", http.StatusInternalServerError)
-		log.Printf("❌ Summary query error: %v, Query: %s, Params: %v", err, query, params)
-		return
-	}
-	defer rows.Close()
-
-	var items []ItemSummary
-	for rows.Next() {
-		var item ItemSummary
-		if err := rows.Scan(&item.Name, &item.ItemID, &item.LowestPrice, &item.HighestPrice, &item.ListingCount); err != nil {
-			log.Printf("⚠️ Failed to scan summary row: %v", err)
-			continue
-		}
-		items = append(items, item)
-	}
-
-	// Get total visitor count for the footer
-	var totalVisitors int
-	err = db.QueryRow("SELECT COUNT(*) FROM visitors").Scan(&totalVisitors)
-	if err != nil {
-		log.Printf("⚠️ Could not query for total visitors: %v", err)
-		totalVisitors = 0 // Default to 0 on error
-	}
-
-	// Create a FuncMap to register the "lower" function.
-	funcMap := template.FuncMap{
-		"lower": strings.ToLower,
-	}
-
-	// Parse the template file with the custom function map.
-	tmpl, err := template.New("index.html").Funcs(funcMap).ParseFiles("index.html")
-	if err != nil {
-		http.Error(w, "Could not load index template", http.StatusInternalServerError)
-		log.Printf("❌ Could not load index.html template: %v", err)
-		return
-	}
-
-	// 4. Populate data for the template
-	data := SummaryPageData{
-		Items:          items,
-		SearchQuery:    searchQuery,
-		SortBy:         sortBy,
-		Order:          order,
-		ShowAll:        showAll,
-		LastScrapeTime: getLastScrapeTime(),
-		ItemTypes:      itemTypes,
-		SelectedType:   selectedType,
-		TotalVisitors:  totalVisitors,
-	}
-	tmpl.Execute(w, data)
-}
-
-// fullListHandler shows the complete, detailed market list.
-func fullListHandler(w http.ResponseWriter, r *http.Request) {
-	if err := r.ParseForm(); err != nil {
-		http.Error(w, "Failed to parse form", http.StatusBadRequest)
-		return
-	}
-
-	searchQuery := r.FormValue("query")
-	storeNameQuery := r.FormValue("store_name")
-	sortBy := r.FormValue("sort_by")
-	order := r.FormValue("order")
-	selectedCols := r.Form["cols"]
-	selectedType := r.FormValue("type")
-
-	// Default to "only available" unless a form was submitted with the box unchecked.
-	formSubmitted := len(r.Form) > 0
-	showAll := false
-	if formSubmitted && r.FormValue("only_available") != "true" {
-		showAll = true
-	}
-
-	// ... (code for getting itemTypes and allStoreNames remains the same) ...
-
-	// Get all unique item types for the tabs
-	var itemTypes []ItemTypeTab
-	typeRows, err := db.Query("SELECT DISTINCT item_type FROM rms_item_cache WHERE item_type IS NOT NULL AND item_type != '' ORDER BY item_type ASC")
-	if err != nil {
-		log.Printf("⚠️ Could not query for item types: %v", err)
-	} else {
-		defer typeRows.Close()
-		for typeRows.Next() {
-			var itemType string
-			if err := typeRows.Scan(&itemType); err != nil {
-				log.Printf("⚠️ Failed to scan item type: %v", err)
-				continue
-			}
-			itemTypes = append(itemTypes, mapItemTypeToTabData(itemType))
-		}
-	}
-
-	// Get all unique store names for the dropdown
-	var allStoreNames []string
-	storeRows, err := db.Query("SELECT DISTINCT store_name FROM items WHERE is_available = 1 ORDER BY store_name ASC")
-	if err != nil {
-		// Log the error but don't fail the whole page request
-		log.Printf("⚠️ Could not query for store names: %v", err)
-	} else {
-		defer storeRows.Close()
-		for storeRows.Next() {
-			var storeName string
-			if err := storeRows.Scan(&storeName); err != nil {
-				log.Printf("⚠️ Failed to scan store name: %v", err)
-				continue
-			}
-			allStoreNames = append(allStoreNames, storeName)
-		}
-	}
-
-	// ... (code for column visibility remains the same) ...
-	allCols := []Column{
-		{ID: "item_id", DisplayName: "Item ID"},
-		{ID: "quantity", DisplayName: "Quantity"},
-		{ID: "store_name", DisplayName: "Store Name"},
-		{ID: "seller_name", DisplayName: "Seller Name"},
-		{ID: "map_name", DisplayName: "Map Name"},
-		{ID: "map_coordinates", DisplayName: "Map Coords"},
-		{ID: "retrieved", DisplayName: "Date Retrieved"},
-	}
-	visibleColumns := make(map[string]bool)
-	columnParams := url.Values{}
-
-	if len(selectedCols) > 0 {
-		for _, col := range selectedCols {
-			visibleColumns[col] = true
-			columnParams.Add("cols", col)
-		}
-	} else {
-		visibleColumns["quantity"] = true
-		visibleColumns["store_name"] = true
-		visibleColumns["map_coordinates"] = true
-	}
-
-	// ... (code for sorting remains the same) ...
-	allowedSorts := map[string]string{
-		"name":         "i.name_of_the_item",
-		"item_id":      "i.item_id",
-		"quantity":     "i.quantity",
-		"price":        "CAST(REPLACE(i.price, ',', '') AS INTEGER)",
-		"store":        "i.store_name",
-		"seller":       "i.seller_name",
-		"retrieved":    "i.date_and_time_retrieved",
-		"store_name":   "i.store_name",
-		"map_name":     "i.map_name",
-		"availability": "i.is_available",
-	}
-
-	orderByClause, ok := allowedSorts[sortBy]
-	if !ok {
-		sortBy = "price"
-		orderByClause = allowedSorts[sortBy]
-		order = "DESC"
-	} else {
-		if strings.ToUpper(order) != "DESC" {
-			order = "ASC"
-		}
-	}
-
-	var whereConditions []string
-	var queryParams []interface{}
-
-	// --- MODIFIED: CONCURRENT SEARCH LOGIC FOR FULL LIST ---
-	isNumericSearch := false
-	if searchQuery != "" {
-		_, err := strconv.Atoi(searchQuery)
-		isNumericSearch = (err == nil)
-	}
-
-	if searchQuery != "" && !isNumericSearch {
-		var wg sync.WaitGroup
-		scrapedIDsChan := make(chan []int, 1)
-		localIDsChan := make(chan []int, 1)
-
-		wg.Add(2)
-
-		// Goroutine 1: Scrape ragnarokdatabase.com
-		go func() {
-			defer wg.Done()
-			ids, err := scrapeRagnarokDatabaseSearch(searchQuery)
-			if err != nil {
-				log.Printf("⚠️ [Full List] Concurrent scrape failed for '%s': %v", searchQuery, err)
-				scrapedIDsChan <- []int{}
-				return
-			}
-			scrapedIDsChan <- ids
-		}()
-
-		// Goroutine 2: Search local DB by name for matching IDs
-		go func() {
-			defer wg.Done()
-			var ids []int
-			query := "SELECT DISTINCT item_id FROM items WHERE name_of_the_item LIKE ? AND item_id > 0"
-			rows, err := db.Query(query, "%"+searchQuery+"%")
-			if err != nil {
-				log.Printf("⚠️ [Full List] Concurrent local ID search failed for '%s': %v", searchQuery, err)
-				localIDsChan <- []int{}
-				return
-			}
-			defer rows.Close()
-			for rows.Next() {
-				var id int
-				if err := rows.Scan(&id); err == nil {
-					ids = append(ids, id)
-				}
-			}
-			localIDsChan <- ids
-		}()
-
-		wg.Wait()
-		close(scrapedIDsChan)
-		close(localIDsChan)
-
-		scrapedIDs := <-scrapedIDsChan
-		localIDs := <-localIDsChan
-
-		// Combine and de-duplicate IDs
-		combinedIDs := make(map[int]struct{})
-		for _, id := range scrapedIDs {
-			combinedIDs[id] = struct{}{}
-		}
-		for _, id := range localIDs {
-			combinedIDs[id] = struct{}{}
-		}
-
-		if len(combinedIDs) > 0 {
-			var idList []int
-			for id := range combinedIDs {
-				idList = append(idList, id)
-			}
-			placeholders := strings.Repeat("?,", len(idList)-1) + "?"
-			whereConditions = append(whereConditions, fmt.Sprintf("i.item_id IN (%s)", placeholders))
-			for _, id := range idList {
-				queryParams = append(queryParams, id)
-			}
-		} else {
-			whereConditions = append(whereConditions, "1 = 0") // Return no results
-		}
-
-	} else if searchQuery != "" && isNumericSearch {
-		// Original logic for numeric (item ID) search
-		whereConditions = append(whereConditions, "i.item_id = ?")
-		queryParams = append(queryParams, searchQuery)
-	}
-	// --- END OF MODIFIED LOGIC ---
-
-	if storeNameQuery != "" {
-		whereConditions = append(whereConditions, "i.store_name = ?")
-		queryParams = append(queryParams, storeNameQuery)
-	}
-
-	if selectedType != "" {
-		whereConditions = append(whereConditions, "rms.item_type = ?")
-		queryParams = append(queryParams, selectedType)
-	}
-
-	if !showAll {
-		whereConditions = append(whereConditions, "i.is_available = 1")
-	}
-
-	baseQuery := `
-		SELECT i.id, i.name_of_the_item, i.item_id, i.quantity, i.price, i.store_name, i.seller_name, i.date_and_time_retrieved, i.map_name, i.map_coordinates, i.is_available
-		FROM items i 
-		LEFT JOIN rms_item_cache rms ON i.item_id = rms.item_id
-	`
-	whereClause := ""
-	if len(whereConditions) > 0 {
-		whereClause = "WHERE " + strings.Join(whereConditions, " AND ")
-	}
-
-	query := fmt.Sprintf(`%s %s ORDER BY %s %s;`, baseQuery, whereClause, orderByClause, order)
-
-	rows, err := db.Query(query, queryParams...)
-	if err != nil {
-		http.Error(w, "Database query failed", http.StatusInternalServerError)
-		log.Printf("❌ Database query error: %v", err)
-		return
-	}
-	defer rows.Close()
-
-	// ... (rest of the fullListHandler function remains the same) ...
-	var items []Item
-	for rows.Next() {
-		var item Item
-		var retrievedTime string
-		err := rows.Scan(&item.ID, &item.Name, &item.ItemID, &item.Quantity, &item.Price, &item.StoreName, &item.SellerName, &retrievedTime, &item.MapName, &item.MapCoordinates, &item.IsAvailable)
-		if err != nil {
-			log.Printf("⚠️ Failed to scan row: %v", err)
-			continue
-		}
-		parsedTime, err := time.Parse(time.RFC3339, retrievedTime)
-		if err == nil {
-			item.Timestamp = parsedTime.Format("2006-01-02 15:04")
-		} else {
-			item.Timestamp = retrievedTime
-		}
-		items = append(items, item)
-	}
-	funcMap := template.FuncMap{
-		"lower": strings.ToLower,
-	}
-
-	tmpl, err := template.New("full_list.html").Funcs(funcMap).ParseFiles("full_list.html")
-	if err != nil {
-		http.Error(w, "Could not load full_list template", http.StatusInternalServerError)
-		log.Printf("❌ Could not load full_list.html template: %v", err)
-		return
-	}
-
-	data := PageData{
-		Items:          items,
-		SearchQuery:    searchQuery,
-		StoreNameQuery: storeNameQuery,
-		AllStoreNames:  allStoreNames,
-		SortBy:         sortBy,
-		Order:          order,
-		ShowAll:        showAll,
-		LastScrapeTime: getLastScrapeTime(),
-		VisibleColumns: visibleColumns,
-		AllColumns:     allCols,
-		ColumnParams:   template.URL(columnParams.Encode()),
-		ItemTypes:      itemTypes,
-		SelectedType:   selectedType,
-	}
-	tmpl.Execute(w, data)
-
-}
-
-// activityHandler serves the page for recent market activity.
-func activityHandler(w http.ResponseWriter, r *http.Request) {
-	// 1. Get parameters
-	pageStr := r.URL.Query().Get("page")
-	searchQuery := r.URL.Query().Get("query")
-	soldOnlyStr := r.URL.Query().Get("sold_only")
-	soldOnly := soldOnlyStr == "true"
-
-	page, err := strconv.Atoi(pageStr)
-	if err != nil || page < 1 {
-		page = 1
-	}
-	const eventsPerPage = 50
-
-	// 2. Build dynamic WHERE clause
-	var whereConditions []string
-	var params []interface{}
-
-	// --- MODIFIED: CONCURRENT SEARCH LOGIC FOR ACTIVITY ---
-	isNumericSearch := false
-	if searchQuery != "" {
-		_, err := strconv.Atoi(searchQuery)
-		isNumericSearch = (err == nil)
-	}
-
-	if searchQuery != "" && !isNumericSearch {
-		var wg sync.WaitGroup
-		scrapedIDsChan := make(chan []int, 1)
-		localIDsChan := make(chan []int, 1)
-
-		wg.Add(2)
-
-		// Goroutine 1: Scrape ragnarokdatabase.com
-		go func() {
-			defer wg.Done()
-			ids, err := scrapeRagnarokDatabaseSearch(searchQuery)
-			if err != nil {
-				log.Printf("⚠️ [Activity] Concurrent scrape failed for '%s': %v", searchQuery, err)
-				scrapedIDsChan <- []int{}
-				return
-			}
-			scrapedIDsChan <- ids
-		}()
-
-		// Goroutine 2: Search local DB by name for matching IDs
-		go func() {
-			defer wg.Done()
-			var ids []int
-			// Query the main items table to find relevant IDs
-			query := "SELECT DISTINCT item_id FROM items WHERE name_of_the_item LIKE ? AND item_id > 0"
-			rows, err := db.Query(query, "%"+searchQuery+"%")
-			if err != nil {
-				log.Printf("⚠️ [Activity] Concurrent local ID search failed for '%s': %v", searchQuery, err)
-				localIDsChan <- []int{}
-				return
-			}
-			defer rows.Close()
-			for rows.Next() {
-				var id int
-				if err := rows.Scan(&id); err == nil {
-					ids = append(ids, id)
-				}
-			}
-			localIDsChan <- ids
-		}()
-
-		wg.Wait()
-		close(scrapedIDsChan)
-		close(localIDsChan)
-
-		scrapedIDs := <-scrapedIDsChan
-		localIDs := <-localIDsChan
-
-		// Combine and de-duplicate IDs
-		combinedIDs := make(map[int]struct{})
-		for _, id := range scrapedIDs {
-			combinedIDs[id] = struct{}{}
-		}
-		for _, id := range localIDs {
-			combinedIDs[id] = struct{}{}
-		}
-
-		if len(combinedIDs) > 0 {
-			var idList []int
-			for id := range combinedIDs {
-				idList = append(idList, id)
-			}
-			placeholders := strings.Repeat("?,", len(idList)-1) + "?"
-			whereConditions = append(whereConditions, fmt.Sprintf("item_id IN (%s)", placeholders))
-			for _, id := range idList {
-				params = append(params, id)
-			}
-		} else {
-			whereConditions = append(whereConditions, "1 = 0") // Return no results
-		}
-
-	} else if searchQuery != "" && isNumericSearch {
-		// Original logic for numeric (item ID) search
-		whereConditions = append(whereConditions, "item_id = ?")
-		params = append(params, searchQuery)
-	}
-	// --- END OF MODIFIED LOGIC ---
-
-	if soldOnly {
-		whereConditions = append(whereConditions, "event_type = ?")
-		params = append(params, "SOLD")
-	}
-
-	whereClause := ""
-	if len(whereConditions) > 0 {
-		whereClause = "WHERE " + strings.Join(whereConditions, " AND ")
-	}
-
-	// 3. Get total event count for pagination using the same filters
-	var totalEvents int
-	countQuery := fmt.Sprintf("SELECT COUNT(*) FROM market_events %s", whereClause)
-	err = db.QueryRow(countQuery, params...).Scan(&totalEvents)
-	if err != nil {
-		http.Error(w, "Could not count market events", http.StatusInternalServerError)
-		log.Printf("❌ Could not count market events: %v", err)
-		return
-	}
-
-	// ... (rest of the activityHandler function remains the same) ...
-	// 4. Calculate pagination details
-	totalPages := 0
-	if totalEvents > 0 {
-		totalPages = int(math.Ceil(float64(totalEvents) / float64(eventsPerPage)))
-	}
-	if page > totalPages && totalPages > 0 {
-		page = totalPages
-	}
-	if page < 1 {
-		page = 1
-	}
-	offset := (page - 1) * eventsPerPage
-
-	// 5. Query for paginated events with filters
-	query := fmt.Sprintf(`
-        SELECT event_timestamp, event_type, item_name, item_id, details
-        FROM market_events
-        %s
-        ORDER BY event_timestamp DESC
-        LIMIT ? OFFSET ?`, whereClause)
-
-	// Append pagination params to the existing filter params
-	finalParams := append(params, eventsPerPage, offset)
-	eventRows, err := db.Query(query, finalParams...)
-	if err != nil {
-		http.Error(w, "Could not query for market events", http.StatusInternalServerError)
-		log.Printf("❌ Could not query for market events: %v", err)
-		return
-	}
-	defer eventRows.Close()
-
-	var marketEvents []MarketEvent
-	for eventRows.Next() {
-		var event MarketEvent
-		var detailsStr, timestampStr string
-		if err := eventRows.Scan(&timestampStr, &event.EventType, &event.ItemName, &event.ItemID, &detailsStr); err != nil {
-			log.Printf("⚠️ Failed to scan market event row: %v", err)
-			continue
-		}
-
-		parsedTime, err := time.Parse(time.RFC3339, timestampStr)
-		if err == nil {
-			event.Timestamp = parsedTime.Format("2006-01-02 15:04")
-		} else {
-			event.Timestamp = timestampStr
-		}
-
-		if err := json.Unmarshal([]byte(detailsStr), &event.Details); err != nil {
-			event.Details = make(map[string]interface{})
-		}
-		marketEvents = append(marketEvents, event)
-	}
-
-	tmpl, err := template.ParseFiles("activity.html")
-	if err != nil {
-		http.Error(w, "Could not load activity template", http.StatusInternalServerError)
-		log.Printf("❌ Could not load activity.html template: %v", err)
-		return
-	}
-
-	// 6. Populate data struct with pagination and filter info
-	data := ActivityPageData{
-		MarketEvents:   marketEvents,
-		LastScrapeTime: getLastScrapeTime(),
-		SearchQuery:    searchQuery,
-		SoldOnly:       soldOnly,
-		CurrentPage:    page,
-		TotalPages:     totalPages,
-		PrevPage:       page - 1,
-		NextPage:       page + 1,
-		HasPrevPage:    page > 1,
-		HasNextPage:    page < totalPages,
-	}
-	tmpl.Execute(w, data)
-}
-
-// itemHistoryHandler serves the detailed history page for a single item (renamed from historyHandler)
-func itemHistoryHandler(w http.ResponseWriter, r *http.Request) {
-	itemName := r.FormValue("name")
-	if itemName == "" {
-		http.Error(w, "Item name is required", http.StatusBadRequest)
-		return
-	}
-
-	// Get page parameter for the listings table
-	pageStr := r.URL.Query().Get("page")
-	page, err := strconv.Atoi(pageStr)
-	if err != nil || page < 1 {
-		page = 1
-	}
-	const listingsPerPage = 50 // Define how many listings per page
-
-	var itemID int
-	err = db.QueryRow("SELECT item_id FROM items WHERE name_of_the_item = ? AND item_id > 0 LIMIT 1", itemName).Scan(&itemID)
-	if err != nil {
-		log.Printf("⚠️ Could not find a valid ItemID for '%s' in the database: %v", itemName, err)
-	}
-
-	var rmsItemDetails *RMSItem
-	if itemID > 0 {
-		// 1. Try to get details from the cache first.
-		cachedItem, err := getItemDetailsFromCache(itemID)
-		if err == nil {
-			log.Printf("✅ Cache HIT for item ID %d (%s)", itemID, itemName)
-			rmsItemDetails = cachedItem
-		} else {
-			// 2. If cache miss, scrape from the source.
-			log.Printf("ℹ️ Cache MISS for item ID %d (%s). Scraping RMS... Error: %v", itemID, itemName, err)
-			scrapedItem, scrapeErr := scrapeRMSItemDetails(itemID)
-			if scrapeErr != nil {
-				log.Printf("⚠️ Failed to scrape RateMyServer for item ID %d: %v", itemID, scrapeErr)
-			} else {
-				rmsItemDetails = scrapedItem
-				// 3. Save the newly scraped data to the cache for future requests.
-				if saveErr := saveItemDetailsToCache(rmsItemDetails); saveErr != nil {
-					log.Printf("⚠️ Failed to save item ID %d to cache: %v", itemID, saveErr)
-				} else {
-					log.Printf("✅ Saved item ID %d (%s) to cache.", itemID, itemName)
-				}
-			}
-		}
-	}
-	// The rest of the function proceeds normally with `rmsItemDetails`
-	// whether it came from the cache or a fresh scrape.
-
-	currentListingsQuery := `
-		SELECT
-			CAST(REPLACE(price, ',', '') AS INTEGER) as price_int,
-			quantity,
-			store_name,
-			seller_name,
-			map_name,
-			map_coordinates,
-			date_and_time_retrieved
-		FROM items
-		WHERE name_of_the_item = ? AND is_available = 1
-		ORDER BY price_int ASC;
-	`
-	rowsCurrent, err := db.Query(currentListingsQuery, itemName)
-	if err != nil {
-		http.Error(w, "Database query for current listings failed", http.StatusInternalServerError)
-		log.Printf("❌ Current listings query error: %v", err)
-		return
-	}
-	defer rowsCurrent.Close()
-
-	var currentListings []ItemListing
-	for rowsCurrent.Next() {
-		var listing ItemListing
-		var timestampStr string
-		if err := rowsCurrent.Scan(&listing.Price, &listing.Quantity, &listing.StoreName, &listing.SellerName, &listing.MapName, &listing.MapCoordinates, &timestampStr); err != nil {
-			log.Printf("⚠️ Failed to scan current listing row: %v", err)
-			continue
-		}
-		parsedTime, err := time.Parse(time.RFC3339, timestampStr)
-		if err == nil {
-			listing.Timestamp = parsedTime.Format("2006-01-02 15:04")
-		} else {
-			listing.Timestamp = timestampStr
-		}
-		currentListings = append(currentListings, listing)
-	}
-
-	var currentLowest, currentHighest *ItemListing
-	if len(currentListings) > 0 {
-		lowestListing := currentListings[0]
-		currentLowest = &lowestListing
-		highestListing := currentListings[len(currentListings)-1]
-		currentHighest = &highestListing
-	}
-
-	currentLowestJSON, _ := json.Marshal(currentLowest)
-	currentHighestJSON, _ := json.Marshal(currentHighest)
-
-	var overallLowest, overallHighest sql.NullInt64
-	overallStatsQuery := `
-        SELECT
-            MIN(CAST(REPLACE(price, ',', '') AS INTEGER)),
-            MAX(CAST(REPLACE(price, ',', '') AS INTEGER))
-        FROM items
-        WHERE name_of_the_item = ?;
-    `
-	err = db.QueryRow(overallStatsQuery, itemName).Scan(&overallLowest, &overallHighest)
-	if err != nil {
-		log.Printf("❌ Overall stats query error for '%s': %v", itemName, err)
-	}
-
-	priceChangeQuery := `
-		WITH RankedItems AS (
-			SELECT
-				quantity,
-				CAST(REPLACE(price, ',', '') AS INTEGER) as price_int,
-				store_name,
-				seller_name,
-				date_and_time_retrieved,
-				map_name,
-				map_coordinates,
-				ROW_NUMBER() OVER(PARTITION BY date_and_time_retrieved ORDER BY CAST(REPLACE(price, ',', '') AS INTEGER) ASC) as rn_asc,
-				ROW_NUMBER() OVER(PARTITION BY date_and_time_retrieved ORDER BY CAST(REPLACE(price, ',', '') AS INTEGER) DESC) as rn_desc
-			FROM items
-			WHERE name_of_the_item = ?
-		)
-		SELECT
-			t_lowest.date_and_time_retrieved,
-			t_lowest.price_int, t_lowest.quantity, t_lowest.store_name, t_lowest.seller_name, t_lowest.map_name, t_lowest.map_coordinates,
-			t_highest.price_int, t_highest.quantity, t_highest.store_name, t_highest.seller_name, t_highest.map_name, t_highest.map_coordinates
-		FROM
-			(SELECT * FROM RankedItems WHERE rn_asc = 1) AS t_lowest
-		JOIN
-			(SELECT * FROM RankedItems WHERE rn_desc = 1) AS t_highest
-		ON
-			t_lowest.date_and_time_retrieved = t_highest.date_and_time_retrieved
-		ORDER BY
-			t_lowest.date_and_time_retrieved ASC;
-    `
-	rows, err := db.Query(priceChangeQuery, itemName)
-	if err != nil {
-		http.Error(w, "Database query for changes failed", http.StatusInternalServerError)
-		log.Printf("❌ History change query error: %v", err)
-		return
-	}
-	defer rows.Close()
-
-	priceEvents := make(map[string]PricePointDetails)
-	for rows.Next() {
-		var p PricePointDetails
-		var timestampStr string
-		err := rows.Scan(
-			&timestampStr,
-			&p.LowestPrice, &p.LowestQuantity, &p.LowestStoreName, &p.LowestSellerName, &p.LowestMapName, &p.LowestMapCoords,
-			&p.HighestPrice, &p.HighestQuantity, &p.HighestStoreName, &p.HighestSellerName, &p.HighestMapName, &p.HighestMapCoords,
-		)
-		if err != nil {
-			log.Printf("⚠️ Failed to scan history row: %v", err)
-			continue
-		}
-		priceEvents[timestampStr] = p
-	}
-
-	scrapeHistoryRows, err := db.Query("SELECT timestamp FROM scrape_history ORDER BY timestamp ASC;")
-	if err != nil {
-		http.Error(w, "Database query for scrape history failed", http.StatusInternalServerError)
-		return
-	}
-	defer scrapeHistoryRows.Close()
-
-	var allScrapeTimes []string
-	for scrapeHistoryRows.Next() {
-		var ts string
-		if err := scrapeHistoryRows.Scan(&ts); err != nil {
-			continue
-		}
-		allScrapeTimes = append(allScrapeTimes, ts)
-	}
-
-	var fullPriceHistory []PricePointDetails
-	var lastKnownDetails PricePointDetails
-	var detailsInitialized bool
-
-	for _, scrapeTimeStr := range allScrapeTimes {
-		if event, ok := priceEvents[scrapeTimeStr]; ok {
-			lastKnownDetails = event
-			detailsInitialized = true
-		}
-
-		if detailsInitialized {
-			t, _ := time.Parse(time.RFC3339, scrapeTimeStr)
-			currentPoint := lastKnownDetails
-			currentPoint.Timestamp = t.Format("2006-01-02 15:04")
-			fullPriceHistory = append(fullPriceHistory, currentPoint)
-		}
-	}
-
-	var finalPriceHistory []PricePointDetails
-	if len(fullPriceHistory) > 0 {
-		finalPriceHistory = append(finalPriceHistory, fullPriceHistory[0])
-		for i := 1; i < len(fullPriceHistory); i++ {
-			prev := finalPriceHistory[len(finalPriceHistory)-1]
-			curr := fullPriceHistory[i]
-			if prev.LowestPrice != curr.LowestPrice || prev.HighestPrice != curr.HighestPrice {
-				finalPriceHistory = append(finalPriceHistory, curr)
-			}
-		}
-	}
-
-	priceHistoryJSON, err := json.Marshal(finalPriceHistory)
-	if err != nil {
-		http.Error(w, "Failed to create chart data", http.StatusInternalServerError)
-		return
-	}
-
-	// --- Pagination for All Listings Table ---
-	var totalListings int
-	countQuery := "SELECT COUNT(*) FROM items WHERE name_of_the_item = ?"
-	err = db.QueryRow(countQuery, itemName).Scan(&totalListings)
-	if err != nil {
-		http.Error(w, "Could not count item listings", http.StatusInternalServerError)
-		log.Printf("❌ Could not count listings for item '%s': %v", itemName, err)
-		return
-	}
-
-	totalPages := 0
-	if totalListings > 0 {
-		totalPages = int(math.Ceil(float64(totalListings) / float64(listingsPerPage)))
-	}
-	if page > totalPages && totalPages > 0 {
-		page = totalPages
-	}
-	if page < 1 {
-		page = 1
-	}
-	offset := (page - 1) * listingsPerPage
-	if offset < 0 {
-		offset = 0
-	}
-	// --- End Pagination Logic ---
-
-	allListingsQuery := `
-		SELECT
-			price,
-			quantity,
-			store_name,
-			seller_name,
-			map_name,
-			map_coordinates,
-			date_and_time_retrieved,
-            is_available
-		FROM items
-		WHERE name_of_the_item = ?
-		ORDER BY is_available DESC, date_and_time_retrieved DESC
-		LIMIT ? OFFSET ?;
-	`
-	rowsAll, err := db.Query(allListingsQuery, itemName, listingsPerPage, offset)
-	if err != nil {
-		http.Error(w, "Database query for all listings failed", http.StatusInternalServerError)
-		log.Printf("❌ All listings query error: %v", err)
-		return
-	}
-	defer rowsAll.Close()
-
-	var allListings []Item
-	for rowsAll.Next() {
-		var listing Item
-		var timestampStr string
-		if err := rowsAll.Scan(&listing.Price, &listing.Quantity, &listing.StoreName, &listing.SellerName, &listing.MapName, &listing.MapCoordinates, &timestampStr, &listing.IsAvailable); err != nil {
-			log.Printf("⚠️ Failed to scan all listing row: %v", err)
-			continue
-		}
-		parsedTime, err := time.Parse(time.RFC3339, timestampStr)
-		if err == nil {
-			listing.Timestamp = parsedTime.Format("2006-01-02 15:04")
-		} else {
-			listing.Timestamp = timestampStr
-		}
-		allListings = append(allListings, listing)
-	}
-
-	tmpl, err := template.ParseFiles("history.html")
-	if err != nil {
-		http.Error(w, "Could not load history template", http.StatusInternalServerError)
-		return
-	}
-
-	data := HistoryPageData{
-		ItemName:           itemName,
-		PriceDataJSON:      template.JS(priceHistoryJSON),
-		OverallLowest:      int(overallLowest.Int64),
-		OverallHighest:     int(overallHighest.Int64),
-		CurrentLowestJSON:  template.JS(currentLowestJSON),
-		CurrentHighestJSON: template.JS(currentHighestJSON),
-		ItemDetails:        rmsItemDetails,
-		AllListings:        allListings,
-		LastScrapeTime:     getLastScrapeTime(),
-		// Pagination data
-		TotalListings: totalListings,
-		CurrentPage:   page,
-		TotalPages:    totalPages,
-		PrevPage:      page - 1,
-		NextPage:      page + 1,
-		HasPrevPage:   page > 1,
-		HasNextPage:   page < totalPages,
-	}
-	tmpl.Execute(w, data)
 }
 
 // getLastScrapeTime is a helper function to get the most recent market scrape time.
@@ -1264,15 +443,574 @@ func getLastCharacterScrapeTime() string {
 	return "Never"
 }
 
+// -------------------------
+// -- HTTP HANDLERS --
+// -------------------------
+
+// summaryHandler serves the main summary page.
+func summaryHandler(w http.ResponseWriter, r *http.Request) {
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "Failed to parse form", http.StatusBadRequest)
+		return
+	}
+	searchQuery := r.FormValue("query")
+	sortBy := r.FormValue("sort_by")
+	order := r.FormValue("order")
+	selectedType := r.FormValue("type")
+
+	formSubmitted := len(r.Form) > 0
+	showAll := false
+	if formSubmitted && r.FormValue("only_available") != "true" {
+		showAll = true
+	}
+
+	params := []interface{}{}
+	baseQuery := `
+        SELECT
+            i.name_of_the_item,
+            MIN(i.item_id) as item_id,
+            MIN(CASE WHEN i.is_available = 1 THEN CAST(REPLACE(i.price, ',', '') AS INTEGER) ELSE NULL END) as lowest_price,
+            MAX(CASE WHEN i.is_available = 1 THEN CAST(REPLACE(i.price, ',', '') AS INTEGER) ELSE NULL END) as highest_price,
+            SUM(CASE WHEN i.is_available = 1 THEN 1 ELSE 0 END) as listing_count
+        FROM items i
+        LEFT JOIN rms_item_cache rms ON i.item_id = rms.item_id
+    `
+	var whereConditions []string
+
+	if searchQuery != "" {
+		if _, err := strconv.Atoi(searchQuery); err == nil {
+			whereConditions = append(whereConditions, "i.item_id = ?")
+			params = append(params, searchQuery)
+		} else {
+			idList, err := getCombinedItemIDs(searchQuery)
+			if err != nil {
+				http.Error(w, "Failed to perform item search", http.StatusInternalServerError)
+				return
+			}
+			if len(idList) > 0 {
+				placeholders := strings.Repeat("?,", len(idList)-1) + "?"
+				whereConditions = append(whereConditions, fmt.Sprintf("i.item_id IN (%s)", placeholders))
+				for _, id := range idList {
+					params = append(params, id)
+				}
+			} else {
+				whereConditions = append(whereConditions, "1 = 0") // Return no results
+			}
+		}
+	}
+
+	if selectedType != "" {
+		whereConditions = append(whereConditions, "rms.item_type = ?")
+		params = append(params, selectedType)
+	}
+
+	whereClause := ""
+	if len(whereConditions) > 0 {
+		whereClause = "WHERE " + strings.Join(whereConditions, " AND ")
+	}
+
+	groupByClause := " GROUP BY i.name_of_the_item"
+	havingClause := ""
+	if !showAll {
+		havingClause = " HAVING listing_count > 0"
+	}
+
+	allowedSorts := map[string]string{
+		"name": "i.name_of_the_item", "item_id": "item_id", "listings": "listing_count",
+		"lowest_price": "lowest_price", "highest_price": "highest_price",
+	}
+	orderByClause, ok := allowedSorts[sortBy]
+	if !ok {
+		sortBy = "highest_price"
+		orderByClause = allowedSorts[sortBy]
+		order = "DESC"
+	} else if strings.ToUpper(order) != "DESC" {
+		order = "ASC"
+	}
+
+	query := fmt.Sprintf("%s %s %s %s ORDER BY %s %s, i.name_of_the_item ASC;", baseQuery, whereClause, groupByClause, havingClause, orderByClause, order)
+
+	rows, err := db.Query(query, params...)
+	if err != nil {
+		log.Printf("❌ Summary query error: %v, Query: %s, Params: %v", err, query, params)
+		http.Error(w, "Database query for summary failed", http.StatusInternalServerError)
+		return
+	}
+	defer rows.Close()
+
+	var items []ItemSummary
+	for rows.Next() {
+		var item ItemSummary
+		if err := rows.Scan(&item.Name, &item.ItemID, &item.LowestPrice, &item.HighestPrice, &item.ListingCount); err != nil {
+			log.Printf("⚠️ Failed to scan summary row: %v", err)
+			continue
+		}
+		items = append(items, item)
+	}
+
+	var totalVisitors int
+	db.QueryRow("SELECT COUNT(*) FROM visitors").Scan(&totalVisitors)
+
+	data := SummaryPageData{
+		Items:          items,
+		SearchQuery:    searchQuery,
+		SortBy:         sortBy,
+		Order:          order,
+		ShowAll:        showAll,
+		LastScrapeTime: getLastUpdateTime("scrape_history", "timestamp"),
+		ItemTypes:      getItemTypeTabs(),
+		SelectedType:   selectedType,
+		TotalVisitors:  totalVisitors,
+	}
+	renderTemplate(w, "index.html", data)
+}
+
+// fullListHandler shows the complete, detailed market list.
+func fullListHandler(w http.ResponseWriter, r *http.Request) {
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "Failed to parse form", http.StatusBadRequest)
+		return
+	}
+	searchQuery := r.FormValue("query")
+	storeNameQuery := r.FormValue("store_name")
+	sortBy := r.FormValue("sort_by")
+	order := r.FormValue("order")
+	selectedCols := r.Form["cols"]
+	selectedType := r.FormValue("type")
+
+	formSubmitted := len(r.Form) > 0
+	showAll := false
+	if formSubmitted && r.FormValue("only_available") != "true" {
+		showAll = true
+	}
+
+	var allStoreNames []string
+	storeRows, err := db.Query("SELECT DISTINCT store_name FROM items WHERE is_available = 1 ORDER BY store_name ASC")
+	if err != nil {
+		log.Printf("⚠️ Could not query for store names: %v", err)
+	} else {
+		defer storeRows.Close()
+		for storeRows.Next() {
+			var storeName string
+			if err := storeRows.Scan(&storeName); err != nil {
+				log.Printf("⚠️ Failed to scan store name: %v", err)
+				continue
+			}
+			allStoreNames = append(allStoreNames, storeName)
+		}
+	}
+
+	allCols := []Column{
+		{ID: "item_id", DisplayName: "Item ID"}, {ID: "quantity", DisplayName: "Quantity"},
+		{ID: "store_name", DisplayName: "Store Name"}, {ID: "seller_name", DisplayName: "Seller Name"},
+		{ID: "map_name", DisplayName: "Map Name"}, {ID: "map_coordinates", DisplayName: "Map Coords"},
+		{ID: "retrieved", DisplayName: "Date Retrieved"},
+	}
+	visibleColumns := make(map[string]bool)
+	columnParams := url.Values{}
+
+	if len(selectedCols) > 0 {
+		for _, col := range selectedCols {
+			visibleColumns[col] = true
+			columnParams.Add("cols", col)
+		}
+	} else {
+		visibleColumns["quantity"] = true
+		visibleColumns["store_name"] = true
+		visibleColumns["map_coordinates"] = true
+	}
+
+	allowedSorts := map[string]string{
+		"name": "i.name_of_the_item", "item_id": "i.item_id", "quantity": "i.quantity",
+		"price": "CAST(REPLACE(i.price, ',', '') AS INTEGER)", "store": "i.store_name", "seller": "i.seller_name",
+		"retrieved": "i.date_and_time_retrieved", "store_name": "i.store_name", "map_name": "i.map_name",
+		"availability": "i.is_available",
+	}
+
+	orderByClause, ok := allowedSorts[sortBy]
+	if !ok {
+		sortBy = "price"
+		orderByClause = allowedSorts[sortBy]
+		order = "DESC"
+	} else if strings.ToUpper(order) != "DESC" {
+		order = "ASC"
+	}
+
+	var whereConditions []string
+	var queryParams []interface{}
+
+	if searchQuery != "" {
+		if _, err := strconv.Atoi(searchQuery); err == nil {
+			whereConditions = append(whereConditions, "i.item_id = ?")
+			queryParams = append(queryParams, searchQuery)
+		} else {
+			idList, err := getCombinedItemIDs(searchQuery)
+			if err != nil {
+				http.Error(w, "Failed to perform item search", http.StatusInternalServerError)
+				return
+			}
+			if len(idList) > 0 {
+				placeholders := strings.Repeat("?,", len(idList)-1) + "?"
+				whereConditions = append(whereConditions, fmt.Sprintf("i.item_id IN (%s)", placeholders))
+				for _, id := range idList {
+					queryParams = append(queryParams, id)
+				}
+			} else {
+				whereConditions = append(whereConditions, "1 = 0")
+			}
+		}
+	}
+
+	if storeNameQuery != "" {
+		whereConditions = append(whereConditions, "i.store_name = ?")
+		queryParams = append(queryParams, storeNameQuery)
+	}
+	if selectedType != "" {
+		whereConditions = append(whereConditions, "rms.item_type = ?")
+		queryParams = append(queryParams, selectedType)
+	}
+	if !showAll {
+		whereConditions = append(whereConditions, "i.is_available = 1")
+	}
+
+	baseQuery := `
+		SELECT i.id, i.name_of_the_item, i.item_id, i.quantity, i.price, i.store_name, i.seller_name, i.date_and_time_retrieved, i.map_name, i.map_coordinates, i.is_available
+		FROM items i 
+		LEFT JOIN rms_item_cache rms ON i.item_id = rms.item_id
+	`
+	whereClause := ""
+	if len(whereConditions) > 0 {
+		whereClause = "WHERE " + strings.Join(whereConditions, " AND ")
+	}
+
+	query := fmt.Sprintf(`%s %s ORDER BY %s %s;`, baseQuery, whereClause, orderByClause, order)
+
+	rows, err := db.Query(query, queryParams...)
+	if err != nil {
+		log.Printf("❌ Database query error: %v", err)
+		http.Error(w, "Database query failed", http.StatusInternalServerError)
+		return
+	}
+	defer rows.Close()
+
+	var items []Item
+	for rows.Next() {
+		var item Item
+		var retrievedTime string
+		err := rows.Scan(&item.ID, &item.Name, &item.ItemID, &item.Quantity, &item.Price, &item.StoreName, &item.SellerName, &retrievedTime, &item.MapName, &item.MapCoordinates, &item.IsAvailable)
+		if err != nil {
+			log.Printf("⚠️ Failed to scan row: %v", err)
+			continue
+		}
+		if parsedTime, err := time.Parse(time.RFC3339, retrievedTime); err == nil {
+			item.Timestamp = parsedTime.Format("2006-01-02 15:04")
+		} else {
+			item.Timestamp = retrievedTime
+		}
+		items = append(items, item)
+	}
+
+	data := PageData{
+		Items: items, SearchQuery: searchQuery, StoreNameQuery: storeNameQuery, AllStoreNames: allStoreNames,
+		SortBy: sortBy, Order: order, ShowAll: showAll, LastScrapeTime: getLastUpdateTime("scrape_history", "timestamp"),
+		VisibleColumns: visibleColumns, AllColumns: allCols, ColumnParams: template.URL(columnParams.Encode()),
+		ItemTypes: getItemTypeTabs(), SelectedType: selectedType,
+	}
+	renderTemplate(w, "full_list.html", data)
+}
+
+// activityHandler serves the page for recent market activity.
+func activityHandler(w http.ResponseWriter, r *http.Request) {
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "Failed to parse form", http.StatusBadRequest)
+		return
+	}
+	searchQuery := r.FormValue("query")
+	soldOnly := r.FormValue("sold_only") == "true"
+	const eventsPerPage = 50
+
+	var whereConditions []string
+	var params []interface{}
+
+	if searchQuery != "" {
+		if _, err := strconv.Atoi(searchQuery); err == nil {
+			whereConditions = append(whereConditions, "item_id = ?")
+			params = append(params, searchQuery)
+		} else {
+			idList, err := getCombinedItemIDs(searchQuery)
+			if err != nil {
+				http.Error(w, "Failed to perform item search", http.StatusInternalServerError)
+				return
+			}
+			if len(idList) > 0 {
+				placeholders := strings.Repeat("?,", len(idList)-1) + "?"
+				whereConditions = append(whereConditions, fmt.Sprintf("item_id IN (%s)", placeholders))
+				for _, id := range idList {
+					params = append(params, id)
+				}
+			} else {
+				whereConditions = append(whereConditions, "1 = 0")
+			}
+		}
+	}
+	if soldOnly {
+		whereConditions = append(whereConditions, "event_type = ?")
+		params = append(params, "SOLD")
+	}
+	whereClause := ""
+	if len(whereConditions) > 0 {
+		whereClause = "WHERE " + strings.Join(whereConditions, " AND ")
+	}
+
+	var totalEvents int
+	countQuery := fmt.Sprintf("SELECT COUNT(*) FROM market_events %s", whereClause)
+	if err := db.QueryRow(countQuery, params...).Scan(&totalEvents); err != nil {
+		log.Printf("❌ Could not count market events: %v", err)
+		http.Error(w, "Could not count market events", http.StatusInternalServerError)
+		return
+	}
+
+	pagination := newPagination(r, totalEvents, eventsPerPage)
+	query := fmt.Sprintf(`
+        SELECT event_timestamp, event_type, item_name, item_id, details
+        FROM market_events %s
+        ORDER BY event_timestamp DESC LIMIT ? OFFSET ?`, whereClause)
+
+	finalParams := append(params, eventsPerPage, pagination.Offset)
+	eventRows, err := db.Query(query, finalParams...)
+	if err != nil {
+		log.Printf("❌ Could not query for market events: %v", err)
+		http.Error(w, "Could not query for market events", http.StatusInternalServerError)
+		return
+	}
+	defer eventRows.Close()
+
+	var marketEvents []MarketEvent
+	for eventRows.Next() {
+		var event MarketEvent
+		var detailsStr, timestampStr string
+		if err := eventRows.Scan(&timestampStr, &event.EventType, &event.ItemName, &event.ItemID, &detailsStr); err != nil {
+			log.Printf("⚠️ Failed to scan market event row: %v", err)
+			continue
+		}
+		if parsedTime, err := time.Parse(time.RFC3339, timestampStr); err == nil {
+			event.Timestamp = parsedTime.Format("2006-01-02 15:04")
+		} else {
+			event.Timestamp = timestampStr
+		}
+		json.Unmarshal([]byte(detailsStr), &event.Details)
+		marketEvents = append(marketEvents, event)
+	}
+
+	data := ActivityPageData{
+		MarketEvents: marketEvents, LastScrapeTime: getLastUpdateTime("scrape_history", "timestamp"),
+		SearchQuery: searchQuery, SoldOnly: soldOnly, CurrentPage: pagination.CurrentPage,
+		TotalPages: pagination.TotalPages, PrevPage: pagination.PrevPage, NextPage: pagination.NextPage,
+		HasPrevPage: pagination.HasPrevPage, HasNextPage: pagination.HasNextPage,
+	}
+	renderTemplate(w, "activity.html", data)
+}
+
+// itemHistoryHandler serves the detailed history page for a single item
+func itemHistoryHandler(w http.ResponseWriter, r *http.Request) {
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "Failed to parse form", http.StatusBadRequest)
+		return
+	}
+	itemName := r.FormValue("name")
+	if itemName == "" {
+		http.Error(w, "Item name is required", http.StatusBadRequest)
+		return
+	}
+
+	var itemID int
+	db.QueryRow("SELECT item_id FROM items WHERE name_of_the_item = ? AND item_id > 0 LIMIT 1", itemName).Scan(&itemID)
+
+	var rmsItemDetails *RMSItem
+	if itemID > 0 {
+		cachedItem, err := getItemDetailsFromCache(itemID)
+		if err == nil {
+			rmsItemDetails = cachedItem
+		} else {
+			scrapedItem, scrapeErr := scrapeRMSItemDetails(itemID)
+			if scrapeErr == nil {
+				rmsItemDetails = scrapedItem
+				if saveErr := saveItemDetailsToCache(rmsItemDetails); saveErr != nil {
+					log.Printf("⚠️ Failed to save item ID %d to cache: %v", itemID, saveErr)
+				}
+			}
+		}
+	}
+
+	currentListingsQuery := `
+		SELECT CAST(REPLACE(price, ',', '') AS INTEGER) as price_int, quantity, store_name, seller_name, map_name, map_coordinates, date_and_time_retrieved
+		FROM items WHERE name_of_the_item = ? AND is_available = 1 ORDER BY price_int ASC;
+	`
+	rowsCurrent, err := db.Query(currentListingsQuery, itemName)
+	if err != nil {
+		log.Printf("❌ Current listings query error: %v", err)
+		http.Error(w, "Database query for current listings failed", http.StatusInternalServerError)
+		return
+	}
+	defer rowsCurrent.Close()
+
+	var currentListings []ItemListing
+	for rowsCurrent.Next() {
+		var listing ItemListing
+		var timestampStr string
+		if err := rowsCurrent.Scan(&listing.Price, &listing.Quantity, &listing.StoreName, &listing.SellerName, &listing.MapName, &listing.MapCoordinates, &timestampStr); err != nil {
+			log.Printf("⚠️ Failed to scan current listing row: %v", err)
+			continue
+		}
+		if parsedTime, err := time.Parse(time.RFC3339, timestampStr); err == nil {
+			listing.Timestamp = parsedTime.Format("2006-01-02 15:04")
+		} else {
+			listing.Timestamp = timestampStr
+		}
+		currentListings = append(currentListings, listing)
+	}
+
+	var currentLowest, currentHighest *ItemListing
+	if len(currentListings) > 0 {
+		currentLowest = &currentListings[0]
+		currentHighest = &currentListings[len(currentListings)-1]
+	}
+	currentLowestJSON, _ := json.Marshal(currentLowest)
+	currentHighestJSON, _ := json.Marshal(currentHighest)
+
+	var overallLowest, overallHighest sql.NullInt64
+	db.QueryRow(`
+        SELECT MIN(CAST(REPLACE(price, ',', '') AS INTEGER)), MAX(CAST(REPLACE(price, ',', '') AS INTEGER))
+        FROM items WHERE name_of_the_item = ?;
+    `, itemName).Scan(&overallLowest, &overallHighest)
+
+	priceChangeQuery := `
+		WITH RankedItems AS (
+			SELECT quantity, CAST(REPLACE(price, ',', '') AS INTEGER) as price_int, store_name, seller_name, date_and_time_retrieved, map_name, map_coordinates,
+				ROW_NUMBER() OVER(PARTITION BY date_and_time_retrieved ORDER BY CAST(REPLACE(price, ',', '') AS INTEGER) ASC) as rn_asc,
+				ROW_NUMBER() OVER(PARTITION BY date_and_time_retrieved ORDER BY CAST(REPLACE(price, ',', '') AS INTEGER) DESC) as rn_desc
+			FROM items WHERE name_of_the_item = ?
+		)
+		SELECT t_lowest.date_and_time_retrieved, t_lowest.price_int, t_lowest.quantity, t_lowest.store_name, t_lowest.seller_name, t_lowest.map_name, t_lowest.map_coordinates,
+			t_highest.price_int, t_highest.quantity, t_highest.store_name, t_highest.seller_name, t_highest.map_name, t_highest.map_coordinates
+		FROM (SELECT * FROM RankedItems WHERE rn_asc = 1) AS t_lowest
+		JOIN (SELECT * FROM RankedItems WHERE rn_desc = 1) AS t_highest ON t_lowest.date_and_time_retrieved = t_highest.date_and_time_retrieved
+		ORDER BY t_lowest.date_and_time_retrieved ASC;
+    `
+	rows, err := db.Query(priceChangeQuery, itemName)
+	if err != nil {
+		log.Printf("❌ History change query error: %v", err)
+		http.Error(w, "Database query for changes failed", http.StatusInternalServerError)
+		return
+	}
+	defer rows.Close()
+
+	priceEvents := make(map[string]PricePointDetails)
+	for rows.Next() {
+		var p PricePointDetails
+		var timestampStr string
+		err := rows.Scan(&timestampStr, &p.LowestPrice, &p.LowestQuantity, &p.LowestStoreName, &p.LowestSellerName, &p.LowestMapName, &p.LowestMapCoords,
+			&p.HighestPrice, &p.HighestQuantity, &p.HighestStoreName, &p.HighestSellerName, &p.HighestMapName, &p.HighestMapCoords)
+		if err != nil {
+			log.Printf("⚠️ Failed to scan history row: %v", err)
+			continue
+		}
+		priceEvents[timestampStr] = p
+	}
+
+	scrapeHistoryRows, err := db.Query("SELECT timestamp FROM scrape_history ORDER BY timestamp ASC;")
+	if err != nil {
+		http.Error(w, "Database query for scrape history failed", http.StatusInternalServerError)
+		return
+	}
+	defer scrapeHistoryRows.Close()
+
+	var allScrapeTimes []string
+	for scrapeHistoryRows.Next() {
+		var ts string
+		if err := scrapeHistoryRows.Scan(&ts); err == nil {
+			allScrapeTimes = append(allScrapeTimes, ts)
+		}
+	}
+
+	var fullPriceHistory []PricePointDetails
+	var lastKnownDetails PricePointDetails
+	var detailsInitialized bool
+
+	for _, scrapeTimeStr := range allScrapeTimes {
+		if event, ok := priceEvents[scrapeTimeStr]; ok {
+			lastKnownDetails = event
+			detailsInitialized = true
+		}
+		if detailsInitialized {
+			t, _ := time.Parse(time.RFC3339, scrapeTimeStr)
+			currentPoint := lastKnownDetails
+			currentPoint.Timestamp = t.Format("2006-01-02 15:04")
+			fullPriceHistory = append(fullPriceHistory, currentPoint)
+		}
+	}
+
+	var finalPriceHistory []PricePointDetails
+	if len(fullPriceHistory) > 0 {
+		finalPriceHistory = append(finalPriceHistory, fullPriceHistory[0])
+		for i := 1; i < len(fullPriceHistory); i++ {
+			if finalPriceHistory[len(finalPriceHistory)-1].LowestPrice != fullPriceHistory[i].LowestPrice ||
+				finalPriceHistory[len(finalPriceHistory)-1].HighestPrice != fullPriceHistory[i].HighestPrice {
+				finalPriceHistory = append(finalPriceHistory, fullPriceHistory[i])
+			}
+		}
+	}
+	priceHistoryJSON, _ := json.Marshal(finalPriceHistory)
+
+	const listingsPerPage = 50
+	var totalListings int
+	db.QueryRow("SELECT COUNT(*) FROM items WHERE name_of_the_item = ?", itemName).Scan(&totalListings)
+
+	pagination := newPagination(r, totalListings, listingsPerPage)
+	allListingsQuery := `
+		SELECT price, quantity, store_name, seller_name, map_name, map_coordinates, date_and_time_retrieved, is_available
+		FROM items WHERE name_of_the_item = ? ORDER BY is_available DESC, date_and_time_retrieved DESC LIMIT ? OFFSET ?;`
+	rowsAll, err := db.Query(allListingsQuery, itemName, listingsPerPage, pagination.Offset)
+	if err != nil {
+		log.Printf("❌ All listings query error: %v", err)
+		http.Error(w, "Database query for all listings failed", http.StatusInternalServerError)
+		return
+	}
+	defer rowsAll.Close()
+
+	var allListings []Item
+	for rowsAll.Next() {
+		var listing Item
+		var timestampStr string
+		if err := rowsAll.Scan(&listing.Price, &listing.Quantity, &listing.StoreName, &listing.SellerName, &listing.MapName, &listing.MapCoordinates, &timestampStr, &listing.IsAvailable); err != nil {
+			log.Printf("⚠️ Failed to scan all listing row: %v", err)
+			continue
+		}
+		if parsedTime, err := time.Parse(time.RFC3339, timestampStr); err == nil {
+			listing.Timestamp = parsedTime.Format("2006-01-02 15:04")
+		} else {
+			listing.Timestamp = timestampStr
+		}
+		allListings = append(allListings, listing)
+	}
+
+	data := HistoryPageData{
+		ItemName: itemName, PriceDataJSON: template.JS(priceHistoryJSON), OverallLowest: int(overallLowest.Int64),
+		OverallHighest: int(overallHighest.Int64), CurrentLowestJSON: template.JS(currentLowestJSON), CurrentHighestJSON: template.JS(currentHighestJSON),
+		ItemDetails: rmsItemDetails, AllListings: allListings, LastScrapeTime: getLastUpdateTime("scrape_history", "timestamp"),
+		TotalListings: totalListings, CurrentPage: pagination.CurrentPage, TotalPages: pagination.TotalPages,
+		PrevPage: pagination.PrevPage, NextPage: pagination.NextPage, HasPrevPage: pagination.HasPrevPage, HasNextPage: pagination.HasNextPage,
+	}
+	renderTemplate(w, "history.html", data)
+}
+
 // playerCountHandler serves the page with a graph of online player history.
 func playerCountHandler(w http.ResponseWriter, r *http.Request) {
 	interval := r.URL.Query().Get("interval")
 	if interval == "" {
-		interval = "7d" // Default to 7 days
+		interval = "7d"
 	}
 
-	var whereClause string
-	var params []interface{}
 	now := time.Now()
 	var viewStart time.Time
 
@@ -1281,69 +1019,45 @@ func playerCountHandler(w http.ResponseWriter, r *http.Request) {
 		viewStart = now.Add(-6 * time.Hour)
 	case "24h":
 		viewStart = now.Add(-24 * time.Hour)
-	case "7d":
-		viewStart = now.Add(-7 * 24 * time.Hour)
 	case "30d":
 		viewStart = now.Add(-30 * 24 * time.Hour)
+	case "7d":
+		fallthrough
 	default:
-		interval = "7d" // Fallback to default if an invalid value is passed
+		interval = "7d"
 		viewStart = now.Add(-7 * 24 * time.Hour)
 	}
-	whereClause = "WHERE timestamp >= ?"
-	params = append(params, viewStart.Format(time.RFC3339))
 
-	const maxGraphDataPoints = 720 // Set a reasonable limit for data points on the graph
+	whereClause := "WHERE timestamp >= ?"
+	params := []interface{}{viewStart.Format(time.RFC3339)}
+	const maxGraphDataPoints = 720
 	var query string
-	var rows *sql.Rows
-	var err error
-
 	duration := now.Sub(viewStart)
-	// Only downsample if the total number of minutes in the interval exceeds our desired max data points.
-	// This prevents downsampling on short intervals like 30m or 6h.
+
 	if duration.Minutes() > maxGraphDataPoints {
-		// Calculate the size of each time bucket in seconds.
-		// We divide the total duration by the number of points we want.
-		// Ensure the bucket is at least 60s (our scrape interval) to make sense.
 		bucketSizeInSeconds := int(duration.Seconds()) / maxGraphDataPoints
 		if bucketSizeInSeconds < 60 {
 			bucketSizeInSeconds = 60
 		}
-
 		log.Printf("📊 Player graph: Downsampling data for '%s' interval. Bucket size: %d seconds.", interval, bucketSizeInSeconds)
-
-		// This query groups data into time buckets.
-		// It takes the average player/seller count within each bucket.
-		// The timestamp for the bucket is the earliest timestamp that falls into it.
-		// `unixepoch(timestamp) / %d` creates the grouping key for the time buckets.
 		query = fmt.Sprintf(`
-			SELECT
-				MIN(timestamp),
-				CAST(AVG(count) AS INTEGER),
-				CAST(AVG(seller_count) AS INTEGER)
-			FROM player_history
-			%s
-			GROUP BY CAST(unixepoch(timestamp) / %d AS INTEGER)
-			ORDER BY 1 ASC`, whereClause, bucketSizeInSeconds)
-		rows, err = db.Query(query, params...)
-
+			SELECT MIN(timestamp), CAST(AVG(count) AS INTEGER), CAST(AVG(seller_count) AS INTEGER)
+			FROM player_history %s GROUP BY CAST(unixepoch(timestamp) / %d AS INTEGER) ORDER BY 1 ASC`, whereClause, bucketSizeInSeconds)
 	} else {
-		// If we don't need to downsample, use the original query to get all data points.
 		log.Printf("📊 Player graph: Fetching all data points for '%s' interval.", interval)
 		query = fmt.Sprintf("SELECT timestamp, count, seller_count FROM player_history %s ORDER BY timestamp ASC", whereClause)
-		rows, err = db.Query(query, params...)
 	}
 
+	rows, err := db.Query(query, params...)
 	if err != nil {
-		http.Error(w, "Could not query for player history", http.StatusInternalServerError)
 		log.Printf("❌ Could not query for player history: %v", err)
+		http.Error(w, "Could not query for player history", http.StatusInternalServerError)
 		return
 	}
 	defer rows.Close()
 
 	var playerHistory []PlayerCountPoint
-	// Create a set of dates that have player data to filter event generation.
 	activeDatesWithData := make(map[string]struct{})
-
 	for rows.Next() {
 		var point PlayerCountPoint
 		var timestampStr string
@@ -1352,138 +1066,69 @@ func playerCountHandler(w http.ResponseWriter, r *http.Request) {
 			log.Printf("⚠️ Failed to scan player history row: %v", err)
 			continue
 		}
-		if sellerCount.Valid {
-			point.SellerCount = int(sellerCount.Int64)
-		} else {
-			point.SellerCount = 0
-		}
-		// Calculate the delta between total players and sellers.
+		point.SellerCount = int(sellerCount.Int64)
 		point.Delta = point.Count - point.SellerCount
 
-		parsedTime, err := time.Parse(time.RFC3339, timestampStr)
-		if err == nil {
+		if parsedTime, err := time.Parse(time.RFC3339, timestampStr); err == nil {
 			point.Timestamp = parsedTime.Format("2006-01-02 15:04")
-			datePart := parsedTime.Format("2006-01-02")
-			activeDatesWithData[datePart] = struct{}{}
+			activeDatesWithData[parsedTime.Format("2006-01-02")] = struct{}{}
 		} else {
 			point.Timestamp = timestampStr
 		}
 		playerHistory = append(playerHistory, point)
 	}
-
-	playerHistoryJSON, err := json.Marshal(playerHistory)
-	if err != nil {
-		http.Error(w, "Failed to create chart data", http.StatusInternalServerError)
-		return
-	}
-
-	// Generate event intervals for the selected view, filtered by days with actual player data.
+	playerHistoryJSON, _ := json.Marshal(playerHistory)
 	eventIntervals := generateEventIntervals(viewStart, now, definedEvents, activeDatesWithData)
-	eventIntervalsJSON, err := json.Marshal(eventIntervals)
-	if err != nil {
-		http.Error(w, "Failed to create event data", http.StatusInternalServerError)
-		return
-	}
+	eventIntervalsJSON, _ := json.Marshal(eventIntervals)
 
-	// Get the latest active player count
 	var latestCount, latestSellerCount int
-	err = db.QueryRow("SELECT count, seller_count FROM player_history ORDER BY timestamp DESC LIMIT 1").Scan(&latestCount, &latestSellerCount)
-	if err != nil && err != sql.ErrNoRows {
-		log.Printf("⚠️ Could not query for latest player count: %v", err)
-		latestCount = 0
-		latestSellerCount = 0
-	}
+	db.QueryRow("SELECT count, seller_count FROM player_history ORDER BY timestamp DESC LIMIT 1").Scan(&latestCount, &latestSellerCount)
 	latestActivePlayers := latestCount - latestSellerCount
 
-	// Get the historical maximum active players
 	var historicalMaxActive int
-	var historicalMaxTime string
 	var historicalMaxTimestampStr sql.NullString
-	err = db.QueryRow("SELECT (count - COALESCE(seller_count, 0)), timestamp FROM player_history ORDER BY (count - COALESCE(seller_count, 0)) DESC LIMIT 1").Scan(&historicalMaxActive, &historicalMaxTimestampStr)
+	db.QueryRow("SELECT (count - COALESCE(seller_count, 0)), timestamp FROM player_history ORDER BY 1 DESC LIMIT 1").Scan(&historicalMaxActive, &historicalMaxTimestampStr)
 
-	if err != nil && err != sql.ErrNoRows {
-		log.Printf("⚠️ Could not query for historical max player count: %v", err)
-		historicalMaxActive = 0
-		historicalMaxTime = "N/A"
-	} else if !historicalMaxTimestampStr.Valid {
-		historicalMaxActive = 0
-		historicalMaxTime = "N/A"
-	} else {
-		// Format the time for display
-		parsedTime, parseErr := time.Parse(time.RFC3339, historicalMaxTimestampStr.String)
-		if parseErr == nil {
+	historicalMaxTime := "N/A"
+	if historicalMaxTimestampStr.Valid {
+		if parsedTime, err := time.Parse(time.RFC3339, historicalMaxTimestampStr.String); err == nil {
 			historicalMaxTime = parsedTime.Format("2006-01-02 15:04")
-		} else {
-			historicalMaxTime = historicalMaxTimestampStr.String // fallback
 		}
 	}
 
-	tmpl, err := template.ParseFiles("players.html")
-	if err != nil {
-		http.Error(w, "Could not load players template", http.StatusInternalServerError)
-		log.Printf("❌ Could not load players.html template: %v", err)
-		return
-	}
-
 	data := PlayerCountPageData{
-		PlayerDataJSON:                 template.JS(playerHistoryJSON),
-		LastScrapeTime:                 getLastPlayerCountTime(),
-		SelectedInterval:               interval,
-		EventDataJSON:                  template.JS(eventIntervalsJSON),
-		LatestActivePlayers:            latestActivePlayers,
-		HistoricalMaxActivePlayers:     historicalMaxActive,
-		HistoricalMaxActivePlayersTime: historicalMaxTime,
+		PlayerDataJSON: template.JS(playerHistoryJSON), LastScrapeTime: getLastUpdateTime("player_history", "timestamp"),
+		SelectedInterval: interval, EventDataJSON: template.JS(eventIntervalsJSON), LatestActivePlayers: latestActivePlayers,
+		HistoricalMaxActivePlayers: historicalMaxActive, HistoricalMaxActivePlayersTime: historicalMaxTime,
 	}
-	tmpl.Execute(w, data)
+	renderTemplate(w, "players.html", data)
 }
 
-// characterHandler serves the new player characters page.
+// characterHandler serves the player characters page.
 func characterHandler(w http.ResponseWriter, r *http.Request) {
 	if err := r.ParseForm(); err != nil {
 		http.Error(w, "Failed to parse form", http.StatusBadRequest)
 		return
 	}
-
-	// --- 1. Get query parameters ---
 	searchName := r.FormValue("name_query")
 	selectedClass := r.FormValue("class_filter")
 	selectedGuild := r.FormValue("guild_filter")
 	sortBy := r.FormValue("sort_by")
 	order := r.FormValue("order")
-	pageStr := r.FormValue("page")
 	selectedCols := r.Form["cols"]
 	graphFilter := r.Form["graph_filter"]
 
 	isInitialLoad := len(r.Form) == 0
-	page, err := strconv.Atoi(pageStr)
-	if err != nil || page < 1 {
-		page = 1
-	}
 	const playersPerPage = 50
 
-	// Define special players who get an emoji
 	specialPlayers := map[string]bool{
-		"Purity Ring":   true,
-		"Bafo MvP":      true,
-		"franco bs":     true,
-		"franco alchie": true,
-		"Afanei":        true,
-		"GiupSankino":   true,
-		"MacroBot1000":  true,
-		"Sileeent":      true,
-		"Shiiv":         true,
-		"Majim Lipe":    true,
-		"Solidao":       true,
-		"WildTig3r":     true,
-		"No Glory":      true, // was father aesir
+		"Purity Ring": true, "Bafo MvP": true, "franco bs": true, "franco alchie": true, "Afanei": true,
+		"GiupSankino": true, "MacroBot1000": true, "Sileeent": true, "Shiiv": true, "Majim Lipe": true,
+		"Solidao": true, "WildTig3r": true, "No Glory": true,
 	}
-
-	// Get all guild masters to identify leaders
 	guildMasters := make(map[string]bool)
 	masterRows, err := db.Query("SELECT DISTINCT master FROM guilds WHERE master IS NOT NULL AND master != ''")
-	if err != nil {
-		log.Printf("⚠️ Could not query for guild masters: %v", err)
-	} else {
+	if err == nil {
 		defer masterRows.Close()
 		for masterRows.Next() {
 			var masterName string
@@ -1493,56 +1138,35 @@ func characterHandler(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// --- 1.5. Define columns and determine visibility ---
 	allCols := []Column{
-		{ID: "rank", DisplayName: "Rank"},
-		{ID: "base_level", DisplayName: "Base Lvl"},
-		{ID: "job_level", DisplayName: "Job Lvl"},
-		{ID: "experience", DisplayName: "Exp %"},
-		{ID: "zeny", DisplayName: "Zeny"},
-		{ID: "class", DisplayName: "Class"},
-		{ID: "guild", DisplayName: "Guild"},
-		{ID: "last_updated", DisplayName: "Last Updated"},
-		{ID: "last_active", DisplayName: "Last Active"},
+		{ID: "rank", DisplayName: "Rank"}, {ID: "base_level", DisplayName: "Base Lvl"}, {ID: "job_level", DisplayName: "Job Lvl"},
+		{ID: "experience", DisplayName: "Exp %"}, {ID: "zeny", DisplayName: "Zeny"}, {ID: "class", DisplayName: "Class"},
+		{ID: "guild", DisplayName: "Guild"}, {ID: "last_updated", DisplayName: "Last Updated"}, {ID: "last_active", DisplayName: "Last Active"},
 	}
-
 	visibleColumns := make(map[string]bool)
 	columnParams := url.Values{}
+	graphFilterParams := url.Values{}
 
 	if isInitialLoad {
-		// Initial page load, set the defaults.
-		visibleColumns["base_level"] = true
-		visibleColumns["job_level"] = true
-		visibleColumns["experience"] = true
-		visibleColumns["class"] = true
-		visibleColumns["guild"] = true
-		visibleColumns["last_active"] = true
+		visibleColumns["base_level"], visibleColumns["job_level"], visibleColumns["experience"] = true, true, true
+		visibleColumns["class"], visibleColumns["guild"], visibleColumns["last_active"] = true, true, true
 		for colID := range visibleColumns {
 			columnParams.Add("cols", colID)
 		}
-		// Default graph filter on initial load
 		graphFilter = []string{"second"}
 	} else {
-		// A form was submitted (filter, sort, columns, or page change).
-		// Populate based on selection. If no `cols` param, no optional columns will be visible.
 		for _, col := range selectedCols {
 			visibleColumns[col] = true
 			columnParams.Add("cols", col)
 		}
 	}
-
-	// Create URL parameters for the graph filter to persist its state
-	graphFilterParams := url.Values{}
 	for _, f := range graphFilter {
 		graphFilterParams.Add("graph_filter", f)
 	}
 
-	// --- 2. Get all unique classes for the filter dropdown ---
 	var allClasses []string
 	classRows, err := db.Query("SELECT DISTINCT class FROM characters ORDER BY class ASC")
-	if err != nil {
-		log.Printf("⚠️ Could not query for unique player classes: %v", err)
-	} else {
+	if err == nil {
 		defer classRows.Close()
 		for classRows.Next() {
 			var className string
@@ -1552,7 +1176,6 @@ func characterHandler(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// --- 3. Build dynamic WHERE clause and parameters ---
 	var whereConditions []string
 	var params []interface{}
 	if searchName != "" {
@@ -1572,13 +1195,10 @@ func characterHandler(w http.ResponseWriter, r *http.Request) {
 		whereClause = "WHERE " + strings.Join(whereConditions, " AND ")
 	}
 
-	// --- 3.1. Get Class Distribution for Graph based on the same filters ---
-	var classDistribution = make(map[string]int)
-	distQuery := fmt.Sprintf("SELECT class, COUNT(*) as count FROM characters %s GROUP BY class", whereClause)
+	classDistribution := make(map[string]int)
+	distQuery := fmt.Sprintf("SELECT class, COUNT(*) FROM characters %s GROUP BY class", whereClause)
 	distRows, err := db.Query(distQuery, params...)
-	if err != nil {
-		log.Printf("⚠️ Could not query for filtered class distribution: %v", err)
-	} else {
+	if err == nil {
 		defer distRows.Close()
 		for distRows.Next() {
 			var className string
@@ -1589,96 +1209,55 @@ func characterHandler(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// Define class categories
 	noviceClasses := map[string]bool{"Aprendiz": true, "Super Aprendiz": true}
 	firstClasses := map[string]bool{"Arqueiro": true, "Espadachim": true, "Gatuno": true, "Mago": true, "Mercador": true, "Noviço": true}
 	secondClasses := map[string]bool{"Alquimista": true, "Arruaceiro": true, "Bardo": true, "Bruxo": true, "Cavaleiro": true, "Caçador": true, "Ferreiro": true, "Mercenário": true, "Monge": true, "Odalisca": true, "Sacerdote": true, "Sábio": true, "Templário": true}
-
 	graphFilterMap := make(map[string]bool)
 	for _, f := range graphFilter {
 		graphFilterMap[f] = true
 	}
 
-	// Process data for the chart, filtering by category
 	chartData := make(map[string]int)
 	for class, count := range classDistribution {
-		if noviceClasses[class] {
-			if graphFilterMap["novice"] {
-				chartData[class] = count
-			}
-		} else if firstClasses[class] {
-			if graphFilterMap["first"] {
-				chartData[class] = count
-			}
-		} else if secondClasses[class] {
-			if graphFilterMap["second"] {
-				chartData[class] = count
-			}
+		if noviceClasses[class] && graphFilterMap["novice"] {
+			chartData[class] = count
+		} else if firstClasses[class] && graphFilterMap["first"] {
+			chartData[class] = count
+		} else if secondClasses[class] && graphFilterMap["second"] {
+			chartData[class] = count
 		}
 	}
-	classDistJSON, err := json.Marshal(chartData)
-	if err != nil {
-		log.Printf("⚠️ Could not marshal class distribution data: %v", err)
-		classDistJSON = []byte("{}") // empty object on error
-	}
+	classDistJSON, _ := json.Marshal(chartData)
 
-	// --- 3.5 Handle Sorting ---
 	allowedSorts := map[string]string{
-		"rank":         "rank",
-		"name":         "name",
-		"base_level":   "base_level",
-		"job_level":    "job_level",
-		"experience":   "experience",
-		"zeny":         "zeny",
-		"class":        "class",
-		"guild":        "guild_name",
-		"last_updated": "last_updated",
-		"last_active":  "last_active",
+		"rank": "rank", "name": "name", "base_level": "base_level", "job_level": "job_level", "experience": "experience",
+		"zeny": "zeny", "class": "class", "guild": "guild_name", "last_updated": "last_updated", "last_active": "last_active",
 	}
 	orderByClause, ok := allowedSorts[sortBy]
 	if !ok {
-		orderByClause, sortBy = "rank", "rank" // Default sort
+		orderByClause, sortBy = "rank", "rank"
 	}
 	if strings.ToUpper(order) != "DESC" {
 		order = "ASC"
 	}
 	orderByFullClause := fmt.Sprintf("ORDER BY %s %s", orderByClause, order)
 
-	// --- 4. Get the total count and total zeny of matching players for pagination ---
 	var totalPlayers int
-	var totalZeny sql.NullInt64 // Use NullInt64 in case of no results (SUM would be NULL)
+	var totalZeny sql.NullInt64
 	countQuery := fmt.Sprintf("SELECT COUNT(*), SUM(zeny) FROM characters %s", whereClause)
-	err = db.QueryRow(countQuery, params...).Scan(&totalPlayers, &totalZeny)
-	if err != nil {
+	if err := db.QueryRow(countQuery, params...).Scan(&totalPlayers, &totalZeny); err != nil {
 		http.Error(w, "Could not count player characters", http.StatusInternalServerError)
-		log.Printf("❌ Could not count player characters: %v", err)
 		return
 	}
 
-	// --- 5. Calculate pagination details ---
-	totalPages := int(math.Ceil(float64(totalPlayers) / float64(playersPerPage)))
-	if page > totalPages {
-		page = totalPages
-	}
-	if page < 1 {
-		page = 1
-	}
-	offset := (page - 1) * playersPerPage
-
-	// --- 6. Fetch the paginated player data ---
-	query := fmt.Sprintf(`
-		SELECT rank, name, base_level, job_level, experience, class, guild_name, zeny, last_updated, last_active
-		FROM characters
-		%s
-		%s
-		LIMIT ? OFFSET ?
-	`, whereClause, orderByFullClause)
-	finalParams := append(params, playersPerPage, offset)
+	pagination := newPagination(r, totalPlayers, playersPerPage)
+	query := fmt.Sprintf(`SELECT rank, name, base_level, job_level, experience, class, guild_name, zeny, last_updated, last_active
+		FROM characters %s %s LIMIT ? OFFSET ?`, whereClause, orderByFullClause)
+	finalParams := append(params, playersPerPage, pagination.Offset)
 
 	rows, err := db.Query(query, finalParams...)
 	if err != nil {
 		http.Error(w, "Could not query for player characters", http.StatusInternalServerError)
-		log.Printf("❌ Could not query for player characters: %v", err)
 		return
 	}
 	defer rows.Close()
@@ -1691,117 +1270,45 @@ func characterHandler(w http.ResponseWriter, r *http.Request) {
 			log.Printf("⚠️ Failed to scan player character row: %v", err)
 			continue
 		}
-
-		// Format dates for display
-		lastUpdatedTime, err := time.Parse(time.RFC3339, lastUpdatedStr)
-		if err == nil {
-			p.LastUpdated = lastUpdatedTime.Format("2006-01-02 15:04")
-		} else {
-			p.LastUpdated = lastUpdatedStr
+		if t, err := time.Parse(time.RFC3339, lastUpdatedStr); err == nil {
+			p.LastUpdated = t.Format("2006-01-02 15:04")
 		}
-
-		lastActiveTime, err := time.Parse(time.RFC3339, lastActiveStr)
-		if err == nil {
-			p.LastActive = lastActiveTime.Format("2006-01-02 15:04")
-		} else {
-			p.LastActive = lastActiveStr
+		if t, err := time.Parse(time.RFC3339, lastActiveStr); err == nil {
+			p.LastActive = t.Format("2006-01-02 15:04")
 		}
-
-		// Set active status
 		p.IsActive = (lastUpdatedStr == lastActiveStr) && lastUpdatedStr != ""
-
-		// Check if the player is a guild leader
-		if _, isMaster := guildMasters[p.Name]; isMaster {
-			p.IsGuildLeader = true
-		}
-
-		// Check if the player is a special player
-		if _, ok := specialPlayers[p.Name]; ok {
-			p.IsSpecial = true
-		}
-
+		p.IsGuildLeader = guildMasters[p.Name]
+		p.IsSpecial = specialPlayers[p.Name]
 		players = append(players, p)
 	}
 
-	// --- 7. Load template and send data ---
-	funcMap := template.FuncMap{
-		"toggleOrder": func(currentOrder string) string {
-			if currentOrder == "ASC" {
-				return "DESC"
-			}
-			return "ASC"
-		},
-		"formatZeny": func(zeny int64) string {
-			s := strconv.FormatInt(zeny, 10)
-			if len(s) <= 3 {
-				return s
-			}
-			var result []string
-			for i := len(s); i > 0; i -= 3 {
-				start := i - 3
-				if start < 0 {
-					start = 0
-				}
-				result = append([]string{s[start:i]}, result...)
-			}
-			return strings.Join(result, ".")
-		},
-	}
-
-	tmpl, err := template.New("characters.html").Funcs(funcMap).ParseFiles("characters.html")
-	if err != nil {
-		http.Error(w, "Could not load characters template", http.StatusInternalServerError)
-		log.Printf("❌ Could not load characters.html template: %v", err)
-		return
-	}
-
 	data := CharacterPageData{
-		Players:               players,
-		LastScrapeTime:        getLastCharacterScrapeTime(),
-		SearchName:            searchName,
-		SelectedClass:         selectedClass,
-		SelectedGuild:         selectedGuild,
-		AllClasses:            allClasses,
-		SortBy:                sortBy,
-		Order:                 order,
-		VisibleColumns:        visibleColumns,
-		AllColumns:            allCols,
-		ColumnParams:          template.URL(columnParams.Encode()),
-		CurrentPage:           page,
-		TotalPages:            totalPages,
-		PrevPage:              page - 1,
-		NextPage:              page + 1,
-		HasPrevPage:           page > 1,
-		HasNextPage:           page < totalPages,
-		TotalPlayers:          totalPlayers,
-		TotalZeny:             totalZeny.Int64,
-		ClassDistributionJSON: template.JS(classDistJSON),
-		GraphFilter:           graphFilterMap,
-		GraphFilterParams:     template.URL(graphFilterParams.Encode()),
-		HasChartData:          len(chartData) > 1,
+		Players: players, LastScrapeTime: getLastUpdateTime("characters", "last_updated"), SearchName: searchName,
+		SelectedClass: selectedClass, SelectedGuild: selectedGuild, AllClasses: allClasses, SortBy: sortBy, Order: order,
+		VisibleColumns: visibleColumns, AllColumns: allCols, ColumnParams: template.URL(columnParams.Encode()), CurrentPage: pagination.CurrentPage,
+		TotalPages: pagination.TotalPages, PrevPage: pagination.PrevPage, NextPage: pagination.NextPage, HasPrevPage: pagination.HasPrevPage,
+		HasNextPage: pagination.HasNextPage, TotalPlayers: totalPlayers, TotalZeny: totalZeny.Int64,
+		ClassDistributionJSON: template.JS(classDistJSON), GraphFilter: graphFilterMap, GraphFilterParams: template.URL(graphFilterParams.Encode()),
+		HasChartData: len(chartData) > 1,
 	}
-	tmpl.Execute(w, data)
+	renderTemplate(w, "characters.html", data)
 }
 
-// guildHandler serves the new player guilds page.
+// guildHandler serves the player guilds page.
 func guildHandler(w http.ResponseWriter, r *http.Request) {
-	// --- 1. Get query parameters ---
-	searchName := r.URL.Query().Get("name_query")
-	pageStr := r.URL.Query().Get("page")
-	sortBy := r.URL.Query().Get("sort_by")
-	order := r.URL.Query().Get("order")
-
-	page, err := strconv.Atoi(pageStr)
-	if err != nil || page < 1 {
-		page = 1
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "Failed to parse form", http.StatusBadRequest)
+		return
 	}
+	searchName := r.FormValue("name_query")
+	sortBy := r.FormValue("sort_by")
+	order := r.FormValue("order")
 	const guildsPerPage = 50
 
-	// --- 2. Build dynamic WHERE clause and parameters ---
 	var whereConditions []string
 	var params []interface{}
 	if searchName != "" {
-		whereConditions = append(whereConditions, "name LIKE ?")
+		whereConditions = append(whereConditions, "g.name LIKE ?")
 		params = append(params, "%"+searchName+"%")
 	}
 	whereClause := ""
@@ -1809,73 +1316,50 @@ func guildHandler(w http.ResponseWriter, r *http.Request) {
 		whereClause = "WHERE " + strings.Join(whereConditions, " AND ")
 	}
 
-	// --- 3. Handle Sorting ---
 	allowedSorts := map[string]string{
-		"rank":      "rank",
-		"name":      "name",
-		"level":     "level",
-		"master":    "master",
-		"members":   "member_count",
-		"zeny":      "total_zeny",
-		"avg_level": "avg_base_level",
+		"rank": "rank", "name": "g.name", "level": "g.level", "master": "g.master",
+		"members": "member_count", "zeny": "total_zeny", "avg_level": "avg_base_level",
 	}
 	orderByClause, ok := allowedSorts[sortBy]
 	isDefaultSort := !ok
 	if isDefaultSort {
-		orderByClause, sortBy = "level", "level" // Set default sort column
+		orderByClause, sortBy = "level", "level"
 	}
-
-	// Sanitize order parameter, defaulting to ASC
 	if strings.ToUpper(order) != "DESC" {
 		order = "ASC"
 	}
-
-	// Override order to DESC for the initial, default page load
 	if isDefaultSort {
 		order = "DESC"
 	}
-
 	orderByFullClause := fmt.Sprintf("ORDER BY %s %s", orderByClause, order)
 
-	// --- 4. Get the total count of matching guilds for pagination ---
 	var totalGuilds int
-	countQuery := fmt.Sprintf("SELECT COUNT(*) FROM guilds %s", whereClause)
-	err = db.QueryRow(countQuery, params...).Scan(&totalGuilds)
-	if err != nil {
+	countQuery := fmt.Sprintf("SELECT COUNT(*) FROM guilds g %s", whereClause)
+	if err := db.QueryRow(countQuery, params...).Scan(&totalGuilds); err != nil {
 		http.Error(w, "Could not count guilds", http.StatusInternalServerError)
-		log.Printf("❌ Could not count guilds: %v", err)
 		return
 	}
 
-	// --- 5. Calculate pagination details ---
-	totalPages := int(math.Ceil(float64(totalGuilds) / float64(guildsPerPage)))
-	if page > totalPages {
-		page = totalPages
-	}
-	if page < 1 {
-		page = 1
-	}
-	offset := (page - 1) * guildsPerPage
-
-	// --- 6. Fetch the paginated guild data ---
-	// --- 6. Fetch the paginated guild data ---
+	pagination := newPagination(r, totalGuilds, guildsPerPage)
 	query := fmt.Sprintf(`
-	SELECT
-		name, level, experience, master, emblem_url,
-		(SELECT COUNT(*) FROM characters WHERE guild_name = guilds.name) as member_count,
-		    COALESCE((SELECT SUM(zeny) FROM characters WHERE guild_name = guilds.name), 0) as total_zeny,
-		    COALESCE((SELECT AVG(base_level) FROM characters WHERE guild_name = guilds.name), 0) as avg_base_level
-		FROM guilds
-		%s
-		%s
-		LIMIT ? OFFSET ?
-	`, whereClause, orderByFullClause)
-	finalParams := append(params, guildsPerPage, offset)
+		SELECT g.name, g.level, g.experience, g.master, g.emblem_url,
+			COALESCE(cs.member_count, 0) as member_count,
+			COALESCE(cs.total_zeny, 0) as total_zeny,
+			COALESCE(cs.avg_base_level, 0) as avg_base_level
+		FROM guilds g
+		LEFT JOIN (
+			SELECT guild_name, COUNT(*) as member_count, SUM(zeny) as total_zeny, AVG(base_level) as avg_base_level
+			FROM characters
+			WHERE guild_name IS NOT NULL AND guild_name != ''
+			GROUP BY guild_name
+		) cs ON g.name = cs.guild_name
+		%s %s LIMIT ? OFFSET ?`, whereClause, orderByFullClause)
+	finalParams := append(params, guildsPerPage, pagination.Offset)
 
 	rows, err := db.Query(query, finalParams...)
 	if err != nil {
-		http.Error(w, "Could not query for guilds", http.StatusInternalServerError)
 		log.Printf("❌ Could not query for guilds: %v", err)
+		http.Error(w, "Could not query for guilds", http.StatusInternalServerError)
 		return
 	}
 	defer rows.Close()
@@ -1890,59 +1374,13 @@ func guildHandler(w http.ResponseWriter, r *http.Request) {
 		guilds = append(guilds, g)
 	}
 
-	// --- 7. Load template and send data ---
-	funcMap := template.FuncMap{
-		"toggleOrder": func(currentOrder string) string {
-			if currentOrder == "ASC" {
-				return "DESC"
-			}
-			return "ASC"
-		},
-		"formatZeny": func(zeny int64) string {
-			s := strconv.FormatInt(zeny, 10)
-			if len(s) <= 3 {
-				return s
-			}
-			var result []string
-			for i := len(s); i > 0; i -= 3 {
-				start := i - 3
-				if start < 0 {
-					start = 0
-				}
-				result = append([]string{s[start:i]}, result...)
-			}
-			return strings.Join(result, ".")
-		},
-		"formatAvgLevel": func(level float64) string {
-			if level == 0 {
-				return "N/A"
-			}
-			return fmt.Sprintf("%.1f", level)
-		},
-	}
-
-	tmpl, err := template.New("guilds.html").Funcs(funcMap).ParseFiles("guilds.html")
-	if err != nil {
-		http.Error(w, "Could not load guilds template", http.StatusInternalServerError)
-		log.Printf("❌ Could not load guilds.html template: %v", err)
-		return
-	}
-
 	data := GuildPageData{
-		Guilds:              guilds,
-		LastGuildUpdateTime: getLastGuildScrapeTime(),
-		SearchName:          searchName,
-		SortBy:              sortBy,
-		Order:               order,
-		CurrentPage:         page,
-		TotalPages:          totalPages,
-		PrevPage:            page - 1,
-		NextPage:            page + 1,
-		HasPrevPage:         page > 1,
-		HasNextPage:         page < totalPages,
-		TotalGuilds:         totalGuilds,
+		Guilds: guilds, LastGuildUpdateTime: getLastUpdateTime("guilds", "last_updated"), SearchName: searchName,
+		SortBy: sortBy, Order: order, CurrentPage: pagination.CurrentPage, TotalPages: pagination.TotalPages,
+		PrevPage: pagination.PrevPage, NextPage: pagination.NextPage, HasPrevPage: pagination.HasPrevPage,
+		HasNextPage: pagination.HasNextPage, TotalGuilds: totalGuilds,
 	}
-	tmpl.Execute(w, data)
+	renderTemplate(w, "guilds.html", data)
 }
 
 // mvpKillsHandler serves the page for MVP kill rankings.
@@ -1950,38 +1388,26 @@ func mvpKillsHandler(w http.ResponseWriter, r *http.Request) {
 	sortBy := r.URL.Query().Get("sort_by")
 	order := r.URL.Query().Get("order")
 
-	// --- 1. Build Headers ---
-	headers := []MvpHeader{
-		{MobID: "total", MobName: "Total Kills"},
-	}
+	headers := []MvpHeader{{MobID: "total", MobName: "Total Kills"}}
 	for _, mobID := range mvpMobIDs {
-		headers = append(headers, MvpHeader{
-			MobID:   mobID,
-			MobName: mvpNames[mobID],
-		})
+		headers = append(headers, MvpHeader{MobID: mobID, MobName: mvpNames[mobID]})
 	}
 
-	// --- 2. Handle Sorting ---
 	var orderByClause string
 	allowedSort := false
-	if sortBy != "" {
-		if sortBy == "name" {
-			allowedSort = true
-			orderByClause = "character_name"
-		} else if sortBy == "total" {
-			// Create the SUM expression for total kills
-			var sumParts []string
-			for _, mobID := range mvpMobIDs {
-				sumParts = append(sumParts, fmt.Sprintf("mvp_%s", mobID))
-			}
-			orderByClause = fmt.Sprintf("(%s)", strings.Join(sumParts, " + "))
-			allowedSort = true
+	if sortBy == "name" {
+		orderByClause, allowedSort = "character_name", true
+	} else {
+		var sumParts []string
+		for _, mobID := range mvpMobIDs {
+			sumParts = append(sumParts, fmt.Sprintf("mvp_%s", mobID))
+		}
+		if sortBy == "total" {
+			orderByClause, allowedSort = fmt.Sprintf("(%s)", strings.Join(sumParts, " + ")), true
 		} else {
-			// Check if sorting by a specific MVP ID
 			for _, mobID := range mvpMobIDs {
 				if sortBy == mobID {
-					orderByClause = fmt.Sprintf("mvp_%s", mobID)
-					allowedSort = true
+					orderByClause, allowedSort = fmt.Sprintf("mvp_%s", mobID), true
 					break
 				}
 			}
@@ -1989,7 +1415,6 @@ func mvpKillsHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if !allowedSort {
-		// Default sort by total kills
 		var sumParts []string
 		for _, mobID := range mvpMobIDs {
 			sumParts = append(sumParts, fmt.Sprintf("mvp_%s", mobID))
@@ -1997,26 +1422,21 @@ func mvpKillsHandler(w http.ResponseWriter, r *http.Request) {
 		orderByClause = fmt.Sprintf("(%s)", strings.Join(sumParts, " + "))
 		sortBy = "total"
 		order = "DESC"
-	} else {
-		if strings.ToUpper(order) != "DESC" {
-			order = "ASC"
-		}
+	} else if strings.ToUpper(order) != "DESC" {
+		order = "ASC"
 	}
 
-	// --- 3. Fetch Data ---
 	query := fmt.Sprintf("SELECT * FROM character_mvp_kills ORDER BY %s %s", orderByClause, order)
 	rows, err := db.Query(query)
 	if err != nil {
-		http.Error(w, "Could not query MVP kills", http.StatusInternalServerError)
 		log.Printf("❌ Could not query for MVP kills: %v", err)
+		http.Error(w, "Could not query MVP kills", http.StatusInternalServerError)
 		return
 	}
 	defer rows.Close()
 
-	// --- 4. Process Rows with Dynamic Columns ---
 	cols, _ := rows.Columns()
 	var players []MvpKillEntry
-
 	for rows.Next() {
 		columns := make([]interface{}, len(cols))
 		columnPointers := make([]interface{}, len(cols))
@@ -2028,65 +1448,34 @@ func mvpKillsHandler(w http.ResponseWriter, r *http.Request) {
 			log.Printf("⚠️ Failed to scan MVP kill row: %v", err)
 			continue
 		}
-
-		player := MvpKillEntry{
-			Kills: make(map[string]int),
-		}
+		player := MvpKillEntry{Kills: make(map[string]int)}
 		totalKills := 0
-
 		for i, colName := range cols {
 			val := columns[i]
 			if colName == "character_name" {
 				player.CharacterName = val.(string)
 			} else if strings.HasPrefix(colName, "mvp_") {
 				mobID := strings.TrimPrefix(colName, "mvp_")
-				originalKillCount := int(val.(int64))
-
-				// MODIFICATION: Subtract 3 from the kill count for display, ensuring it's not negative.
-				displayKillCount := originalKillCount - 3
+				displayKillCount := int(val.(int64)) - MvpKillCountOffset
 				if displayKillCount < 0 {
 					displayKillCount = 0
 				}
-
 				player.Kills[mobID] = displayKillCount
-				totalKills += displayKillCount // Add the modified value to the total
+				totalKills += displayKillCount
 			}
 		}
 		player.TotalKills = totalKills
 		players = append(players, player)
 	}
 
-	// --- 5. Render Template ---
-	funcMap := template.FuncMap{
-		"toggleOrder": func(currentOrder string) string {
-			if currentOrder == "ASC" {
-				return "DESC"
-			}
-			return "ASC"
-		},
-		"getKillCount": func(kills map[string]int, mobID string) int {
-			return kills[mobID]
-		},
-	}
-
-	tmpl, err := template.New("mvp_kills.html").Funcs(funcMap).ParseFiles("mvp_kills.html")
-	if err != nil {
-		http.Error(w, "Could not load mvp_kills template", http.StatusInternalServerError)
-		log.Printf("❌ Could not load mvp_kills.html template: %v", err)
-		return
-	}
-
 	data := MvpKillPageData{
-		Players:        players,
-		Headers:        headers,
-		SortBy:         sortBy,
-		Order:          order,
-		LastScrapeTime: getLastCharacterScrapeTime(), // MVP data is scraped with characters
+		Players: players, Headers: headers, SortBy: sortBy, Order: order,
+		LastScrapeTime: getLastUpdateTime("characters", "last_updated"),
 	}
-	tmpl.Execute(w, data)
+	renderTemplate(w, "mvp_kills.html", data)
 }
 
-// ADDED: characterDetailHandler serves the detailed information page for a single character.
+// characterDetailHandler serves the detailed information page for a single character.
 func characterDetailHandler(w http.ResponseWriter, r *http.Request) {
 	charName := r.URL.Query().Get("name")
 	if charName == "" {
@@ -2094,100 +1483,64 @@ func characterDetailHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Define the class image map
 	classImages := map[string]string{
-		"Aprendiz":       "https://static.wikia.nocookie.net/ragnarok-online-encyclopedia/images/8/8b/Icon_jobs_0.png",
-		"Super Aprendiz": "https://static.wikia.nocookie.net/ragnarok-online-encyclopedia/images/c/c7/Icon_jobs_4001.png",
-		"Arqueiro":       "https://static.wikia.nocookie.net/ragnarok-online-encyclopedia/images/9/97/Icon_jobs_3.png",
-		"Espadachim":     "https://static.wikia.nocookie.net/ragnarok-online-encyclopedia/images/5/5b/Icon_jobs_1.png",
-		"Gatuno":         "https://static.wikia.nocookie.net/ragnarok-online-encyclopedia/images/3/3c/Icon_jobs_6.png",
-		"Mago":           "https://static.wikia.nocookie.net/ragnarok-online-encyclopedia/images/9/99/Icon_jobs_2.png",
-		"Mercador":       "https://static.wikia.nocookie.net/ragnarok-online-encyclopedia/images/9/9e/Icon_jobs_5.png",
-		"Noviço":         "https://static.wikia.nocookie.net/ragnarok-online-encyclopedia/images/c/c5/Icon_jobs_4.png",
-		"Alquimista":     "https://static.wikia.nocookie.net/ragnarok-online-encyclopedia/images/c/c7/Icon_jobs_18.png",
-		"Arruaceiro":     "https://static.wikia.nocookie.net/ragnarok-online-encyclopedia/images/4/48/Icon_jobs_17.png",
-		"Bardo":          "https://static.wikia.nocookie.net/ragnarok-online-encyclopedia/images/6/69/Icon_jobs_19.png",
-		"Bruxo":          "https://static.wikia.nocookie.net/ragnarok-online-encyclopedia/images/0/09/Icon_jobs_9.png",
-		"Cavaleiro":      "https://static.wikia.nocookie.net/ragnarok-online-encyclopedia/images/1/1d/Icon_jobs_7.png",
-		"Caçador":        "https://static.wikia.nocookie.net/ragnarok-online-encyclopedia/images/e/eb/Icon_jobs_11.png",
-		"Ferreiro":       "https://static.wikia.nocookie.net/ragnarok-online-encyclopedia/images/7/7b/Icon_jobs_10.png",
-		"Mercenário":     "https://static.wikia.nocookie.net/ragnarok-online-encyclopedia/images/9/9c/Icon_jobs_12.png",
-		"Monge":          "https://static.wikia.nocookie.net/ragnarok-online-encyclopedia/images/4/44/Icon_jobs_15.png",
-		"Odalisca":       "https://static.wikia.nocookie.net/ragnarok-online-encyclopedia/images/d/dc/Icon_jobs_20.png",
-		"Sacerdote":      "https://static.wikia.nocookie.net/ragnarok-online-encyclopedia/images/3/3a/Icon_jobs_8.png",
-		"Sábio":          "https://static.wikia.nocookie.net/ragnarok-online-encyclopedia/images/0/0e/Icon_jobs_16.png",
-		"Templário":      "https://static.wikia.nocookie.net/ragnarok-online-encyclopedia/images/e/e1/Icon_jobs_14.png",
+		"Aprendiz": "https://static.wikia.nocookie.net/ragnarok-online-encyclopedia/images/8/8b/Icon_jobs_0.png", "Super Aprendiz": "https://static.wikia.nocookie.net/ragnarok-online-encyclopedia/images/c/c7/Icon_jobs_4001.png",
+		"Arqueiro": "https://static.wikia.nocookie.net/ragnarok-online-encyclopedia/images/9/97/Icon_jobs_3.png", "Espadachim": "https://static.wikia.nocookie.net/ragnarok-online-encyclopedia/images/5/5b/Icon_jobs_1.png",
+		"Gatuno": "https://static.wikia.nocookie.net/ragnarok-online-encyclopedia/images/3/3c/Icon_jobs_6.png", "Mago": "https://static.wikia.nocookie.net/ragnarok-online-encyclopedia/images/9/99/Icon_jobs_2.png",
+		"Mercador": "https://static.wikia.nocookie.net/ragnarok-online-encyclopedia/images/9/9e/Icon_jobs_5.png", "Noviço": "https://static.wikia.nocookie.net/ragnarok-online-encyclopedia/images/c/c5/Icon_jobs_4.png",
+		"Alquimista": "https://static.wikia.nocookie.net/ragnarok-online-encyclopedia/images/c/c7/Icon_jobs_18.png", "Arruaceiro": "https://static.wikia.nocookie.net/ragnarok-online-encyclopedia/images/4/48/Icon_jobs_17.png",
+		"Bardo": "https://static.wikia.nocookie.net/ragnarok-online-encyclopedia/images/6/69/Icon_jobs_19.png", "Bruxo": "https://static.wikia.nocookie.net/ragnarok-online-encyclopedia/images/0/09/Icon_jobs_9.png",
+		"Cavaleiro": "https://static.wikia.nocookie.net/ragnarok-online-encyclopedia/images/1/1d/Icon_jobs_7.png", "Caçador": "https://static.wikia.nocookie.net/ragnarok-online-encyclopedia/images/e/eb/Icon_jobs_11.png",
+		"Ferreiro": "https://static.wikia.nocookie.net/ragnarok-online-encyclopedia/images/7/7b/Icon_jobs_10.png", "Mercenário": "https://static.wikia.nocookie.net/ragnarok-online-encyclopedia/images/9/9c/Icon_jobs_12.png",
+		"Monge": "https://static.wikia.nocookie.net/ragnarok-online-encyclopedia/images/4/44/Icon_jobs_15.png", "Odalisca": "https://static.wikia.nocookie.net/ragnarok-online-encyclopedia/images/d/dc/Icon_jobs_20.png",
+		"Sacerdote": "https://static.wikia.nocookie.net/ragnarok-online-encyclopedia/images/3/3a/Icon_jobs_8.png", "Sábio": "https://static.wikia.nocookie.net/ragnarok-online-encyclopedia/images/0/0e/Icon_jobs_16.png",
+		"Templário": "https://static.wikia.nocookie.net/ragnarok-online-encyclopedia/images/e/e1/Icon_jobs_14.png",
 	}
 
-	// Get changelog page parameter
-	clPageStr := r.URL.Query().Get("cl_page")
-	clPage, err := strconv.Atoi(clPageStr)
-	if err != nil || clPage < 1 {
-		clPage = 1
-	}
-	const entriesPerPage = 25 // A reasonable number for this page
-
-	// --- 1. Fetch main character data ---
 	var p PlayerCharacter
 	var lastUpdatedStr, lastActiveStr string
 	query := `SELECT rank, name, base_level, job_level, experience, class, guild_name, zeny, last_updated, last_active FROM characters WHERE name = ?`
-	err = db.QueryRow(query, charName).Scan(
-		&p.Rank, &p.Name, &p.BaseLevel, &p.JobLevel, &p.Experience, &p.Class, &p.GuildName, &p.Zeny, &lastUpdatedStr, &lastActiveStr,
-	)
+	err := db.QueryRow(query, charName).Scan(&p.Rank, &p.Name, &p.BaseLevel, &p.JobLevel, &p.Experience, &p.Class, &p.GuildName, &p.Zeny, &lastUpdatedStr, &lastActiveStr)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			http.Error(w, "Character not found", http.StatusNotFound)
 		} else {
-			http.Error(w, "Database query for character failed", http.StatusInternalServerError)
 			log.Printf("❌ Could not query for character '%s': %v", charName, err)
+			http.Error(w, "Database query for character failed", http.StatusInternalServerError)
 		}
 		return
 	}
 
-	// Format dates and set active status
-	lastUpdatedTime, _ := time.Parse(time.RFC3339, lastUpdatedStr)
-	p.LastUpdated = lastUpdatedTime.Format("2006-01-02 15:04")
-	lastActiveTime, _ := time.Parse(time.RFC3339, lastActiveStr)
-	p.LastActive = lastActiveTime.Format("2006-01-02 15:04")
+	if t, err := time.Parse(time.RFC3339, lastUpdatedStr); err == nil {
+		p.LastUpdated = t.Format("2006-01-02 15:04")
+	}
+	if t, err := time.Parse(time.RFC3339, lastActiveStr); err == nil {
+		p.LastActive = t.Format("2006-01-02 15:04")
+	}
 	p.IsActive = (lastUpdatedStr == lastActiveStr) && lastUpdatedStr != ""
 
-	// --- 2. Fetch Guild Data (if any) ---
 	var guild *Guild
 	if p.GuildName.Valid {
 		g := Guild{}
-		guildQuery := `SELECT name, level, master, (SELECT COUNT(*) FROM characters WHERE guild_name = guilds.name) as member_count FROM guilds WHERE name = ?`
-		err := db.QueryRow(guildQuery, p.GuildName.String).Scan(&g.Name, &g.Level, &g.Master, &g.MemberCount)
-		if err != nil && err != sql.ErrNoRows {
-			log.Printf("⚠️ Could not fetch guild details for '%s': %v", p.GuildName.String, err)
-		} else if err == nil {
+		guildQuery := `SELECT name, level, master, (SELECT COUNT(*) FROM characters WHERE guild_name = guilds.name) FROM guilds WHERE name = ?`
+		if err := db.QueryRow(guildQuery, p.GuildName.String).Scan(&g.Name, &g.Level, &g.Master, &g.MemberCount); err == nil {
 			guild = &g
-			if p.Name == g.Master {
-				p.IsGuildLeader = true
-			}
+			p.IsGuildLeader = (p.Name == g.Master)
 		}
 	}
 
-	// --- 3. Fetch MVP Kills ---
-	var mvpKills MvpKillEntry
-	mvpKills.CharacterName = p.Name
-	mvpKills.Kills = make(map[string]int)
-
-	// Build the column names for the query
+	mvpKills := MvpKillEntry{CharacterName: p.Name, Kills: make(map[string]int)}
 	var mvpCols []string
 	for _, mobID := range mvpMobIDs {
 		mvpCols = append(mvpCols, fmt.Sprintf("mvp_%s", mobID))
 	}
 	mvpQuery := fmt.Sprintf("SELECT %s FROM character_mvp_kills WHERE character_name = ?", strings.Join(mvpCols, ", "))
-
 	scanDest := make([]interface{}, len(mvpMobIDs))
 	for i := range mvpMobIDs {
 		scanDest[i] = new(int)
 	}
 
-	err = db.QueryRow(mvpQuery, charName).Scan(scanDest...)
-	if err != nil && err != sql.ErrNoRows {
-		log.Printf("⚠️ Could not fetch MVP kills for '%s': %v", charName, err)
-	} else if err == nil {
+	if err := db.QueryRow(mvpQuery, charName).Scan(scanDest...); err == nil {
 		totalKills := 0
 		for i, mobID := range mvpMobIDs {
 			killCount := *scanDest[i].(*int)
@@ -2197,7 +1550,6 @@ func characterDetailHandler(w http.ResponseWriter, r *http.Request) {
 		mvpKills.TotalKills = totalKills
 	}
 
-	// Create MVP headers for the template
 	var mvpHeaders []MvpHeader
 	for _, mobID := range mvpMobIDs {
 		if name, ok := mvpNames[mobID]; ok {
@@ -2205,313 +1557,149 @@ func characterDetailHandler(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// --- ADDED: Fetch Guild History ---
 	var guildHistory []CharacterChangelog
-	guildHistoryQuery := `
-		SELECT change_time, activity_description
-		FROM character_changelog
+	guildHistoryQuery := `SELECT change_time, activity_description FROM character_changelog
 		WHERE character_name = ? AND (activity_description LIKE '%joined guild%' OR activity_description LIKE '%left guild%')
 		ORDER BY change_time DESC`
 	guildHistoryRows, err := db.Query(guildHistoryQuery, charName)
-	if err != nil {
-		// Log error but don't fail the page load
-		log.Printf("⚠️ Could not query for guild history for '%s': %v", charName, err)
-	} else {
+	if err == nil {
 		defer guildHistoryRows.Close()
 		for guildHistoryRows.Next() {
 			var entry CharacterChangelog
 			var timestampStr string
-			if err := guildHistoryRows.Scan(&timestampStr, &entry.ActivityDescription); err != nil {
-				log.Printf("⚠️ Failed to scan guild history row: %v", err)
-				continue
+			if err := guildHistoryRows.Scan(&timestampStr, &entry.ActivityDescription); err == nil {
+				if t, err := time.Parse(time.RFC3339, timestampStr); err == nil {
+					entry.ChangeTime = t.Format("2006-01-02")
+				}
+				guildHistory = append(guildHistory, entry)
 			}
-
-			parsedTime, err := time.Parse(time.RFC3339, timestampStr)
-			if err == nil {
-				//				entry.ChangeTime = parsedTime.Format("2006-01-02 15:04")
-				entry.ChangeTime = parsedTime.Format("2006-01-02")
-			} else {
-				entry.ChangeTime = timestampStr
-			}
-			guildHistory = append(guildHistory, entry)
 		}
 	}
-	// --- END of addition ---
 
-	// --- 4. Fetch Character Changelog (paginated) ---
-	// ... (rest of the function) ...
-
-	// --- 4. Fetch Character Changelog (paginated) ---
+	const entriesPerPage = 25
 	var totalChangelogEntries int
-	countQuery := "SELECT COUNT(*) FROM character_changelog WHERE character_name = ?"
-	err = db.QueryRow(countQuery, charName).Scan(&totalChangelogEntries)
-	if err != nil {
-		http.Error(w, "Could not count changelog entries", http.StatusInternalServerError)
-		log.Printf("❌ Could not count changelog entries for '%s': %v", charName, err)
-		return
-	}
+	db.QueryRow("SELECT COUNT(*) FROM character_changelog WHERE character_name = ?", charName).Scan(&totalChangelogEntries)
 
-	// Calculate pagination details
-	clTotalPages := 0
-	if totalChangelogEntries > 0 {
-		clTotalPages = int(math.Ceil(float64(totalChangelogEntries) / float64(entriesPerPage)))
-	}
-	if clPage > clTotalPages && clTotalPages > 0 {
-		clPage = clTotalPages
-	}
-	if clPage < 1 {
-		clPage = 1
-	}
-	offset := (clPage - 1) * entriesPerPage
-	if offset < 0 {
-		offset = 0
-	}
-
-	// Query for paginated changelog entries
-	var changelogEntries []CharacterChangelog
-	changelogQuery := `
-        SELECT change_time, activity_description
-        FROM character_changelog
-        WHERE character_name = ?
-        ORDER BY change_time DESC
-        LIMIT ? OFFSET ?`
-	changelogRows, err := db.Query(changelogQuery, charName, entriesPerPage, offset)
+	pagination := newPagination(r, totalChangelogEntries, entriesPerPage)
+	changelogQuery := `SELECT change_time, activity_description FROM character_changelog WHERE character_name = ? ORDER BY change_time DESC LIMIT ? OFFSET ?`
+	changelogRows, err := db.Query(changelogQuery, charName, entriesPerPage, pagination.Offset)
 	if err != nil {
 		http.Error(w, "Could not query for character changelog", http.StatusInternalServerError)
-		log.Printf("❌ Could not query for character changelog for '%s': %v", charName, err)
 		return
 	}
 	defer changelogRows.Close()
 
+	var changelogEntries []CharacterChangelog
 	for changelogRows.Next() {
 		var entry CharacterChangelog
 		var timestampStr string
-		if err := changelogRows.Scan(&timestampStr, &entry.ActivityDescription); err != nil {
-			log.Printf("⚠️ Failed to scan character changelog row: %v", err)
-			continue
+		if err := changelogRows.Scan(&timestampStr, &entry.ActivityDescription); err == nil {
+			if t, err := time.Parse(time.RFC3339, timestampStr); err == nil {
+				entry.ChangeTime = t.Format("2006-01-02 15:04:05")
+			}
+			changelogEntries = append(changelogEntries, entry)
 		}
-
-		entry.CharacterName = charName // Not needed from query, we already know it
-		parsedTime, err := time.Parse(time.RFC3339, timestampStr)
-		if err == nil {
-			entry.ChangeTime = parsedTime.Format("2006-01-02 15:04:05")
-		} else {
-			entry.ChangeTime = timestampStr
-		}
-		changelogEntries = append(changelogEntries, entry)
 	}
 
-	// --- 5. Prepare data and render template ---
 	data := CharacterDetailPageData{
-		Character:            p,
-		Guild:                guild,
-		MvpKills:             mvpKills,
-		MvpHeaders:           mvpHeaders,
-		GuildHistory:         guildHistory,
-		LastScrapeTime:       getLastCharacterScrapeTime(),
-		ClassImageURL:        classImages[p.Class],
-		ChangelogEntries:     changelogEntries,
-		ChangelogCurrentPage: clPage,
-		ChangelogTotalPages:  clTotalPages,
-		ChangelogPrevPage:    clPage - 1,
-		ChangelogNextPage:    clPage + 1,
-		HasChangelogPrevPage: clPage > 1,
-		HasChangelogNextPage: clPage < clTotalPages,
+		Character: p, Guild: guild, MvpKills: mvpKills, MvpHeaders: mvpHeaders, GuildHistory: guildHistory,
+		LastScrapeTime: getLastUpdateTime("characters", "last_updated"), ClassImageURL: classImages[p.Class],
+		ChangelogEntries: changelogEntries, ChangelogCurrentPage: pagination.CurrentPage, ChangelogTotalPages: pagination.TotalPages,
+		ChangelogPrevPage: pagination.PrevPage, ChangelogNextPage: pagination.NextPage, HasChangelogPrevPage: pagination.HasPrevPage,
+		HasChangelogNextPage: pagination.HasNextPage,
 	}
-
-	funcMap := template.FuncMap{
-		"formatZeny": func(zeny int64) string {
-			s := strconv.FormatInt(zeny, 10)
-			if len(s) <= 3 {
-				return s
-			}
-			var result []string
-			for i := len(s); i > 0; i -= 3 {
-				start := i - 3
-				if start < 0 {
-					start = 0
-				}
-				result = append([]string{s[start:i]}, result...)
-			}
-			return strings.Join(result, ".")
-		},
-		"getKillCount": func(kills map[string]int, mobID string) int {
-			return kills[mobID]
-		},
-	}
-
-	tmpl, err := template.New("character_detail.html").Funcs(funcMap).ParseFiles("character_detail.html")
-	if err != nil {
-		http.Error(w, "Could not load character detail template", http.StatusInternalServerError)
-		log.Printf("❌ Could not load character_detail.html template: %v", err)
-		return
-	}
-
-	tmpl.Execute(w, data)
+	renderTemplate(w, "character_detail.html", data)
 }
 
 // characterChangelogHandler serves the page for recent character changes.
 func characterChangelogHandler(w http.ResponseWriter, r *http.Request) {
-	// 1. Get page parameter
-	pageStr := r.URL.Query().Get("page")
-	page, err := strconv.Atoi(pageStr)
-	if err != nil || page < 1 {
-		page = 1
-	}
-	const entriesPerPage = 100 // Define how many entries per page
-
-	// 2. Get total event count for pagination
+	const entriesPerPage = 100
 	var totalEntries int
-	err = db.QueryRow("SELECT COUNT(*) FROM character_changelog").Scan(&totalEntries)
-	if err != nil {
+	if err := db.QueryRow("SELECT COUNT(*) FROM character_changelog").Scan(&totalEntries); err != nil {
 		http.Error(w, "Could not count changelog entries", http.StatusInternalServerError)
-		log.Printf("❌ Could not count changelog entries: %v", err)
 		return
 	}
 
-	// 3. Calculate pagination details
-	totalPages := 0
-	if totalEntries > 0 {
-		totalPages = int(math.Ceil(float64(totalEntries) / float64(entriesPerPage)))
-	}
-	if page > totalPages && totalPages > 0 {
-		page = totalPages
-	}
-	if page < 1 {
-		page = 1
-	}
-	offset := (page - 1) * entriesPerPage
-	if offset < 0 {
-		offset = 0
-	}
-
-	// 4. Query for paginated events
-	changelogRows, err := db.Query(`
-        SELECT character_name, change_time, activity_description
-        FROM character_changelog
-        ORDER BY change_time DESC
-        LIMIT ? OFFSET ?`, entriesPerPage, offset)
+	pagination := newPagination(r, totalEntries, entriesPerPage)
+	query := `SELECT character_name, change_time, activity_description FROM character_changelog ORDER BY change_time DESC LIMIT ? OFFSET ?`
+	rows, err := db.Query(query, entriesPerPage, pagination.Offset)
 	if err != nil {
 		http.Error(w, "Could not query for character changelog", http.StatusInternalServerError)
-		log.Printf("❌ Could not query for character changelog: %v", err)
 		return
 	}
-	defer changelogRows.Close()
+	defer rows.Close()
 
 	var changelogEntries []CharacterChangelog
-	for changelogRows.Next() {
+	for rows.Next() {
 		var entry CharacterChangelog
 		var timestampStr string
-		if err := changelogRows.Scan(&entry.CharacterName, &timestampStr, &entry.ActivityDescription); err != nil {
+		if err := rows.Scan(&entry.CharacterName, &timestampStr, &entry.ActivityDescription); err != nil {
 			log.Printf("⚠️ Failed to scan character changelog row: %v", err)
 			continue
 		}
-
-		parsedTime, err := time.Parse(time.RFC3339, timestampStr)
-		if err == nil {
+		if parsedTime, err := time.Parse(time.RFC3339, timestampStr); err == nil {
 			entry.ChangeTime = parsedTime.Format("2006-01-02 15:04:05")
 		} else {
 			entry.ChangeTime = timestampStr
 		}
-
 		changelogEntries = append(changelogEntries, entry)
 	}
 
-	tmpl, err := template.ParseFiles("character_changelog.html")
-	if err != nil {
-		http.Error(w, "Could not load character changelog template", http.StatusInternalServerError)
-		log.Printf("❌ Could not load character_changelog.html template: %v", err)
-		return
-	}
-
-	// 5. Populate data struct with pagination info
 	data := CharacterChangelogPageData{
-		ChangelogEntries: changelogEntries,
-		LastScrapeTime:   getLastCharacterScrapeTime(), // Use character scrape time as it's most relevant
-		CurrentPage:      page,
-		TotalPages:       totalPages,
-		PrevPage:         page - 1,
-		NextPage:         page + 1,
-		HasPrevPage:      page > 1,
-		HasNextPage:      page < totalPages,
+		ChangelogEntries: changelogEntries, LastScrapeTime: getLastUpdateTime("characters", "last_updated"),
+		CurrentPage: pagination.CurrentPage, TotalPages: pagination.TotalPages, PrevPage: pagination.PrevPage,
+		NextPage: pagination.NextPage, HasPrevPage: pagination.HasPrevPage, HasNextPage: pagination.HasNextPage,
 	}
-	tmpl.Execute(w, data)
+	renderTemplate(w, "character_changelog.html", data)
 }
 
-// ADDED: guildDetailHandler serves the new guild detail page.
+// guildDetailHandler serves the new guild detail page.
 func guildDetailHandler(w http.ResponseWriter, r *http.Request) {
 	guildName := r.URL.Query().Get("name")
 	if guildName == "" {
 		http.Error(w, "Guild name is required", http.StatusBadRequest)
 		return
 	}
-
-	// --- 1. Get query parameters for sorting members and changelog pagination ---
 	sortBy := r.URL.Query().Get("sort_by")
 	order := r.URL.Query().Get("order")
-	clPageStr := r.URL.Query().Get("cl_page")
-	clPage, err := strconv.Atoi(clPageStr)
-	if err != nil || clPage < 1 {
-		clPage = 1
-	}
 	const entriesPerPage = 25
 
-	// --- 2. Fetch main guild data ---
 	var g Guild
 	guildQuery := `
-        SELECT
-            name, level, experience, master, emblem_url,
-            (SELECT COUNT(*) FROM characters WHERE guild_name = guilds.name) as member_count,
-            COALESCE((SELECT SUM(zeny) FROM characters WHERE guild_name = guilds.name), 0) as total_zeny,
-            COALESCE((SELECT AVG(base_level) FROM characters WHERE guild_name = guilds.name), 0) as avg_base_level
-        FROM guilds
-        WHERE name = ?`
+        SELECT name, level, experience, master, emblem_url,
+            (SELECT COUNT(*) FROM characters WHERE guild_name = guilds.name),
+            COALESCE((SELECT SUM(zeny) FROM characters WHERE guild_name = guilds.name), 0),
+            COALESCE((SELECT AVG(base_level) FROM characters WHERE guild_name = guilds.name), 0)
+        FROM guilds WHERE name = ?`
 
-	err = db.QueryRow(guildQuery, guildName).Scan(&g.Name, &g.Level, &g.Experience, &g.Master, &g.EmblemURL, &g.MemberCount, &g.TotalZeny, &g.AvgBaseLevel)
+	err := db.QueryRow(guildQuery, guildName).Scan(&g.Name, &g.Level, &g.Experience, &g.Master, &g.EmblemURL, &g.MemberCount, &g.TotalZeny, &g.AvgBaseLevel)
 	if err != nil {
+		// CORRECTED BLOCK: Replaced the invalid ternary operator with a standard if/else.
 		if err == sql.ErrNoRows {
 			http.Error(w, "Guild not found", http.StatusNotFound)
 		} else {
-			http.Error(w, "Database query for guild details failed", http.StatusInternalServerError)
-			log.Printf("❌ Could not query for guild '%s': %v", guildName, err)
+			http.Error(w, "Could not query for guild details", http.StatusInternalServerError)
 		}
 		return
 	}
 
-	// --- 3. Handle Sorting for Member List ---
 	allowedSorts := map[string]string{
-		"rank":        "rank",
-		"name":        "name",
-		"base_level":  "base_level",
-		"job_level":   "job_level",
-		"experience":  "experience",
-		"zeny":        "zeny",
-		"class":       "class",
-		"last_active": "last_active",
+		"rank": "rank", "name": "name", "base_level": "base_level", "job_level": "job_level",
+		"experience": "experience", "zeny": "zeny", "class": "class", "last_active": "last_active",
 	}
 	orderByClause, ok := allowedSorts[sortBy]
 	if !ok {
-		orderByClause, sortBy = "base_level", "base_level" // Default sort
-		order = "DESC"
-	} else {
-		if strings.ToUpper(order) != "DESC" {
-			order = "ASC"
-		}
+		orderByClause, sortBy, order = "base_level", "base_level", "DESC"
+	} else if strings.ToUpper(order) != "DESC" {
+		order = "ASC"
 	}
 	orderByFullClause := fmt.Sprintf("ORDER BY %s %s", orderByClause, order)
 
-	// --- 4. Fetch guild members ---
-	membersQuery := fmt.Sprintf(`
-		SELECT rank, name, base_level, job_level, experience, class, guild_name, zeny, last_updated, last_active
-		FROM characters
-		WHERE guild_name = ?
-		%s
-	`, orderByFullClause)
-
+	membersQuery := fmt.Sprintf(`SELECT rank, name, base_level, job_level, experience, class, zeny, last_active FROM characters
+		WHERE guild_name = ? %s`, orderByFullClause)
 	rows, err := db.Query(membersQuery, guildName)
 	if err != nil {
 		http.Error(w, "Could not query for guild members", http.StatusInternalServerError)
-		log.Printf("❌ Could not query for members of guild '%s': %v", guildName, err)
 		return
 	}
 	defer rows.Close()
@@ -2520,229 +1708,103 @@ func guildDetailHandler(w http.ResponseWriter, r *http.Request) {
 	classDistribution := make(map[string]int)
 	for rows.Next() {
 		var p PlayerCharacter
-		var lastUpdatedStr, lastActiveStr string
-		if err := rows.Scan(&p.Rank, &p.Name, &p.BaseLevel, &p.JobLevel, &p.Experience, &p.Class, &p.GuildName, &p.Zeny, &lastUpdatedStr, &lastActiveStr); err != nil {
+		var lastActiveStr string
+		if err := rows.Scan(&p.Rank, &p.Name, &p.BaseLevel, &p.JobLevel, &p.Experience, &p.Class, &p.Zeny, &lastActiveStr); err != nil {
 			log.Printf("⚠️ Failed to scan guild member row: %v", err)
 			continue
 		}
-		classDistribution[p.Class]++ // Increment class count for the chart
-
-		lastActiveTime, _ := time.Parse(time.RFC3339, lastActiveStr)
-		p.LastActive = lastActiveTime.Format("2006-01-02 15:04")
-
-		if p.Name == g.Master {
-			p.IsGuildLeader = true
+		classDistribution[p.Class]++
+		if t, err := time.Parse(time.RFC3339, lastActiveStr); err == nil {
+			p.LastActive = t.Format("2006-01-02 15:04")
 		}
-
+		p.IsGuildLeader = (p.Name == g.Master)
 		members = append(members, p)
 	}
+	classDistJSON, _ := json.Marshal(classDistribution)
 
-	// --- 5. Prepare chart data ---
-	classDistJSON, err := json.Marshal(classDistribution)
-	if err != nil {
-		log.Printf("⚠️ Could not marshal class distribution data for guild '%s': %v", guildName, err)
-		classDistJSON = []byte("{}") // empty object on error
-	}
-
-	// --- 6. Fetch Guild Changelog (paginated) ---
-	var totalChangelogEntries int
 	likePattern := "%" + guildName + "%"
-	countQuery := "SELECT COUNT(*) FROM character_changelog WHERE activity_description LIKE ?"
-	err = db.QueryRow(countQuery, likePattern).Scan(&totalChangelogEntries)
-	if err != nil {
-		http.Error(w, "Could not count guild changelog entries", http.StatusInternalServerError)
-		log.Printf("❌ Could not count changelog entries for guild '%s': %v", guildName, err)
-		return
-	}
+	var totalChangelogEntries int
+	db.QueryRow("SELECT COUNT(*) FROM character_changelog WHERE activity_description LIKE ?", likePattern).Scan(&totalChangelogEntries)
 
-	// Calculate pagination details
-	clTotalPages := 0
-	if totalChangelogEntries > 0 {
-		clTotalPages = int(math.Ceil(float64(totalChangelogEntries) / float64(entriesPerPage)))
-	}
-	if clPage > clTotalPages && clTotalPages > 0 {
-		clPage = clTotalPages
-	}
-	if clPage < 1 {
-		clPage = 1
-	}
-	offset := (clPage - 1) * entriesPerPage
-	if offset < 0 {
-		offset = 0
-	}
-
-	// Query for paginated changelog entries
-	var changelogEntries []CharacterChangelog
-	changelogQuery := `
-        SELECT change_time, character_name, activity_description
-        FROM character_changelog
-        WHERE activity_description LIKE ?
-        ORDER BY change_time DESC
-        LIMIT ? OFFSET ?`
-	changelogRows, err := db.Query(changelogQuery, likePattern, entriesPerPage, offset)
+	pagination := newPagination(r, totalChangelogEntries, entriesPerPage)
+	changelogQuery := `SELECT change_time, character_name, activity_description FROM character_changelog
+        WHERE activity_description LIKE ? ORDER BY change_time DESC LIMIT ? OFFSET ?`
+	changelogRows, err := db.Query(changelogQuery, likePattern, entriesPerPage, pagination.Offset)
 	if err != nil {
 		http.Error(w, "Could not query for guild changelog", http.StatusInternalServerError)
-		log.Printf("❌ Could not query for guild changelog for '%s': %v", guildName, err)
 		return
 	}
 	defer changelogRows.Close()
 
+	var changelogEntries []CharacterChangelog
 	for changelogRows.Next() {
 		var entry CharacterChangelog
 		var timestampStr string
-		if err := changelogRows.Scan(&timestampStr, &entry.CharacterName, &entry.ActivityDescription); err != nil {
-			log.Printf("⚠️ Failed to scan guild changelog row: %v", err)
-			continue
+		if err := changelogRows.Scan(&timestampStr, &entry.CharacterName, &entry.ActivityDescription); err == nil {
+			if t, err := time.Parse(time.RFC3339, timestampStr); err == nil {
+				entry.ChangeTime = t.Format("2006-01-02 15:04:05")
+			}
+			changelogEntries = append(changelogEntries, entry)
 		}
-		parsedTime, err := time.Parse(time.RFC3339, timestampStr)
-		if err == nil {
-			entry.ChangeTime = parsedTime.Format("2006-01-02 15:04:05")
-		} else {
-			entry.ChangeTime = timestampStr
-		}
-		changelogEntries = append(changelogEntries, entry)
-	}
-
-	// --- 7. Load template and send data ---
-	funcMap := template.FuncMap{
-		"toggleOrder": func(currentOrder string) string {
-			if currentOrder == "ASC" {
-				return "DESC"
-			}
-			return "ASC"
-		},
-		"formatZeny": func(zeny int64) string {
-			s := strconv.FormatInt(zeny, 10)
-			if len(s) <= 3 {
-				return s
-			}
-			var result []string
-			for i := len(s); i > 0; i -= 3 {
-				start := i - 3
-				if start < 0 {
-					start = 0
-				}
-				result = append([]string{s[start:i]}, result...)
-			}
-			return strings.Join(result, ".")
-		},
-		"formatAvgLevel": func(level float64) string {
-			if level == 0 {
-				return "N/A"
-			}
-			return fmt.Sprintf("%.1f", level)
-		},
-	}
-
-	tmpl, err := template.New("guild_detail.html").Funcs(funcMap).ParseFiles("guild_detail.html")
-	if err != nil {
-		http.Error(w, "Could not load guild detail template", http.StatusInternalServerError)
-		log.Printf("❌ Could not load guild_detail.html template: %v", err)
-		return
 	}
 
 	data := GuildDetailPageData{
-		Guild:                 g,
-		Members:               members,
-		LastScrapeTime:        getLastGuildScrapeTime(),
-		SortBy:                sortBy,
-		Order:                 order,
-		ClassDistributionJSON: template.JS(classDistJSON),
-		HasChartData:          len(classDistribution) > 1,
-		ChangelogEntries:      changelogEntries,
-		ChangelogCurrentPage:  clPage,
-		ChangelogTotalPages:   clTotalPages,
-		ChangelogPrevPage:     clPage - 1,
-		ChangelogNextPage:     clPage + 1,
-		HasChangelogPrevPage:  clPage > 1,
-		HasChangelogNextPage:  clPage < clTotalPages,
+		Guild: g, Members: members, LastScrapeTime: getLastUpdateTime("guilds", "last_updated"), SortBy: sortBy, Order: order,
+		ClassDistributionJSON: template.JS(classDistJSON), HasChartData: len(classDistribution) > 1,
+		ChangelogEntries: changelogEntries, ChangelogCurrentPage: pagination.CurrentPage, ChangelogTotalPages: pagination.TotalPages,
+		ChangelogPrevPage: pagination.PrevPage, ChangelogNextPage: pagination.NextPage, HasChangelogPrevPage: pagination.HasPrevPage,
+		HasChangelogNextPage: pagination.HasNextPage,
 	}
-
-	tmpl.Execute(w, data)
+	renderTemplate(w, "guild_detail.html", data)
 }
 
 // storeDetailHandler serves the detailed information page for a single store.
 func storeDetailHandler(w http.ResponseWriter, r *http.Request) {
 	storeName := r.URL.Query().Get("name")
-	// ADDED: Get seller name from the URL query to differentiate between stores with the same name.
 	sellerNameQuery := r.URL.Query().Get("seller")
-
 	if storeName == "" {
 		http.Error(w, "Store name is required", http.StatusBadRequest)
 		return
 	}
-
-	// Get query parameters for sorting
 	sortBy := r.URL.Query().Get("sort_by")
 	order := r.URL.Query().Get("order")
 
-	// Handle Sorting
 	allowedSorts := map[string]string{
-		"name":     "name_of_the_item",
-		"item_id":  "item_id",
-		"quantity": "quantity",
-		"price":    "CAST(REPLACE(price, ',', '') AS INTEGER)",
+		"name": "name_of_the_item", "item_id": "item_id", "quantity": "quantity",
+		"price": "CAST(REPLACE(price, ',', '') AS INTEGER)",
 	}
 	orderByClause, ok := allowedSorts[sortBy]
 	if !ok {
-		orderByClause, sortBy = "CAST(REPLACE(price, ',', '') AS INTEGER)", "price" // Default sort
-		order = "DESC"
-	} else {
-		if strings.ToUpper(order) != "DESC" {
-			order = "ASC"
-		}
+		orderByClause, sortBy, order = "CAST(REPLACE(price, ',', '') AS INTEGER)", "price", "DESC"
+	} else if strings.ToUpper(order) != "DESC" {
+		order = "ASC"
 	}
 	orderByFullClause := fmt.Sprintf("ORDER BY %s %s", orderByClause, order)
 
-	var items []Item
 	var sellerName, mapName, mapCoords, mostRecentTimestampStr string
-
-	// MODIFIED: Step 1: Find the full signature of the specific store instance.
-	// The query is now built dynamically to include the seller's name if provided.
 	var signatureQueryArgs []interface{}
-	signatureQuery := `
-		SELECT seller_name, map_name, map_coordinates, date_and_time_retrieved
-		FROM items
-		WHERE store_name = ?
-	`
+	signatureQuery := `SELECT seller_name, map_name, map_coordinates, date_and_time_retrieved FROM items WHERE store_name = ?`
 	signatureQueryArgs = append(signatureQueryArgs, storeName)
-
-	// If a seller is specified, add it to the WHERE clause to find the correct store.
 	if sellerNameQuery != "" {
 		signatureQuery += " AND seller_name = ?"
 		signatureQueryArgs = append(signatureQueryArgs, sellerNameQuery)
 	}
-
-	signatureQuery += `
-		ORDER BY date_and_time_retrieved DESC, id DESC
-		LIMIT 1
-	`
+	signatureQuery += ` ORDER BY date_and_time_retrieved DESC, id DESC LIMIT 1`
 	err := db.QueryRow(signatureQuery, signatureQueryArgs...).Scan(&sellerName, &mapName, &mapCoords, &mostRecentTimestampStr)
 
-	// Step 2: If a store instance was found, fetch its unique items.
+	var items []Item
 	if err == nil {
-		// This part of the logic remains the same, as it now uses the correctly identified signature.
 		query := fmt.Sprintf(`
 			WITH RankedItems AS (
-				SELECT
-					id, name_of_the_item, item_id, quantity, price, store_name, seller_name,
-					date_and_time_retrieved, map_name, map_coordinates, is_available,
-					ROW_NUMBER() OVER(PARTITION BY name_of_the_item ORDER BY id DESC) as rn
-				FROM items
-				WHERE store_name = ? AND seller_name = ? AND map_name = ? AND map_coordinates = ?
+				SELECT *, ROW_NUMBER() OVER(PARTITION BY name_of_the_item ORDER BY id DESC) as rn
+				FROM items WHERE store_name = ? AND seller_name = ? AND map_name = ? AND map_coordinates = ?
 			)
-			SELECT
-				id, name_of_the_item, item_id, quantity, price, store_name, seller_name,
-				date_and_time_retrieved, map_name, map_coordinates, is_available
-			FROM RankedItems
-			WHERE rn = 1
-			%s
-		`, orderByFullClause)
+			SELECT id, name_of_the_item, item_id, quantity, price, store_name, seller_name, date_and_time_retrieved, map_name, map_coordinates, is_available
+			FROM RankedItems WHERE rn = 1 %s`, orderByFullClause)
 
 		rows, queryErr := db.Query(query, storeName, sellerName, mapName, mapCoords)
 		if queryErr != nil {
 			http.Error(w, "Could not query for store items", http.StatusInternalServerError)
-			log.Printf("❌ Could not query for items in store '%s': %v", storeName, queryErr)
 			return
 		}
 		defer rows.Close()
@@ -2750,52 +1812,23 @@ func storeDetailHandler(w http.ResponseWriter, r *http.Request) {
 		for rows.Next() {
 			var item Item
 			var retrievedTime string
-			if err := rows.Scan(&item.ID, &item.Name, &item.ItemID, &item.Quantity, &item.Price, &item.StoreName, &item.SellerName, &retrievedTime, &item.MapName, &item.MapCoordinates, &item.IsAvailable); err != nil {
-				log.Printf("⚠️ Failed to scan store item row: %v", err)
-				continue
+			if err := rows.Scan(&item.ID, &item.Name, &item.ItemID, &item.Quantity, &item.Price, &item.StoreName, &item.SellerName, &retrievedTime, &item.MapName, &item.MapCoordinates, &item.IsAvailable); err == nil {
+				if t, err := time.Parse(time.RFC3339, retrievedTime); err == nil {
+					item.Timestamp = t.Format("2006-01-02 15:04")
+				}
+				items = append(items, item)
 			}
-			parsedTime, _ := time.Parse(time.RFC3339, retrievedTime)
-			item.Timestamp = parsedTime.Format("2006-01-02 15:04")
-			items = append(items, item)
 		}
-
 	} else if err != sql.ErrNoRows {
-		// Log any database error other than the store not being found.
 		http.Error(w, "Database error finding store", http.StatusInternalServerError)
-		log.Printf("⚠️ Database error looking for store '%s' by seller '%s': %v", storeName, sellerNameQuery, err)
-		return
-	}
-	// If err is sql.ErrNoRows, the 'items' slice remains empty, and the page will correctly show "No items found".
-
-	// Load template and send data
-	funcMap := template.FuncMap{
-		"toggleOrder": func(currentOrder string) string {
-			if currentOrder == "ASC" {
-				return "DESC"
-			}
-			return "ASC"
-		},
-	}
-
-	tmpl, err := template.New("store_detail.html").Funcs(funcMap).ParseFiles("store_detail.html")
-	if err != nil {
-		http.Error(w, "Could not load store detail template", http.StatusInternalServerError)
-		log.Printf("❌ Could not load store_detail.html template: %v", err)
 		return
 	}
 
 	data := StoreDetailPageData{
-		StoreName:      storeName,
-		SellerName:     sellerName,
-		MapName:        strings.ToLower(mapName), // Ensure map name is lowercase for URL
-		MapCoordinates: mapCoords,
-		Items:          items,
-		LastScrapeTime: getLastScrapeTime(),
-		SortBy:         sortBy,
-		Order:          order,
+		StoreName: storeName, SellerName: sellerName, MapName: strings.ToLower(mapName), MapCoordinates: mapCoords,
+		Items: items, LastScrapeTime: getLastUpdateTime("scrape_history", "timestamp"), SortBy: sortBy, Order: order,
 	}
-
-	tmpl.Execute(w, data)
+	renderTemplate(w, "store_detail.html", data)
 }
 
 // generateSecretToken creates a cryptographically secure random token.
@@ -2809,231 +1842,124 @@ func generateSecretToken(length int) (string, error) {
 
 // tradingPostListHandler displays the list of all trading posts.
 func tradingPostListHandler(w http.ResponseWriter, r *http.Request) {
-	// 1. Get search query from URL.
 	searchQuery := r.URL.Query().Get("query")
 
-	// 2. Build the query for posts with an optional WHERE clause for searching.
 	var postParams []interface{}
-	postQuery := `
-        SELECT id, title, post_type, character_name, contact_info, created_at, notes 
-        FROM trading_posts`
+	postQuery := `SELECT id, title, post_type, character_name, contact_info, created_at, notes FROM trading_posts`
 
-	// --- MODIFIED: CONCURRENT SEARCH LOGIC FOR TRADING POST ---
-	isNumericSearch := false
 	if searchQuery != "" {
-		_, err := strconv.Atoi(searchQuery)
-		isNumericSearch = (err == nil)
-	}
-
-	if searchQuery != "" && !isNumericSearch {
-		var wg sync.WaitGroup
-		scrapedIDsChan := make(chan []int, 1)
-		localIDsChan := make(chan []int, 1)
-
-		wg.Add(2)
-
-		// Goroutine 1: Scrape ragnarokdatabase.com
-		go func() {
-			defer wg.Done()
-			ids, err := scrapeRagnarokDatabaseSearch(searchQuery)
-			if err != nil {
-				log.Printf("⚠️ [Trading Post] Concurrent scrape failed for '%s': %v", searchQuery, err)
-				scrapedIDsChan <- []int{}
-				return
-			}
-			scrapedIDsChan <- ids
-		}()
-
-		// Goroutine 2: Search local trading_post_items DB by name for matching IDs
-		go func() {
-			defer wg.Done()
-			var ids []int
-			query := "SELECT DISTINCT item_id FROM trading_post_items WHERE item_name LIKE ? AND item_id IS NOT NULL"
-			rows, err := db.Query(query, "%"+searchQuery+"%")
-			if err != nil {
-				log.Printf("⚠️ [Trading Post] Concurrent local ID search failed for '%s': %v", searchQuery, err)
-				localIDsChan <- []int{}
-				return
-			}
-			defer rows.Close()
-			for rows.Next() {
-				var id int
-				if err := rows.Scan(&id); err == nil {
-					ids = append(ids, id)
-				}
-			}
-			localIDsChan <- ids
-		}()
-
-		wg.Wait()
-		close(scrapedIDsChan)
-		close(localIDsChan)
-
-		scrapedIDs := <-scrapedIDsChan
-		localIDs := <-localIDsChan
-
-		// Combine and de-duplicate IDs
-		combinedIDs := make(map[int]struct{})
-		for _, id := range scrapedIDs {
-			combinedIDs[id] = struct{}{}
-		}
-		for _, id := range localIDs {
-			combinedIDs[id] = struct{}{}
-		}
-
-		// Now, also get post IDs that match by item_name directly, in case item_id is not set
-		postIDsByName, err := db.Query("SELECT DISTINCT post_id FROM trading_post_items WHERE item_name LIKE ?", "%"+searchQuery+"%")
-		var directMatchPostIDs []int
-		if err == nil {
-			defer postIDsByName.Close()
-			for postIDsByName.Next() {
-				var postID int
-				if err := postIDsByName.Scan(&postID); err == nil {
-					directMatchPostIDs = append(directMatchPostIDs, postID)
-				}
-			}
-		}
-
-		if len(combinedIDs) > 0 || len(directMatchPostIDs) > 0 {
-			var whereClauses []string
-
-			// Add clause for item IDs found
-			if len(combinedIDs) > 0 {
-				var idList []int
-				for id := range combinedIDs {
-					idList = append(idList, id)
-				}
-				placeholders := strings.Repeat("?,", len(idList)-1) + "?"
-				whereClauses = append(whereClauses, fmt.Sprintf("id IN (SELECT DISTINCT post_id FROM trading_post_items WHERE item_id IN (%s))", placeholders))
-				for _, id := range idList {
-					postParams = append(postParams, id)
-				}
-			}
-
-			// Add clause for posts matched directly by name
-			if len(directMatchPostIDs) > 0 {
-				placeholders := strings.Repeat("?,", len(directMatchPostIDs)-1) + "?"
-				whereClauses = append(whereClauses, fmt.Sprintf("id IN (%s)", placeholders))
-				for _, id := range directMatchPostIDs {
-					postParams = append(postParams, id)
-				}
-			}
-
-			postQuery += " WHERE " + strings.Join(whereClauses, " OR ")
-
+		if _, err := strconv.Atoi(searchQuery); err == nil {
+			postQuery += ` WHERE id IN (SELECT DISTINCT post_id FROM trading_post_items WHERE item_id = ?)`
+			postParams = append(postParams, searchQuery)
 		} else {
-			// If no IDs or name matches were found anywhere, return no results
-			postQuery += " WHERE 1 = 0"
+			idList, _ := getCombinedItemIDs(searchQuery)
+			postIDsByName, _ := db.Query("SELECT DISTINCT post_id FROM trading_post_items WHERE item_name LIKE ?", "%"+searchQuery+"%")
+			var directMatchPostIDs []int
+			if postIDsByName != nil {
+				defer postIDsByName.Close()
+				for postIDsByName.Next() {
+					var postID int
+					if err := postIDsByName.Scan(&postID); err == nil {
+						directMatchPostIDs = append(directMatchPostIDs, postID)
+					}
+				}
+			}
+
+			if len(idList) > 0 || len(directMatchPostIDs) > 0 {
+				var whereClauses []string
+				if len(idList) > 0 {
+					placeholders := strings.Repeat("?,", len(idList)-1) + "?"
+					whereClauses = append(whereClauses, fmt.Sprintf("id IN (SELECT DISTINCT post_id FROM trading_post_items WHERE item_id IN (%s))", placeholders))
+					for _, id := range idList {
+						postParams = append(postParams, id)
+					}
+				}
+				if len(directMatchPostIDs) > 0 {
+					placeholders := strings.Repeat("?,", len(directMatchPostIDs)-1) + "?"
+					whereClauses = append(whereClauses, fmt.Sprintf("id IN (%s)", placeholders))
+					for _, id := range directMatchPostIDs {
+						postParams = append(postParams, id)
+					}
+				}
+				postQuery += " WHERE " + strings.Join(whereClauses, " OR ")
+			} else {
+				postQuery += " WHERE 1 = 0"
+			}
 		}
-
-	} else if searchQuery != "" && isNumericSearch {
-		// Original logic for numeric (item ID) search
-		postQuery += ` WHERE id IN (SELECT DISTINCT post_id FROM trading_post_items WHERE item_id = ?)`
-		postParams = append(postParams, searchQuery)
 	}
-	// --- END OF MODIFIED LOGIC ---
-
 	postQuery += ` ORDER BY created_at DESC`
 
-	// 3. Execute query to get parent posts.
 	postRows, err := db.Query(postQuery, postParams...)
 	if err != nil {
+		log.Printf("❌ Trading Post query error: %v", err)
 		http.Error(w, "Database query failed", http.StatusInternalServerError)
-		log.Printf("❌ Trading Post query error: %v, Query: %s, Params: %v", err, postQuery, postParams)
 		return
 	}
 	defer postRows.Close()
 
-	// ... (The rest of the tradingPostListHandler function remains the same) ...
 	var posts []TradingPost
 	postMap := make(map[int]int)
 	var postIDs []interface{}
 
 	for postRows.Next() {
 		var post TradingPost
-		var createdAtStr string
-		err := postRows.Scan(&post.ID, &post.Title, &post.PostType, &post.CharacterName, &post.ContactInfo, &createdAtStr, &post.Notes)
-		if err != nil {
-			log.Printf("⚠️ Failed to scan trading post row: %v", err)
-			continue
+		if err := postRows.Scan(&post.ID, &post.Title, &post.PostType, &post.CharacterName, &post.ContactInfo, &post.CreatedAt, &post.Notes); err == nil {
+			post.Items = []TradingPostItem{}
+			posts = append(posts, post)
+			postMap[post.ID] = len(posts) - 1
+			postIDs = append(postIDs, post.ID)
 		}
-
-		post.CreatedAt = createdAtStr
-		post.Items = []TradingPostItem{} // Initialize empty slice
-
-		posts = append(posts, post)
-		postMap[post.ID] = len(posts) - 1
-		postIDs = append(postIDs, post.ID)
 	}
 
 	if len(postIDs) > 0 {
 		placeholders := strings.Repeat("?,", len(postIDs)-1) + "?"
 		itemQuery := fmt.Sprintf("SELECT post_id, item_name, item_id, quantity, price, currency FROM trading_post_items WHERE post_id IN (%s)", placeholders)
-
 		itemRows, err := db.Query(itemQuery, postIDs...)
-		if err != nil {
-			http.Error(w, "Database item query failed", http.StatusInternalServerError)
-			return
-		}
-		defer itemRows.Close()
-
-		for itemRows.Next() {
-			var item TradingPostItem
-			var postID int
-			if err := itemRows.Scan(&postID, &item.ItemName, &item.ItemID, &item.Quantity, &item.Price, &item.Currency); err != nil {
-				log.Printf("⚠️ Failed to scan trading post item row: %v", err)
-				continue
-			}
-
-			if index, ok := postMap[postID]; ok {
-				posts[index].Items = append(posts[index].Items, item)
+		if err == nil {
+			defer itemRows.Close()
+			for itemRows.Next() {
+				var item TradingPostItem
+				var postID int
+				if err := itemRows.Scan(&postID, &item.ItemName, &item.ItemID, &item.Quantity, &item.Price, &item.Currency); err == nil {
+					if index, ok := postMap[postID]; ok {
+						posts[index].Items = append(posts[index].Items, item)
+					}
+				}
 			}
 		}
 	}
-
-	tmpl, err := template.ParseFiles("trading_post.html")
-	if err != nil {
-		http.Error(w, "Could not load template", http.StatusInternalServerError)
-		return
-	}
-
-	data := TradingPostPageData{
-		Posts:          posts,
-		LastScrapeTime: getLastScrapeTime(),
-		SearchQuery:    searchQuery,
-	}
-	tmpl.Execute(w, data)
+	data := TradingPostPageData{Posts: posts, LastScrapeTime: getLastUpdateTime("scrape_history", "timestamp"), SearchQuery: searchQuery}
+	renderTemplate(w, "trading_post.html", data)
 }
 
 // tradingPostFormHandler handles both displaying the form and processing the submission.
 func tradingPostFormHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method == http.MethodGet {
+		data := TradingPostFormPageData{
+			Title: "Create a New Trading Post", ActionURL: "/trading-post/new",
+			Post: TradingPost{PostType: "selling"},
+		}
+		renderTemplate(w, "trading_post_form.html", data)
+		return
+	}
+
 	if r.Method == http.MethodPost {
 		r.ParseForm()
-
-		// 1. Extract, validate, and sanitize post-level data
 		postType := r.FormValue("post_type")
-		// Instead of sanitizing, we validate post_type against a strict allowlist.
 		if postType != "selling" && postType != "buying" {
 			http.Error(w, "Invalid post type specified.", http.StatusBadRequest)
 			return
 		}
-
-		// Sanitize all other string inputs to remove potentially malicious characters.
 		title := sanitizeString(r.FormValue("title"), notesSanitizer)
 		characterName := sanitizeString(r.FormValue("character_name"), nameSanitizer)
 		contactInfo := sanitizeString(r.FormValue("contact_info"), contactSanitizer)
 		notes := sanitizeString(r.FormValue("notes"), notesSanitizer)
 
-		if strings.TrimSpace(characterName) == "" {
-			http.Error(w, "Character name is required.", http.StatusBadRequest)
-			return
-		}
-		if strings.TrimSpace(title) == "" {
-			http.Error(w, "Title is required.", http.StatusBadRequest)
+		if strings.TrimSpace(characterName) == "" || strings.TrimSpace(title) == "" {
+			http.Error(w, "Character name and title are required.", http.StatusBadRequest)
 			return
 		}
 
-		// 2. Generate and hash the secret token
 		token, err := generateSecretToken(16)
 		if err != nil {
 			http.Error(w, "Could not generate security token.", http.StatusInternalServerError)
@@ -3045,377 +1971,194 @@ func tradingPostFormHandler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		// 3. Begin a transaction
 		tx, err := db.Begin()
 		if err != nil {
 			http.Error(w, "Failed to start database transaction.", http.StatusInternalServerError)
 			return
 		}
+		defer tx.Rollback() // Rollback on any error
 
-		// 4. Insert the main post record using the sanitized data
-		now := time.Now().Format(time.RFC3339)
-		res, err := tx.Exec(`
-            INSERT INTO trading_posts (title, post_type, character_name, contact_info, notes, created_at, edit_token_hash)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
-        `, title, postType, characterName, contactInfo, notes, now, string(tokenHash))
-
+		res, err := tx.Exec(`INSERT INTO trading_posts (title, post_type, character_name, contact_info, notes, created_at, edit_token_hash)
+            VALUES (?, ?, ?, ?, ?, ?, ?)`, title, postType, characterName, contactInfo, notes, time.Now().Format(time.RFC3339), string(tokenHash))
 		if err != nil {
-			tx.Rollback()
 			http.Error(w, "Failed to save post.", http.StatusInternalServerError)
-			log.Printf("❌ Failed to insert trading post: %v", err)
 			return
 		}
 		postID, _ := res.LastInsertId()
 
-		// 5. Loop through submitted items, sanitize them, and insert them
-		itemNames := r.Form["item_name[]"]
-		itemIDs := r.Form["item_id[]"]
-		quantities := r.Form["quantity[]"]
-		prices := r.Form["price[]"]
-		currencies := r.Form["currency[]"]
-
-		if len(itemNames) == 0 || len(itemNames) != len(quantities) || len(itemNames) != len(prices) || len(itemNames) != len(currencies) || len(itemNames) != len(itemIDs) {
-			tx.Rollback()
-			http.Error(w, "Invalid or missing item data. At least one item is required.", http.StatusBadRequest)
+		itemNames, quantities, prices := r.Form["item_name[]"], r.Form["quantity[]"], r.Form["price[]"]
+		itemIDs, currencies := r.Form["item_id[]"], r.Form["currency[]"]
+		if len(itemNames) == 0 {
+			http.Error(w, "At least one item is required.", http.StatusBadRequest)
 			return
 		}
 
 		stmt, err := tx.Prepare("INSERT INTO trading_post_items (post_id, item_name, item_id, quantity, price, currency) VALUES (?, ?, ?, ?, ?, ?)")
 		if err != nil {
-			tx.Rollback()
 			http.Error(w, "Database preparation failed.", http.StatusInternalServerError)
 			return
 		}
 		defer stmt.Close()
 
 		for i, rawItemName := range itemNames {
-			// Sanitize each item name from the list.
 			itemName := sanitizeString(rawItemName, itemSanitizer)
-
 			if strings.TrimSpace(itemName) == "" {
-				continue // Skip empty rows that might result from sanitization.
+				continue
 			}
-			// strconv functions inherently handle numeric validation.
 			quantity, _ := strconv.Atoi(quantities[i])
 			price, _ := strconv.ParseInt(prices[i], 10, 64)
-
-			// Handle optional Item ID
 			var itemID sql.NullInt64
-			if itemIDs[i] != "" {
-				id, err := strconv.ParseInt(itemIDs[i], 10, 64)
-				if err == nil && id > 0 {
-					itemID = sql.NullInt64{Int64: id, Valid: true}
-				}
+			if id, err := strconv.ParseInt(itemIDs[i], 10, 64); err == nil && id > 0 {
+				itemID = sql.NullInt64{Int64: id, Valid: true}
 			}
-
-			// Handle and validate currency
-			currency := currencies[i]
-			if currency != "zeny" && currency != "rmt" {
-				currency = "zeny" // Default to zeny if invalid value is submitted
+			currency := "zeny"
+			if currencies[i] == "rmt" {
+				currency = "rmt"
 			}
 
 			if quantity <= 0 || price <= 0 {
-				tx.Rollback()
 				http.Error(w, "All items must have a valid quantity and price.", http.StatusBadRequest)
 				return
 			}
-			// Use the sanitized item name in the database query.
-			_, err := stmt.Exec(postID, itemName, itemID, quantity, price, currency)
-			if err != nil {
-				tx.Rollback()
+			if _, err := stmt.Exec(postID, itemName, itemID, quantity, price, currency); err != nil {
 				http.Error(w, "Failed to save one of the items.", http.StatusInternalServerError)
-				log.Printf("❌ Failed to insert trading post item: %v", err)
 				return
 			}
 		}
 
-		// 6. If all is well, commit the transaction
 		if err := tx.Commit(); err != nil {
 			http.Error(w, "Failed to finalize transaction.", http.StatusInternalServerError)
 			return
 		}
 
-		// 7. Show success page
-		tmpl, err := template.ParseFiles("trading_post_success.html")
-		if err != nil {
-			http.Error(w, "Could not load success template", http.StatusInternalServerError)
-			return
-		}
-
-		successData := map[string]string{
-			"ItemName":  "your items", // Generic message
-			"EditToken": token,
-		}
-		tmpl.Execute(w, successData)
-
-	} else {
-		// --- SHOW THE FORM for creating a NEW post ---
-		tmpl, err := template.ParseFiles("trading_post_form.html")
-		if err != nil {
-			http.Error(w, "Could not load form template", http.StatusInternalServerError)
-			return
-		}
-		// Prepare data for a new post form
-		data := TradingPostFormPageData{
-			Title:     "Create a New Trading Post",
-			ActionURL: "/trading-post/new",
-			Post: TradingPost{
-				PostType: "selling", // Default to selling for new posts
-			},
-		}
-		tmpl.Execute(w, data)
+		successData := map[string]string{"ItemName": "your items", "EditToken": token}
+		renderTemplate(w, "trading_post_success.html", successData)
 	}
 }
 
-// tradingPostManageHandler will handle the deletion logic. (Edit is similar)
+// tradingPostManageHandler handles editing and deleting posts.
 func tradingPostManageHandler(w http.ResponseWriter, r *http.Request) {
 	postIDStr := r.URL.Query().Get("id")
-	action := r.URL.Query().Get("action") // "edit", "delete", or "update"
+	action := r.URL.Query().Get("action")
 
-	if r.Method == http.MethodPost {
-		r.ParseForm()
-		token := r.FormValue("edit_token")
+	if r.Method == http.MethodGet {
+		data := map[string]string{"PostID": postIDStr, "Action": action}
+		renderTemplate(w, "trading_post_manage.html", data)
+		return
+	}
 
-		// 1. Retrieve the stored hash for the post
-		var tokenHash string
-		err := db.QueryRow("SELECT edit_token_hash FROM trading_posts WHERE id = ?", postIDStr).Scan(&tokenHash)
+	r.ParseForm()
+	token := r.FormValue("edit_token")
+	var tokenHash string
+	err := db.QueryRow("SELECT edit_token_hash FROM trading_posts WHERE id = ?", postIDStr).Scan(&tokenHash)
+	if err != nil {
+		http.Error(w, "Post not found or invalid ID.", http.StatusNotFound)
+		return
+	}
+	if bcrypt.CompareHashAndPassword([]byte(tokenHash), []byte(token)) != nil {
+		w.WriteHeader(http.StatusForbidden)
+		data := map[string]string{"PostID": postIDStr, "Action": action, "Error": "Invalid Edit/Delete Key provided."}
+		renderTemplate(w, "trading_post_manage.html", data)
+		return
+	}
+
+	switch action {
+	case "delete":
+		db.Exec("DELETE FROM trading_posts WHERE id = ?", postIDStr)
+		fmt.Fprintln(w, "Post successfully deleted. You can now close this page.")
+	case "edit":
+		var post TradingPost
+		err := db.QueryRow(`SELECT id, title, post_type, character_name, contact_info, notes FROM trading_posts WHERE id = ?`, postIDStr).
+			Scan(&post.ID, &post.Title, &post.PostType, &post.CharacterName, &post.ContactInfo, &post.Notes)
 		if err != nil {
-			http.Error(w, "Post not found or invalid ID.", http.StatusNotFound)
+			http.Error(w, "Could not retrieve post to edit.", http.StatusInternalServerError)
 			return
 		}
-
-		// 2. Compare the user's token with the stored hash
-		err = bcrypt.CompareHashAndPassword([]byte(tokenHash), []byte(token))
-		if err != nil {
-			// Passwords do not match. Re-render the management page with an error.
-			tmpl, _ := template.ParseFiles("trading_post_manage.html")
-			data := map[string]string{
-				"PostID": postIDStr,
-				"Action": action,
-				"Error":  "Invalid Edit/Delete Key provided.",
+		itemRows, _ := db.Query("SELECT item_name, item_id, quantity, price, currency FROM trading_post_items WHERE post_id = ?", postIDStr)
+		defer itemRows.Close()
+		for itemRows.Next() {
+			var item TradingPostItem
+			if err := itemRows.Scan(&item.ItemName, &item.ItemID, &item.Quantity, &item.Price, &item.Currency); err == nil {
+				post.Items = append(post.Items, item)
 			}
-			w.WriteHeader(http.StatusForbidden)
-			tmpl.Execute(w, data)
+		}
+		data := TradingPostFormPageData{
+			Title: "Edit Your Trading Post", ActionURL: fmt.Sprintf("/trading-post/manage?action=update&id=%s", postIDStr),
+			Post: post, EditToken: token,
+		}
+		renderTemplate(w, "trading_post_form.html", data)
+	case "update":
+		tx, _ := db.Begin()
+		defer tx.Rollback()
+		postType := r.FormValue("post_type")
+		if postType != "selling" && postType != "buying" {
+			http.Error(w, "Invalid post type.", http.StatusBadRequest)
 			return
 		}
+		title := sanitizeString(r.FormValue("title"), notesSanitizer)
+		characterName := sanitizeString(r.FormValue("character_name"), nameSanitizer)
+		contactInfo := sanitizeString(r.FormValue("contact_info"), contactSanitizer)
+		notes := sanitizeString(r.FormValue("notes"), notesSanitizer)
 
-		// 3. If they match, perform the action
-		switch action {
-		case "delete":
-			_, err := db.Exec("DELETE FROM trading_posts WHERE id = ?", postIDStr)
-			if err != nil {
-				http.Error(w, "Failed to delete post.", http.StatusInternalServerError)
-				return
-			}
-			// Consider rendering a simple success page instead of just text
-			fmt.Fprintln(w, "Post successfully deleted. You can now close this page.")
-
-		case "edit":
-			// --- TOKEN IS VALID: Fetch data and show the pre-filled form ---
-			var post TradingPost
-			var createdAtStr string
-			err := db.QueryRow(`
-                SELECT id, title, post_type, character_name, contact_info, notes, created_at
-                FROM trading_posts WHERE id = ?`, postIDStr).
-				Scan(&post.ID, &post.Title, &post.PostType, &post.CharacterName, &post.ContactInfo, &post.Notes, &createdAtStr)
-
-			if err != nil {
-				http.Error(w, "Could not retrieve post to edit.", http.StatusInternalServerError)
-				log.Printf("❌ Failed to fetch post for edit: %v", err)
-				return
-			}
-			post.CreatedAt = createdAtStr
-
-			// Fetch associated items
-			itemRows, err := db.Query("SELECT item_name, item_id, quantity, price, currency FROM trading_post_items WHERE post_id = ?", postIDStr)
-			if err != nil {
-				http.Error(w, "Could not retrieve post items.", http.StatusInternalServerError)
-				return
-			}
-			defer itemRows.Close()
-
-			var items []TradingPostItem
-			for itemRows.Next() {
-				var item TradingPostItem
-				if err := itemRows.Scan(&item.ItemName, &item.ItemID, &item.Quantity, &item.Price, &item.Currency); err != nil {
-					log.Printf("⚠️ Failed to scan item for edit: %v", err)
-					continue
-				}
-				items = append(items, item)
-			}
-			post.Items = items
-
-			// Prepare data for the template
-			data := TradingPostFormPageData{
-				Title:     "Edit Your Trading Post",
-				ActionURL: fmt.Sprintf("/trading-post/manage?action=update&id=%s", postIDStr),
-				Post:      post,
-				EditToken: token, // Pass the validated token to the form in a hidden field
-			}
-
-			tmpl, err := template.ParseFiles("trading_post_form.html")
-			if err != nil {
-				http.Error(w, "Could not load form template", http.StatusInternalServerError)
-				return
-			}
-			tmpl.Execute(w, data)
-
-		case "update":
-			// --- TOKEN IS VALID: Process the submitted edit form ---
-			tx, err := db.Begin()
-			if err != nil {
-				http.Error(w, "Failed to start transaction.", http.StatusInternalServerError)
-				return
-			}
-
-			// Sanitize and update the main post
-			postType := r.FormValue("post_type")
-			if postType != "selling" && postType != "buying" {
-				http.Error(w, "Invalid post type.", http.StatusBadRequest)
-				return
-			}
-			title := sanitizeString(r.FormValue("title"), notesSanitizer)
-			characterName := sanitizeString(r.FormValue("character_name"), nameSanitizer)
-			contactInfo := sanitizeString(r.FormValue("contact_info"), contactSanitizer)
-			notes := sanitizeString(r.FormValue("notes"), notesSanitizer)
-
-			if strings.TrimSpace(title) == "" {
-				http.Error(w, "Title cannot be empty.", http.StatusBadRequest)
-				tx.Rollback()
-				return
-			}
-
-			_, err = tx.Exec(`
-                UPDATE trading_posts SET title=?, post_type=?, character_name=?, contact_info=?, notes=?
-                WHERE id=?
-            `, title, postType, characterName, contactInfo, notes, postIDStr)
-			if err != nil {
-				tx.Rollback()
-				http.Error(w, "Failed to update post.", http.StatusInternalServerError)
-				return
-			}
-
-			// Delete old items
-			_, err = tx.Exec("DELETE FROM trading_post_items WHERE post_id = ?", postIDStr)
-			if err != nil {
-				tx.Rollback()
-				http.Error(w, "Failed to clear old items.", http.StatusInternalServerError)
-				return
-			}
-
-			// Insert new items
-			itemNames := r.Form["item_name[]"]
-			itemIDs := r.Form["item_id[]"]
-			quantities := r.Form["quantity[]"]
-			prices := r.Form["price[]"]
-			currencies := r.Form["currency[]"]
-
-			stmt, err := tx.Prepare("INSERT INTO trading_post_items (post_id, item_name, item_id, quantity, price, currency) VALUES (?, ?, ?, ?, ?, ?)")
-			if err != nil {
-				tx.Rollback()
-				http.Error(w, "Database preparation failed.", http.StatusInternalServerError)
-				return
-			}
-			defer stmt.Close()
-
-			for i, rawItemName := range itemNames {
-				itemName := sanitizeString(rawItemName, itemSanitizer)
-				if strings.TrimSpace(itemName) == "" {
-					continue
-				}
-				quantity, _ := strconv.Atoi(quantities[i])
-				price, _ := strconv.ParseInt(prices[i], 10, 64)
-
-				// Handle optional Item ID
-				var itemID sql.NullInt64
-				if i < len(itemIDs) && itemIDs[i] != "" {
-					id, err := strconv.ParseInt(itemIDs[i], 10, 64)
-					if err == nil && id > 0 {
-						itemID = sql.NullInt64{Int64: id, Valid: true}
-					}
-				}
-
-				// Handle and validate currency
-				var currency string
-				if i < len(currencies) && (currencies[i] == "zeny" || currencies[i] == "rmt") {
-					currency = currencies[i]
-				} else {
-					currency = "zeny" // Default
-				}
-
-				if quantity <= 0 || price <= 0 {
-					tx.Rollback()
-					http.Error(w, "All items must have a valid quantity and price.", http.StatusBadRequest)
-					return
-				}
-				_, err := stmt.Exec(postIDStr, itemName, itemID, quantity, price, currency)
-				if err != nil {
-					tx.Rollback()
-					http.Error(w, "Failed to save updated items.", http.StatusInternalServerError)
-					return
-				}
-			}
-
-			if err := tx.Commit(); err != nil {
-				http.Error(w, "Failed to finalize transaction.", http.StatusInternalServerError)
-				return
-			}
-
-			http.Redirect(w, r, "/trading-post", http.StatusSeeOther)
-
-		default:
-			http.Error(w, "Invalid action.", http.StatusBadRequest)
-		}
-
-	} else {
-		// --- SHOW THE MANAGEMENT FORM (to enter the token) ---
-		tmpl, err := template.ParseFiles("trading_post_manage.html")
-		if err != nil {
-			http.Error(w, "Could not load management template", http.StatusInternalServerError)
+		if strings.TrimSpace(title) == "" {
+			http.Error(w, "Title cannot be empty.", http.StatusBadRequest)
 			return
 		}
+		tx.Exec(`UPDATE trading_posts SET title=?, post_type=?, character_name=?, contact_info=?, notes=? WHERE id=?`,
+			title, postType, characterName, contactInfo, notes, postIDStr)
+		tx.Exec("DELETE FROM trading_post_items WHERE post_id = ?", postIDStr)
 
-		data := map[string]string{
-			"PostID": postIDStr,
-			"Action": action,
+		itemNames := r.Form["item_name[]"]
+		stmt, _ := tx.Prepare("INSERT INTO trading_post_items (post_id, item_name, item_id, quantity, price, currency) VALUES (?, ?, ?, ?, ?, ?)")
+		defer stmt.Close()
+
+		for i, rawItemName := range itemNames {
+			itemName := sanitizeString(rawItemName, itemSanitizer)
+			if strings.TrimSpace(itemName) == "" {
+				continue
+			}
+			quantity, _ := strconv.Atoi(r.Form["quantity[]"][i])
+			price, _ := strconv.ParseInt(r.Form["price[]"][i], 10, 64)
+			var itemID sql.NullInt64
+			if id, err := strconv.ParseInt(r.Form["item_id[]"][i], 10, 64); err == nil && id > 0 {
+				itemID = sql.NullInt64{Int64: id, Valid: true}
+			}
+			currency := "zeny"
+			if r.Form["currency[]"][i] == "rmt" {
+				currency = "rmt"
+			}
+			if quantity <= 0 || price <= 0 {
+				http.Error(w, "All items must have a valid quantity and price.", http.StatusBadRequest)
+				return
+			}
+			stmt.Exec(postIDStr, itemName, itemID, quantity, price, currency)
 		}
-		tmpl.Execute(w, data)
+		tx.Commit()
+		http.Redirect(w, r, "/trading-post", http.StatusSeeOther)
+	default:
+		http.Error(w, "Invalid action.", http.StatusBadRequest)
 	}
 }
 
 // apiItemDetailsHandler serves item details as JSON for the form preview.
 func apiItemDetailsHandler(w http.ResponseWriter, r *http.Request) {
 	itemIDStr := r.URL.Query().Get("id")
-	if itemIDStr == "" {
-		http.Error(w, "Item ID is required", http.StatusBadRequest)
-		return
-	}
-
 	itemID, err := strconv.Atoi(itemIDStr)
 	if err != nil || itemID <= 0 {
 		http.Error(w, "Invalid Item ID format", http.StatusBadRequest)
 		return
 	}
 
-	// 1. Try to get details from the cache first.
 	itemDetails, err := getItemDetailsFromCache(itemID)
 	if err != nil {
-		// 2. If cache miss, scrape from the source.
 		log.Printf("ℹ️ API Cache MISS for item ID %d. Scraping RMS...", itemID)
 		itemDetails, err = scrapeRMSItemDetails(itemID)
 		if err != nil {
-			log.Printf("⚠️ API failed to scrape RateMyServer for item ID %d: %v", itemID, err)
-			// Return a specific error if the item is not found
 			http.Error(w, fmt.Sprintf("Item with ID %d not found.", itemID), http.StatusNotFound)
 			return
 		}
-		// 3. Save the newly scraped data to the cache for future requests.
-		if err := saveItemDetailsToCache(itemDetails); err != nil {
-			log.Printf("⚠️ API failed to save item ID %d to cache: %v", itemID, err)
-		}
+		saveItemDetailsToCache(itemDetails)
 	}
-
-	// 4. Return the details as JSON.
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(itemDetails)
 }
@@ -3430,21 +2173,13 @@ type ItemSearchResult struct {
 // apiItemSearchHandler searches for items by name from the cache, with a fallback to a live RMS scrape.
 func apiItemSearchHandler(w http.ResponseWriter, r *http.Request) {
 	query := r.URL.Query().Get("query")
-	if len(query) < 3 { // Don't search for very short strings
+	if len(query) < 3 {
 		http.Error(w, "Search query must be at least 3 characters long", http.StatusBadRequest)
 		return
 	}
 
-	// 1. Search the local cache first for a fast response
-	rows, err := db.Query(`
-		SELECT item_id, name, image_url 
-		FROM rms_item_cache 
-		WHERE name LIKE ? 
-		ORDER BY name 
-		LIMIT 20`,
-		"%"+query+"%")
+	rows, err := db.Query(`SELECT item_id, name, image_url FROM rms_item_cache WHERE name LIKE ? ORDER BY name LIMIT 20`, "%"+query+"%")
 	if err != nil {
-		log.Printf("⚠️ API item search error: %v", err)
 		http.Error(w, "Database query failed", http.StatusInternalServerError)
 		return
 	}
@@ -3453,36 +2188,27 @@ func apiItemSearchHandler(w http.ResponseWriter, r *http.Request) {
 	var results []ItemSearchResult
 	for rows.Next() {
 		var item ItemSearchResult
-		if err := rows.Scan(&item.ID, &item.Name, &item.ImageURL); err != nil {
-			log.Printf("⚠️ Failed to scan item search result: %v", err)
-			continue
+		if err := rows.Scan(&item.ID, &item.Name, &item.ImageURL); err == nil {
+			results = append(results, item)
 		}
-		results = append(results, item)
 	}
 
-	// 2. If the cache returns no results, fall back to a live scrape
 	if len(results) == 0 {
 		log.Printf("ℹ️ API search cache MISS for '%s'. Performing live scrape...", query)
 		scrapedResults, scrapeErr := scrapeRMSItemSearch(query)
-		if scrapeErr != nil {
-			log.Printf("⚠️ API live scrape for '%s' failed: %v", query, scrapeErr)
-			// Don't return an error to the user, just an empty result set
-		} else {
+		if scrapeErr == nil {
 			results = scrapedResults
-			// 3. Asynchronously cache the new results for future searches
 			if len(results) > 0 {
 				go func() {
 					for _, item := range results {
-						// This function already checks if the item exists, so it's safe to call.
 						scrapeAndCacheItemIfNotExists(item.ID, item.Name)
-						time.Sleep(500 * time.Millisecond) // Be polite
+						time.Sleep(500 * time.Millisecond)
 					}
 					log.Printf("✅ Finished background caching for '%s' search results.", query)
 				}()
 			}
 		}
 	}
-
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(results)
 }
