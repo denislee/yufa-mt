@@ -229,8 +229,17 @@ func summaryHandler(w http.ResponseWriter, r *http.Request) {
 
 	var whereConditions []string
 	if searchQuery != "" {
-		whereConditions = append(whereConditions, "i.name_of_the_item LIKE ?")
-		params = append(params, "%"+searchQuery+"%")
+		// Check if the query is numeric to decide whether to search by ID or name.
+		itemID, err := strconv.Atoi(searchQuery)
+		if err == nil {
+			// It's a number, so search by item_id.
+			whereConditions = append(whereConditions, "i.item_id = ?")
+			params = append(params, itemID)
+		} else {
+			// It's not a number, so search by name.
+			whereConditions = append(whereConditions, "i.name_of_the_item LIKE ?")
+			params = append(params, "%"+searchQuery+"%")
+		}
 	}
 
 	if selectedType != "" {
@@ -435,8 +444,17 @@ func fullListHandler(w http.ResponseWriter, r *http.Request) {
 	var queryParams []interface{}
 
 	if searchQuery != "" {
-		whereConditions = append(whereConditions, "i.name_of_the_item LIKE ?")
-		queryParams = append(queryParams, "%"+searchQuery+"%")
+		// Check if the query is numeric to decide whether to search by ID or name.
+		itemID, err := strconv.Atoi(searchQuery)
+		if err == nil {
+			// It's a number, search by item_id.
+			whereConditions = append(whereConditions, "i.item_id = ?")
+			queryParams = append(queryParams, itemID)
+		} else {
+			// It's not a number, search by name.
+			whereConditions = append(whereConditions, "i.name_of_the_item LIKE ?")
+			queryParams = append(queryParams, "%"+searchQuery+"%")
+		}
 	}
 
 	if storeNameQuery != "" {
@@ -539,8 +557,16 @@ func activityHandler(w http.ResponseWriter, r *http.Request) {
 	var whereConditions []string
 	var params []interface{}
 	if searchQuery != "" {
-		whereConditions = append(whereConditions, "item_name LIKE ?")
-		params = append(params, "%"+searchQuery+"%")
+		itemID, err := strconv.Atoi(searchQuery)
+		if err == nil {
+			// It's a number, search by item_id.
+			whereConditions = append(whereConditions, "item_id = ?")
+			params = append(params, itemID)
+		} else {
+			// It's not a number, search by name.
+			whereConditions = append(whereConditions, "item_name LIKE ?")
+			params = append(params, "%"+searchQuery+"%")
+		}
 	}
 	if soldOnly {
 		whereConditions = append(whereConditions, "event_type = ?")
@@ -2560,8 +2586,6 @@ func generateSecretToken(length int) (string, error) {
 	return hex.EncodeToString(bytes), nil
 }
 
-// --- Handlers ---
-
 // tradingPostListHandler displays the list of all trading posts.
 func tradingPostListHandler(w http.ResponseWriter, r *http.Request) {
 	// 1. Get search query from URL.
@@ -2574,8 +2598,16 @@ func tradingPostListHandler(w http.ResponseWriter, r *http.Request) {
         FROM trading_posts`
 
 	if searchQuery != "" {
-		postQuery += ` WHERE id IN (SELECT DISTINCT post_id FROM trading_post_items WHERE item_name LIKE ?)`
-		postParams = append(postParams, "%"+searchQuery+"%")
+		itemID, err := strconv.Atoi(searchQuery)
+		if err == nil {
+			// Numeric search by item_id
+			postQuery += ` WHERE id IN (SELECT DISTINCT post_id FROM trading_post_items WHERE item_id = ?)`
+			postParams = append(postParams, itemID)
+		} else {
+			// String search by item_name
+			postQuery += ` WHERE id IN (SELECT DISTINCT post_id FROM trading_post_items WHERE item_name LIKE ?)`
+			postParams = append(postParams, "%"+searchQuery+"%")
+		}
 	}
 
 	postQuery += ` ORDER BY created_at DESC`

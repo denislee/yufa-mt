@@ -71,7 +71,7 @@
 
         <div class="bg-white p-3 rounded-lg shadow mb-4">
             <form action="/activity" method="get" class="flex flex-col sm:flex-row sm:items-center gap-3">
-                <input type="text" name="query" placeholder="Search for an item..." value="{{.SearchQuery}}" class="flex-grow mt-1 block w-full sm:w-auto rounded-md border-gray-300 shadow-sm focus:border-indigo-300 focus:ring focus:ring-indigo-200 focus:ring-opacity-50 text-sm">
+                <input type="text" name="query" placeholder="Search by item name or ID..." value="{{.SearchQuery}}" class="flex-grow mt-1 block w-full sm:w-auto rounded-md border-gray-300 shadow-sm focus:border-indigo-300 focus:ring focus:ring-indigo-200 focus:ring-opacity-50 text-sm">
                 <label class="flex items-center space-x-2 text-sm text-gray-700">
                     <input type="checkbox" name="sold_only" value="true" {{if .SoldOnly}}checked{{end}} class="rounded border-gray-300 text-indigo-600 shadow-sm focus:border-indigo-300 focus:ring focus:ring-offset-0 focus:ring-indigo-200 focus:ring-opacity-50">
                     <span>Show only sold items</span>
