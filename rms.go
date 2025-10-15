@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log"
 	"net/http"
 	"net/url"
@@ -327,4 +328,60 @@ func scrapeRMSItemSearch(query string) ([]ItemSearchResult, error) {
 
 	log.Printf("✅ [RMS HTML Search] Found %d item(s) for query: '%s'", len(results), query)
 	return results, nil
+}
+
+// scrapeRagnarokDatabaseSearch performs a search on ragnarokdatabase.com to find potential item IDs when a local search fails.
+// It uses regex to parse the HTML response, avoiding heavier dependencies.
+func scrapeRagnarokDatabaseSearch(query string) ([]int, error) {
+	// 1. Construct the URL
+	searchURL := fmt.Sprintf("https://ragnarokdatabase.com/search/items/%s", url.QueryEscape(query))
+	log.Printf("➡️ [Fallback Search] Performing search on RagnarokDatabase for: '%s'", query)
+	log.Printf("   URL: %s", searchURL)
+
+	// 2. Make the HTTP request
+	client := http.Client{Timeout: 10 * time.Second}
+	res, err := client.Get(searchURL)
+	if err != nil {
+		log.Printf("❌ [Fallback Search] Failed to get URL: %v", err)
+		return nil, fmt.Errorf("failed to get search URL: %w", err)
+	}
+	defer res.Body.Close()
+
+	if res.StatusCode != 200 {
+		log.Printf("⚠️ [Fallback Search] Received non-200 status code: %d %s", res.StatusCode, res.Status)
+		return nil, fmt.Errorf("status code error: %d %s", res.StatusCode, res.Status)
+	}
+
+	// 3. Read the body
+	body, err := io.ReadAll(res.Body)
+	if err != nil {
+		log.Printf("❌ [Fallback Search] Failed to read response body: %v", err)
+		return nil, fmt.Errorf("failed to read response body: %w", err)
+	}
+
+	// 4. Use Regex to find all item IDs from links like "/item/1234/item-name"
+	idRegex := regexp.MustCompile(`/item/(\d+)/`)
+	matches := idRegex.FindAllStringSubmatch(string(body), -1)
+
+	if len(matches) == 0 {
+		log.Printf("   [Fallback Search] No item IDs found on the page for query '%s'.", query)
+		return nil, nil // No error, just no results
+	}
+
+	var itemIDs []int
+	seenIDs := make(map[int]bool) // To handle duplicates
+
+	// 5. Extract and convert IDs
+	for _, match := range matches {
+		if len(match) > 1 {
+			id, err := strconv.Atoi(match[1])
+			if err == nil && !seenIDs[id] {
+				itemIDs = append(itemIDs, id)
+				seenIDs[id] = true
+			}
+		}
+	}
+
+	log.Printf("✅ [Fallback Search] Found %d unique item(s) for query: '%s'", len(itemIDs), query)
+	return itemIDs, nil
 }

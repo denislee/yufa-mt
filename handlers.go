@@ -15,6 +15,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -179,6 +180,7 @@ func mapItemTypeToTabData(typeName string) ItemTypeTab {
 }
 
 // summaryHandler serves the main summary page (renamed from viewHandler)
+
 func summaryHandler(w http.ResponseWriter, r *http.Request) {
 	if err := r.ParseForm(); err != nil {
 		http.Error(w, "Failed to parse form", http.StatusBadRequest)
@@ -228,19 +230,91 @@ func summaryHandler(w http.ResponseWriter, r *http.Request) {
     `
 
 	var whereConditions []string
+	isNumericSearch := false
 	if searchQuery != "" {
-		// Check if the query is numeric to decide whether to search by ID or name.
-		itemID, err := strconv.Atoi(searchQuery)
-		if err == nil {
-			// It's a number, so search by item_id.
-			whereConditions = append(whereConditions, "i.item_id = ?")
-			params = append(params, itemID)
-		} else {
-			// It's not a number, so search by name.
-			whereConditions = append(whereConditions, "i.name_of_the_item LIKE ?")
-			params = append(params, "%"+searchQuery+"%")
-		}
+		_, err := strconv.Atoi(searchQuery)
+		isNumericSearch = (err == nil)
 	}
+
+	// --- MODIFIED CONCURRENT SEARCH LOGIC ---
+	if searchQuery != "" && !isNumericSearch {
+		var wg sync.WaitGroup
+		scrapedIDsChan := make(chan []int, 1)
+		localIDsChan := make(chan []int, 1)
+
+		wg.Add(2)
+
+		// Goroutine 1: Scrape ragnarokdatabase.com
+		go func() {
+			defer wg.Done()
+			ids, err := scrapeRagnarokDatabaseSearch(searchQuery)
+			if err != nil {
+				log.Printf("⚠️ Concurrent scrape failed for '%s': %v", searchQuery, err)
+				scrapedIDsChan <- []int{} // Send empty slice on error
+				return
+			}
+			scrapedIDsChan <- ids
+		}()
+
+		// Goroutine 2: Search local DB by name for matching IDs
+		go func() {
+			defer wg.Done()
+			var ids []int
+			query := "SELECT DISTINCT item_id FROM items WHERE name_of_the_item LIKE ? AND item_id > 0"
+			rows, err := db.Query(query, "%"+searchQuery+"%")
+			if err != nil {
+				log.Printf("⚠️ Concurrent local ID search failed for '%s': %v", searchQuery, err)
+				localIDsChan <- []int{} // Send empty slice on error
+				return
+			}
+			defer rows.Close()
+			for rows.Next() {
+				var id int
+				if err := rows.Scan(&id); err == nil {
+					ids = append(ids, id)
+				}
+			}
+			localIDsChan <- ids
+		}()
+
+		wg.Wait()
+		close(scrapedIDsChan)
+		close(localIDsChan)
+
+		scrapedIDs := <-scrapedIDsChan
+		localIDs := <-localIDsChan
+
+		// Combine and de-duplicate IDs using a map
+		combinedIDs := make(map[int]struct{})
+		for _, id := range scrapedIDs {
+			combinedIDs[id] = struct{}{}
+		}
+		for _, id := range localIDs {
+			combinedIDs[id] = struct{}{}
+		}
+
+		if len(combinedIDs) > 0 {
+			var idList []int
+			for id := range combinedIDs {
+				idList = append(idList, id)
+			}
+			// Build IN clause for the final query
+			placeholders := strings.Repeat("?,", len(idList)-1) + "?"
+			whereConditions = append(whereConditions, fmt.Sprintf("i.item_id IN (%s)", placeholders))
+			for _, id := range idList {
+				params = append(params, id)
+			}
+		} else {
+			// If no IDs were found anywhere, add a condition that will return no results
+			whereConditions = append(whereConditions, "1 = 0")
+		}
+
+	} else if searchQuery != "" && isNumericSearch {
+		// Original logic for numeric (item ID) search
+		whereConditions = append(whereConditions, "i.item_id = ?")
+		params = append(params, searchQuery)
+	}
+	// --- END OF MODIFIED LOGIC ---
 
 	if selectedType != "" {
 		whereConditions = append(whereConditions, "rms.item_type = ?")
@@ -292,7 +366,6 @@ func summaryHandler(w http.ResponseWriter, r *http.Request) {
 	var items []ItemSummary
 	for rows.Next() {
 		var item ItemSummary
-		// Scan into the new struct with sql.NullInt64 for prices
 		if err := rows.Scan(&item.Name, &item.ItemID, &item.LowestPrice, &item.HighestPrice, &item.ListingCount); err != nil {
 			log.Printf("⚠️ Failed to scan summary row: %v", err)
 			continue
