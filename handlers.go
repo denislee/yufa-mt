@@ -430,6 +430,8 @@ func fullListHandler(w http.ResponseWriter, r *http.Request) {
 		showAll = true
 	}
 
+	// ... (code for getting itemTypes and allStoreNames remains the same) ...
+
 	// Get all unique item types for the tabs
 	var itemTypes []ItemTypeTab
 	typeRows, err := db.Query("SELECT DISTINCT item_type FROM rms_item_cache WHERE item_type IS NOT NULL AND item_type != '' ORDER BY item_type ASC")
@@ -465,6 +467,7 @@ func fullListHandler(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	// ... (code for column visibility remains the same) ...
 	allCols := []Column{
 		{ID: "item_id", DisplayName: "Item ID"},
 		{ID: "quantity", DisplayName: "Quantity"},
@@ -473,7 +476,6 @@ func fullListHandler(w http.ResponseWriter, r *http.Request) {
 		{ID: "map_name", DisplayName: "Map Name"},
 		{ID: "map_coordinates", DisplayName: "Map Coords"},
 		{ID: "retrieved", DisplayName: "Date Retrieved"},
-		//		{ID: "availability", DisplayName: "Availability"},
 	}
 	visibleColumns := make(map[string]bool)
 	columnParams := url.Values{}
@@ -489,6 +491,7 @@ func fullListHandler(w http.ResponseWriter, r *http.Request) {
 		visibleColumns["map_coordinates"] = true
 	}
 
+	// ... (code for sorting remains the same) ...
 	allowedSorts := map[string]string{
 		"name":         "i.name_of_the_item",
 		"item_id":      "i.item_id",
@@ -516,24 +519,92 @@ func fullListHandler(w http.ResponseWriter, r *http.Request) {
 	var whereConditions []string
 	var queryParams []interface{}
 
+	// --- MODIFIED: CONCURRENT SEARCH LOGIC FOR FULL LIST ---
+	isNumericSearch := false
 	if searchQuery != "" {
-		// Check if the query is numeric to decide whether to search by ID or name.
-		itemID, err := strconv.Atoi(searchQuery)
-		if err == nil {
-			// It's a number, search by item_id.
-			whereConditions = append(whereConditions, "i.item_id = ?")
-			queryParams = append(queryParams, itemID)
-		} else {
-			// It's not a number, search by name.
-			whereConditions = append(whereConditions, "i.name_of_the_item LIKE ?")
-			queryParams = append(queryParams, "%"+searchQuery+"%")
-		}
+		_, err := strconv.Atoi(searchQuery)
+		isNumericSearch = (err == nil)
 	}
 
+	if searchQuery != "" && !isNumericSearch {
+		var wg sync.WaitGroup
+		scrapedIDsChan := make(chan []int, 1)
+		localIDsChan := make(chan []int, 1)
+
+		wg.Add(2)
+
+		// Goroutine 1: Scrape ragnarokdatabase.com
+		go func() {
+			defer wg.Done()
+			ids, err := scrapeRagnarokDatabaseSearch(searchQuery)
+			if err != nil {
+				log.Printf("⚠️ [Full List] Concurrent scrape failed for '%s': %v", searchQuery, err)
+				scrapedIDsChan <- []int{}
+				return
+			}
+			scrapedIDsChan <- ids
+		}()
+
+		// Goroutine 2: Search local DB by name for matching IDs
+		go func() {
+			defer wg.Done()
+			var ids []int
+			query := "SELECT DISTINCT item_id FROM items WHERE name_of_the_item LIKE ? AND item_id > 0"
+			rows, err := db.Query(query, "%"+searchQuery+"%")
+			if err != nil {
+				log.Printf("⚠️ [Full List] Concurrent local ID search failed for '%s': %v", searchQuery, err)
+				localIDsChan <- []int{}
+				return
+			}
+			defer rows.Close()
+			for rows.Next() {
+				var id int
+				if err := rows.Scan(&id); err == nil {
+					ids = append(ids, id)
+				}
+			}
+			localIDsChan <- ids
+		}()
+
+		wg.Wait()
+		close(scrapedIDsChan)
+		close(localIDsChan)
+
+		scrapedIDs := <-scrapedIDsChan
+		localIDs := <-localIDsChan
+
+		// Combine and de-duplicate IDs
+		combinedIDs := make(map[int]struct{})
+		for _, id := range scrapedIDs {
+			combinedIDs[id] = struct{}{}
+		}
+		for _, id := range localIDs {
+			combinedIDs[id] = struct{}{}
+		}
+
+		if len(combinedIDs) > 0 {
+			var idList []int
+			for id := range combinedIDs {
+				idList = append(idList, id)
+			}
+			placeholders := strings.Repeat("?,", len(idList)-1) + "?"
+			whereConditions = append(whereConditions, fmt.Sprintf("i.item_id IN (%s)", placeholders))
+			for _, id := range idList {
+				queryParams = append(queryParams, id)
+			}
+		} else {
+			whereConditions = append(whereConditions, "1 = 0") // Return no results
+		}
+
+	} else if searchQuery != "" && isNumericSearch {
+		// Original logic for numeric (item ID) search
+		whereConditions = append(whereConditions, "i.item_id = ?")
+		queryParams = append(queryParams, searchQuery)
+	}
+	// --- END OF MODIFIED LOGIC ---
+
 	if storeNameQuery != "" {
-		// Changed from LIKE to = for an exact, case-sensitive match.
 		whereConditions = append(whereConditions, "i.store_name = ?")
-		// Removed wildcards from the parameter for the exact match.
 		queryParams = append(queryParams, storeNameQuery)
 	}
 
@@ -566,6 +637,7 @@ func fullListHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	defer rows.Close()
 
+	// ... (rest of the fullListHandler function remains the same) ...
 	var items []Item
 	for rows.Next() {
 		var item Item
@@ -610,6 +682,7 @@ func fullListHandler(w http.ResponseWriter, r *http.Request) {
 		SelectedType:   selectedType,
 	}
 	tmpl.Execute(w, data)
+
 }
 
 // activityHandler serves the page for recent market activity.
@@ -624,23 +697,97 @@ func activityHandler(w http.ResponseWriter, r *http.Request) {
 	if err != nil || page < 1 {
 		page = 1
 	}
-	const eventsPerPage = 50 // Define how many events per page
+	const eventsPerPage = 50
 
 	// 2. Build dynamic WHERE clause
 	var whereConditions []string
 	var params []interface{}
+
+	// --- MODIFIED: CONCURRENT SEARCH LOGIC FOR ACTIVITY ---
+	isNumericSearch := false
 	if searchQuery != "" {
-		itemID, err := strconv.Atoi(searchQuery)
-		if err == nil {
-			// It's a number, search by item_id.
-			whereConditions = append(whereConditions, "item_id = ?")
-			params = append(params, itemID)
-		} else {
-			// It's not a number, search by name.
-			whereConditions = append(whereConditions, "item_name LIKE ?")
-			params = append(params, "%"+searchQuery+"%")
-		}
+		_, err := strconv.Atoi(searchQuery)
+		isNumericSearch = (err == nil)
 	}
+
+	if searchQuery != "" && !isNumericSearch {
+		var wg sync.WaitGroup
+		scrapedIDsChan := make(chan []int, 1)
+		localIDsChan := make(chan []int, 1)
+
+		wg.Add(2)
+
+		// Goroutine 1: Scrape ragnarokdatabase.com
+		go func() {
+			defer wg.Done()
+			ids, err := scrapeRagnarokDatabaseSearch(searchQuery)
+			if err != nil {
+				log.Printf("⚠️ [Activity] Concurrent scrape failed for '%s': %v", searchQuery, err)
+				scrapedIDsChan <- []int{}
+				return
+			}
+			scrapedIDsChan <- ids
+		}()
+
+		// Goroutine 2: Search local DB by name for matching IDs
+		go func() {
+			defer wg.Done()
+			var ids []int
+			// Query the main items table to find relevant IDs
+			query := "SELECT DISTINCT item_id FROM items WHERE name_of_the_item LIKE ? AND item_id > 0"
+			rows, err := db.Query(query, "%"+searchQuery+"%")
+			if err != nil {
+				log.Printf("⚠️ [Activity] Concurrent local ID search failed for '%s': %v", searchQuery, err)
+				localIDsChan <- []int{}
+				return
+			}
+			defer rows.Close()
+			for rows.Next() {
+				var id int
+				if err := rows.Scan(&id); err == nil {
+					ids = append(ids, id)
+				}
+			}
+			localIDsChan <- ids
+		}()
+
+		wg.Wait()
+		close(scrapedIDsChan)
+		close(localIDsChan)
+
+		scrapedIDs := <-scrapedIDsChan
+		localIDs := <-localIDsChan
+
+		// Combine and de-duplicate IDs
+		combinedIDs := make(map[int]struct{})
+		for _, id := range scrapedIDs {
+			combinedIDs[id] = struct{}{}
+		}
+		for _, id := range localIDs {
+			combinedIDs[id] = struct{}{}
+		}
+
+		if len(combinedIDs) > 0 {
+			var idList []int
+			for id := range combinedIDs {
+				idList = append(idList, id)
+			}
+			placeholders := strings.Repeat("?,", len(idList)-1) + "?"
+			whereConditions = append(whereConditions, fmt.Sprintf("item_id IN (%s)", placeholders))
+			for _, id := range idList {
+				params = append(params, id)
+			}
+		} else {
+			whereConditions = append(whereConditions, "1 = 0") // Return no results
+		}
+
+	} else if searchQuery != "" && isNumericSearch {
+		// Original logic for numeric (item ID) search
+		whereConditions = append(whereConditions, "item_id = ?")
+		params = append(params, searchQuery)
+	}
+	// --- END OF MODIFIED LOGIC ---
+
 	if soldOnly {
 		whereConditions = append(whereConditions, "event_type = ?")
 		params = append(params, "SOLD")
@@ -661,6 +808,7 @@ func activityHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// ... (rest of the activityHandler function remains the same) ...
 	// 4. Calculate pagination details
 	totalPages := 0
 	if totalEvents > 0 {
@@ -2670,18 +2818,120 @@ func tradingPostListHandler(w http.ResponseWriter, r *http.Request) {
         SELECT id, title, post_type, character_name, contact_info, created_at, notes 
         FROM trading_posts`
 
+	// --- MODIFIED: CONCURRENT SEARCH LOGIC FOR TRADING POST ---
+	isNumericSearch := false
 	if searchQuery != "" {
-		itemID, err := strconv.Atoi(searchQuery)
-		if err == nil {
-			// Numeric search by item_id
-			postQuery += ` WHERE id IN (SELECT DISTINCT post_id FROM trading_post_items WHERE item_id = ?)`
-			postParams = append(postParams, itemID)
-		} else {
-			// String search by item_name
-			postQuery += ` WHERE id IN (SELECT DISTINCT post_id FROM trading_post_items WHERE item_name LIKE ?)`
-			postParams = append(postParams, "%"+searchQuery+"%")
-		}
+		_, err := strconv.Atoi(searchQuery)
+		isNumericSearch = (err == nil)
 	}
+
+	if searchQuery != "" && !isNumericSearch {
+		var wg sync.WaitGroup
+		scrapedIDsChan := make(chan []int, 1)
+		localIDsChan := make(chan []int, 1)
+
+		wg.Add(2)
+
+		// Goroutine 1: Scrape ragnarokdatabase.com
+		go func() {
+			defer wg.Done()
+			ids, err := scrapeRagnarokDatabaseSearch(searchQuery)
+			if err != nil {
+				log.Printf("⚠️ [Trading Post] Concurrent scrape failed for '%s': %v", searchQuery, err)
+				scrapedIDsChan <- []int{}
+				return
+			}
+			scrapedIDsChan <- ids
+		}()
+
+		// Goroutine 2: Search local trading_post_items DB by name for matching IDs
+		go func() {
+			defer wg.Done()
+			var ids []int
+			query := "SELECT DISTINCT item_id FROM trading_post_items WHERE item_name LIKE ? AND item_id IS NOT NULL"
+			rows, err := db.Query(query, "%"+searchQuery+"%")
+			if err != nil {
+				log.Printf("⚠️ [Trading Post] Concurrent local ID search failed for '%s': %v", searchQuery, err)
+				localIDsChan <- []int{}
+				return
+			}
+			defer rows.Close()
+			for rows.Next() {
+				var id int
+				if err := rows.Scan(&id); err == nil {
+					ids = append(ids, id)
+				}
+			}
+			localIDsChan <- ids
+		}()
+
+		wg.Wait()
+		close(scrapedIDsChan)
+		close(localIDsChan)
+
+		scrapedIDs := <-scrapedIDsChan
+		localIDs := <-localIDsChan
+
+		// Combine and de-duplicate IDs
+		combinedIDs := make(map[int]struct{})
+		for _, id := range scrapedIDs {
+			combinedIDs[id] = struct{}{}
+		}
+		for _, id := range localIDs {
+			combinedIDs[id] = struct{}{}
+		}
+
+		// Now, also get post IDs that match by item_name directly, in case item_id is not set
+		postIDsByName, err := db.Query("SELECT DISTINCT post_id FROM trading_post_items WHERE item_name LIKE ?", "%"+searchQuery+"%")
+		var directMatchPostIDs []int
+		if err == nil {
+			defer postIDsByName.Close()
+			for postIDsByName.Next() {
+				var postID int
+				if err := postIDsByName.Scan(&postID); err == nil {
+					directMatchPostIDs = append(directMatchPostIDs, postID)
+				}
+			}
+		}
+
+		if len(combinedIDs) > 0 || len(directMatchPostIDs) > 0 {
+			var whereClauses []string
+
+			// Add clause for item IDs found
+			if len(combinedIDs) > 0 {
+				var idList []int
+				for id := range combinedIDs {
+					idList = append(idList, id)
+				}
+				placeholders := strings.Repeat("?,", len(idList)-1) + "?"
+				whereClauses = append(whereClauses, fmt.Sprintf("id IN (SELECT DISTINCT post_id FROM trading_post_items WHERE item_id IN (%s))", placeholders))
+				for _, id := range idList {
+					postParams = append(postParams, id)
+				}
+			}
+
+			// Add clause for posts matched directly by name
+			if len(directMatchPostIDs) > 0 {
+				placeholders := strings.Repeat("?,", len(directMatchPostIDs)-1) + "?"
+				whereClauses = append(whereClauses, fmt.Sprintf("id IN (%s)", placeholders))
+				for _, id := range directMatchPostIDs {
+					postParams = append(postParams, id)
+				}
+			}
+
+			postQuery += " WHERE " + strings.Join(whereClauses, " OR ")
+
+		} else {
+			// If no IDs or name matches were found anywhere, return no results
+			postQuery += " WHERE 1 = 0"
+		}
+
+	} else if searchQuery != "" && isNumericSearch {
+		// Original logic for numeric (item ID) search
+		postQuery += ` WHERE id IN (SELECT DISTINCT post_id FROM trading_post_items WHERE item_id = ?)`
+		postParams = append(postParams, searchQuery)
+	}
+	// --- END OF MODIFIED LOGIC ---
 
 	postQuery += ` ORDER BY created_at DESC`
 
@@ -2689,13 +2939,13 @@ func tradingPostListHandler(w http.ResponseWriter, r *http.Request) {
 	postRows, err := db.Query(postQuery, postParams...)
 	if err != nil {
 		http.Error(w, "Database query failed", http.StatusInternalServerError)
-		log.Printf("❌ Trading Post query error: %v", err)
+		log.Printf("❌ Trading Post query error: %v, Query: %s, Params: %v", err, postQuery, postParams)
 		return
 	}
 	defer postRows.Close()
 
+	// ... (The rest of the tradingPostListHandler function remains the same) ...
 	var posts []TradingPost
-	// MODIFIED: The map now stores the index of the post in the slice, not a pointer.
 	postMap := make(map[int]int)
 	var postIDs []interface{}
 
@@ -2712,14 +2962,11 @@ func tradingPostListHandler(w http.ResponseWriter, r *http.Request) {
 		post.Items = []TradingPostItem{} // Initialize empty slice
 
 		posts = append(posts, post)
-		// MODIFIED: Store the index (len-1) in the map. This is stable even if the slice reallocates.
 		postMap[post.ID] = len(posts) - 1
 		postIDs = append(postIDs, post.ID)
 	}
 
-	// 4. If any posts were found, fetch their associated items.
 	if len(postIDs) > 0 {
-		// Create a placeholder string like "?,?,?" for the IN clause.
 		placeholders := strings.Repeat("?,", len(postIDs)-1) + "?"
 		itemQuery := fmt.Sprintf("SELECT post_id, item_name, item_id, quantity, price, currency FROM trading_post_items WHERE post_id IN (%s)", placeholders)
 
@@ -2738,7 +2985,6 @@ func tradingPostListHandler(w http.ResponseWriter, r *http.Request) {
 				continue
 			}
 
-			// MODIFIED: Look up the index from the map and modify the slice element directly.
 			if index, ok := postMap[postID]; ok {
 				posts[index].Items = append(posts[index].Items, item)
 			}
