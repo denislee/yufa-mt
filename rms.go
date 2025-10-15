@@ -16,34 +16,48 @@ import (
 	"github.com/PuerkitoBio/goquery"
 )
 
-// scrapeRMSItemDetails scrapes detailed item information from ratemyserver.net.
+// scrapeRMSItemDetails scrapes detailed item information from ratemyserver.net and ragnarokdatabase.com.
 func scrapeRMSItemDetails(itemID int) (*RMSItem, error) {
-	url := fmt.Sprintf("https://ratemyserver.net/item_db.php?item_id=%d", itemID)
-	// Use a client with a timeout
+	log.Printf("ℹ️ [RMS Scraper] Starting detailed scrape for Item ID: %d", itemID)
+
+	// --- Part 1: Scrape from RateMyServer.net (Primary Source) ---
+	rmsURL := fmt.Sprintf("https://ratemyserver.net/item_db.php?item_id=%d", itemID)
+	log.Printf("   -> [RMS] Fetching primary data from: %s", rmsURL)
 	client := http.Client{Timeout: 10 * time.Second}
-	res, err := client.Get(url)
+	res, err := client.Get(rmsURL)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get URL: %w", err)
+		log.Printf("   -> ❌ [RMS] FAILED to get URL. Error: %v", err)
+		return nil, fmt.Errorf("failed to get URL from RMS: %w", err)
 	}
 	defer res.Body.Close()
 	if res.StatusCode != 200 {
-		return nil, fmt.Errorf("status code error: %d %s", res.StatusCode, res.Status)
+		log.Printf("   -> ❌ [RMS] FAILED with non-200 status code: %d %s", res.StatusCode, res.Status)
+		// A 404 from RMS is a critical failure, as it's the primary data source.
+		return nil, fmt.Errorf("RMS status code error: %d %s", res.StatusCode, res.Status)
 	}
+	log.Printf("   -> ✅ [RMS] Successfully received response.")
 
 	doc, err := goquery.NewDocumentFromReader(res.Body)
 	if err != nil {
-		return nil, fmt.Errorf("failed to parse HTML: %w", err)
+		log.Printf("   -> ❌ [RMS] FAILED to parse HTML. Error: %v", err)
+		return nil, fmt.Errorf("failed to parse RMS HTML: %w", err)
 	}
+	log.Printf("   -> ✅ [RMS] HTML parsed successfully.")
 
 	item := &RMSItem{
 		ID:       itemID,
 		ImageURL: fmt.Sprintf("https://divine-pride.net/img/items/collection/iRO/%d", itemID),
 	}
 
-	// Get Item Name
+	// Get Item Name (from RMS)
 	item.Name = strings.TrimSpace(doc.Find("div.main_block b").First().Text())
+	if item.Name == "" {
+		log.Printf("   -> ⚠️ [RMS] Could not find item name.")
+	} else {
+		log.Printf("   -> [RMS] Found primary name: '%s'", item.Name)
+	}
 
-	// Get Item Properties from the info grid
+	// Get Item Properties from the info grid (from RMS)
 	doc.Find(".info_grid_item").Each(func(i int, s *goquery.Selection) {
 		label := strings.TrimSpace(s.Text())
 		var value string
@@ -67,16 +81,16 @@ func scrapeRMSItemDetails(itemID int) (*RMSItem, error) {
 		}
 	})
 
-	// Get Description
+	// Get Description (from RMS)
 	item.Description = strings.TrimSpace(doc.Find("th:contains('Description')").Next().Find("div.longtext").Text())
 	if item.Description == "" { // Fallback for items without a longtext div
 		item.Description = strings.TrimSpace(doc.Find("th:contains('Description')").Next().Text())
 	}
 
-	// Get Item Script
+	// Get Item Script (from RMS)
 	item.Script = strings.TrimSpace(doc.Find("th:contains('Item Script')").Next().Find("div.db_script_txt").Text())
 
-	// Get Dropped By
+	// Get Dropped By (from RMS)
 	reDrop := regexp.MustCompile(`(.+)\s+\(([\d.]+%)\)`)
 	doc.Find("th:contains('Dropped By')").Next().Find("a.nbu_m").Each(func(i int, s *goquery.Selection) {
 		text := s.Text()
@@ -89,18 +103,50 @@ func scrapeRMSItemDetails(itemID int) (*RMSItem, error) {
 		}
 	})
 
-	// Get Obtainable From
+	// Get Obtainable From (from RMS)
 	doc.Find("th:contains('Obtainable From')").Next().Find("a").Each(func(i int, s *goquery.Selection) {
 		item.ObtainableFrom = append(item.ObtainableFrom, strings.TrimSpace(s.Text()))
 	})
 
+	// --- Part 2: Scrape from RagnarokDatabase.com (Secondary Source for name_pt) ---
+	// This part is best-effort. If it fails, we still have the primary RMS data.
+	rdbURL := fmt.Sprintf("https://ragnarokdatabase.com/item/%d", itemID)
+	log.Printf("   -> [RDB] Fetching Portuguese name from: %s", rdbURL)
+	rdbRes, err := client.Get(rdbURL)
+	if err != nil {
+		log.Printf("   -> ⚠️ [RDB] Could not fetch from RagnarokDatabase for item %d: %v", itemID, err)
+		return item, nil // Return the successfully scraped RMS data without the PT name
+	}
+	defer rdbRes.Body.Close()
+
+	if rdbRes.StatusCode == 200 {
+		log.Printf("   -> ✅ [RDB] Successfully received response.")
+		body, readErr := io.ReadAll(rdbRes.Body)
+		if readErr != nil {
+			log.Printf("   -> ⚠️ [RDB] Could not read body from RagnarokDatabase for item %d: %v", itemID, readErr)
+		} else {
+			// **MODIFIED**: Updated regex to match the correct class name "item-title-db".
+			reNamePT := regexp.MustCompile(`<h1 class="item-title-db">([^<]+)</h1>`)
+			matches := reNamePT.FindStringSubmatch(string(body))
+			if len(matches) > 1 {
+				item.NamePT = strings.TrimSpace(matches[1])
+				log.Printf("   -> ✅ [RDB] Found Portuguese name: '%s'", item.NamePT)
+			} else {
+				log.Printf("   -> ⚠️ [RDB] Could not find Portuguese name with regex on page.")
+			}
+		}
+	} else {
+		log.Printf("   -> ⚠️ [RDB] Received non-200 status (%d) from RagnarokDatabase for item %d", rdbRes.StatusCode, itemID)
+	}
+
+	log.Printf("✅ [RMS Scraper] Finished detailed scrape for Item ID: %d", itemID)
 	return item, nil
 }
 
 // getItemDetailsFromCache tries to fetch item details from the local DB cache.
 func getItemDetailsFromCache(itemID int) (*RMSItem, error) {
 	row := db.QueryRow(`
-		SELECT name, image_url, item_type, item_class, buy, sell, weight, prefix, description, script, dropped_by_json, obtainable_from_json
+		SELECT name, name_pt, image_url, item_type, item_class, buy, sell, weight, prefix, description, script, dropped_by_json, obtainable_from_json
 		FROM rms_item_cache WHERE item_id = ?`, itemID)
 
 	var item RMSItem
@@ -108,7 +154,7 @@ func getItemDetailsFromCache(itemID int) (*RMSItem, error) {
 	var droppedByJSON, obtainableFromJSON string
 
 	err := row.Scan(
-		&item.Name, &item.ImageURL, &item.Type, &item.Class, &item.Buy, &item.Sell,
+		&item.Name, &item.NamePT, &item.ImageURL, &item.Type, &item.Class, &item.Buy, &item.Sell,
 		&item.Weight, &item.Prefix, &item.Description, &item.Script,
 		&droppedByJSON, &obtainableFromJSON,
 	)
@@ -146,9 +192,9 @@ func saveItemDetailsToCache(item *RMSItem) error {
 	// Use INSERT OR REPLACE to either create a new entry or update an existing one.
 	_, err = db.Exec(`
 		INSERT OR REPLACE INTO rms_item_cache
-		(item_id, name, image_url, item_type, item_class, buy, sell, weight, prefix, description, script, dropped_by_json, obtainable_from_json, last_checked)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		item.ID, item.Name, item.ImageURL, item.Type, item.Class, item.Buy, item.Sell,
+		(item_id, name, name_pt, image_url, item_type, item_class, buy, sell, weight, prefix, description, script, dropped_by_json, obtainable_from_json, last_checked)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		item.ID, item.Name, item.NamePT, item.ImageURL, item.Type, item.Class, item.Buy, item.Sell,
 		item.Weight, item.Prefix, item.Description, item.Script,
 		string(droppedByJSON), string(obtainableFromJSON), time.Now().Format(time.RFC3339),
 	)
@@ -331,7 +377,7 @@ func scrapeRMSItemSearch(query string) ([]ItemSearchResult, error) {
 }
 
 // scrapeRagnarokDatabaseSearch performs a search on ragnarokdatabase.com to find potential item IDs when a local search fails.
-// It uses regex to parse the HTML response, avoiding heavier dependencies.
+// It uses regex to parse the HTML response, and as a side effect, it updates the 'name_pt' column in the cache for any matching items found.
 func scrapeRagnarokDatabaseSearch(query string) ([]int, error) {
 	// 1. Construct the URL
 	searchURL := fmt.Sprintf("https://ragnarokdatabase.com/search/items/%s", url.QueryEscape(query))
@@ -359,9 +405,10 @@ func scrapeRagnarokDatabaseSearch(query string) ([]int, error) {
 		return nil, fmt.Errorf("failed to read response body: %w", err)
 	}
 
-	// 4. Use Regex to find all item IDs from links like "/item/1234/item-name"
-	idRegex := regexp.MustCompile(`/item/(\d+)/`)
-	matches := idRegex.FindAllStringSubmatch(string(body), -1)
+	// 4. Use Regex to find all item IDs and names from links
+	// Example HTML: <a class="font-bold" href=".../item/501/red-potion">Red Potion</a>
+	idNameRegex := regexp.MustCompile(`href="https://ragnarokdatabase.com/item/(\d+)/[^"]+">([^<]+)</a>`)
+	matches := idNameRegex.FindAllStringSubmatch(string(body), -1)
 
 	if len(matches) == 0 {
 		log.Printf("   [Fallback Search] No item IDs found on the page for query '%s'.", query)
@@ -371,13 +418,43 @@ func scrapeRagnarokDatabaseSearch(query string) ([]int, error) {
 	var itemIDs []int
 	seenIDs := make(map[int]bool) // To handle duplicates
 
-	// 5. Extract and convert IDs
+	// Prepare a statement for updating the cache. This is more efficient than preparing it inside the loop.
+	updateStmt, err := db.Prepare("UPDATE rms_item_cache SET name_pt = ? WHERE item_id = ?")
+	if err != nil {
+		log.Printf("⚠️ [Fallback Search] Could not prepare update statement for name_pt, will skip updating: %v", err)
+		// This is not a fatal error; we can still return the found IDs.
+	} else {
+		defer updateStmt.Close()
+	}
+
+	// 5. Extract IDs and names, update the cache, and collect IDs to return
 	for _, match := range matches {
-		if len(match) > 1 {
+		if len(match) > 2 {
 			id, err := strconv.Atoi(match[1])
-			if err == nil && !seenIDs[id] {
+			if err != nil {
+				continue // Skip if ID is not a valid number
+			}
+
+			// Add ID to the list to be returned, ensuring no duplicates
+			if !seenIDs[id] {
 				itemIDs = append(itemIDs, id)
 				seenIDs[id] = true
+			}
+
+			// If the statement was prepared successfully, try to update the cache with the Portuguese name.
+			if updateStmt != nil {
+				namePT := strings.TrimSpace(match[2])
+				if namePT != "" {
+					res, updateErr := updateStmt.Exec(namePT, id)
+					if updateErr == nil {
+						rowsAffected, _ := res.RowsAffected()
+						if rowsAffected > 0 {
+							log.Printf("   [Fallback Search] Updated Portuguese name for item ID %d to '%s'", id, namePT)
+						}
+					} else {
+						log.Printf("⚠️ [Fallback Search] Failed to execute update for item ID %d: %v", id, updateErr)
+					}
+				}
 			}
 		}
 	}

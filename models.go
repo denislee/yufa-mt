@@ -90,6 +90,7 @@ type PricePointDetails struct {
 type RMSItem struct {
 	ID             int
 	Name           string
+	NamePT         string
 	ImageURL       string
 	Type           string
 	Class          string

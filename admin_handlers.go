@@ -287,6 +287,15 @@ func adminCacheActionHandler(w http.ResponseWriter, r *http.Request) {
 		} else {
 			msg = "Item+cache+cleared+successfully."
 		}
+	case "drop":
+		log.Println("👤 Admin triggered cache table drop.")
+		_, err := db.Exec("DROP TABLE IF EXISTS rms_item_cache")
+		if err != nil {
+			msg = "Error+dropping+cache+table."
+			log.Printf("❌ Failed to drop RMS cache table: %v", err)
+		} else {
+			msg = "Item+cache+table+dropped+successfully.+Restart+app+to+recreate."
+		}
 	case "repopulate":
 		log.Println("👤 Admin triggered cache repopulation.")
 		go populateMissingCachesOnStartup()

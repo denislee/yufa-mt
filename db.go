@@ -106,6 +106,7 @@ func initDB(filepath string) (*sql.DB, error) {
 	CREATE TABLE IF NOT EXISTS rms_item_cache (
 		"item_id" INTEGER NOT NULL PRIMARY KEY,
 		"name" TEXT,
+		"name_pt" TEXT,
 		"image_url" TEXT,
 		"item_type" TEXT,
 		"item_class" TEXT,
