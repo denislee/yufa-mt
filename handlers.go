@@ -267,8 +267,16 @@ func getCombinedItemIDs(searchQuery string) ([]int, error) {
 	go func() {
 		defer wg.Done()
 		var ids []int
-		query := "SELECT DISTINCT item_id FROM items WHERE name_of_the_item LIKE ? AND item_id > 0"
-		rows, err := db.Query(query, "%"+searchQuery+"%")
+		// This query now searches both the English name in the 'items' table
+		// and the Portuguese name in the 'rms_item_cache' table.
+		query := `
+			SELECT item_id FROM (
+				SELECT DISTINCT item_id FROM items WHERE name_of_the_item LIKE ? AND item_id > 0
+				UNION
+				SELECT item_id FROM rms_item_cache WHERE name_pt LIKE ?
+			)`
+		// The search query parameter is used twice.
+		rows, err := db.Query(query, "%"+searchQuery+"%", "%"+searchQuery+"%")
 		if err != nil {
 			log.Printf("⚠️ Concurrent local ID search failed for '%s': %v", searchQuery, err)
 			localIDsChan <- []int{} // Send empty slice on error
