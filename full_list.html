@@ -141,7 +141,17 @@
                     <tbody class="text-gray-700 text-xs">
                         {{range .Items}}
                         <tr class="border-b border-gray-200 hover:bg-gray-50 {{if not .IsAvailable}}opacity-60{{end}}" {{if not .IsAvailable}}title="This item is no longer available"{{end}}>
-                            <td class="px-2 sm:px-3 py-2"><div class="flex items-center"><img src="https://static.divine-pride.net/images/items/item/{{.ItemID}}.png" alt="" class="w-6 h-6 mr-2" style="image-rendering: pixelated;"> <a href="/item?name={{.Name | urlquery}}" class="font-semibold hover:underline">{{.Name}}</a></div></td>
+                            <td class="px-2 sm:px-3 py-2">
+                                <div class="flex items-center">
+                                    <img src="https://static.divine-pride.net/images/items/item/{{.ItemID}}.png" alt="" class="w-6 h-6 mr-2" style="image-rendering: pixelated;">
+                                    <div>
+                                        <a href="/item?name={{.Name | urlquery}}" class="font-semibold hover:underline">{{.Name}}</a>
+                                        {{if .NamePT.Valid}}
+                                        <div class="text-xs text-gray-500 mt-1">{{.NamePT.String}}</div>
+                                        {{end}}
+                                    </div>
+                                </div>
+                            </td>
                             {{if index $.VisibleColumns "item_id"}}<td class="px-2 sm:px-3 py-2">{{.ItemID}}</td>{{end}}
                             {{if index $.VisibleColumns "quantity"}}<td class="px-2 sm:px-3 py-2">{{.Quantity}}</td>{{end}}
                             <td class="px-2 sm:px-3 py-2">{{.Price}}</td>

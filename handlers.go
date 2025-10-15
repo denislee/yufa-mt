@@ -460,6 +460,7 @@ func summaryHandler(w http.ResponseWriter, r *http.Request) {
 	baseQuery := `
         SELECT
             i.name_of_the_item,
+            rms.name_pt,
             MIN(i.item_id) as item_id,
             MIN(CASE WHEN i.is_available = 1 THEN CAST(REPLACE(i.price, ',', '') AS INTEGER) ELSE NULL END) as lowest_price,
             MAX(CASE WHEN i.is_available = 1 THEN CAST(REPLACE(i.price, ',', '') AS INTEGER) ELSE NULL END) as highest_price,
@@ -487,7 +488,7 @@ func summaryHandler(w http.ResponseWriter, r *http.Request) {
 		whereClause = "WHERE " + strings.Join(whereConditions, " AND ")
 	}
 
-	groupByClause := " GROUP BY i.name_of_the_item"
+	groupByClause := " GROUP BY i.name_of_the_item, rms.name_pt"
 	havingClause := ""
 	if !showAll {
 		havingClause = " HAVING listing_count > 0"
@@ -512,7 +513,7 @@ func summaryHandler(w http.ResponseWriter, r *http.Request) {
 	var items []ItemSummary
 	for rows.Next() {
 		var item ItemSummary
-		if err := rows.Scan(&item.Name, &item.ItemID, &item.LowestPrice, &item.HighestPrice, &item.ListingCount); err != nil {
+		if err := rows.Scan(&item.Name, &item.NamePT, &item.ItemID, &item.LowestPrice, &item.HighestPrice, &item.ListingCount); err != nil {
 			log.Printf("⚠️ Failed to scan summary row: %v", err)
 			continue
 		}
@@ -621,7 +622,7 @@ func fullListHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	baseQuery := `
-		SELECT i.id, i.name_of_the_item, i.item_id, i.quantity, i.price, i.store_name, i.seller_name, i.date_and_time_retrieved, i.map_name, i.map_coordinates, i.is_available
+		SELECT i.id, i.name_of_the_item, rms.name_pt, i.item_id, i.quantity, i.price, i.store_name, i.seller_name, i.date_and_time_retrieved, i.map_name, i.map_coordinates, i.is_available
 		FROM items i 
 		LEFT JOIN rms_item_cache rms ON i.item_id = rms.item_id
 	`
@@ -644,7 +645,7 @@ func fullListHandler(w http.ResponseWriter, r *http.Request) {
 	for rows.Next() {
 		var item Item
 		var retrievedTime string
-		err := rows.Scan(&item.ID, &item.Name, &item.ItemID, &item.Quantity, &item.Price, &item.StoreName, &item.SellerName, &retrievedTime, &item.MapName, &item.MapCoordinates, &item.IsAvailable)
+		err := rows.Scan(&item.ID, &item.Name, &item.NamePT, &item.ItemID, &item.Quantity, &item.Price, &item.StoreName, &item.SellerName, &retrievedTime, &item.MapName, &item.MapCoordinates, &item.IsAvailable)
 		if err != nil {
 			log.Printf("⚠️ Failed to scan row: %v", err)
 			continue
@@ -679,7 +680,7 @@ func activityHandler(w http.ResponseWriter, r *http.Request) {
 	var whereConditions []string
 	var params []interface{}
 
-	if searchClause, searchParams, err := buildItemSearchClause(searchQuery, ""); err != nil {
+	if searchClause, searchParams, err := buildItemSearchClause(searchQuery, "me"); err != nil {
 		http.Error(w, "Failed to build item search query", http.StatusInternalServerError)
 		return
 	} else if searchClause != "" {
@@ -697,7 +698,7 @@ func activityHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var totalEvents int
-	countQuery := fmt.Sprintf("SELECT COUNT(*) FROM market_events %s", whereClause)
+	countQuery := fmt.Sprintf("SELECT COUNT(*) FROM market_events me LEFT JOIN rms_item_cache rms ON me.item_id = rms.item_id %s", whereClause)
 	if err := db.QueryRow(countQuery, params...).Scan(&totalEvents); err != nil {
 		log.Printf("❌ Could not count market events: %v", err)
 		http.Error(w, "Could not count market events", http.StatusInternalServerError)
@@ -706,9 +707,10 @@ func activityHandler(w http.ResponseWriter, r *http.Request) {
 
 	pagination := newPaginationData(r, totalEvents, eventsPerPage)
 	query := fmt.Sprintf(`
-        SELECT event_timestamp, event_type, item_name, item_id, details
-        FROM market_events %s
-        ORDER BY event_timestamp DESC LIMIT ? OFFSET ?`, whereClause)
+        SELECT me.event_timestamp, me.event_type, me.item_name, rms.name_pt, me.item_id, me.details
+        FROM market_events me
+        LEFT JOIN rms_item_cache rms ON me.item_id = rms.item_id %s
+        ORDER BY me.event_timestamp DESC LIMIT ? OFFSET ?`, whereClause)
 
 	finalParams := append(params, eventsPerPage, pagination.Offset)
 	eventRows, err := db.Query(query, finalParams...)
@@ -723,7 +725,7 @@ func activityHandler(w http.ResponseWriter, r *http.Request) {
 	for eventRows.Next() {
 		var event MarketEvent
 		var detailsStr, timestampStr string
-		if err := eventRows.Scan(&timestampStr, &event.EventType, &event.ItemName, &event.ItemID, &detailsStr); err != nil {
+		if err := eventRows.Scan(&timestampStr, &event.EventType, &event.ItemName, &event.NamePT, &event.ItemID, &detailsStr); err != nil {
 			log.Printf("⚠️ Failed to scan market event row: %v", err)
 			continue
 		}
@@ -759,7 +761,13 @@ func itemHistoryHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var itemID int
-	db.QueryRow("SELECT item_id FROM items WHERE name_of_the_item = ? AND item_id > 0 LIMIT 1", itemName).Scan(&itemID)
+	var itemNamePT sql.NullString
+	db.QueryRow(`
+		SELECT i.item_id, rms.name_pt 
+		FROM items i 
+		LEFT JOIN rms_item_cache rms ON i.item_id = rms.item_id
+		WHERE i.name_of_the_item = ? AND i.item_id > 0 
+		LIMIT 1`, itemName).Scan(&itemID, &itemNamePT)
 
 	var rmsItemDetails *RMSItem
 	if itemID > 0 {
@@ -903,8 +911,10 @@ func itemHistoryHandler(w http.ResponseWriter, r *http.Request) {
 
 	pagination := newPaginationData(r, totalListings, listingsPerPage)
 	allListingsQuery := `
-		SELECT price, quantity, store_name, seller_name, map_name, map_coordinates, date_and_time_retrieved, is_available
-		FROM items WHERE name_of_the_item = ? ORDER BY is_available DESC, date_and_time_retrieved DESC LIMIT ? OFFSET ?;`
+		SELECT i.id, i.name_of_the_item, rms.name_pt, i.item_id, i.quantity, i.price, i.store_name, i.seller_name, i.date_and_time_retrieved, i.map_name, i.map_coordinates, i.is_available
+		FROM items i 
+		LEFT JOIN rms_item_cache rms ON i.item_id = rms.item_id 
+		WHERE i.name_of_the_item = ? ORDER BY i.is_available DESC, i.date_and_time_retrieved DESC LIMIT ? OFFSET ?;`
 	rowsAll, err := db.Query(allListingsQuery, itemName, listingsPerPage, pagination.Offset)
 	if err != nil {
 		log.Printf("❌ All listings query error: %v", err)
@@ -917,7 +927,7 @@ func itemHistoryHandler(w http.ResponseWriter, r *http.Request) {
 	for rowsAll.Next() {
 		var listing Item
 		var timestampStr string
-		if err := rowsAll.Scan(&listing.Price, &listing.Quantity, &listing.StoreName, &listing.SellerName, &listing.MapName, &listing.MapCoordinates, &timestampStr, &listing.IsAvailable); err != nil {
+		if err := rowsAll.Scan(&listing.ID, &listing.Name, &listing.NamePT, &listing.ItemID, &listing.Quantity, &listing.Price, &listing.StoreName, &listing.SellerName, &timestampStr, &listing.MapName, &listing.MapCoordinates, &listing.IsAvailable); err != nil {
 			log.Printf("⚠️ Failed to scan all listing row: %v", err)
 			continue
 		}
@@ -931,6 +941,7 @@ func itemHistoryHandler(w http.ResponseWriter, r *http.Request) {
 
 	data := HistoryPageData{
 		ItemName:           itemName,
+		ItemNamePT:         itemNamePT,
 		PriceDataJSON:      template.JS(priceHistoryJSON),
 		OverallLowest:      int(overallLowest.Int64),
 		OverallHighest:     int(overallHighest.Int64),
@@ -1683,10 +1694,12 @@ func storeDetailHandler(w http.ResponseWriter, r *http.Request) {
 	if err == nil {
 		query := fmt.Sprintf(`
 			WITH RankedItems AS (
-				SELECT *, ROW_NUMBER() OVER(PARTITION BY name_of_the_item ORDER BY id DESC) as rn
-				FROM items WHERE store_name = ? AND seller_name = ? AND map_name = ? AND map_coordinates = ?
+				SELECT i.*, rms.name_pt, ROW_NUMBER() OVER(PARTITION BY i.name_of_the_item ORDER BY i.id DESC) as rn
+				FROM items i
+				LEFT JOIN rms_item_cache rms ON i.item_id = rms.item_id
+				WHERE i.store_name = ? AND i.seller_name = ? AND i.map_name = ? AND i.map_coordinates = ?
 			)
-			SELECT id, name_of_the_item, item_id, quantity, price, store_name, seller_name, date_and_time_retrieved, map_name, map_coordinates, is_available
+			SELECT id, name_of_the_item, name_pt, item_id, quantity, price, store_name, seller_name, date_and_time_retrieved, map_name, map_coordinates, is_available
 			FROM RankedItems WHERE rn = 1 %s`, orderByClause)
 
 		rows, queryErr := db.Query(query, storeName, sellerName, mapName, mapCoords)
@@ -1699,7 +1712,7 @@ func storeDetailHandler(w http.ResponseWriter, r *http.Request) {
 		for rows.Next() {
 			var item Item
 			var retrievedTime string
-			if err := rows.Scan(&item.ID, &item.Name, &item.ItemID, &item.Quantity, &item.Price, &item.StoreName, &item.SellerName, &retrievedTime, &item.MapName, &item.MapCoordinates, &item.IsAvailable); err == nil {
+			if err := rows.Scan(&item.ID, &item.Name, &item.NamePT, &item.ItemID, &item.Quantity, &item.Price, &item.StoreName, &item.SellerName, &retrievedTime, &item.MapName, &item.MapCoordinates, &item.IsAvailable); err == nil {
 				if t, err := time.Parse(time.RFC3339, retrievedTime); err == nil {
 					item.Timestamp = t.Format("2006-01-02 15:04")
 				}
@@ -1800,14 +1813,18 @@ func tradingPostListHandler(w http.ResponseWriter, r *http.Request) {
 
 	if len(postIDs) > 0 {
 		placeholders := strings.Repeat("?,", len(postIDs)-1) + "?"
-		itemQuery := fmt.Sprintf("SELECT post_id, item_name, item_id, quantity, price, currency FROM trading_post_items WHERE post_id IN (%s)", placeholders)
+		itemQuery := fmt.Sprintf(`
+            SELECT tpi.post_id, tpi.item_name, rms.name_pt, tpi.item_id, tpi.quantity, tpi.price, tpi.currency 
+            FROM trading_post_items tpi
+            LEFT JOIN rms_item_cache rms ON tpi.item_id = rms.item_id
+            WHERE tpi.post_id IN (%s)`, placeholders)
 		itemRows, err := db.Query(itemQuery, postIDs...)
 		if err == nil {
 			defer itemRows.Close()
 			for itemRows.Next() {
 				var item TradingPostItem
 				var postID int
-				if err := itemRows.Scan(&postID, &item.ItemName, &item.ItemID, &item.Quantity, &item.Price, &item.Currency); err == nil {
+				if err := itemRows.Scan(&postID, &item.ItemName, &item.NamePT, &item.ItemID, &item.Quantity, &item.Price, &item.Currency); err == nil {
 					if index, ok := postMap[postID]; ok {
 						posts[index].Items = append(posts[index].Items, item)
 					}

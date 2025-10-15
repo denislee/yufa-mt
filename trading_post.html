@@ -73,7 +73,7 @@
                 Create New Post
             </a>
         </div>
-        
+
         <div class="mb-6">
             <form action="/trading-post" method="GET" class="bg-white p-4 rounded-lg shadow-md">
                 <div class="flex items-center">
@@ -118,10 +118,15 @@
                                         {{else}}
                                             <img src="https://static.divine-pride.net/images/items/item/909.png" alt="Item" class="w-6 h-6 opacity-50" style="image-rendering: pixelated;">
                                         {{end}}
-                                        <span>
-                                            {{.ItemName}}
-                                            {{if .ItemID.Valid}}<span class="text-gray-400 font-normal ml-1">#{{.ItemID.Int64}}</span>{{end}}
-                                        </span>
+                                        <div>
+                                            <span>
+                                                {{.ItemName}}
+                                                {{if .ItemID.Valid}}<span class="text-gray-400 font-normal ml-1">#{{.ItemID.Int64}}</span>{{end}}
+                                            </span>
+                                            {{if .NamePT.Valid}}
+                                            <div class="text-xs text-gray-500 mt-1 font-normal">{{.NamePT.String}}</div>
+                                            {{end}}
+                                        </div>
                                     </div>
                                 </td>
                                 <td class="py-2 text-right text-gray-600 w-20">{{.Quantity}}x</td>
@@ -131,7 +136,7 @@
                         </tbody>
                     </table>
                 </div>
-                
+
                 {{if .Notes.Valid}}
                 <div class="px-3 pb-2 text-sm text-gray-600 border-t border-gray-100 pt-2">
                     <strong>Notes:</strong> {{.Notes.String}}
@@ -151,7 +156,7 @@
             {{end}}
         </div>
     </div>
-    
+
     <script>
         document.addEventListener('DOMContentLoaded', () => {
             // --- Navigation Menu Logic ---
@@ -184,7 +189,7 @@
                     el.classList.add('hidden');
                 });
             });
-            
+
             // --- Page-Specific Logic ---
             document.querySelectorAll('[data-price]').forEach(elem => {
                 const price = parseInt(elem.dataset.price, 10);

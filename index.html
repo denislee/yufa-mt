@@ -122,7 +122,12 @@
                             <td class="px-2 sm:px-3 py-2">
                                 <div class="flex items-center">
                                     <img src="https://static.divine-pride.net/images/items/item/{{.ItemID}}.png" alt="" class="w-6 h-6 mr-2" style="image-rendering: pixelated;">
-                                    <a href="/item?name={{.Name | urlquery}}" class="font-semibold hover:underline">{{.Name}}</a>
+                                    <div>
+                                        <a href="/item?name={{.Name | urlquery}}" class="font-semibold hover:underline">{{.Name}}</a>
+                                        {{if .NamePT.Valid}}
+                                        <div class="text-xs text-gray-500 mt-1">{{.NamePT.String}}</div>
+                                        {{end}}
+                                    </div>
                                 </div>
                             </td>
                             <td class="px-2 sm:px-3 py-2">{{.ItemID}}</td>

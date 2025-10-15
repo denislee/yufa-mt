@@ -11,6 +11,7 @@ import (
 type Item struct {
 	ID             int
 	Name           string
+	NamePT         sql.NullString // ADDED
 	ItemID         int
 	Quantity       int
 	Price          string
@@ -45,6 +46,7 @@ type MarketEvent struct {
 	Timestamp string
 	EventType string
 	ItemName  string
+	NamePT    sql.NullString
 	ItemID    int
 	Details   map[string]interface{}
 }
@@ -52,6 +54,7 @@ type MarketEvent struct {
 // ItemSummary aggregates data for an item for the main page view.
 type ItemSummary struct {
 	Name         string
+	NamePT       sql.NullString // ADDED
 	ItemID       int
 	LowestPrice  sql.NullInt64 // Handles cases with no available listings.
 	HighestPrice sql.NullInt64
@@ -214,6 +217,7 @@ type ActivityPageData struct {
 // HistoryPageData holds data for the item history page template.
 type HistoryPageData struct {
 	ItemName           string
+	ItemNamePT         sql.NullString
 	PriceDataJSON      template.JS
 	OverallLowest      int
 	OverallHighest     int
@@ -430,6 +434,7 @@ type AdminEditPostPageData struct {
 // ADDED: TradingPostItem represents one item within a larger post.
 type TradingPostItem struct {
 	ItemName string
+	NamePT   sql.NullString
 	ItemID   sql.NullInt64 // To handle optional item ID
 	Quantity int
 	Price    int64
@@ -486,3 +491,4 @@ type TradingPostFormPageData struct {
 	EditToken string // To pass the token to the edit form for re-submission
 	Message   string // For showing errors
 }
+

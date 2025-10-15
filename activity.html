@@ -96,7 +96,12 @@
                             <div class="flex flex-wrap items-center gap-x-2">
                                 <div class="flex items-center font-semibold">
                                     <img src="https://static.divine-pride.net/images/items/item/{{.ItemID}}.png" alt="" class="w-5 h-5 mr-1.5" style="image-rendering: pixelated;">
-                                    <a href="/item?name={{.ItemName | urlquery}}" class="hover:underline">{{.ItemName}}</a>
+                                    <div>
+                                        <a href="/item?name={{.ItemName | urlquery}}" class="hover:underline">{{.ItemName}}</a>
+                                        {{if .NamePT.Valid}}
+                                        <div class="text-xs text-gray-500 mt-1 font-normal">{{.NamePT.String}}</div>
+                                        {{end}}
+                                    </div>
                                 </div>
                                 <span>was added for sale.</span>
                                 {{if .Details.price}}
@@ -111,7 +116,12 @@
                             <div class="flex flex-wrap items-center gap-x-2">
                                 <div class="flex items-center font-semibold text-gray-800">
                                     <img src="https://static.divine-pride.net/images/items/item/{{.ItemID}}.png" alt="" class="w-5 h-5 mr-1.5" style="image-rendering: pixelated;">
-                                    <a href="/item?name={{.ItemName | urlquery}}" class="hover:underline">{{.ItemName}}</a>
+                                    <div>
+                                        <a href="/item?name={{.ItemName | urlquery}}" class="hover:underline">{{.ItemName}}</a>
+                                        {{if .NamePT.Valid}}
+                                        <div class="text-xs text-gray-500 mt-1 font-normal">{{.NamePT.String}}</div>
+                                        {{end}}
+                                    </div>
                                 </div>
                                 <span>is no longer for sale.</span>
                                 {{if .Details.price}}
@@ -126,7 +136,12 @@
                             <div class="flex flex-wrap items-center gap-x-2">
                                 <div class="flex items-center font-semibold text-gray-800">
                                     <img src="https://static.divine-pride.net/images/items/item/{{.ItemID}}.png" alt="" class="w-5 h-5 mr-1.5" style="image-rendering: pixelated;">
-                                    <a href="/item?name={{.ItemName | urlquery}}" class="hover:underline">{{.ItemName}}</a>
+                                    <div>
+                                        <a href="/item?name={{.ItemName | urlquery}}" class="hover:underline">{{.ItemName}}</a>
+                                        {{if .NamePT.Valid}}
+                                        <div class="text-xs text-gray-500 mt-1 font-normal">{{.NamePT.String}}</div>
+                                        {{end}}
+                                    </div>
                                 </div>
                                 <span>was sold.</span>
                                 {{if .Details.price}}
@@ -141,7 +156,12 @@
                             <div class="flex flex-wrap items-center gap-x-2">
                                 <div class="flex items-center font-semibold text-gray-800">
                                     <img src="https://static.divine-pride.net/images/items/item/{{.ItemID}}.png" alt="" class="w-5 h-5 mr-1.5" style="image-rendering: pixelated;">
-                                    <a href="/item?name={{.ItemName | urlquery}}" class="hover:underline">{{.ItemName}}</a>
+                                    <div>
+                                        <a href="/item?name={{.ItemName | urlquery}}" class="hover:underline">{{.ItemName}}</a>
+                                        {{if .NamePT.Valid}}
+                                        <div class="text-xs text-gray-500 mt-1 font-normal">{{.NamePT.String}}</div>
+                                        {{end}}
+                                    </div>
                                 </div>
                                 <span>is no longer for sale.</span>
                                 <small class="text-gray-400">({{.Details.price}} zeny, Qty: {{printf "%.0f" .Details.quantity}} by <a href="/character?name={{.Details.seller | urlquery}}" class="hover:underline text-blue-500">{{.Details.seller}}</a> in <a href="/store?name={{.Details.store_name | urlquery}}&seller={{.Details.seller | urlquery}}" class="hover:underline text-blue-500">{{.Details.store_name}}</a> — Vendor logged off or item was sold)</small>
@@ -156,7 +176,12 @@
                                 <span>for</span>
                                 <div class="flex items-center font-semibold">
                                     <img src="https://static.divine-pride.net/images/items/item/{{.ItemID}}.png" alt="" class="w-5 h-5 mr-1.5" style="image-rendering: pixelated;">
-                                    <a href="/item?name={{.ItemName | urlquery}}" class="hover:underline">{{.ItemName}}</a>!
+                                    <div>
+                                        <a href="/item?name={{.ItemName | urlquery}}" class="hover:underline">{{.ItemName}}</a>!
+                                        {{if .NamePT.Valid}}
+                                        <div class="text-xs text-gray-500 mt-1 font-normal">{{.NamePT.String}}</div>
+                                        {{end}}
+                                    </div>
                                 </div>
                                 <small class="text-gray-500">({{.Details.price}} zeny, Qty: {{printf "%.0f" .Details.quantity}} by <a href="/character?name={{.Details.seller | urlquery}}" class="hover:underline text-blue-600">{{.Details.seller}}</a> in <a href="/store?name={{.Details.store_name | urlquery}}&seller={{.Details.seller | urlquery}}" class="hover:underline text-blue-600">{{.Details.store_name}}</a>)</small>
                             </div>
