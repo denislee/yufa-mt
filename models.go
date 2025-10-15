@@ -473,6 +473,7 @@ type TradingPostItem struct {
 // MODIFIED: TradingPost now holds post-level info and a slice of items.
 type TradingPost struct {
 	ID            int
+	Title         string
 	PostType      string // "buying" or "selling"
 	CharacterName string
 	ContactInfo   sql.NullString

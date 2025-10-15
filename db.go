@@ -250,6 +250,7 @@ func initDB(filepath string) (*sql.DB, error) {
 	createTradingPostsTableSQL := `
 CREATE TABLE IF NOT EXISTS trading_posts (
     "id" INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+    "title" TEXT NOT NULL,
     "post_type" TEXT NOT NULL, -- 'buying' or 'selling'
     "character_name" TEXT NOT NULL,
     "contact_info" TEXT,

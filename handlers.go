@@ -2570,7 +2570,7 @@ func tradingPostListHandler(w http.ResponseWriter, r *http.Request) {
 	// 2. Build the query for posts with an optional WHERE clause for searching.
 	var postParams []interface{}
 	postQuery := `
-        SELECT id, post_type, character_name, contact_info, created_at, notes 
+        SELECT id, title, post_type, character_name, contact_info, created_at, notes 
         FROM trading_posts`
 
 	if searchQuery != "" {
@@ -2597,7 +2597,7 @@ func tradingPostListHandler(w http.ResponseWriter, r *http.Request) {
 	for postRows.Next() {
 		var post TradingPost
 		var createdAtStr string
-		err := postRows.Scan(&post.ID, &post.PostType, &post.CharacterName, &post.ContactInfo, &createdAtStr, &post.Notes)
+		err := postRows.Scan(&post.ID, &post.Title, &post.PostType, &post.CharacterName, &post.ContactInfo, &createdAtStr, &post.Notes)
 		if err != nil {
 			log.Printf("⚠️ Failed to scan trading post row: %v", err)
 			continue
@@ -2668,12 +2668,17 @@ func tradingPostFormHandler(w http.ResponseWriter, r *http.Request) {
 		}
 
 		// Sanitize all other string inputs to remove potentially malicious characters.
+		title := sanitizeString(r.FormValue("title"), notesSanitizer)
 		characterName := sanitizeString(r.FormValue("character_name"), nameSanitizer)
 		contactInfo := sanitizeString(r.FormValue("contact_info"), contactSanitizer)
 		notes := sanitizeString(r.FormValue("notes"), notesSanitizer)
 
 		if strings.TrimSpace(characterName) == "" {
 			http.Error(w, "Character name is required.", http.StatusBadRequest)
+			return
+		}
+		if strings.TrimSpace(title) == "" {
+			http.Error(w, "Title is required.", http.StatusBadRequest)
 			return
 		}
 
@@ -2699,9 +2704,9 @@ func tradingPostFormHandler(w http.ResponseWriter, r *http.Request) {
 		// 4. Insert the main post record using the sanitized data
 		now := time.Now().Format(time.RFC3339)
 		res, err := tx.Exec(`
-            INSERT INTO trading_posts (post_type, character_name, contact_info, notes, created_at, edit_token_hash)
-            VALUES (?, ?, ?, ?, ?, ?)
-        `, postType, characterName, contactInfo, notes, now, string(tokenHash))
+            INSERT INTO trading_posts (title, post_type, character_name, contact_info, notes, created_at, edit_token_hash)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+        `, title, postType, characterName, contactInfo, notes, now, string(tokenHash))
 
 		if err != nil {
 			tx.Rollback()
@@ -2859,9 +2864,9 @@ func tradingPostManageHandler(w http.ResponseWriter, r *http.Request) {
 			var post TradingPost
 			var createdAtStr string
 			err := db.QueryRow(`
-                SELECT id, post_type, character_name, contact_info, notes, created_at
+                SELECT id, title, post_type, character_name, contact_info, notes, created_at
                 FROM trading_posts WHERE id = ?`, postIDStr).
-				Scan(&post.ID, &post.PostType, &post.CharacterName, &post.ContactInfo, &post.Notes, &createdAtStr)
+				Scan(&post.ID, &post.Title, &post.PostType, &post.CharacterName, &post.ContactInfo, &post.Notes, &createdAtStr)
 
 			if err != nil {
 				http.Error(w, "Could not retrieve post to edit.", http.StatusInternalServerError)
@@ -2918,14 +2923,21 @@ func tradingPostManageHandler(w http.ResponseWriter, r *http.Request) {
 				http.Error(w, "Invalid post type.", http.StatusBadRequest)
 				return
 			}
+			title := sanitizeString(r.FormValue("title"), notesSanitizer)
 			characterName := sanitizeString(r.FormValue("character_name"), nameSanitizer)
 			contactInfo := sanitizeString(r.FormValue("contact_info"), contactSanitizer)
 			notes := sanitizeString(r.FormValue("notes"), notesSanitizer)
 
+			if strings.TrimSpace(title) == "" {
+				http.Error(w, "Title cannot be empty.", http.StatusBadRequest)
+				tx.Rollback()
+				return
+			}
+
 			_, err = tx.Exec(`
-                UPDATE trading_posts SET post_type=?, character_name=?, contact_info=?, notes=?
+                UPDATE trading_posts SET title=?, post_type=?, character_name=?, contact_info=?, notes=?
                 WHERE id=?
-            `, postType, characterName, contactInfo, notes, postIDStr)
+            `, title, postType, characterName, contactInfo, notes, postIDStr)
 			if err != nil {
 				tx.Rollback()
 				http.Error(w, "Failed to update post.", http.StatusInternalServerError)

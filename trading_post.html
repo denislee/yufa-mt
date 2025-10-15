@@ -93,9 +93,12 @@
                         {{else}}
                             <span class="font-bold text-lg text-green-600">C></span>
                         {{end}}
-                        <div class="text-sm">
-                            <span class="font-semibold text-gray-800">{{.CharacterName}}</span>
-                            {{if .ContactInfo.Valid}}<span class="text-gray-500 ml-2">| {{.ContactInfo.String}}</span>{{end}}
+                        <div>
+                            <h2 class="font-semibold text-base text-gray-800">{{.Title}}</h2>
+                            <div class="text-xs text-gray-600">
+                                <span>by <strong>{{.CharacterName}}</strong></span>
+                                {{if .ContactInfo.Valid}}<span class="text-gray-500 ml-2">| {{.ContactInfo.String}}</span>{{end}}
+                            </div>
                         </div>
                     </div>
                     <div class="text-xs text-gray-500" title="{{.CreatedAt}}">
