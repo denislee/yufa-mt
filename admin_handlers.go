@@ -239,10 +239,10 @@ func adminHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Get last scrape times
-	stats.LastMarketScrape = getLastScrapeTime()
-	stats.LastPlayerCountScrape = getLastPlayerCountTime()
-	stats.LastCharacterScrape = getLastCharacterScrapeTime()
-	stats.LastGuildScrape = getLastGuildScrapeTime()
+	stats.LastMarketScrape = GetLastScrapeTime()
+	stats.LastPlayerCountScrape = GetLastPlayerCountTime()
+	stats.LastCharacterScrape = GetLastCharacterScrapeTime()
+	stats.LastGuildScrape = GetLastGuildScrapeTime()
 
 	tmpl, err := template.ParseFiles("admin.html")
 	if err != nil {
@@ -617,7 +617,7 @@ func adminEditTradingPostHandler(w http.ResponseWriter, r *http.Request) {
 
 		data := AdminEditPostPageData{
 			Post:           post,
-			LastScrapeTime: getLastScrapeTime(),
+			LastScrapeTime: GetLastScrapeTime(),
 		}
 		tmpl.Execute(w, data)
 	}

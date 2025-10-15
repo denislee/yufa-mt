@@ -116,6 +116,108 @@ var templateFuncs = template.FuncMap{
 }
 
 // -------------------------
+// -- GENERIC HELPERS --
+// -------------------------
+
+// PaginationData holds all the data needed to render pagination controls.
+type PaginationData struct {
+	CurrentPage int
+	TotalPages  int
+	PrevPage    int
+	NextPage    int
+	HasPrevPage bool
+	HasNextPage bool
+	Offset      int
+}
+
+// newPaginationData creates a PaginationData object from the request and total item count.
+func newPaginationData(r *http.Request, totalItems int, itemsPerPage int) PaginationData {
+	pageStr := r.FormValue("page")
+	page, err := strconv.Atoi(pageStr)
+	if err != nil || page < 1 {
+		page = 1
+	}
+
+	pd := PaginationData{}
+	if totalItems > 0 {
+		pd.TotalPages = int(math.Ceil(float64(totalItems) / float64(itemsPerPage)))
+	} else {
+		pd.TotalPages = 1 // Ensure at least one page, even if empty
+	}
+
+	if page > pd.TotalPages {
+		page = pd.TotalPages
+	}
+	if page < 1 {
+		page = 1
+	}
+
+	pd.CurrentPage = page
+	pd.Offset = (page - 1) * itemsPerPage
+	pd.PrevPage = page - 1
+	pd.NextPage = page + 1
+	pd.HasPrevPage = page > 1
+	pd.HasNextPage = page < pd.TotalPages
+	return pd
+}
+
+// getSortClause validates sorting parameters and constructs an SQL ORDER BY clause.
+func getSortClause(r *http.Request, allowedSorts map[string]string, defaultSortBy, defaultOrder string) (string, string, string) {
+	sortBy := r.FormValue("sort_by")
+	order := r.FormValue("order")
+
+	orderByColumn, ok := allowedSorts[sortBy]
+	if !ok {
+		sortBy = defaultSortBy
+		order = defaultOrder
+		orderByColumn = allowedSorts[sortBy]
+	}
+
+	if strings.ToUpper(order) != "ASC" && strings.ToUpper(order) != "DESC" {
+		order = defaultOrder
+	}
+
+	return fmt.Sprintf("ORDER BY %s %s", orderByColumn, order), sortBy, order
+}
+
+// buildItemSearchClause generates the WHERE condition for an item search (by name or ID).
+func buildItemSearchClause(searchQuery, tableAlias string) (string, []interface{}, error) {
+	if searchQuery == "" {
+		return "", nil, nil
+	}
+
+	// Sanitize alias to prevent injection, though it's developer-controlled.
+	alias := strings.Trim(regexp.MustCompile(`[^a-zA-Z0-9_]`).ReplaceAllString(tableAlias, ""), ".")
+	if alias != "" {
+		alias += "."
+	}
+
+	// Check if the query is a numeric ID.
+	if _, err := strconv.Atoi(searchQuery); err == nil {
+		return fmt.Sprintf("%sitem_id = ?", alias), []interface{}{searchQuery}, nil
+	}
+
+	// If not numeric, search by name using pre-cached IDs.
+	idList, err := getCombinedItemIDs(searchQuery)
+	if err != nil {
+		return "", nil, fmt.Errorf("failed to perform combined item search: %w", err)
+	}
+
+	if len(idList) > 0 {
+		placeholders := strings.Repeat("?,", len(idList)-1) + "?"
+		clause := fmt.Sprintf("%sitem_id IN (%s)", alias, placeholders)
+		params := make([]interface{}, len(idList))
+		for i, id := range idList {
+			params[i] = id
+		}
+		return clause, params, nil
+	}
+
+	// If no IDs are found, return a condition that yields no results.
+	return "1 = 0", nil, nil
+}
+
+// -------------------------
 // -- HELPER FUNCTIONS --
 // -------------------------
 
@@ -247,44 +349,6 @@ func getLastUpdateTime(tableName, columnName string) string {
 	return "Never"
 }
 
-// Pagination holds all the data needed to render pagination controls.
-type Pagination struct {
-	CurrentPage int
-	TotalPages  int
-	PrevPage    int
-	NextPage    int
-	HasPrevPage bool
-	HasNextPage bool
-	Offset      int
-}
-
-// newPagination creates a Pagination object from the request and total item count.
-func newPagination(r *http.Request, totalItems int, itemsPerPage int) Pagination {
-	pageStr := r.FormValue("page")
-	page, err := strconv.Atoi(pageStr)
-	if err != nil || page < 1 {
-		page = 1
-	}
-
-	p := Pagination{}
-	if totalItems > 0 {
-		p.TotalPages = int(math.Ceil(float64(totalItems) / float64(itemsPerPage)))
-	}
-	if page > p.TotalPages && p.TotalPages > 0 {
-		page = p.TotalPages
-	}
-	if page < 1 {
-		page = 1
-	}
-	p.CurrentPage = page
-	p.Offset = (page - 1) * itemsPerPage
-	p.PrevPage = page - 1
-	p.NextPage = page + 1
-	p.HasPrevPage = page > 1
-	p.HasNextPage = page < p.TotalPages
-	return p
-}
-
 // generateEventIntervals creates a list of event occurrences within a given time window.
 func generateEventIntervals(viewStart, viewEnd time.Time, events []EventDefinition, activeDates map[string]struct{}) []map[string]interface{} {
 	var intervals []map[string]interface{}
@@ -373,76 +437,6 @@ func mapItemTypeToTabData(typeName string) ItemTypeTab {
 	return tab
 }
 
-// getLastScrapeTime is a helper function to get the most recent market scrape time.
-func getLastScrapeTime() string {
-	var lastScrapeTimestamp sql.NullString
-	err := db.QueryRow("SELECT MAX(timestamp) FROM scrape_history").Scan(&lastScrapeTimestamp)
-	if err != nil {
-		log.Printf("⚠️ Could not get last scrape time: %v", err)
-	}
-	if lastScrapeTimestamp.Valid {
-		parsedTime, err := time.Parse(time.RFC3339, lastScrapeTimestamp.String)
-		if err == nil {
-			// Format for display
-			return parsedTime.Format("2006-01-02 15:04:05")
-		}
-	}
-	return "Never"
-}
-
-// getLastPlayerCountTime is a helper function to get the most recent player count scrape time.
-func getLastPlayerCountTime() string {
-	var lastScrapeTimestamp sql.NullString
-	err := db.QueryRow("SELECT MAX(timestamp) FROM player_history").Scan(&lastScrapeTimestamp)
-	if err != nil {
-		log.Printf("⚠️ Could not get last player count time: %v", err)
-	}
-	if lastScrapeTimestamp.Valid {
-		parsedTime, err := time.Parse(time.RFC3339, lastScrapeTimestamp.String)
-		if err == nil {
-			// Format for display
-			return parsedTime.Format("2006-01-02 15:04:05")
-		}
-	}
-	return "Never"
-}
-
-// getLastGuildScrapeTime is a helper function to get the most recent guild scrape time.
-func getLastGuildScrapeTime() string {
-	var lastScrapeTimestamp sql.NullString
-	// Query the 'guilds' table for the most recent 'last_updated' timestamp.
-	err := db.QueryRow("SELECT MAX(last_updated) FROM guilds").Scan(&lastScrapeTimestamp)
-	if err != nil {
-		log.Printf("⚠️ Could not get last guild scrape time: %v", err)
-	}
-	if lastScrapeTimestamp.Valid {
-		parsedTime, err := time.Parse(time.RFC3339, lastScrapeTimestamp.String)
-		if err == nil {
-			// Format for display
-			return parsedTime.Format("2006-01-02 15:04:05")
-		}
-	}
-	return "Never"
-}
-
-// getLastCharacterScrapeTime is a helper function to get the most recent character scrape time.
-func getLastCharacterScrapeTime() string {
-	var lastScrapeTimestamp sql.NullString
-	// Query the 'characters' table for the most recent 'last_updated' timestamp.
-	err := db.QueryRow("SELECT MAX(last_updated) FROM characters").Scan(&lastScrapeTimestamp)
-	if err != nil {
-		log.Printf("⚠️ Could not get last character scrape time: %v", err)
-	}
-	if lastScrapeTimestamp.Valid {
-		parsedTime, err := time.Parse(time.RFC3339, lastScrapeTimestamp.String)
-		if err == nil {
-			// Format for display
-			return parsedTime.Format("2006-01-02 15:04:05")
-		}
-	}
-	return "Never"
-}
-
 // -------------------------
 // -- HTTP HANDLERS --
 // -------------------------
@@ -454,8 +448,6 @@ func summaryHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	searchQuery := r.FormValue("query")
-	sortBy := r.FormValue("sort_by")
-	order := r.FormValue("order")
 	selectedType := r.FormValue("type")
 
 	formSubmitted := len(r.Form) > 0
@@ -464,7 +456,7 @@ func summaryHandler(w http.ResponseWriter, r *http.Request) {
 		showAll = true
 	}
 
-	params := []interface{}{}
+	var params []interface{}
 	baseQuery := `
         SELECT
             i.name_of_the_item,
@@ -477,26 +469,12 @@ func summaryHandler(w http.ResponseWriter, r *http.Request) {
     `
 	var whereConditions []string
 
-	if searchQuery != "" {
-		if _, err := strconv.Atoi(searchQuery); err == nil {
-			whereConditions = append(whereConditions, "i.item_id = ?")
-			params = append(params, searchQuery)
-		} else {
-			idList, err := getCombinedItemIDs(searchQuery)
-			if err != nil {
-				http.Error(w, "Failed to perform item search", http.StatusInternalServerError)
-				return
-			}
-			if len(idList) > 0 {
-				placeholders := strings.Repeat("?,", len(idList)-1) + "?"
-				whereConditions = append(whereConditions, fmt.Sprintf("i.item_id IN (%s)", placeholders))
-				for _, id := range idList {
-					params = append(params, id)
-				}
-			} else {
-				whereConditions = append(whereConditions, "1 = 0") // Return no results
-			}
-		}
+	if searchClause, searchParams, err := buildItemSearchClause(searchQuery, "i"); err != nil {
+		http.Error(w, "Failed to build item search query", http.StatusInternalServerError)
+		return
+	} else if searchClause != "" {
+		whereConditions = append(whereConditions, searchClause)
+		params = append(params, searchParams...)
 	}
 
 	if selectedType != "" {
@@ -519,16 +497,9 @@ func summaryHandler(w http.ResponseWriter, r *http.Request) {
 		"name": "i.name_of_the_item", "item_id": "item_id", "listings": "listing_count",
 		"lowest_price": "lowest_price", "highest_price": "highest_price",
 	}
-	orderByClause, ok := allowedSorts[sortBy]
-	if !ok {
-		sortBy = "highest_price"
-		orderByClause = allowedSorts[sortBy]
-		order = "DESC"
-	} else if strings.ToUpper(order) != "DESC" {
-		order = "ASC"
-	}
+	orderByClause, sortBy, order := getSortClause(r, allowedSorts, "highest_price", "DESC")
 
-	query := fmt.Sprintf("%s %s %s %s ORDER BY %s %s, i.name_of_the_item ASC;", baseQuery, whereClause, groupByClause, havingClause, orderByClause, order)
+	query := fmt.Sprintf("%s %s %s %s %s, i.name_of_the_item ASC;", baseQuery, whereClause, groupByClause, havingClause, orderByClause)
 
 	rows, err := db.Query(query, params...)
 	if err != nil {
@@ -573,8 +544,6 @@ func fullListHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	searchQuery := r.FormValue("query")
 	storeNameQuery := r.FormValue("store_name")
-	sortBy := r.FormValue("sort_by")
-	order := r.FormValue("order")
 	selectedCols := r.Form["cols"]
 	selectedType := r.FormValue("type")
 
@@ -626,39 +595,17 @@ func fullListHandler(w http.ResponseWriter, r *http.Request) {
 		"retrieved": "i.date_and_time_retrieved", "store_name": "i.store_name", "map_name": "i.map_name",
 		"availability": "i.is_available",
 	}
-
-	orderByClause, ok := allowedSorts[sortBy]
-	if !ok {
-		sortBy = "price"
-		orderByClause = allowedSorts[sortBy]
-		order = "DESC"
-	} else if strings.ToUpper(order) != "DESC" {
-		order = "ASC"
-	}
+	orderByClause, sortBy, order := getSortClause(r, allowedSorts, "price", "DESC")
 
 	var whereConditions []string
 	var queryParams []interface{}
 
-	if searchQuery != "" {
-		if _, err := strconv.Atoi(searchQuery); err == nil {
-			whereConditions = append(whereConditions, "i.item_id = ?")
-			queryParams = append(queryParams, searchQuery)
-		} else {
-			idList, err := getCombinedItemIDs(searchQuery)
-			if err != nil {
-				http.Error(w, "Failed to perform item search", http.StatusInternalServerError)
-				return
-			}
-			if len(idList) > 0 {
-				placeholders := strings.Repeat("?,", len(idList)-1) + "?"
-				whereConditions = append(whereConditions, fmt.Sprintf("i.item_id IN (%s)", placeholders))
-				for _, id := range idList {
-					queryParams = append(queryParams, id)
-				}
-			} else {
-				whereConditions = append(whereConditions, "1 = 0")
-			}
-		}
+	if searchClause, searchParams, err := buildItemSearchClause(searchQuery, "i"); err != nil {
+		http.Error(w, "Failed to build item search query", http.StatusInternalServerError)
+		return
+	} else if searchClause != "" {
+		whereConditions = append(whereConditions, searchClause)
+		queryParams = append(queryParams, searchParams...)
 	}
 
 	if storeNameQuery != "" {
@@ -683,7 +630,7 @@ func fullListHandler(w http.ResponseWriter, r *http.Request) {
 		whereClause = "WHERE " + strings.Join(whereConditions, " AND ")
 	}
 
-	query := fmt.Sprintf(`%s %s ORDER BY %s %s;`, baseQuery, whereClause, orderByClause, order)
+	query := fmt.Sprintf(`%s %s %s;`, baseQuery, whereClause, orderByClause)
 
 	rows, err := db.Query(query, queryParams...)
 	if err != nil {
@@ -732,27 +679,14 @@ func activityHandler(w http.ResponseWriter, r *http.Request) {
 	var whereConditions []string
 	var params []interface{}
 
-	if searchQuery != "" {
-		if _, err := strconv.Atoi(searchQuery); err == nil {
-			whereConditions = append(whereConditions, "item_id = ?")
-			params = append(params, searchQuery)
-		} else {
-			idList, err := getCombinedItemIDs(searchQuery)
-			if err != nil {
-				http.Error(w, "Failed to perform item search", http.StatusInternalServerError)
-				return
-			}
-			if len(idList) > 0 {
-				placeholders := strings.Repeat("?,", len(idList)-1) + "?"
-				whereConditions = append(whereConditions, fmt.Sprintf("item_id IN (%s)", placeholders))
-				for _, id := range idList {
-					params = append(params, id)
-				}
-			} else {
-				whereConditions = append(whereConditions, "1 = 0")
-			}
-		}
+	if searchClause, searchParams, err := buildItemSearchClause(searchQuery, ""); err != nil {
+		http.Error(w, "Failed to build item search query", http.StatusInternalServerError)
+		return
+	} else if searchClause != "" {
+		whereConditions = append(whereConditions, searchClause)
+		params = append(params, searchParams...)
 	}
+
 	if soldOnly {
 		whereConditions = append(whereConditions, "event_type = ?")
 		params = append(params, "SOLD")
@@ -770,7 +704,7 @@ func activityHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	pagination := newPagination(r, totalEvents, eventsPerPage)
+	pagination := newPaginationData(r, totalEvents, eventsPerPage)
 	query := fmt.Sprintf(`
         SELECT event_timestamp, event_type, item_name, item_id, details
         FROM market_events %s
@@ -803,10 +737,11 @@ func activityHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	data := ActivityPageData{
-		MarketEvents: marketEvents, LastScrapeTime: getLastUpdateTime("scrape_history", "timestamp"),
-		SearchQuery: searchQuery, SoldOnly: soldOnly, CurrentPage: pagination.CurrentPage,
-		TotalPages: pagination.TotalPages, PrevPage: pagination.PrevPage, NextPage: pagination.NextPage,
-		HasPrevPage: pagination.HasPrevPage, HasNextPage: pagination.HasNextPage,
+		MarketEvents:   marketEvents,
+		LastScrapeTime: getLastUpdateTime("scrape_history", "timestamp"),
+		SearchQuery:    searchQuery,
+		SoldOnly:       soldOnly,
+		Pagination:     pagination,
 	}
 	renderTemplate(w, "activity.html", data)
 }
@@ -966,7 +901,7 @@ func itemHistoryHandler(w http.ResponseWriter, r *http.Request) {
 	var totalListings int
 	db.QueryRow("SELECT COUNT(*) FROM items WHERE name_of_the_item = ?", itemName).Scan(&totalListings)
 
-	pagination := newPagination(r, totalListings, listingsPerPage)
+	pagination := newPaginationData(r, totalListings, listingsPerPage)
 	allListingsQuery := `
 		SELECT price, quantity, store_name, seller_name, map_name, map_coordinates, date_and_time_retrieved, is_available
 		FROM items WHERE name_of_the_item = ? ORDER BY is_available DESC, date_and_time_retrieved DESC LIMIT ? OFFSET ?;`
@@ -995,11 +930,17 @@ func itemHistoryHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	data := HistoryPageData{
-		ItemName: itemName, PriceDataJSON: template.JS(priceHistoryJSON), OverallLowest: int(overallLowest.Int64),
-		OverallHighest: int(overallHighest.Int64), CurrentLowestJSON: template.JS(currentLowestJSON), CurrentHighestJSON: template.JS(currentHighestJSON),
-		ItemDetails: rmsItemDetails, AllListings: allListings, LastScrapeTime: getLastUpdateTime("scrape_history", "timestamp"),
-		TotalListings: totalListings, CurrentPage: pagination.CurrentPage, TotalPages: pagination.TotalPages,
-		PrevPage: pagination.PrevPage, NextPage: pagination.NextPage, HasPrevPage: pagination.HasPrevPage, HasNextPage: pagination.HasNextPage,
+		ItemName:           itemName,
+		PriceDataJSON:      template.JS(priceHistoryJSON),
+		OverallLowest:      int(overallLowest.Int64),
+		OverallHighest:     int(overallHighest.Int64),
+		CurrentLowestJSON:  template.JS(currentLowestJSON),
+		CurrentHighestJSON: template.JS(currentHighestJSON),
+		ItemDetails:        rmsItemDetails,
+		AllListings:        allListings,
+		LastScrapeTime:     getLastUpdateTime("scrape_history", "timestamp"),
+		TotalListings:      totalListings,
+		Pagination:         pagination,
 	}
 	renderTemplate(w, "history.html", data)
 }
@@ -1113,8 +1054,6 @@ func characterHandler(w http.ResponseWriter, r *http.Request) {
 	searchName := r.FormValue("name_query")
 	selectedClass := r.FormValue("class_filter")
 	selectedGuild := r.FormValue("guild_filter")
-	sortBy := r.FormValue("sort_by")
-	order := r.FormValue("order")
 	selectedCols := r.Form["cols"]
 	graphFilter := r.Form["graph_filter"]
 
@@ -1233,14 +1172,7 @@ func characterHandler(w http.ResponseWriter, r *http.Request) {
 		"rank": "rank", "name": "name", "base_level": "base_level", "job_level": "job_level", "experience": "experience",
 		"zeny": "zeny", "class": "class", "guild": "guild_name", "last_updated": "last_updated", "last_active": "last_active",
 	}
-	orderByClause, ok := allowedSorts[sortBy]
-	if !ok {
-		orderByClause, sortBy = "rank", "rank"
-	}
-	if strings.ToUpper(order) != "DESC" {
-		order = "ASC"
-	}
-	orderByFullClause := fmt.Sprintf("ORDER BY %s %s", orderByClause, order)
+	orderByClause, sortBy, order := getSortClause(r, allowedSorts, "rank", "ASC")
 
 	var totalPlayers int
 	var totalZeny sql.NullInt64
@@ -1250,9 +1182,9 @@ func characterHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	pagination := newPagination(r, totalPlayers, playersPerPage)
+	pagination := newPaginationData(r, totalPlayers, playersPerPage)
 	query := fmt.Sprintf(`SELECT rank, name, base_level, job_level, experience, class, guild_name, zeny, last_updated, last_active
-		FROM characters %s %s LIMIT ? OFFSET ?`, whereClause, orderByFullClause)
+		FROM characters %s %s LIMIT ? OFFSET ?`, whereClause, orderByClause)
 	finalParams := append(params, playersPerPage, pagination.Offset)
 
 	rows, err := db.Query(query, finalParams...)
@@ -1285,9 +1217,8 @@ func characterHandler(w http.ResponseWriter, r *http.Request) {
 	data := CharacterPageData{
 		Players: players, LastScrapeTime: getLastUpdateTime("characters", "last_updated"), SearchName: searchName,
 		SelectedClass: selectedClass, SelectedGuild: selectedGuild, AllClasses: allClasses, SortBy: sortBy, Order: order,
-		VisibleColumns: visibleColumns, AllColumns: allCols, ColumnParams: template.URL(columnParams.Encode()), CurrentPage: pagination.CurrentPage,
-		TotalPages: pagination.TotalPages, PrevPage: pagination.PrevPage, NextPage: pagination.NextPage, HasPrevPage: pagination.HasPrevPage,
-		HasNextPage: pagination.HasNextPage, TotalPlayers: totalPlayers, TotalZeny: totalZeny.Int64,
+		VisibleColumns: visibleColumns, AllColumns: allCols, ColumnParams: template.URL(columnParams.Encode()),
+		Pagination: pagination, TotalPlayers: totalPlayers, TotalZeny: totalZeny.Int64,
 		ClassDistributionJSON: template.JS(classDistJSON), GraphFilter: graphFilterMap, GraphFilterParams: template.URL(graphFilterParams.Encode()),
 		HasChartData: len(chartData) > 1,
 	}
@@ -1301,8 +1232,6 @@ func guildHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	searchName := r.FormValue("name_query")
-	sortBy := r.FormValue("sort_by")
-	order := r.FormValue("order")
 	const guildsPerPage = 50
 
 	var whereConditions []string
@@ -1320,18 +1249,7 @@ func guildHandler(w http.ResponseWriter, r *http.Request) {
 		"rank": "rank", "name": "g.name", "level": "g.level", "master": "g.master",
 		"members": "member_count", "zeny": "total_zeny", "avg_level": "avg_base_level",
 	}
-	orderByClause, ok := allowedSorts[sortBy]
-	isDefaultSort := !ok
-	if isDefaultSort {
-		orderByClause, sortBy = "level", "level"
-	}
-	if strings.ToUpper(order) != "DESC" {
-		order = "ASC"
-	}
-	if isDefaultSort {
-		order = "DESC"
-	}
-	orderByFullClause := fmt.Sprintf("ORDER BY %s %s", orderByClause, order)
+	orderByClause, sortBy, order := getSortClause(r, allowedSorts, "level", "DESC")
 
 	var totalGuilds int
 	countQuery := fmt.Sprintf("SELECT COUNT(*) FROM guilds g %s", whereClause)
@@ -1340,7 +1258,7 @@ func guildHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	pagination := newPagination(r, totalGuilds, guildsPerPage)
+	pagination := newPaginationData(r, totalGuilds, guildsPerPage)
 	query := fmt.Sprintf(`
 		SELECT g.name, g.level, g.experience, g.master, g.emblem_url,
 			COALESCE(cs.member_count, 0) as member_count,
@@ -1353,7 +1271,7 @@ func guildHandler(w http.ResponseWriter, r *http.Request) {
 			WHERE guild_name IS NOT NULL AND guild_name != ''
 			GROUP BY guild_name
 		) cs ON g.name = cs.guild_name
-		%s %s LIMIT ? OFFSET ?`, whereClause, orderByFullClause)
+		%s %s LIMIT ? OFFSET ?`, whereClause, orderByClause)
 	finalParams := append(params, guildsPerPage, pagination.Offset)
 
 	rows, err := db.Query(query, finalParams...)
@@ -1375,58 +1293,36 @@ func guildHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	data := GuildPageData{
-		Guilds: guilds, LastGuildUpdateTime: getLastUpdateTime("guilds", "last_updated"), SearchName: searchName,
-		SortBy: sortBy, Order: order, CurrentPage: pagination.CurrentPage, TotalPages: pagination.TotalPages,
-		PrevPage: pagination.PrevPage, NextPage: pagination.NextPage, HasPrevPage: pagination.HasPrevPage,
-		HasNextPage: pagination.HasNextPage, TotalGuilds: totalGuilds,
+		Guilds:              guilds,
+		LastGuildUpdateTime: getLastUpdateTime("guilds", "last_updated"),
+		SearchName:          searchName,
+		SortBy:              sortBy,
+		Order:               order,
+		Pagination:          pagination,
+		TotalGuilds:         totalGuilds,
 	}
 	renderTemplate(w, "guilds.html", data)
 }
 
 // mvpKillsHandler serves the page for MVP kill rankings.
 func mvpKillsHandler(w http.ResponseWriter, r *http.Request) {
-	sortBy := r.URL.Query().Get("sort_by")
-	order := r.URL.Query().Get("order")
-
 	headers := []MvpHeader{{MobID: "total", MobName: "Total Kills"}}
 	for _, mobID := range mvpMobIDs {
 		headers = append(headers, MvpHeader{MobID: mobID, MobName: mvpNames[mobID]})
 	}
 
-	var orderByClause string
-	allowedSort := false
-	if sortBy == "name" {
-		orderByClause, allowedSort = "character_name", true
-	} else {
-		var sumParts []string
-		for _, mobID := range mvpMobIDs {
-			sumParts = append(sumParts, fmt.Sprintf("mvp_%s", mobID))
-		}
-		if sortBy == "total" {
-			orderByClause, allowedSort = fmt.Sprintf("(%s)", strings.Join(sumParts, " + ")), true
-		} else {
-			for _, mobID := range mvpMobIDs {
-				if sortBy == mobID {
-					orderByClause, allowedSort = fmt.Sprintf("mvp_%s", mobID), true
-					break
-				}
-			}
-		}
+	allowedSorts := map[string]string{"name": "character_name"}
+	var sumParts []string
+	for _, mobID := range mvpMobIDs {
+		colName := fmt.Sprintf("mvp_%s", mobID)
+		allowedSorts[mobID] = colName
+		sumParts = append(sumParts, colName)
 	}
+	allowedSorts["total"] = fmt.Sprintf("(%s)", strings.Join(sumParts, " + "))
 
-	if !allowedSort {
-		var sumParts []string
-		for _, mobID := range mvpMobIDs {
-			sumParts = append(sumParts, fmt.Sprintf("mvp_%s", mobID))
-		}
-		orderByClause = fmt.Sprintf("(%s)", strings.Join(sumParts, " + "))
-		sortBy = "total"
-		order = "DESC"
-	} else if strings.ToUpper(order) != "DESC" {
-		order = "ASC"
-	}
+	orderByClause, sortBy, order := getSortClause(r, allowedSorts, "total", "DESC")
 
-	query := fmt.Sprintf("SELECT * FROM character_mvp_kills ORDER BY %s %s", orderByClause, order)
+	query := fmt.Sprintf("SELECT * FROM character_mvp_kills %s", orderByClause)
 	rows, err := db.Query(query)
 	if err != nil {
 		log.Printf("❌ Could not query for MVP kills: %v", err)
@@ -1580,7 +1476,7 @@ func characterDetailHandler(w http.ResponseWriter, r *http.Request) {
 	var totalChangelogEntries int
 	db.QueryRow("SELECT COUNT(*) FROM character_changelog WHERE character_name = ?", charName).Scan(&totalChangelogEntries)
 
-	pagination := newPagination(r, totalChangelogEntries, entriesPerPage)
+	pagination := newPaginationData(r, totalChangelogEntries, entriesPerPage)
 	changelogQuery := `SELECT change_time, activity_description FROM character_changelog WHERE character_name = ? ORDER BY change_time DESC LIMIT ? OFFSET ?`
 	changelogRows, err := db.Query(changelogQuery, charName, entriesPerPage, pagination.Offset)
 	if err != nil {
@@ -1602,11 +1498,15 @@ func characterDetailHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	data := CharacterDetailPageData{
-		Character: p, Guild: guild, MvpKills: mvpKills, MvpHeaders: mvpHeaders, GuildHistory: guildHistory,
-		LastScrapeTime: getLastUpdateTime("characters", "last_updated"), ClassImageURL: classImages[p.Class],
-		ChangelogEntries: changelogEntries, ChangelogCurrentPage: pagination.CurrentPage, ChangelogTotalPages: pagination.TotalPages,
-		ChangelogPrevPage: pagination.PrevPage, ChangelogNextPage: pagination.NextPage, HasChangelogPrevPage: pagination.HasPrevPage,
-		HasChangelogNextPage: pagination.HasNextPage,
+		Character:           p,
+		Guild:               guild,
+		MvpKills:            mvpKills,
+		MvpHeaders:          mvpHeaders,
+		GuildHistory:        guildHistory,
+		LastScrapeTime:      getLastUpdateTime("characters", "last_updated"),
+		ClassImageURL:       classImages[p.Class],
+		ChangelogEntries:    changelogEntries,
+		ChangelogPagination: pagination,
 	}
 	renderTemplate(w, "character_detail.html", data)
 }
@@ -1620,7 +1520,7 @@ func characterChangelogHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	pagination := newPagination(r, totalEntries, entriesPerPage)
+	pagination := newPaginationData(r, totalEntries, entriesPerPage)
 	query := `SELECT character_name, change_time, activity_description FROM character_changelog ORDER BY change_time DESC LIMIT ? OFFSET ?`
 	rows, err := db.Query(query, entriesPerPage, pagination.Offset)
 	if err != nil {
@@ -1646,9 +1546,9 @@ func characterChangelogHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	data := CharacterChangelogPageData{
-		ChangelogEntries: changelogEntries, LastScrapeTime: getLastUpdateTime("characters", "last_updated"),
-		CurrentPage: pagination.CurrentPage, TotalPages: pagination.TotalPages, PrevPage: pagination.PrevPage,
-		NextPage: pagination.NextPage, HasPrevPage: pagination.HasPrevPage, HasNextPage: pagination.HasNextPage,
+		ChangelogEntries: changelogEntries,
+		LastScrapeTime:   getLastUpdateTime("characters", "last_updated"),
+		Pagination:       pagination,
 	}
 	renderTemplate(w, "character_changelog.html", data)
 }
@@ -1660,8 +1560,6 @@ func guildDetailHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Guild name is required", http.StatusBadRequest)
 		return
 	}
-	sortBy := r.URL.Query().Get("sort_by")
-	order := r.URL.Query().Get("order")
 	const entriesPerPage = 25
 
 	var g Guild
@@ -1674,7 +1572,6 @@ func guildDetailHandler(w http.ResponseWriter, r *http.Request) {
 
 	err := db.QueryRow(guildQuery, guildName).Scan(&g.Name, &g.Level, &g.Experience, &g.Master, &g.EmblemURL, &g.MemberCount, &g.TotalZeny, &g.AvgBaseLevel)
 	if err != nil {
-		// CORRECTED BLOCK: Replaced the invalid ternary operator with a standard if/else.
 		if err == sql.ErrNoRows {
 			http.Error(w, "Guild not found", http.StatusNotFound)
 		} else {
@@ -1687,16 +1584,10 @@ func guildDetailHandler(w http.ResponseWriter, r *http.Request) {
 		"rank": "rank", "name": "name", "base_level": "base_level", "job_level": "job_level",
 		"experience": "experience", "zeny": "zeny", "class": "class", "last_active": "last_active",
 	}
-	orderByClause, ok := allowedSorts[sortBy]
-	if !ok {
-		orderByClause, sortBy, order = "base_level", "base_level", "DESC"
-	} else if strings.ToUpper(order) != "DESC" {
-		order = "ASC"
-	}
-	orderByFullClause := fmt.Sprintf("ORDER BY %s %s", orderByClause, order)
+	orderByClause, sortBy, order := getSortClause(r, allowedSorts, "base_level", "DESC")
 
 	membersQuery := fmt.Sprintf(`SELECT rank, name, base_level, job_level, experience, class, zeny, last_active FROM characters
-		WHERE guild_name = ? %s`, orderByFullClause)
+		WHERE guild_name = ? %s`, orderByClause)
 	rows, err := db.Query(membersQuery, guildName)
 	if err != nil {
 		http.Error(w, "Could not query for guild members", http.StatusInternalServerError)
@@ -1726,7 +1617,7 @@ func guildDetailHandler(w http.ResponseWriter, r *http.Request) {
 	var totalChangelogEntries int
 	db.QueryRow("SELECT COUNT(*) FROM character_changelog WHERE activity_description LIKE ?", likePattern).Scan(&totalChangelogEntries)
 
-	pagination := newPagination(r, totalChangelogEntries, entriesPerPage)
+	pagination := newPaginationData(r, totalChangelogEntries, entriesPerPage)
 	changelogQuery := `SELECT change_time, character_name, activity_description FROM character_changelog
         WHERE activity_description LIKE ? ORDER BY change_time DESC LIMIT ? OFFSET ?`
 	changelogRows, err := db.Query(changelogQuery, likePattern, entriesPerPage, pagination.Offset)
@@ -1749,11 +1640,15 @@ func guildDetailHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	data := GuildDetailPageData{
-		Guild: g, Members: members, LastScrapeTime: getLastUpdateTime("guilds", "last_updated"), SortBy: sortBy, Order: order,
-		ClassDistributionJSON: template.JS(classDistJSON), HasChartData: len(classDistribution) > 1,
-		ChangelogEntries: changelogEntries, ChangelogCurrentPage: pagination.CurrentPage, ChangelogTotalPages: pagination.TotalPages,
-		ChangelogPrevPage: pagination.PrevPage, ChangelogNextPage: pagination.NextPage, HasChangelogPrevPage: pagination.HasPrevPage,
-		HasChangelogNextPage: pagination.HasNextPage,
+		Guild:                 g,
+		Members:               members,
+		LastScrapeTime:        getLastUpdateTime("guilds", "last_updated"),
+		SortBy:                sortBy,
+		Order:                 order,
+		ClassDistributionJSON: template.JS(classDistJSON),
+		HasChartData:          len(classDistribution) > 1,
+		ChangelogEntries:      changelogEntries,
+		ChangelogPagination:   pagination,
 	}
 	renderTemplate(w, "guild_detail.html", data)
 }
@@ -1766,20 +1661,12 @@ func storeDetailHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Store name is required", http.StatusBadRequest)
 		return
 	}
-	sortBy := r.URL.Query().Get("sort_by")
-	order := r.URL.Query().Get("order")
 
 	allowedSorts := map[string]string{
 		"name": "name_of_the_item", "item_id": "item_id", "quantity": "quantity",
 		"price": "CAST(REPLACE(price, ',', '') AS INTEGER)",
 	}
-	orderByClause, ok := allowedSorts[sortBy]
-	if !ok {
-		orderByClause, sortBy, order = "CAST(REPLACE(price, ',', '') AS INTEGER)", "price", "DESC"
-	} else if strings.ToUpper(order) != "DESC" {
-		order = "ASC"
-	}
-	orderByFullClause := fmt.Sprintf("ORDER BY %s %s", orderByClause, order)
+	orderByClause, sortBy, order := getSortClause(r, allowedSorts, "price", "DESC")
 
 	var sellerName, mapName, mapCoords, mostRecentTimestampStr string
 	var signatureQueryArgs []interface{}
@@ -1800,7 +1687,7 @@ func storeDetailHandler(w http.ResponseWriter, r *http.Request) {
 				FROM items WHERE store_name = ? AND seller_name = ? AND map_name = ? AND map_coordinates = ?
 			)
 			SELECT id, name_of_the_item, item_id, quantity, price, store_name, seller_name, date_and_time_retrieved, map_name, map_coordinates, is_available
-			FROM RankedItems WHERE rn = 1 %s`, orderByFullClause)
+			FROM RankedItems WHERE rn = 1 %s`, orderByClause)
 
 		rows, queryErr := db.Query(query, storeName, sellerName, mapName, mapCoords)
 		if queryErr != nil {

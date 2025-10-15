@@ -207,12 +207,7 @@ type ActivityPageData struct {
 	SearchQuery string
 	SoldOnly    bool
 	// Pagination
-	CurrentPage int
-	TotalPages  int
-	PrevPage    int
-	NextPage    int
-	HasPrevPage bool
-	HasNextPage bool
+	Pagination PaginationData
 }
 
 // HistoryPageData holds data for the item history page template.
@@ -227,12 +222,7 @@ type HistoryPageData struct {
 	AllListings        []Item
 	LastScrapeTime     string
 	// Pagination for AllListings table
-	CurrentPage   int
-	TotalPages    int
-	PrevPage      int
-	NextPage      int
-	HasPrevPage   bool
-	HasNextPage   bool
+	Pagination    PaginationData
 	TotalListings int
 }
 
@@ -273,14 +263,9 @@ type CharacterPageData struct {
 	AllColumns     []Column
 	ColumnParams   template.URL
 	// Pagination
-	CurrentPage  int
-	TotalPages   int
-	PrevPage     int
-	NextPage     int
+	Pagination   PaginationData
 	TotalPlayers int
 	TotalZeny    int64
-	HasPrevPage  bool
-	HasNextPage  bool
 	// Graph Data
 	ClassDistributionJSON template.JS
 	GraphFilter           map[string]bool
@@ -298,13 +283,8 @@ type GuildPageData struct {
 	SortBy string
 	Order  string
 	// Pagination
-	CurrentPage int
-	TotalPages  int
-	PrevPage    int
-	NextPage    int
+	Pagination  PaginationData
 	TotalGuilds int
-	HasPrevPage bool
-	HasNextPage bool
 }
 
 // ADDED: GuildDetailPageData holds all data for the single guild view.
@@ -318,13 +298,8 @@ type GuildDetailPageData struct {
 	SortBy string
 	Order  string
 	// Changelog data and pagination
-	ChangelogEntries     []CharacterChangelog
-	ChangelogCurrentPage int
-	ChangelogTotalPages  int
-	ChangelogPrevPage    int
-	ChangelogNextPage    int
-	HasChangelogPrevPage bool
-	HasChangelogNextPage bool
+	ChangelogEntries    []CharacterChangelog
+	ChangelogPagination PaginationData
 }
 
 // ADDED: StoreDetailPageData holds all data for the single store view.
@@ -359,13 +334,8 @@ type CharacterDetailPageData struct {
 	GuildHistory   []CharacterChangelog
 	ClassImageURL  string
 	// Changelog data and pagination
-	ChangelogEntries     []CharacterChangelog
-	ChangelogCurrentPage int
-	ChangelogTotalPages  int
-	ChangelogPrevPage    int
-	ChangelogNextPage    int
-	HasChangelogPrevPage bool
-	HasChangelogNextPage bool
+	ChangelogEntries    []CharacterChangelog
+	ChangelogPagination PaginationData
 }
 
 // CharacterChangelog holds a record of a change to a character.
@@ -381,12 +351,7 @@ type CharacterChangelogPageData struct {
 	ChangelogEntries []CharacterChangelog
 	LastScrapeTime   string
 	// Pagination
-	CurrentPage int
-	TotalPages  int
-	PrevPage    int
-	NextPage    int
-	HasPrevPage bool
-	HasNextPage bool
+	Pagination PaginationData
 }
 
 // GuildInfo holds basic info for the admin dropdown.

@@ -166,25 +166,25 @@
                         </table>
                     </div>
 
-                    {{if gt .ChangelogTotalPages 1}}
+                    {{if gt .ChangelogPagination.TotalPages 1}}
                     <div class="mt-4 flex justify-between items-center">
                         <div>
                             <p class="text-sm text-gray-700">
-                                Page <span class="font-medium">{{.ChangelogCurrentPage}}</span> of <span class="font-medium">{{.ChangelogTotalPages}}</span>
+                                Page <span class="font-medium">{{.ChangelogPagination.CurrentPage}}</span> of <span class="font-medium">{{.ChangelogPagination.TotalPages}}</span>
                             </p>
                         </div>
                         <div class="flex items-center space-x-2">
-                            {{if .HasChangelogPrevPage}}
-                            <a href="/character?name={{.Character.Name}}&cl_page=1" class="px-3 py-1 border border-gray-300 bg-white text-sm font-medium rounded-md text-gray-700 hover:bg-gray-50">&laquo; First</a>
-                            <a href="/character?name={{.Character.Name}}&cl_page={{.ChangelogPrevPage}}" class="px-3 py-1 border border-gray-300 bg-white text-sm font-medium rounded-md text-gray-700 hover:bg-gray-50">Previous</a>
+                            {{if .ChangelogPagination.HasPrevPage}}
+                            <a href="/character?name={{$.Character.Name}}&page=1" class="px-3 py-1 border border-gray-300 bg-white text-sm font-medium rounded-md text-gray-700 hover:bg-gray-50">&laquo; First</a>
+                            <a href="/character?name={{$.Character.Name}}&page={{.ChangelogPagination.PrevPage}}" class="px-3 py-1 border border-gray-300 bg-white text-sm font-medium rounded-md text-gray-700 hover:bg-gray-50">Previous</a>
                             {{else}}
                             <span class="px-3 py-1 border border-gray-200 bg-gray-50 text-sm font-medium rounded-md text-gray-400 cursor-not-allowed">&laquo; First</span>
                             <span class="px-3 py-1 border border-gray-200 bg-gray-50 text-sm font-medium rounded-md text-gray-400 cursor-not-allowed">Previous</span>
                             {{end}}
 
-                            {{if .HasChangelogNextPage}}
-                            <a href="/character?name={{.Character.Name}}&cl_page={{.ChangelogNextPage}}" class="px-3 py-1 border border-gray-300 bg-white text-sm font-medium rounded-md text-gray-700 hover:bg-gray-50">Next</a>
-                            <a href="/character?name={{.Character.Name}}&cl_page={{.ChangelogTotalPages}}" class="px-3 py-1 border border-gray-300 bg-white text-sm font-medium rounded-md text-gray-700 hover:bg-gray-50">Last &raquo;</a>
+                            {{if .ChangelogPagination.HasNextPage}}
+                            <a href="/character?name={{$.Character.Name}}&page={{.ChangelogPagination.NextPage}}" class="px-3 py-1 border border-gray-300 bg-white text-sm font-medium rounded-md text-gray-700 hover:bg-gray-50">Next</a>
+                            <a href="/character?name={{$.Character.Name}}&page={{.ChangelogPagination.TotalPages}}" class="px-3 py-1 border border-gray-300 bg-white text-sm font-medium rounded-md text-gray-700 hover:bg-gray-50">Last &raquo;</a>
                             {{else}}
                             <span class="px-3 py-1 border border-gray-200 bg-gray-50 text-sm font-medium rounded-md text-gray-400 cursor-not-allowed">Next</span>
                             <span class="px-3 py-1 border border-gray-200 bg-gray-50 text-sm font-medium rounded-md text-gray-400 cursor-not-allowed">Last &raquo;</span>

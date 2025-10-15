@@ -153,14 +153,14 @@
                 </table>
             </div>
 
-             {{if gt .TotalPages 1}}
+             {{if gt .Pagination.TotalPages 1}}
             <div class="px-3 py-3 bg-white border-t flex flex-col xs:flex-row items-center xs:justify-between">
                 <span class="text-xs xs:text-sm text-gray-900">
-                    Showing page {{.CurrentPage}} of {{.TotalPages}} ({{.TotalGuilds}} total guilds)
+                    Showing page {{.Pagination.CurrentPage}} of {{.Pagination.TotalPages}} ({{.TotalGuilds}} total guilds)
                 </span>
                 <div class="inline-flex mt-2 xs:mt-0">
-                    {{if .HasPrevPage}}
-                        <a href="/guilds?page={{.PrevPage}}&name_query={{.SearchName}}&sort_by={{.SortBy}}&order={{.Order}}" class="text-sm bg-gray-300 hover:bg-gray-400 text-gray-800 font-semibold py-1 px-3 rounded-l">
+                    {{if .Pagination.HasPrevPage}}
+                        <a href="/guilds?page={{.Pagination.PrevPage}}&name_query={{.SearchName}}&sort_by={{.SortBy}}&order={{.Order}}" class="text-sm bg-gray-300 hover:bg-gray-400 text-gray-800 font-semibold py-1 px-3 rounded-l">
                             Prev
                         </a>
                     {{else}}
@@ -169,8 +169,8 @@
                         </span>
                     {{end}}
 
-                    {{if .HasNextPage}}
-                        <a href="/guilds?page={{.NextPage}}&name_query={{.SearchName}}&sort_by={{.SortBy}}&order={{.Order}}" class="text-sm bg-gray-300 hover:bg-gray-400 text-gray-800 font-semibold py-1 px-3 rounded-r">
+                    {{if .Pagination.HasNextPage}}
+                        <a href="/guilds?page={{.Pagination.NextPage}}&name_query={{.SearchName}}&sort_by={{.SortBy}}&order={{.Order}}" class="text-sm bg-gray-300 hover:bg-gray-400 text-gray-800 font-semibold py-1 px-3 rounded-r">
                             Next
                         </a>
                     {{else}}
