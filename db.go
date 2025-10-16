@@ -263,7 +263,7 @@ CREATE TABLE IF NOT EXISTS trading_posts (
 		return nil, fmt.Errorf("could not create trading_posts table: %w", err)
 	}
 
-	// ADDED: SQL statement for the 'trading_post_items' table.
+	// MODIFIED: SQL statement for the 'trading_post_items' table.
 	// This table holds the individual items, linked to a post.
 	createTradingPostItemsTableSQL := `
 CREATE TABLE IF NOT EXISTS trading_post_items (
@@ -274,6 +274,11 @@ CREATE TABLE IF NOT EXISTS trading_post_items (
     "quantity" INTEGER NOT NULL,
     "price" INTEGER NOT NULL,
     "currency" TEXT NOT NULL DEFAULT 'zeny',
+    "refinement" INTEGER NOT NULL DEFAULT 0,
+    "card1" TEXT,
+    "card2" TEXT,
+    "card3" TEXT,
+    "card4" TEXT,
     FOREIGN KEY(post_id) REFERENCES trading_posts(id) ON DELETE CASCADE
 );`
 	if _, err = db.Exec(createTradingPostItemsTableSQL); err != nil {

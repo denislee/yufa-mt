@@ -1822,7 +1822,7 @@ func tradingPostListHandler(w http.ResponseWriter, r *http.Request) {
 	if len(postIDs) > 0 {
 		placeholders := strings.Repeat("?,", len(postIDs)-1) + "?"
 		itemQuery := fmt.Sprintf(`
-            SELECT tpi.post_id, tpi.item_name, rms.name_pt, tpi.item_id, tpi.quantity, tpi.price, tpi.currency 
+            SELECT tpi.post_id, tpi.item_name, rms.name_pt, tpi.item_id, tpi.quantity, tpi.price, tpi.currency, tpi.refinement, tpi.card1, tpi.card2, tpi.card3, tpi.card4
             FROM trading_post_items tpi
             LEFT JOIN rms_item_cache rms ON tpi.item_id = rms.item_id
             WHERE tpi.post_id IN (%s)`, placeholders)
@@ -1832,7 +1832,7 @@ func tradingPostListHandler(w http.ResponseWriter, r *http.Request) {
 			for itemRows.Next() {
 				var item TradingPostItem
 				var postID int
-				if err := itemRows.Scan(&postID, &item.ItemName, &item.NamePT, &item.ItemID, &item.Quantity, &item.Price, &item.Currency); err == nil {
+				if err := itemRows.Scan(&postID, &item.ItemName, &item.NamePT, &item.ItemID, &item.Quantity, &item.Price, &item.Currency, &item.Refinement, &item.Card1, &item.Card2, &item.Card3, &item.Card4); err == nil {
 					if index, ok := postMap[postID]; ok {
 						posts[index].Items = append(posts[index].Items, item)
 					}
@@ -1900,12 +1900,15 @@ func tradingPostFormHandler(w http.ResponseWriter, r *http.Request) {
 
 		itemNames, quantities, prices := r.Form["item_name[]"], r.Form["quantity[]"], r.Form["price[]"]
 		itemIDs, currencies := r.Form["item_id[]"], r.Form["currency[]"]
+		refinements, cards1, cards2 := r.Form["refinement[]"], r.Form["card1[]"], r.Form["card2[]"]
+		cards3, cards4 := r.Form["card3[]"], r.Form["card4[]"]
+
 		if len(itemNames) == 0 {
 			http.Error(w, "At least one item is required.", http.StatusBadRequest)
 			return
 		}
 
-		stmt, err := tx.Prepare("INSERT INTO trading_post_items (post_id, item_name, item_id, quantity, price, currency) VALUES (?, ?, ?, ?, ?, ?)")
+		stmt, err := tx.Prepare("INSERT INTO trading_post_items (post_id, item_name, item_id, quantity, price, currency, refinement, card1, card2, card3, card4) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
 		if err != nil {
 			http.Error(w, "Database preparation failed.", http.StatusInternalServerError)
 			return
@@ -1927,12 +1930,17 @@ func tradingPostFormHandler(w http.ResponseWriter, r *http.Request) {
 			if currencies[i] == "rmt" {
 				currency = "rmt"
 			}
+			refinement, _ := strconv.Atoi(refinements[i])
+			card1 := sql.NullString{String: sanitizeString(cards1[i], itemSanitizer), Valid: strings.TrimSpace(cards1[i]) != ""}
+			card2 := sql.NullString{String: sanitizeString(cards2[i], itemSanitizer), Valid: strings.TrimSpace(cards2[i]) != ""}
+			card3 := sql.NullString{String: sanitizeString(cards3[i], itemSanitizer), Valid: strings.TrimSpace(cards3[i]) != ""}
+			card4 := sql.NullString{String: sanitizeString(cards4[i], itemSanitizer), Valid: strings.TrimSpace(cards4[i]) != ""}
 
 			if quantity <= 0 || price <= 0 {
 				http.Error(w, "All items must have a valid quantity and price.", http.StatusBadRequest)
 				return
 			}
-			if _, err := stmt.Exec(postID, itemName, itemID, quantity, price, currency); err != nil {
+			if _, err := stmt.Exec(postID, itemName, itemID, quantity, price, currency, refinement, card1, card2, card3, card4); err != nil {
 				http.Error(w, "Failed to save one of the items.", http.StatusInternalServerError)
 				return
 			}
@@ -1986,11 +1994,11 @@ func tradingPostManageHandler(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "Could not retrieve post to edit.", http.StatusInternalServerError)
 			return
 		}
-		itemRows, _ := db.Query("SELECT item_name, item_id, quantity, price, currency FROM trading_post_items WHERE post_id = ?", postIDStr)
+		itemRows, _ := db.Query("SELECT item_name, item_id, quantity, price, currency, refinement, card1, card2, card3, card4 FROM trading_post_items WHERE post_id = ?", postIDStr)
 		defer itemRows.Close()
 		for itemRows.Next() {
 			var item TradingPostItem
-			if err := itemRows.Scan(&item.ItemName, &item.ItemID, &item.Quantity, &item.Price, &item.Currency); err == nil {
+			if err := itemRows.Scan(&item.ItemName, &item.ItemID, &item.Quantity, &item.Price, &item.Currency, &item.Refinement, &item.Card1, &item.Card2, &item.Card3, &item.Card4); err == nil {
 				post.Items = append(post.Items, item)
 			}
 		}
@@ -2021,7 +2029,7 @@ func tradingPostManageHandler(w http.ResponseWriter, r *http.Request) {
 		tx.Exec("DELETE FROM trading_post_items WHERE post_id = ?", postIDStr)
 
 		itemNames := r.Form["item_name[]"]
-		stmt, _ := tx.Prepare("INSERT INTO trading_post_items (post_id, item_name, item_id, quantity, price, currency) VALUES (?, ?, ?, ?, ?, ?)")
+		stmt, _ := tx.Prepare("INSERT INTO trading_post_items (post_id, item_name, item_id, quantity, price, currency, refinement, card1, card2, card3, card4) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
 		defer stmt.Close()
 
 		for i, rawItemName := range itemNames {
@@ -2039,11 +2047,17 @@ func tradingPostManageHandler(w http.ResponseWriter, r *http.Request) {
 			if r.Form["currency[]"][i] == "rmt" {
 				currency = "rmt"
 			}
+			refinement, _ := strconv.Atoi(r.Form["refinement[]"][i])
+			card1 := sql.NullString{String: sanitizeString(r.Form["card1[]"][i], itemSanitizer), Valid: strings.TrimSpace(r.Form["card1[]"][i]) != ""}
+			card2 := sql.NullString{String: sanitizeString(r.Form["card2[]"][i], itemSanitizer), Valid: strings.TrimSpace(r.Form["card2[]"][i]) != ""}
+			card3 := sql.NullString{String: sanitizeString(r.Form["card3[]"][i], itemSanitizer), Valid: strings.TrimSpace(r.Form["card3[]"][i]) != ""}
+			card4 := sql.NullString{String: sanitizeString(r.Form["card4[]"][i], itemSanitizer), Valid: strings.TrimSpace(r.Form["card4[]"][i]) != ""}
+
 			if quantity <= 0 || price <= 0 {
 				http.Error(w, "All items must have a valid quantity and price.", http.StatusBadRequest)
 				return
 			}
-			stmt.Exec(postIDStr, itemName, itemID, quantity, price, currency)
+			stmt.Exec(postIDStr, itemName, itemID, quantity, price, currency, refinement, card1, card2, card3, card4)
 		}
 		tx.Commit()
 		http.Redirect(w, r, "/trading-post", http.StatusSeeOther)

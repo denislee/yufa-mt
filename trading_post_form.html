@@ -58,42 +58,68 @@
                 <div id="items-container" class="space-y-4">
                     {{/* If editing, pre-render the existing items */}}
                     {{range $index, $item := .Post.Items}}
-                    <div class="item-row p-3 border border-gray-200 rounded-md grid grid-cols-12 gap-x-3 gap-y-2 items-center">
-                        <div class="col-span-12 md:col-span-5">
-                            <div class="grid grid-cols-3 gap-2 items-end">
-                                <div class="col-span-1">
-                                    <label class="text-xs font-medium text-gray-600 block">
-                                        Item ID
-                                        <button type="button" class="search-item-btn text-blue-500 hover:underline font-normal">(Search)</button>
-                                    </label>
-                                    <input type="number" name="item_id[]" id="item_id_{{$index}}" value="{{if .ItemID.Valid}}{{.ItemID.Int64}}{{end}}" placeholder="501" min="1" class="item-id-input mt-1 block w-full rounded-md border-gray-300 shadow-sm text-sm" required>
-                                    <input type="hidden" name="item_name[]" value="{{$item.ItemName}}" class="item-name-hidden">
-                                </div>
-                                <div class="item-preview col-span-2 h-10 flex items-center p-1 bg-gray-50 rounded">
-                                    <span class="text-gray-400 text-sm">Enter ID...</span>
+                    <div class="item-row p-3 border border-gray-200 rounded-md">
+                        <div class="grid grid-cols-12 gap-x-3 gap-y-2 items-center">
+                            <div class="col-span-12 md:col-span-5">
+                                <div class="grid grid-cols-3 gap-2 items-end">
+                                    <div class="col-span-1">
+                                        <label class="text-xs font-medium text-gray-600 block">
+                                            Item ID
+                                            <button type="button" class="search-item-btn text-blue-500 hover:underline font-normal">(Search)</button>
+                                        </label>
+                                        <input type="number" name="item_id[]" id="item_id_{{$index}}" value="{{if .ItemID.Valid}}{{.ItemID.Int64}}{{end}}" placeholder="501" min="1" class="item-id-input mt-1 block w-full rounded-md border-gray-300 shadow-sm text-sm" required>
+                                        <input type="hidden" name="item_name[]" value="{{$item.ItemName}}" class="item-name-hidden">
+                                    </div>
+                                    <div class="item-preview col-span-2 h-10 flex items-center p-1 bg-gray-50 rounded">
+                                        <span class="text-gray-400 text-sm">Enter ID...</span>
+                                    </div>
                                 </div>
                             </div>
+                            <div class="col-span-4 md:col-span-1">
+                                <label for="quantity_{{$index}}" class="text-xs font-medium text-gray-600 block">Qty</label>
+                                <input type="number" name="quantity[]" id="quantity_{{$index}}" value="{{$item.Quantity}}" placeholder="1" min="1" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm text-sm" required>
+                            </div>
+                             <div class="col-span-4 md:col-span-1">
+                                <label for="refinement_{{$index}}" class="text-xs font-medium text-gray-600 block">+Refine</label>
+                                <input type="number" name="refinement[]" id="refinement_{{$index}}" value="{{$item.Refinement}}" placeholder="0" min="0" max="10" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm text-sm">
+                            </div>
+                            <div class="col-span-8 md:col-span-2">
+                                <label for="price_{{$index}}" class="text-xs font-medium text-gray-600 block">Price (ea)</label>
+                                <input type="number" name="price[]" id="price_{{$index}}" value="{{$item.Price}}" placeholder="50000" min="1" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm text-sm" required>
+                            </div>
+                            <div class="col-span-8 md:col-span-2">
+                                <label for="currency_{{$index}}" class="text-xs font-medium text-gray-600 block">Currency</label>
+                                <select name="currency[]" id="currency_{{$index}}" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm text-sm h-10" required>
+                                    <option value="zeny" {{if eq .Currency "zeny"}}selected{{end}}>Zeny</option>
+                                    <option value="rmt" {{if eq .Currency "rmt"}}selected{{end}}>R$ (RMT)</option>
+                                </select>
+                            </div>
+                            <div class="col-span-4 md:col-span-1">
+                                 <label class="text-xs font-medium text-gray-600 block">&nbsp;</label>
+                                <button type="button" class="remove-item-btn w-full bg-red-500 hover:bg-red-600 text-white p-2 rounded-md h-10" title="Remove Item">
+                                    <svg class="w-4 h-4 mx-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
+                                </button>
+                            </div>
                         </div>
-                        <div class="col-span-4 md:col-span-1">
-                            <label for="quantity_{{$index}}" class="text-xs font-medium text-gray-600 block">Qty</label>
-                            <input type="number" name="quantity[]" id="quantity_{{$index}}" value="{{$item.Quantity}}" placeholder="1" min="1" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm text-sm" required>
-                        </div>
-                        <div class="col-span-8 md:col-span-2">
-                            <label for="price_{{$index}}" class="text-xs font-medium text-gray-600 block">Price (ea)</label>
-                            <input type="number" name="price[]" id="price_{{$index}}" value="{{$item.Price}}" placeholder="50000" min="1" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm text-sm" required>
-                        </div>
-                        <div class="col-span-8 md:col-span-3">
-                            <label for="currency_{{$index}}" class="text-xs font-medium text-gray-600 block">Currency</label>
-                            <select name="currency[]" id="currency_{{$index}}" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm text-sm h-10" required>
-                                <option value="zeny" {{if eq .Currency "zeny"}}selected{{end}}>Zeny</option>
-                                <option value="rmt" {{if eq .Currency "rmt"}}selected{{end}}>R$ (RMT)</option>
-                            </select>
-                        </div>
-                        <div class="col-span-4 md:col-span-1">
-                             <label class="text-xs font-medium text-gray-600 block">&nbsp;</label>
-                            <button type="button" class="remove-item-btn w-full bg-red-500 hover:bg-red-600 text-white p-2 rounded-md h-10" title="Remove Item">
-                                <svg class="w-4 h-4 mx-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
-                            </button>
+                        <div class="mt-2 pt-2 border-t border-dashed border-gray-200">
+                             <div class="grid grid-cols-4 gap-x-2">
+                                <div>
+                                    <label for="card1_{{$index}}" class="text-xs font-medium text-gray-600 block">Card 1</label>
+                                    <input type="text" name="card1[]" id="card1_{{$index}}" value="{{$item.Card1.String}}" placeholder="Empty Slot" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm text-sm">
+                                </div>
+                                <div>
+                                    <label for="card2_{{$index}}" class="text-xs font-medium text-gray-600 block">Card 2</label>
+                                    <input type="text" name="card2[]" id="card2_{{$index}}" value="{{$item.Card2.String}}" placeholder="Empty Slot" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm text-sm">
+                                </div>
+                                <div>
+                                    <label for="card3_{{$index}}" class="text-xs font-medium text-gray-600 block">Card 3</label>
+                                    <input type="text" name="card3[]" id="card3_{{$index}}" value="{{$item.Card3.String}}" placeholder="Empty Slot" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm text-sm">
+                                </div>
+                                <div>
+                                    <label for="card4_{{$index}}" class="text-xs font-medium text-gray-600 block">Card 4</label>
+                                    <input type="text" name="card4[]" id="card4_{{$index}}" value="{{$item.Card4.String}}" placeholder="Empty Slot" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm text-sm">
+                                </div>
+                            </div>
                         </div>
                     </div>
                     {{end}}
@@ -292,43 +318,69 @@
         function createItemRow() {
             const index = itemCount++;
             const div = document.createElement('div');
-            div.className = 'item-row p-3 border border-gray-200 rounded-md grid grid-cols-12 gap-x-3 gap-y-2 items-center';
+            div.className = 'item-row p-3 border border-gray-200 rounded-md';
             div.innerHTML = `
-                <div class="col-span-12 md:col-span-5">
-                    <div class="grid grid-cols-3 gap-2 items-end">
-                        <div class="col-span-1">
-                            <label class="text-xs font-medium text-gray-600 block">
-                                Item ID
-                                <button type="button" class="search-item-btn text-blue-500 hover:underline font-normal">(Search)</button>
-                            </label>
-                            <input type="number" name="item_id[]" id="item_id_${index}" placeholder="501" min="1" class="item-id-input mt-1 block w-full rounded-md border-gray-300 shadow-sm text-sm" required>
-                            <input type="hidden" name="item_name[]" class="item-name-hidden">
-                        </div>
-                        <div class="item-preview col-span-2 h-10 flex items-center p-1 bg-gray-50 rounded">
-                            <span class="text-gray-400 text-sm pl-1">Enter ID...</span>
+                <div class="grid grid-cols-12 gap-x-3 gap-y-2 items-center">
+                    <div class="col-span-12 md:col-span-5">
+                        <div class="grid grid-cols-3 gap-2 items-end">
+                            <div class="col-span-1">
+                                <label class="text-xs font-medium text-gray-600 block">
+                                    Item ID
+                                    <button type="button" class="search-item-btn text-blue-500 hover:underline font-normal">(Search)</button>
+                                </label>
+                                <input type="number" name="item_id[]" id="item_id_${index}" placeholder="501" min="1" class="item-id-input mt-1 block w-full rounded-md border-gray-300 shadow-sm text-sm" required>
+                                <input type="hidden" name="item_name[]" class="item-name-hidden">
+                            </div>
+                            <div class="item-preview col-span-2 h-10 flex items-center p-1 bg-gray-50 rounded">
+                                <span class="text-gray-400 text-sm pl-1">Enter ID...</span>
+                            </div>
                         </div>
                     </div>
+                    <div class="col-span-4 md:col-span-1">
+                        <label for="quantity_${index}" class="text-xs font-medium text-gray-600 block">Qty</label>
+                        <input type="number" name="quantity[]" id="quantity_${index}" placeholder="1" min="1" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm text-sm" required>
+                    </div>
+                    <div class="col-span-4 md:col-span-1">
+                        <label for="refinement_${index}" class="text-xs font-medium text-gray-600 block">+Refine</label>
+                        <input type="number" name="refinement[]" id="refinement_${index}" value="0" placeholder="0" min="0" max="10" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm text-sm">
+                    </div>
+                    <div class="col-span-8 md:col-span-2">
+                        <label for="price_${index}" class="text-xs font-medium text-gray-600 block">Price (ea)</label>
+                        <input type="number" name="price[]" id="price_${index}" placeholder="50000" min="1" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm text-sm" required>
+                    </div>
+                    <div class="col-span-8 md:col-span-2">
+                        <label for="currency_${index}" class="text-xs font-medium text-gray-600 block">Currency</label>
+                        <select name="currency[]" id="currency_${index}" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm text-sm h-10" required>
+                            <option value="zeny" selected>Zeny</option>
+                            <option value="rmt">R$ (RMT)</option>
+                        </select>
+                    </div>
+                    <div class="col-span-4 md:col-span-1">
+                        <label class="text-xs font-medium text-gray-600 block">&nbsp;</label>
+                        <button type="button" class="remove-item-btn w-full bg-red-500 hover:bg-red-600 text-white p-2 rounded-md h-10" title="Remove Item">
+                            <svg class="w-4 h-4 mx-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
+                        </button>
+                    </div>
                 </div>
-                <div class="col-span-4 md:col-span-1">
-                    <label for="quantity_${index}" class="text-xs font-medium text-gray-600 block">Qty</label>
-                    <input type="number" name="quantity[]" id="quantity_${index}" placeholder="1" min="1" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm text-sm" required>
-                </div>
-                <div class="col-span-8 md:col-span-2">
-                    <label for="price_${index}" class="text-xs font-medium text-gray-600 block">Price (ea)</label>
-                    <input type="number" name="price[]" id="price_${index}" placeholder="50000" min="1" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm text-sm" required>
-                </div>
-                <div class="col-span-8 md:col-span-3">
-                    <label for="currency_${index}" class="text-xs font-medium text-gray-600 block">Currency</label>
-                    <select name="currency[]" id="currency_${index}" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm text-sm h-10" required>
-                        <option value="zeny" selected>Zeny</option>
-                        <option value="rmt">R$ (RMT)</option>
-                    </select>
-                </div>
-                <div class="col-span-4 md:col-span-1">
-                    <label class="text-xs font-medium text-gray-600 block">&nbsp;</label>
-                    <button type="button" class="remove-item-btn w-full bg-red-500 hover:bg-red-600 text-white p-2 rounded-md h-10" title="Remove Item">
-                        <svg class="w-4 h-4 mx-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
-                    </button>
+                <div class="mt-2 pt-2 border-t border-dashed border-gray-200">
+                     <div class="grid grid-cols-4 gap-x-2">
+                        <div>
+                            <label for="card1_${index}" class="text-xs font-medium text-gray-600 block">Card 1</label>
+                            <input type="text" name="card1[]" id="card1_${index}" placeholder="Empty Slot" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm text-sm">
+                        </div>
+                        <div>
+                            <label for="card2_${index}" class="text-xs font-medium text-gray-600 block">Card 2</label>
+                            <input type="text" name="card2[]" id="card2_${index}" placeholder="Empty Slot" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm text-sm">
+                        </div>
+                        <div>
+                            <label for="card3_${index}" class="text-xs font-medium text-gray-600 block">Card 3</label>
+                            <input type="text" name="card3[]" id="card3_${index}" placeholder="Empty Slot" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm text-sm">
+                        </div>
+                        <div>
+                            <label for="card4_${index}" class="text-xs font-medium text-gray-600 block">Card 4</label>
+                            <input type="text" name="card4[]" id="card4_${index}" placeholder="Empty Slot" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm text-sm">
+                        </div>
+                    </div>
                 </div>
             `;
             container.appendChild(div);

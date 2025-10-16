@@ -430,15 +430,19 @@ type AdminEditPostPageData struct {
 
 // in models.go
 
-// ADDED: TradingPostItem represents one item within a larger post.
-// ADDED: TradingPostItem represents one item within a larger post.
+// MODIFIED: TradingPostItem represents one item within a larger post.
 type TradingPostItem struct {
-	ItemName string
-	NamePT   sql.NullString
-	ItemID   sql.NullInt64 // To handle optional item ID
-	Quantity int
-	Price    int64
-	Currency string // "zeny" or "rmt"
+	ItemName   string
+	NamePT     sql.NullString
+	ItemID     sql.NullInt64 // To handle optional item ID
+	Quantity   int
+	Price      int64
+	Currency   string         // "zeny" or "rmt"
+	Refinement int            // ADDED
+	Card1      sql.NullString // ADDED
+	Card2      sql.NullString // ADDED
+	Card3      sql.NullString // ADDED
+	Card4      sql.NullString // ADDED
 }
 
 // MODIFIED: TradingPost now holds post-level info and a slice of items.
@@ -491,4 +495,3 @@ type TradingPostFormPageData struct {
 	EditToken string // To pass the token to the edit form for re-submission
 	Message   string // For showing errors
 }
-

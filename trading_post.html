@@ -120,11 +120,22 @@
                                         {{end}}
                                         <div>
                                             <span>
-                                                {{.ItemName}}
+                                                {{if gt .Refinement 0}}+{{.Refinement}} {{end}}{{.ItemName}}
                                                 {{if .ItemID.Valid}}<span class="text-gray-400 font-normal ml-1">#{{.ItemID.Int64}}</span>{{end}}
                                             </span>
                                             {{if .NamePT.Valid}}
                                             <div class="text-xs text-gray-500 mt-1 font-normal">{{.NamePT.String}}</div>
+                                            {{end}}
+                                            {{if or .Card1.Valid .Card2.Valid .Card3.Valid .Card4.Valid}}
+                                            <div class="text-xs text-blue-600 mt-1 font-normal flex items-center gap-1">
+                                                <svg class="w-3 h-3" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M11.48 3.499a.562.562 0 011.04 0l2.125 5.111a.563.563 0 00.475.345l5.518.442c.499.04.701.663.321.988l-4.204 3.602a.563.563 0 00-.182.557l1.285 5.385a.562.562 0 01-.84.61l-4.725-3.355a.563.563 0 00-.586 0L6.982 20.54a.562.562 0 01-.84-.61l1.285-5.386a.562.562 0 00-.182-.557l-4.204-3.602a.563.563 0 01.321-.988l5.518-.442a.563.563 0 00.475-.345L11.48 3.5z" /></svg>
+                                                <span>
+                                                    {{if .Card1.Valid}}[{{.Card1.String}}]{{end}}
+                                                    {{if .Card2.Valid}} [{{.Card2.String}}]{{end}}
+                                                    {{if .Card3.Valid}} [{{.Card3.String}}]{{end}}
+                                                    {{if .Card4.Valid}} [{{.Card4.String}}]{{end}}
+                                                </span>
+                                            </div>
                                             {{end}}
                                         </div>
                                     </div>
