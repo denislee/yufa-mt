@@ -42,8 +42,8 @@ var (
 	contactSanitizer = regexp.MustCompile(`[^a-zA-Z0-9\s:.,#@-]+`)
 	// Allows letters, numbers, spaces, and basic punctuation for notes.
 	notesSanitizer = regexp.MustCompile(`[^a-zA-Z0-9\s.,?!'-]+`)
-	// Allows letters, numbers, spaces, and characters common in item names.
-	itemSanitizer = regexp.MustCompile(`[^a-zA-Z0-9\s\[\]\+\-]+`)
+	// MODIFIED: Allows Unicode letters (\p{L}), numbers, spaces, and common item characters.
+	itemSanitizer = regexp.MustCompile(`[^\p{L}0-9\s\[\]\+\-]+`)
 )
 
 var mvpMobIDs = []string{
@@ -254,7 +254,8 @@ func getCombinedItemIDs(searchQuery string) ([]int, error) {
 	// Goroutine 1: Scrape ragnarokdatabase.com
 	go func() {
 		defer wg.Done()
-		ids, err := scrapeRagnarokDatabaseSearch(searchQuery)
+		//		ids, err := scrapeRagnarokDatabaseSearch(searchQuery)
+		ids, err := scrapeRODatabaseSearch(searchQuery)
 		if err != nil {
 			log.Printf("⚠️ Concurrent scrape failed for '%s': %v", searchQuery, err)
 			scrapedIDsChan <- []int{} // Send empty slice on error
@@ -1822,7 +1823,7 @@ func tradingPostListHandler(w http.ResponseWriter, r *http.Request) {
 	if len(postIDs) > 0 {
 		placeholders := strings.Repeat("?,", len(postIDs)-1) + "?"
 		itemQuery := fmt.Sprintf(`
-            SELECT tpi.post_id, tpi.item_name, rms.name_pt, tpi.item_id, tpi.quantity, tpi.price, tpi.currency, tpi.refinement, tpi.card1, tpi.card2, tpi.card3, tpi.card4
+            SELECT tpi.post_id, tpi.item_name, rms.name_pt, tpi.item_id, tpi.quantity, tpi.price, tpi.currency, tpi.refinement, tpi.slots, tpi.card1, tpi.card2, tpi.card3, tpi.card4
             FROM trading_post_items tpi
             LEFT JOIN rms_item_cache rms ON tpi.item_id = rms.item_id
             WHERE tpi.post_id IN (%s)`, placeholders)
@@ -1832,7 +1833,7 @@ func tradingPostListHandler(w http.ResponseWriter, r *http.Request) {
 			for itemRows.Next() {
 				var item TradingPostItem
 				var postID int
-				if err := itemRows.Scan(&postID, &item.ItemName, &item.NamePT, &item.ItemID, &item.Quantity, &item.Price, &item.Currency, &item.Refinement, &item.Card1, &item.Card2, &item.Card3, &item.Card4); err == nil {
+				if err := itemRows.Scan(&postID, &item.ItemName, &item.NamePT, &item.ItemID, &item.Quantity, &item.Price, &item.Currency, &item.Refinement, &item.Slots, &item.Card1, &item.Card2, &item.Card3, &item.Card4); err == nil {
 					if index, ok := postMap[postID]; ok {
 						posts[index].Items = append(posts[index].Items, item)
 					}
@@ -1900,7 +1901,8 @@ func tradingPostFormHandler(w http.ResponseWriter, r *http.Request) {
 
 		itemNames, quantities, prices := r.Form["item_name[]"], r.Form["quantity[]"], r.Form["price[]"]
 		itemIDs, currencies := r.Form["item_id[]"], r.Form["currency[]"]
-		refinements, cards1, cards2 := r.Form["refinement[]"], r.Form["card1[]"], r.Form["card2[]"]
+		refinements, slots := r.Form["refinement[]"], r.Form["slots[]"]
+		cards1, cards2 := r.Form["card1[]"], r.Form["card2[]"]
 		cards3, cards4 := r.Form["card3[]"], r.Form["card4[]"]
 
 		if len(itemNames) == 0 {
@@ -1908,7 +1910,7 @@ func tradingPostFormHandler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		stmt, err := tx.Prepare("INSERT INTO trading_post_items (post_id, item_name, item_id, quantity, price, currency, refinement, card1, card2, card3, card4) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
+		stmt, err := tx.Prepare("INSERT INTO trading_post_items (post_id, item_name, item_id, quantity, price, currency, refinement, slots, card1, card2, card3, card4) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
 		if err != nil {
 			http.Error(w, "Database preparation failed.", http.StatusInternalServerError)
 			return
@@ -1931,16 +1933,17 @@ func tradingPostFormHandler(w http.ResponseWriter, r *http.Request) {
 				currency = "rmt"
 			}
 			refinement, _ := strconv.Atoi(refinements[i])
+			slot, _ := strconv.Atoi(slots[i])
 			card1 := sql.NullString{String: sanitizeString(cards1[i], itemSanitizer), Valid: strings.TrimSpace(cards1[i]) != ""}
 			card2 := sql.NullString{String: sanitizeString(cards2[i], itemSanitizer), Valid: strings.TrimSpace(cards2[i]) != ""}
 			card3 := sql.NullString{String: sanitizeString(cards3[i], itemSanitizer), Valid: strings.TrimSpace(cards3[i]) != ""}
 			card4 := sql.NullString{String: sanitizeString(cards4[i], itemSanitizer), Valid: strings.TrimSpace(cards4[i]) != ""}
 
-			if quantity <= 0 || price <= 0 {
-				http.Error(w, "All items must have a valid quantity and price.", http.StatusBadRequest)
+			if quantity <= 0 || price < 0 {
+				http.Error(w, "All items must have a valid quantity and a non-negative price.", http.StatusBadRequest)
 				return
 			}
-			if _, err := stmt.Exec(postID, itemName, itemID, quantity, price, currency, refinement, card1, card2, card3, card4); err != nil {
+			if _, err := stmt.Exec(postID, itemName, itemID, quantity, price, currency, refinement, slot, card1, card2, card3, card4); err != nil {
 				http.Error(w, "Failed to save one of the items.", http.StatusInternalServerError)
 				return
 			}
@@ -1994,11 +1997,11 @@ func tradingPostManageHandler(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "Could not retrieve post to edit.", http.StatusInternalServerError)
 			return
 		}
-		itemRows, _ := db.Query("SELECT item_name, item_id, quantity, price, currency, refinement, card1, card2, card3, card4 FROM trading_post_items WHERE post_id = ?", postIDStr)
+		itemRows, _ := db.Query("SELECT item_name, item_id, quantity, price, currency, refinement, slots, card1, card2, card3, card4 FROM trading_post_items WHERE post_id = ?", postIDStr)
 		defer itemRows.Close()
 		for itemRows.Next() {
 			var item TradingPostItem
-			if err := itemRows.Scan(&item.ItemName, &item.ItemID, &item.Quantity, &item.Price, &item.Currency, &item.Refinement, &item.Card1, &item.Card2, &item.Card3, &item.Card4); err == nil {
+			if err := itemRows.Scan(&item.ItemName, &item.ItemID, &item.Quantity, &item.Price, &item.Currency, &item.Refinement, &item.Slots, &item.Card1, &item.Card2, &item.Card3, &item.Card4); err == nil {
 				post.Items = append(post.Items, item)
 			}
 		}
@@ -2029,7 +2032,7 @@ func tradingPostManageHandler(w http.ResponseWriter, r *http.Request) {
 		tx.Exec("DELETE FROM trading_post_items WHERE post_id = ?", postIDStr)
 
 		itemNames := r.Form["item_name[]"]
-		stmt, _ := tx.Prepare("INSERT INTO trading_post_items (post_id, item_name, item_id, quantity, price, currency, refinement, card1, card2, card3, card4) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
+		stmt, _ := tx.Prepare("INSERT INTO trading_post_items (post_id, item_name, item_id, quantity, price, currency, refinement, slots, card1, card2, card3, card4) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
 		defer stmt.Close()
 
 		for i, rawItemName := range itemNames {
@@ -2048,16 +2051,17 @@ func tradingPostManageHandler(w http.ResponseWriter, r *http.Request) {
 				currency = "rmt"
 			}
 			refinement, _ := strconv.Atoi(r.Form["refinement[]"][i])
+			slot, _ := strconv.Atoi(r.Form["slots[]"][i])
 			card1 := sql.NullString{String: sanitizeString(r.Form["card1[]"][i], itemSanitizer), Valid: strings.TrimSpace(r.Form["card1[]"][i]) != ""}
 			card2 := sql.NullString{String: sanitizeString(r.Form["card2[]"][i], itemSanitizer), Valid: strings.TrimSpace(r.Form["card2[]"][i]) != ""}
 			card3 := sql.NullString{String: sanitizeString(r.Form["card3[]"][i], itemSanitizer), Valid: strings.TrimSpace(r.Form["card3[]"][i]) != ""}
 			card4 := sql.NullString{String: sanitizeString(r.Form["card4[]"][i], itemSanitizer), Valid: strings.TrimSpace(r.Form["card4[]"][i]) != ""}
 
-			if quantity <= 0 || price <= 0 {
-				http.Error(w, "All items must have a valid quantity and price.", http.StatusBadRequest)
+			if quantity <= 0 || price < 0 {
+				http.Error(w, "All items must have a valid quantity and a non-negative price.", http.StatusBadRequest)
 				return
 			}
-			stmt.Exec(postIDStr, itemName, itemID, quantity, price, currency, refinement, card1, card2, card3, card4)
+			stmt.Exec(postIDStr, itemName, itemID, quantity, price, currency, refinement, slot, card1, card2, card3, card4)
 		}
 		tx.Commit()
 		http.Redirect(w, r, "/trading-post", http.StatusSeeOther)
@@ -2139,11 +2143,9 @@ func apiItemSearchHandler(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(results)
 }
 
-// MODIFIED: in handlers.go
-
-// findItemIDByName searches for a unique item ID. It first checks the local cache.
-// If no unique match is found, it performs a concurrent search on external
-// databases (ratemyserver.net and ragnarokdatabase.com) as a fallback.
+// findItemIDByName searches for an item ID. It first checks the local cache.
+// If no unique match is found, it performs a concurrent online search as a fallback.
+// If multiple matches are found at any stage, it returns the first one.
 func findItemIDByName(itemName string) (sql.NullInt64, error) {
 	var itemID int64
 
@@ -2156,7 +2158,7 @@ func findItemIDByName(itemName string) (sql.NullInt64, error) {
 		return sql.NullInt64{Valid: false}, nil
 	}
 
-	// --- Step 1 & 2: Search local cache (exact and unique LIKE match) ---
+	// --- Step 1 & 2: Search local cache (exact and LIKE match) ---
 	queryExact := `SELECT item_id FROM rms_item_cache WHERE name_pt = ? OR name = ?`
 	err := db.QueryRow(queryExact, cleanItemName, cleanItemName).Scan(&itemID)
 	if err == nil {
@@ -2167,7 +2169,8 @@ func findItemIDByName(itemName string) (sql.NullInt64, error) {
 		return sql.NullInt64{}, fmt.Errorf("error during exact match query for '%s': %w", cleanItemName, err)
 	}
 
-	queryLike := `SELECT item_id FROM rms_item_cache WHERE name_pt LIKE ? OR name LIKE ?`
+	// Try a broader LIKE search
+	queryLike := `SELECT item_id FROM rms_item_cache WHERE name_pt LIKE ? OR name LIKE ? ORDER BY name_pt, name LIMIT 10`
 	rows, err := db.Query(queryLike, "%"+cleanItemName+"%", "%"+cleanItemName+"%")
 	if err != nil {
 		return sql.NullInt64{}, fmt.Errorf("error during LIKE query for '%s': %w", cleanItemName, err)
@@ -2182,14 +2185,15 @@ func findItemIDByName(itemName string) (sql.NullInt64, error) {
 		}
 	}
 
-	if len(potentialIDs) == 1 {
+	// NEW LOGIC: If we found one or more potential matches, take the first one.
+	if len(potentialIDs) > 0 {
 		itemID = potentialIDs[0]
-		log.Printf("   [Item ID Search] Found unique local LIKE match for '%s': ID %d", cleanItemName, itemID)
+		log.Printf("   [Item ID Search] Found local LIKE match for '%s'. Using first result: ID %d (from %d total)", cleanItemName, itemID, len(potentialIDs))
 		return sql.NullInt64{Int64: itemID, Valid: true}, nil
 	}
 
 	// --- Step 3: Fallback to concurrent online search if local search fails ---
-	log.Printf("   [Item ID Search] No unique local match for '%s'. Initiating online search...", cleanItemName)
+	log.Printf("   [Item ID Search] No local match for '%s'. Initiating online search...", cleanItemName)
 
 	var wg sync.WaitGroup
 	rmsChan := make(chan []ItemSearchResult, 1)
@@ -2208,7 +2212,8 @@ func findItemIDByName(itemName string) (sql.NullInt64, error) {
 	}()
 	go func() {
 		defer wg.Done()
-		ids, err := scrapeRagnarokDatabaseSearch(cleanItemName)
+		ids, err := scrapeRODatabaseSearch(cleanItemName)
+
 		if err != nil {
 			log.Printf("   -> [RDB Search] Failed for '%s': %v", cleanItemName, err)
 			rdbChan <- nil
@@ -2229,22 +2234,23 @@ func findItemIDByName(itemName string) (sql.NullInt64, error) {
 	}
 	if rdbResults != nil {
 		for _, id := range rdbResults {
-			// If the name is not already known from RMS, we can't easily get it here, so just mark it.
 			if _, ok := combinedIDs[id]; !ok {
 				combinedIDs[id] = "" // Mark as found
 			}
 		}
 	}
 
-	if len(combinedIDs) == 1 {
-		// Success! Found a single, unique ID online.
+	// NEW LOGIC: If we found one or more potential matches, take the first one.
+	if len(combinedIDs) > 0 {
 		var foundID int
 		var foundName string
+		// Just grab the first one from the map.
 		for id, name := range combinedIDs {
 			foundID = id
 			foundName = name
+			break // Exit after the first one
 		}
-		log.Printf("   [Item ID Search] Found unique ONLINE match for '%s': ID %d", cleanItemName, foundID)
+		log.Printf("   [Item ID Search] Found ONLINE match for '%s'. Using first result: ID %d (from %d total)", cleanItemName, foundID, len(combinedIDs))
 
 		// Trigger background caching for this newly found item.
 		go scrapeAndCacheItemIfNotExists(foundID, foundName)
@@ -2252,8 +2258,8 @@ func findItemIDByName(itemName string) (sql.NullInt64, error) {
 		return sql.NullInt64{Int64: int64(foundID), Valid: true}, nil
 	}
 
-	// If we're here, the online search was also ambiguous or returned no results.
-	log.Printf("   [Item ID Search] Online search for '%s' was inconclusive (%d results found). Storing name only.", cleanItemName, len(combinedIDs))
+	// If we're here, the online search returned no results.
+	log.Printf("   [Item ID Search] Online search for '%s' returned no results. Storing name only.", cleanItemName)
 	return sql.NullInt64{Valid: false}, nil
 }
 
@@ -2302,8 +2308,8 @@ func CreateTradingPostFromDiscord(authorName string, tradeData *GeminiTradeResul
 	}
 	postID, _ := res.LastInsertId()
 
-	// Prepare to insert the items, now including item_id
-	stmt, err := tx.Prepare("INSERT INTO trading_post_items (post_id, item_name, item_id, quantity, price, currency) VALUES (?, ?, ?, ?, ?, ?)")
+	// Prepare to insert the items, now including all details from Gemini.
+	stmt, err := tx.Prepare("INSERT INTO trading_post_items (post_id, item_name, item_id, quantity, price, currency, refinement, slots, card1, card2, card3, card4) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
 	if err != nil {
 		return 0, fmt.Errorf("database preparation failed for discord post items: %w", err)
 	}
@@ -2329,7 +2335,13 @@ func CreateTradingPostFromDiscord(authorName string, tradeData *GeminiTradeResul
 			currency = "rmt"
 		}
 
-		if _, err := stmt.Exec(postID, itemName, itemID, item.Quantity, item.Price, currency); err != nil {
+		// Convert card strings to sql.NullString for the database
+		card1 := sql.NullString{String: item.Card1, Valid: item.Card1 != ""}
+		card2 := sql.NullString{String: item.Card2, Valid: item.Card2 != ""}
+		card3 := sql.NullString{String: item.Card3, Valid: item.Card3 != ""}
+		card4 := sql.NullString{String: item.Card4, Valid: item.Card4 != ""}
+
+		if _, err := stmt.Exec(postID, itemName, itemID, item.Quantity, item.Price, currency, item.Refinement, item.Slots, card1, card2, card3, card4); err != nil {
 			// Don't just return, log which item failed
 			return 0, fmt.Errorf("failed to save item '%s' for discord post: %w", itemName, err)
 		}

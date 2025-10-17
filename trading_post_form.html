@@ -85,7 +85,7 @@
                             </div>
                             <div class="col-span-8 md:col-span-2">
                                 <label for="price_{{$index}}" class="text-xs font-medium text-gray-600 block">Price (ea)</label>
-                                <input type="number" name="price[]" id="price_{{$index}}" value="{{$item.Price}}" placeholder="50000" min="1" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm text-sm" required>
+                                <input type="number" name="price[]" id="price_{{$index}}" value="{{$item.Price}}" placeholder="50000" min="0" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm text-sm" required>
                             </div>
                             <div class="col-span-8 md:col-span-2">
                                 <label for="currency_{{$index}}" class="text-xs font-medium text-gray-600 block">Currency</label>
@@ -346,7 +346,7 @@
                     </div>
                     <div class="col-span-8 md:col-span-2">
                         <label for="price_${index}" class="text-xs font-medium text-gray-600 block">Price (ea)</label>
-                        <input type="number" name="price[]" id="price_${index}" placeholder="50000" min="1" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm text-sm" required>
+                        <input type="number" name="price[]" id="price_${index}" placeholder="50000" min="0" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm text-sm" required>
                     </div>
                     <div class="col-span-8 md:col-span-2">
                         <label for="currency_${index}" class="text-xs font-medium text-gray-600 block">Currency</label>

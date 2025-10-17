@@ -207,7 +207,10 @@
                 const currency = elem.dataset.currency || 'zeny'; // Default to zeny
 
                 if (!isNaN(price)) {
-                    if (currency === 'rmt') {
+                    if (price === 0) {
+                        elem.textContent = 'Negotiable';
+                        elem.classList.add('text-gray-500', 'italic');
+                    } else if (currency === 'rmt') {
                         // Format as BRL (Brazilian Real)
                         elem.textContent = price.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
                         elem.classList.add('text-blue-600'); // Style RMT differently

@@ -387,6 +387,7 @@ type GeminiTradeItem struct {
 	Price      int64  `json:"price"`
 	Currency   string `json:"currency"`
 	Refinement int    `json:"refinement"`
+	Slots      int    `json:"slots"`
 	Card1      string `json:"card1"`
 	Card2      string `json:"card2"`
 	Card3      string `json:"card3"`
@@ -462,6 +463,7 @@ type TradingPostItem struct {
 	Price      int64
 	Currency   string // "zeny" or "rmt"
 	Refinement int
+	Slots      int
 	Card1      sql.NullString
 	Card2      sql.NullString
 	Card3      sql.NullString

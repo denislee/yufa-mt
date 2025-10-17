@@ -32,28 +32,34 @@ func parseTradeMessageWithGemini(message string) (*GeminiTradeResult, error) {
 	defer client.Close()
 
 	// Configure the model to expect a JSON response.
-	model := client.GenerativeModel("gemini-flash-lite-latest")
+	model := client.GenerativeModel("gemini-flash-latest")
 	model.GenerationConfig.ResponseMIMEType = "application/json"
 
 	prompt := fmt.Sprintf(`You are an expert at parsing trade messages for the game Ragnarok Online.
 Analyze the following message and extract the trade information.
 The user's intent will be either "buying" or "selling".
-For each item, extract its base name, refinement level, any attached cards, quantity, price, and currency.
+For each item, extract its base name, refinement level, number of slots, any attached cards, quantity, price, and currency.
 
-- The base "name" should be the item's name WITHOUT any refinement prefix (e.g., +7) or cards. For "+9 Jur [3] [Mummy Card]", the name is "Jur".
+- The base "name" should be the item's name WITHOUT any refinement prefix (e.g., +7), slots (e.g., [3]), or cards. For "+9 Jur [3] [Mummy Card]", the name is "Jur".
 - "refinement" is the number after a '+'. If not present, it is 0.
+- "slots" is the number inside square brackets, like [3]. If it's a card name like [Mummy Card], slots should be 0. If not present, it is 0.
 - "card1", "card2", "card3", "card4" are the names of the cards in the item. If not present, the value should be an empty string "". Extract the card name, like "Mummy Card".
 - If "quantity" is not mentioned, assume 1.
-- If "price" is not mentioned, use 1.
+- If "price" is not mentioned, use 0.
 - Prices can be written with 'k' for thousands (e.g., 500k = 500000) or 'kk' for millions (e.g., 1.5kk = 1500000). Convert all prices to a raw integer.
 - "V>", "vendo", or "V>endo" means the action is "selling". "C>", "compro", or "C>ompro" means the action is "buying".
 - If the user mentions "RMT" or "$", the "currency" should be "rmt". Otherwise, it is "zeny".
-- The item name can be in portuguese or english.
-- Try to fix the name of the item if there is typo, still considering the context of Ragnarok Online
+- Each item name can be in portuguese or english, and can be mixed in the same message.
+- Try to fix typos, but do consider the context of Ragnarok Online game words.
+- Keep the words "Carta" and "Card", if "Carta" exists, put on the begining of the item name; if "Card" exists, put on the end of the item name.
+- replace the word: "peco peco" to "PecoPeco", "cavalo marinho" to "Cavalo-Marinho", "louva a deus" to "Louva-a-Deus"
+- if the item is "thara", it is "Thara Frog Card"
+- if the item is "louva-a-deus", it is "Carta Louva-a-Deus"
+- if the item has slots, keep the slots on the name of the item, but always a space between the item name and the slots
 
 Provide the output *only* as a single, minified JSON object. Do not wrap it in markdown backticks or any other text.
 The JSON object must have two keys: "action" (string: "buying" or "selling") and "items" (an array of objects).
-Each item object in the array must have these keys: "name" (string), "quantity" (integer), "price" (integer), "currency" (string: "zeny" or "rmt"), "refinement" (integer), "card1" (string), "card2" (string), "card3" (string), "card4" (string).
+Each item object in the array must have these keys: "name" (string), "quantity" (integer), "price" (integer), "currency" (string: "zeny" or "rmt"), "refinement" (integer), "slots" (integer), "card1" (string), "card2" (string), "card3" (string), "card4" (string).
 
 Here is the message to parse:
 ---

@@ -1,9 +1,11 @@
 package main
 
 import (
+	"crypto/tls"
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"github.com/PuerkitoBio/goquery"
 	"io"
 	"log"
 	"net/http"
@@ -12,8 +14,6 @@ import (
 	"strconv"
 	"strings"
 	"time"
-
-	"github.com/PuerkitoBio/goquery"
 )
 
 // scrapeRMSItemDetails scrapes detailed item information from ratemyserver.net and ragnarokdatabase.com.
@@ -380,7 +380,7 @@ func scrapeRMSItemSearch(query string) ([]ItemSearchResult, error) {
 // It uses regex to parse the HTML response, and as a side effect, it updates the 'name_pt' column in the cache for any matching items found.
 func scrapeRagnarokDatabaseSearch(query string) ([]int, error) {
 	// 1. Construct the URL
-	searchURL := fmt.Sprintf("https://ragnarokdatabase.com/search/items/%s", url.QueryEscape(query))
+	searchURL := fmt.Sprintf("https://ragnarokdatabase.com/search/all/%s", query)
 	log.Printf("➡️ [Fallback Search] Performing search on RagnarokDatabase for: '%s'", query)
 	log.Printf("   URL: %s", searchURL)
 
@@ -460,5 +460,71 @@ func scrapeRagnarokDatabaseSearch(query string) ([]int, error) {
 	}
 
 	log.Printf("✅ [Fallback Search] Found %d unique item(s) for query: '%s'", len(itemIDs), query)
+	return itemIDs, nil
+}
+
+// scrapeRODatabaseSearch performs a search on rodatabase.com to find potential item IDs.
+// It uses regex to parse the HTML response from the search results page.
+func scrapeRODatabaseSearch(query string) ([]int, error) {
+	// 1. Construct the URL by escaping the search query.
+	searchURL := fmt.Sprintf("https://rodatabase.com/pt-BR/item/search?name=%s", url.QueryEscape(query))
+	log.Printf("➡️ [RODatabase Search] Performing search for: '%s'", query)
+	log.Printf("	URL: %s", searchURL)
+
+	// 2. Make the HTTP request with a timeout and custom transport.
+	// Create a custom transport that ignores invalid SSL certificates.
+	customTransport := &http.Transport{
+		TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
+	}
+	client := http.Client{
+		Timeout:   10 * time.Second,
+		Transport: customTransport, // Use the custom transport here
+	}
+	res, err := client.Get(searchURL)
+	if err != nil {
+		log.Printf("❌ [RODatabase Search] Failed to get URL: %v", err)
+		return nil, fmt.Errorf("failed to get search URL: %w", err)
+	}
+	defer res.Body.Close()
+
+	if res.StatusCode != 200 {
+		log.Printf("⚠️ [RODatabase Search] Received non-200 status code: %d %s", res.StatusCode, res.Status)
+		return nil, fmt.Errorf("status code error: %d %s", res.StatusCode, res.Status)
+	}
+
+	// 3. Read the response body.
+	body, err := io.ReadAll(res.Body)
+	if err != nil {
+		log.Printf("❌ [RODatabase Search] Failed to read response body: %v", err)
+		return nil, fmt.Errorf("failed to read response body: %w", err)
+	}
+
+	// 4. Use Regex to find all item IDs from the links in the results table.
+	idRegex := regexp.MustCompile(`href="[^"]*/pt-BR/item/id/(\d+)"`)
+	matches := idRegex.FindAllStringSubmatch(string(body), -1)
+
+	if len(matches) == 0 {
+		log.Printf("	[RODatabase Search] No item IDs found on the page for query '%s'.", query)
+		return nil, nil // No error, just no results found.
+	}
+
+	var itemIDs []int
+	seenIDs := make(map[int]bool) // Use a map to handle and prevent duplicate IDs.
+
+	// 5. Extract IDs from the regex matches.
+	for _, match := range matches {
+		if len(match) > 1 {
+			id, convErr := strconv.Atoi(match[1])
+			if convErr != nil {
+				continue // Skip if the captured ID is not a valid number.
+			}
+			if !seenIDs[id] {
+				itemIDs = append(itemIDs, id)
+				seenIDs[id] = true
+			}
+		}
+	}
+
+	log.Printf("✅ [RODatabase Search] Found %d unique item(s) for query: '%s'", len(itemIDs), query)
 	return itemIDs, nil
 }
