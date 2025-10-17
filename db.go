@@ -274,6 +274,7 @@ CREATE TABLE IF NOT EXISTS trading_post_items (
     "quantity" INTEGER NOT NULL,
     "price" INTEGER NOT NULL,
     "currency" TEXT NOT NULL DEFAULT 'zeny',
+    "payment_methods" TEXT NOT NULL DEFAULT 'zeny',
     "refinement" INTEGER NOT NULL DEFAULT 0,
     "slots" INTEGER NOT NULL DEFAULT 0,
     "card1" TEXT,

@@ -1823,7 +1823,7 @@ func tradingPostListHandler(w http.ResponseWriter, r *http.Request) {
 	if len(postIDs) > 0 {
 		placeholders := strings.Repeat("?,", len(postIDs)-1) + "?"
 		itemQuery := fmt.Sprintf(`
-            SELECT tpi.post_id, tpi.item_name, rms.name_pt, tpi.item_id, tpi.quantity, tpi.price, tpi.currency, tpi.refinement, tpi.slots, tpi.card1, tpi.card2, tpi.card3, tpi.card4
+            SELECT tpi.post_id, tpi.item_name, rms.name_pt, tpi.item_id, tpi.quantity, tpi.price, tpi.currency, tpi.payment_methods, tpi.refinement, tpi.slots, tpi.card1, tpi.card2, tpi.card3, tpi.card4
             FROM trading_post_items tpi
             LEFT JOIN rms_item_cache rms ON tpi.item_id = rms.item_id
             WHERE tpi.post_id IN (%s)`, placeholders)
@@ -1833,7 +1833,7 @@ func tradingPostListHandler(w http.ResponseWriter, r *http.Request) {
 			for itemRows.Next() {
 				var item TradingPostItem
 				var postID int
-				if err := itemRows.Scan(&postID, &item.ItemName, &item.NamePT, &item.ItemID, &item.Quantity, &item.Price, &item.Currency, &item.Refinement, &item.Slots, &item.Card1, &item.Card2, &item.Card3, &item.Card4); err == nil {
+				if err := itemRows.Scan(&postID, &item.ItemName, &item.NamePT, &item.ItemID, &item.Quantity, &item.Price, &item.Currency, &item.PaymentMethods, &item.Refinement, &item.Slots, &item.Card1, &item.Card2, &item.Card3, &item.Card4); err == nil {
 					if index, ok := postMap[postID]; ok {
 						posts[index].Items = append(posts[index].Items, item)
 					}
@@ -1900,7 +1900,7 @@ func tradingPostFormHandler(w http.ResponseWriter, r *http.Request) {
 		postID, _ := res.LastInsertId()
 
 		itemNames, quantities, prices := r.Form["item_name[]"], r.Form["quantity[]"], r.Form["price[]"]
-		itemIDs, currencies := r.Form["item_id[]"], r.Form["currency[]"]
+		itemIDs, currencies, paymentMethodsList := r.Form["item_id[]"], r.Form["currency[]"], r.Form["payment_methods[]"]
 		refinements, slots := r.Form["refinement[]"], r.Form["slots[]"]
 		cards1, cards2 := r.Form["card1[]"], r.Form["card2[]"]
 		cards3, cards4 := r.Form["card3[]"], r.Form["card4[]"]
@@ -1910,7 +1910,7 @@ func tradingPostFormHandler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		stmt, err := tx.Prepare("INSERT INTO trading_post_items (post_id, item_name, item_id, quantity, price, currency, refinement, slots, card1, card2, card3, card4) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
+		stmt, err := tx.Prepare("INSERT INTO trading_post_items (post_id, item_name, item_id, quantity, price, currency, payment_methods, refinement, slots, card1, card2, card3, card4) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
 		if err != nil {
 			http.Error(w, "Database preparation failed.", http.StatusInternalServerError)
 			return
@@ -1932,6 +1932,10 @@ func tradingPostFormHandler(w http.ResponseWriter, r *http.Request) {
 			if currencies[i] == "rmt" {
 				currency = "rmt"
 			}
+			paymentMethods := "zeny"
+			if i < len(paymentMethodsList) && (paymentMethodsList[i] == "rmt" || paymentMethodsList[i] == "both") {
+				paymentMethods = paymentMethodsList[i]
+			}
 			refinement, _ := strconv.Atoi(refinements[i])
 			slot, _ := strconv.Atoi(slots[i])
 			card1 := sql.NullString{String: sanitizeString(cards1[i], itemSanitizer), Valid: strings.TrimSpace(cards1[i]) != ""}
@@ -1943,7 +1947,7 @@ func tradingPostFormHandler(w http.ResponseWriter, r *http.Request) {
 				http.Error(w, "All items must have a valid quantity and a non-negative price.", http.StatusBadRequest)
 				return
 			}
-			if _, err := stmt.Exec(postID, itemName, itemID, quantity, price, currency, refinement, slot, card1, card2, card3, card4); err != nil {
+			if _, err := stmt.Exec(postID, itemName, itemID, quantity, price, currency, paymentMethods, refinement, slot, card1, card2, card3, card4); err != nil {
 				http.Error(w, "Failed to save one of the items.", http.StatusInternalServerError)
 				return
 			}
@@ -1997,11 +2001,11 @@ func tradingPostManageHandler(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "Could not retrieve post to edit.", http.StatusInternalServerError)
 			return
 		}
-		itemRows, _ := db.Query("SELECT item_name, item_id, quantity, price, currency, refinement, slots, card1, card2, card3, card4 FROM trading_post_items WHERE post_id = ?", postIDStr)
+		itemRows, _ := db.Query("SELECT item_name, item_id, quantity, price, currency, payment_methods, refinement, slots, card1, card2, card3, card4 FROM trading_post_items WHERE post_id = ?", postIDStr)
 		defer itemRows.Close()
 		for itemRows.Next() {
 			var item TradingPostItem
-			if err := itemRows.Scan(&item.ItemName, &item.ItemID, &item.Quantity, &item.Price, &item.Currency, &item.Refinement, &item.Slots, &item.Card1, &item.Card2, &item.Card3, &item.Card4); err == nil {
+			if err := itemRows.Scan(&item.ItemName, &item.ItemID, &item.Quantity, &item.Price, &item.Currency, &item.PaymentMethods, &item.Refinement, &item.Slots, &item.Card1, &item.Card2, &item.Card3, &item.Card4); err == nil {
 				post.Items = append(post.Items, item)
 			}
 		}
@@ -2032,7 +2036,8 @@ func tradingPostManageHandler(w http.ResponseWriter, r *http.Request) {
 		tx.Exec("DELETE FROM trading_post_items WHERE post_id = ?", postIDStr)
 
 		itemNames := r.Form["item_name[]"]
-		stmt, _ := tx.Prepare("INSERT INTO trading_post_items (post_id, item_name, item_id, quantity, price, currency, refinement, slots, card1, card2, card3, card4) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
+		paymentMethodsList := r.Form["payment_methods[]"]
+		stmt, _ := tx.Prepare("INSERT INTO trading_post_items (post_id, item_name, item_id, quantity, price, currency, payment_methods, refinement, slots, card1, card2, card3, card4) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
 		defer stmt.Close()
 
 		for i, rawItemName := range itemNames {
@@ -2050,6 +2055,10 @@ func tradingPostManageHandler(w http.ResponseWriter, r *http.Request) {
 			if r.Form["currency[]"][i] == "rmt" {
 				currency = "rmt"
 			}
+			paymentMethods := "zeny"
+			if i < len(paymentMethodsList) && (paymentMethodsList[i] == "rmt" || paymentMethodsList[i] == "both") {
+				paymentMethods = paymentMethodsList[i]
+			}
 			refinement, _ := strconv.Atoi(r.Form["refinement[]"][i])
 			slot, _ := strconv.Atoi(r.Form["slots[]"][i])
 			card1 := sql.NullString{String: sanitizeString(r.Form["card1[]"][i], itemSanitizer), Valid: strings.TrimSpace(r.Form["card1[]"][i]) != ""}
@@ -2061,7 +2070,7 @@ func tradingPostManageHandler(w http.ResponseWriter, r *http.Request) {
 				http.Error(w, "All items must have a valid quantity and a non-negative price.", http.StatusBadRequest)
 				return
 			}
-			stmt.Exec(postIDStr, itemName, itemID, quantity, price, currency, refinement, slot, card1, card2, card3, card4)
+			stmt.Exec(postIDStr, itemName, itemID, quantity, price, currency, paymentMethods, refinement, slot, card1, card2, card3, card4)
 		}
 		tx.Commit()
 		http.Redirect(w, r, "/trading-post", http.StatusSeeOther)
@@ -2309,7 +2318,7 @@ func CreateTradingPostFromDiscord(authorName string, tradeData *GeminiTradeResul
 	postID, _ := res.LastInsertId()
 
 	// Prepare to insert the items, now including all details from Gemini.
-	stmt, err := tx.Prepare("INSERT INTO trading_post_items (post_id, item_name, item_id, quantity, price, currency, refinement, slots, card1, card2, card3, card4) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
+	stmt, err := tx.Prepare("INSERT INTO trading_post_items (post_id, item_name, item_id, quantity, price, currency, payment_methods, refinement, slots, card1, card2, card3, card4) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
 	if err != nil {
 		return 0, fmt.Errorf("database preparation failed for discord post items: %w", err)
 	}
@@ -2335,13 +2344,19 @@ func CreateTradingPostFromDiscord(authorName string, tradeData *GeminiTradeResul
 			currency = "rmt"
 		}
 
+		// Ensure payment_methods is valid, default to zeny
+		paymentMethods := "zeny"
+		if item.PaymentMethods == "rmt" || item.PaymentMethods == "both" {
+			paymentMethods = item.PaymentMethods
+		}
+
 		// Convert card strings to sql.NullString for the database
 		card1 := sql.NullString{String: item.Card1, Valid: item.Card1 != ""}
 		card2 := sql.NullString{String: item.Card2, Valid: item.Card2 != ""}
 		card3 := sql.NullString{String: item.Card3, Valid: item.Card3 != ""}
 		card4 := sql.NullString{String: item.Card4, Valid: item.Card4 != ""}
 
-		if _, err := stmt.Exec(postID, itemName, itemID, item.Quantity, item.Price, currency, item.Refinement, item.Slots, card1, card2, card3, card4); err != nil {
+		if _, err := stmt.Exec(postID, itemName, itemID, item.Quantity, item.Price, currency, paymentMethods, item.Refinement, item.Slots, card1, card2, card3, card4); err != nil {
 			// Don't just return, log which item failed
 			return 0, fmt.Errorf("failed to save item '%s' for discord post: %w", itemName, err)
 		}

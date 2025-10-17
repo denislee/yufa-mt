@@ -382,16 +382,17 @@ func (p PageViewEntry) ShortHash() string {
 
 // GeminiTradeItem holds the parsed data for a single item from a trade message.
 type GeminiTradeItem struct {
-	Name       string `json:"name"`
-	Quantity   int    `json:"quantity"`
-	Price      int64  `json:"price"`
-	Currency   string `json:"currency"`
-	Refinement int    `json:"refinement"`
-	Slots      int    `json:"slots"`
-	Card1      string `json:"card1"`
-	Card2      string `json:"card2"`
-	Card3      string `json:"card3"`
-	Card4      string `json:"card4"`
+	Name           string `json:"name"`
+	Quantity       int    `json:"quantity"`
+	Price          int64  `json:"price"`
+	Currency       string `json:"currency"`
+	PaymentMethods string `json:"payment_methods"`
+	Refinement     int    `json:"refinement"`
+	Slots          int    `json:"slots"`
+	Card1          string `json:"card1"`
+	Card2          string `json:"card2"`
+	Card3          string `json:"card3"`
+	Card4          string `json:"card4"`
 }
 
 // GeminiTradeResult holds the complete parsed result from a trade message.
@@ -456,18 +457,19 @@ type AdminEditPostPageData struct {
 
 // MODIFIED: TradingPostItem represents one item within a larger post.
 type TradingPostItem struct {
-	ItemName   string
-	NamePT     sql.NullString
-	ItemID     sql.NullInt64 // To handle optional item ID
-	Quantity   int
-	Price      int64
-	Currency   string // "zeny" or "rmt"
-	Refinement int
-	Slots      int
-	Card1      sql.NullString
-	Card2      sql.NullString
-	Card3      sql.NullString
-	Card4      sql.NullString
+	ItemName       string
+	NamePT         sql.NullString
+	ItemID         sql.NullInt64 // To handle optional item ID
+	Quantity       int
+	Price          int64
+	Currency       string // "zeny" or "rmt"
+	PaymentMethods string // "zeny", "rmt", or "both"
+	Refinement     int
+	Slots          int
+	Card1          sql.NullString
+	Card2          sql.NullString
+	Card3          sql.NullString
+	Card4          sql.NullString
 }
 
 // MODIFIED: TradingPost now holds post-level info and a slice of items.

@@ -48,7 +48,12 @@ For each item, extract its base name, refinement level, number of slots, any att
 - If "price" is not mentioned, use 0.
 - Prices can be written with 'k' for thousands (e.g., 500k = 500000) or 'kk' for millions (e.g., 1.5kk = 1500000). Convert all prices to a raw integer.
 - "V>", "vendo", or "V>endo" means the action is "selling". "C>", "compro", or "C>ompro" means the action is "buying".
-- If the user mentions "RMT" or "$", the "currency" should be "rmt". Otherwise, it is "zeny".
+- If the user mentions "RMT" or "$", the "currency" should be "rmt". Otherwise, it is "zeny". This "currency" refers to the listed "price".
+- **NEW**: Analyze the accepted payment types. This is separate from the listed price's currency.
+- If the user *only* mentions zeny (k, kk), "payment_methods" should be "zeny".
+- If the user *only* mentions RMT ($), "payment_methods" should be "rmt".
+- If the user mentions *both* (e.g., "vendo por 2kk ou 10 reais", "aceito zeny ou rmt"), "payment_methods" should be "both".
+- If no payment type is specified, default "payment_methods" to "zeny".
 - Each item name can be in portuguese or english, and can be mixed in the same message.
 - Try to fix typos, but do consider the context of Ragnarok Online game words.
 - Keep the words "Carta" and "Card", if "Carta" exists, put on the begining of the item name; if "Card" exists, put on the end of the item name.
@@ -59,7 +64,7 @@ For each item, extract its base name, refinement level, number of slots, any att
 
 Provide the output *only* as a single, minified JSON object. Do not wrap it in markdown backticks or any other text.
 The JSON object must have two keys: "action" (string: "buying" or "selling") and "items" (an array of objects).
-Each item object in the array must have these keys: "name" (string), "quantity" (integer), "price" (integer), "currency" (string: "zeny" or "rmt"), "refinement" (integer), "slots" (integer), "card1" (string), "card2" (string), "card3" (string), "card4" (string).
+Each item object in the array must have these keys: "name" (string), "quantity" (integer), "price" (integer), "currency" (string: "zeny" or "rmt"), "payment_methods" (string: "zeny", "rmt", or "both"), "refinement" (integer), "slots" (integer), "card1" (string), "card2" (string), "card3" (string), "card4" (string).
 
 Here is the message to parse:
 ---
