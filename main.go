@@ -123,11 +123,12 @@ func main() {
 
 	// ADDED: API route for item previews on the trading post form
 	http.HandleFunc("/api/item-details", visitorTracker(apiItemDetailsHandler))
-	http.HandleFunc("/api/item-search", visitorTracker(apiItemSearchHandler)) // ADD THIS LINE
+	http.HandleFunc("/api/item-search", visitorTracker(apiItemSearchHandler))
 
 	// --- ADMIN ROUTES ---
 	// Admin routes are NOT tracked.
 	http.HandleFunc("/admin", basicAuth(adminHandler))
+	http.HandleFunc("/admin/parse-trade", basicAuth(adminParseTradeHandler))
 	http.HandleFunc("/admin/views/delete-visitor", basicAuth(adminDeleteVisitorViewsHandler))
 	http.HandleFunc("/admin/cache", basicAuth(adminCacheActionHandler))
 	http.HandleFunc("/admin/guild/update-emblem", basicAuth(adminUpdateGuildEmblemHandler))
@@ -152,4 +153,3 @@ func main() {
 		log.Fatalf("❌ Failed to start web server: %v", err)
 	}
 }
-

@@ -11,7 +11,7 @@ import (
 type Item struct {
 	ID             int
 	Name           string
-	NamePT         sql.NullString // ADDED
+	NamePT         sql.NullString
 	ItemID         int
 	Quantity       int
 	Price          string
@@ -54,9 +54,9 @@ type MarketEvent struct {
 // ItemSummary aggregates data for an item for the main page view.
 type ItemSummary struct {
 	Name         string
-	NamePT       sql.NullString // ADDED
+	NamePT       sql.NullString
 	ItemID       int
-	LowestPrice  sql.NullInt64 // Handles cases with no available listings.
+	LowestPrice  sql.NullInt64
 	HighestPrice sql.NullInt64
 	ListingCount int
 }
@@ -162,7 +162,7 @@ type Guild struct {
 type MvpKillEntry struct {
 	CharacterName string
 	TotalKills    int
-	Kills         map[string]int // Map of MobID to Kill Count
+	Kills         map[string]int
 }
 
 // MvpHeader defines a column header for the MVP kills table.
@@ -236,7 +236,7 @@ type PlayerCountPoint struct {
 	Timestamp   string `json:"Timestamp"`
 	Count       int    `json:"Count"`
 	SellerCount int    `json:"SellerCount"`
-	Delta       int    `json:"Delta"` // Added this field
+	Delta       int    `json:"Delta"`
 }
 
 // PlayerCountPageData holds data for the player count history page template.
@@ -380,7 +380,20 @@ func (p PageViewEntry) ShortHash() string {
 	return p.VisitorHash
 }
 
-// AdminDashboardData holds statistics for the admin dashboard.
+// GeminiTradeItem holds the parsed data for a single item from a trade message.
+type GeminiTradeItem struct {
+	Name     string `json:"name"`
+	Quantity int    `json:"quantity"`
+	Price    int64  `json:"price"`
+}
+
+// GeminiTradeResult holds the complete parsed result from a trade message.
+type GeminiTradeResult struct {
+	Action string            `json:"action"`
+	Items  []GeminiTradeItem `json:"items"`
+}
+
+// Modify the AdminDashboardData struct to include the new fields.
 type AdminDashboardData struct {
 	Message               string
 	AllGuilds             []GuildInfo
@@ -410,7 +423,7 @@ type AdminDashboardData struct {
 	PageViewsPrevPage    int
 	PageViewsNextPage    int
 	PageViewsTotal       int
-	// ADDED: Trading Posts
+	// Trading Posts
 	RecentTradingPosts     []TradingPost
 	TradingPostCurrentPage int
 	TradingPostTotalPages  int
@@ -419,6 +432,10 @@ type AdminDashboardData struct {
 	TradingPostPrevPage    int
 	TradingPostNextPage    int
 	TradingPostTotal       int
+	// ADDED: Fields for Gemini Trade Parser results
+	TradeParseResult     *GeminiTradeResult
+	OriginalTradeMessage string
+	TradeParseError      string
 }
 
 // ADDED: AdminEditPostPageData holds data for the admin post edit page.
@@ -437,12 +454,12 @@ type TradingPostItem struct {
 	ItemID     sql.NullInt64 // To handle optional item ID
 	Quantity   int
 	Price      int64
-	Currency   string         // "zeny" or "rmt"
-	Refinement int            // ADDED
-	Card1      sql.NullString // ADDED
-	Card2      sql.NullString // ADDED
-	Card3      sql.NullString // ADDED
-	Card4      sql.NullString // ADDED
+	Currency   string // "zeny" or "rmt"
+	Refinement int
+	Card1      sql.NullString
+	Card2      sql.NullString
+	Card3      sql.NullString
+	Card4      sql.NullString
 }
 
 // MODIFIED: TradingPost now holds post-level info and a slice of items.

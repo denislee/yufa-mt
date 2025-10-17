@@ -37,7 +37,8 @@ func basicAuth(handler http.HandlerFunc) http.HandlerFunc {
 	}
 }
 
-func adminHandler(w http.ResponseWriter, r *http.Request) {
+// getAdminDashboardData centralizes the logic for fetching all dashboard stats.
+func getAdminDashboardData(r *http.Request) (AdminDashboardData, error) {
 	stats := AdminDashboardData{
 		Message: r.URL.Query().Get("msg"),
 	}
@@ -45,17 +46,16 @@ func adminHandler(w http.ResponseWriter, r *http.Request) {
 	// Fetch all guilds for the emblem update dropdown
 	guildRows, err := db.Query("SELECT name, COALESCE(emblem_url, '') FROM guilds ORDER BY name ASC")
 	if err != nil {
-		log.Printf("⚠️ Could not query for guild list for admin page: %v", err)
-	} else {
-		defer guildRows.Close()
-		for guildRows.Next() {
-			var info GuildInfo
-			if err := guildRows.Scan(&info.Name, &info.EmblemURL); err != nil {
-				log.Printf("⚠️ Failed to scan guild info for admin page: %v", err)
-				continue
-			}
-			stats.AllGuilds = append(stats.AllGuilds, info)
+		return stats, fmt.Errorf("could not query for guild list for admin page: %w", err)
+	}
+	defer guildRows.Close()
+	for guildRows.Next() {
+		var info GuildInfo
+		if err := guildRows.Scan(&info.Name, &info.EmblemURL); err != nil {
+			log.Printf("⚠️ Failed to scan guild info for admin page: %v", err)
+			continue
 		}
+		stats.AllGuilds = append(stats.AllGuilds, info)
 	}
 
 	// Gather statistics from the database
@@ -79,35 +79,23 @@ func adminHandler(w http.ResponseWriter, r *http.Request) {
 		ORDER BY Cnt DESC
 		LIMIT 1
 	`).Scan(&stats.MostVisitedPage, &stats.MostVisitedPageCount)
-	if err != nil {
-		if err == sql.ErrNoRows {
-			stats.MostVisitedPage = "N/A"
-			stats.MostVisitedPageCount = 0
-		} else {
-			log.Printf("⚠️ Could not query for most visited page: %v", err)
-			stats.MostVisitedPage = "Error"
-			stats.MostVisitedPageCount = 0
-		}
+	if err != nil && err != sql.ErrNoRows {
+		log.Printf("⚠️ Could not query for most visited page: %v", err)
+		stats.MostVisitedPage = "Error"
 	}
 
-	// --- Pagination for Recent Page Views ---
+	// Pagination for Recent Page Views
 	const viewsPerPage = 20
 	pageStr := r.URL.Query().Get("page")
-	page, err := strconv.Atoi(pageStr)
-	if err != nil || page < 1 {
+	page, _ := strconv.Atoi(pageStr)
+	if page < 1 {
 		page = 1
 	}
-
 	var totalViews int
-	err = db.QueryRow("SELECT COUNT(*) FROM page_views").Scan(&totalViews)
-	if err != nil {
-		log.Printf("⚠️ Could not query for total page views count: %v", err)
-	}
-
+	db.QueryRow("SELECT COUNT(*) FROM page_views").Scan(&totalViews)
 	stats.PageViewsTotal = totalViews
 	stats.PageViewsTotalPages = (totalViews + viewsPerPage - 1) / viewsPerPage
 	stats.PageViewsCurrentPage = page
-
 	if page > 1 {
 		stats.PageViewsHasPrevPage = true
 		stats.PageViewsPrevPage = page - 1
@@ -116,17 +104,8 @@ func adminHandler(w http.ResponseWriter, r *http.Request) {
 		stats.PageViewsHasNextPage = true
 		stats.PageViewsNextPage = page + 1
 	}
-
 	offset := (page - 1) * viewsPerPage
-
-	// Get recent page views (now with pagination)
-	var recentViews []PageViewEntry
-	viewRows, err := db.Query(`
-		SELECT page_path, view_timestamp, visitor_hash
-		FROM page_views
-		ORDER BY view_timestamp DESC
-		LIMIT ? OFFSET ?
-	`, viewsPerPage, offset)
+	viewRows, err := db.Query(`SELECT page_path, view_timestamp, visitor_hash FROM page_views ORDER BY view_timestamp DESC LIMIT ? OFFSET ?`, viewsPerPage, offset)
 	if err != nil {
 		log.Printf("⚠️ Could not query for recent page views: %v", err)
 	} else {
@@ -134,40 +113,26 @@ func adminHandler(w http.ResponseWriter, r *http.Request) {
 		for viewRows.Next() {
 			var entry PageViewEntry
 			var timestampStr string
-			if err := viewRows.Scan(&entry.Path, &timestampStr, &entry.VisitorHash); err != nil {
-				log.Printf("⚠️ Failed to scan page view row: %v", err)
-				continue
+			if err := viewRows.Scan(&entry.Path, &timestampStr, &entry.VisitorHash); err == nil {
+				parsedTime, _ := time.Parse(time.RFC3339, timestampStr)
+				entry.Timestamp = parsedTime.Format("15:04:05")
+				stats.RecentPageViews = append(stats.RecentPageViews, entry)
 			}
-			// Format the timestamp
-			parsedTime, parseErr := time.Parse(time.RFC3339, timestampStr)
-			if parseErr == nil {
-				entry.Timestamp = parsedTime.Format("15:04:05") // Just show HH:MM:SS
-			} else {
-				entry.Timestamp = "Invalid Time"
-			}
-			recentViews = append(recentViews, entry)
 		}
 	}
-	stats.RecentPageViews = recentViews
 
-	// --- Pagination for Trading Posts ---
+	// Pagination for Trading Posts
 	const postsPerPage = 10
 	tpPageStr := r.URL.Query().Get("tp_page")
-	tpPage, err := strconv.Atoi(tpPageStr)
-	if err != nil || tpPage < 1 {
+	tpPage, _ := strconv.Atoi(tpPageStr)
+	if tpPage < 1 {
 		tpPage = 1
 	}
-
 	var totalPosts int
-	err = db.QueryRow("SELECT COUNT(*) FROM trading_posts").Scan(&totalPosts)
-	if err != nil {
-		log.Printf("⚠️ Could not query for total trading posts count: %v", err)
-	}
-
+	db.QueryRow("SELECT COUNT(*) FROM trading_posts").Scan(&totalPosts)
 	stats.TradingPostTotal = totalPosts
 	stats.TradingPostTotalPages = (totalPosts + postsPerPage - 1) / postsPerPage
 	stats.TradingPostCurrentPage = tpPage
-
 	if tpPage > 1 {
 		stats.TradingPostHasPrevPage = true
 		stats.TradingPostPrevPage = tpPage - 1
@@ -176,61 +141,37 @@ func adminHandler(w http.ResponseWriter, r *http.Request) {
 		stats.TradingPostHasNextPage = true
 		stats.TradingPostNextPage = tpPage + 1
 	}
-
 	tpOffset := (tpPage - 1) * postsPerPage
-
-	// Fetch paginated posts
-	postQuery := `
-        SELECT id, post_type, character_name, contact_info, created_at, notes 
-        FROM trading_posts
-        ORDER BY created_at DESC
-        LIMIT ? OFFSET ?`
-
-	postRows, err := db.Query(postQuery, postsPerPage, tpOffset)
+	postRows, err := db.Query(`SELECT id, post_type, character_name, contact_info, created_at, notes FROM trading_posts ORDER BY created_at DESC LIMIT ? OFFSET ?`, postsPerPage, tpOffset)
 	if err != nil {
 		log.Printf("⚠️ Admin Trading Post query error: %v", err)
 	} else {
 		defer postRows.Close()
-
 		var posts []TradingPost
 		postMap := make(map[int]int)
 		var postIDs []interface{}
-
 		for postRows.Next() {
 			var post TradingPost
-			var createdAtStr string
-			if err := postRows.Scan(&post.ID, &post.PostType, &post.CharacterName, &post.ContactInfo, &createdAtStr, &post.Notes); err != nil {
-				log.Printf("⚠️ Failed to scan admin trading post row: %v", err)
-				continue
+			if err := postRows.Scan(&post.ID, &post.PostType, &post.CharacterName, &post.ContactInfo, &post.CreatedAt, &post.Notes); err == nil {
+				post.Items = []TradingPostItem{}
+				posts = append(posts, post)
+				postMap[post.ID] = len(posts) - 1
+				postIDs = append(postIDs, post.ID)
 			}
-			post.CreatedAt = createdAtStr
-			post.Items = []TradingPostItem{}
-
-			posts = append(posts, post)
-			postMap[post.ID] = len(posts) - 1
-			postIDs = append(postIDs, post.ID)
 		}
-
-		// Fetch items for the retrieved posts
 		if len(postIDs) > 0 {
 			placeholders := strings.Repeat("?,", len(postIDs)-1) + "?"
 			itemQuery := fmt.Sprintf("SELECT post_id, item_name, quantity, price FROM trading_post_items WHERE post_id IN (%s)", placeholders)
-
-			itemRows, err := db.Query(itemQuery, postIDs...)
-			if err != nil {
-				log.Printf("⚠️ Admin Trading Post item query error: %v", err)
-			} else {
+			itemRows, _ := db.Query(itemQuery, postIDs...)
+			if itemRows != nil {
 				defer itemRows.Close()
 				for itemRows.Next() {
 					var item TradingPostItem
 					var postID int
-					if err := itemRows.Scan(&postID, &item.ItemName, &item.Quantity, &item.Price); err != nil {
-						log.Printf("⚠️ Failed to scan admin trading post item row: %v", err)
-						continue
-					}
-
-					if index, ok := postMap[postID]; ok {
-						posts[index].Items = append(posts[index].Items, item)
+					if err := itemRows.Scan(&postID, &item.ItemName, &item.Quantity, &item.Price); err == nil {
+						if index, ok := postMap[postID]; ok {
+							posts[index].Items = append(posts[index].Items, item)
+						}
 					}
 				}
 			}
@@ -238,19 +179,77 @@ func adminHandler(w http.ResponseWriter, r *http.Request) {
 		stats.RecentTradingPosts = posts
 	}
 
-	// Get last scrape times
 	stats.LastMarketScrape = GetLastScrapeTime()
 	stats.LastPlayerCountScrape = GetLastPlayerCountTime()
 	stats.LastCharacterScrape = GetLastCharacterScrapeTime()
 	stats.LastGuildScrape = GetLastGuildScrapeTime()
 
-	tmpl, err := template.ParseFiles("admin.html")
+	return stats, nil
+}
+
+func adminHandler(w http.ResponseWriter, r *http.Request) {
+	stats, err := getAdminDashboardData(r)
+	if err != nil {
+		http.Error(w, "Could not load dashboard data", http.StatusInternalServerError)
+		log.Printf("❌ Failed to get admin dashboard data: %v", err)
+		return
+	}
+
+	// Use template.New().Funcs() to make formatZeny available
+	tmpl, err := template.New("admin.html").Funcs(templateFuncs).ParseFiles("admin.html")
 	if err != nil {
 		http.Error(w, "Could not load admin template", http.StatusInternalServerError)
 		log.Printf("❌ Could not load admin.html template: %v", err)
 		return
 	}
 
+	tmpl.Execute(w, stats)
+}
+
+// adminParseTradeHandler processes the trade message from the admin form.
+func adminParseTradeHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Redirect(w, r, "/admin", http.StatusSeeOther)
+		return
+	}
+
+	// Get base dashboard data to render the full page
+	stats, err := getAdminDashboardData(r)
+	if err != nil {
+		http.Error(w, "Could not load dashboard data", http.StatusInternalServerError)
+		log.Printf("❌ Failed to get admin dashboard data for trade parse: %v", err)
+		return
+	}
+
+	// Parse the form to get the message
+	if err := r.ParseForm(); err != nil {
+		stats.TradeParseError = "Could not parse form input."
+	} else {
+		message := r.FormValue("message")
+		stats.OriginalTradeMessage = message
+
+		if strings.TrimSpace(message) != "" {
+			// Call Gemini to process the message
+			geminiResult, geminiErr := parseTradeMessageWithGemini(message)
+			if geminiErr != nil {
+				stats.TradeParseError = geminiErr.Error()
+			} else {
+				stats.TradeParseResult = geminiResult
+			}
+		} else {
+			stats.TradeParseError = "Message cannot be empty."
+		}
+	}
+
+	// Render the admin page again, now with the parsing results
+	tmpl, err := template.New("admin.html").Funcs(templateFuncs).ParseFiles("admin.html")
+	if err != nil {
+		http.Error(w, "Could not load admin template", http.StatusInternalServerError)
+		log.Printf("❌ Could not load admin.html template: %v", err)
+		return
+	}
+
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	tmpl.Execute(w, stats)
 }
 
@@ -684,4 +683,3 @@ func adminClearTradingPostsHandler(w http.ResponseWriter, r *http.Request) {
 
 	http.Redirect(w, r, "/admin?msg="+msg, http.StatusSeeOther)
 }
-
