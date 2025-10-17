@@ -382,9 +382,15 @@ func (p PageViewEntry) ShortHash() string {
 
 // GeminiTradeItem holds the parsed data for a single item from a trade message.
 type GeminiTradeItem struct {
-	Name     string `json:"name"`
-	Quantity int    `json:"quantity"`
-	Price    int64  `json:"price"`
+	Name       string `json:"name"`
+	Quantity   int    `json:"quantity"`
+	Price      int64  `json:"price"`
+	Currency   string `json:"currency"`
+	Refinement int    `json:"refinement"`
+	Card1      string `json:"card1"`
+	Card2      string `json:"card2"`
+	Card3      string `json:"card3"`
+	Card4      string `json:"card4"`
 }
 
 // GeminiTradeResult holds the complete parsed result from a trade message.

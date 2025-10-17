@@ -2138,3 +2138,207 @@ func apiItemSearchHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(results)
 }
+
+// MODIFIED: in handlers.go
+
+// findItemIDByName searches for a unique item ID. It first checks the local cache.
+// If no unique match is found, it performs a concurrent search on external
+// databases (ratemyserver.net and ragnarokdatabase.com) as a fallback.
+func findItemIDByName(itemName string) (sql.NullInt64, error) {
+	var itemID int64
+
+	reRefine := regexp.MustCompile(`\s*\+\d+\s*`)
+	itemNameWithoutRefine := reRefine.ReplaceAllString(itemName, "")
+	itemNameWithoutRefine = strings.TrimSpace(itemNameWithoutRefine)
+
+	cleanItemName := sanitizeString(itemNameWithoutRefine, itemSanitizer)
+	if strings.TrimSpace(cleanItemName) == "" {
+		return sql.NullInt64{Valid: false}, nil
+	}
+
+	// --- Step 1 & 2: Search local cache (exact and unique LIKE match) ---
+	queryExact := `SELECT item_id FROM rms_item_cache WHERE name_pt = ? OR name = ?`
+	err := db.QueryRow(queryExact, cleanItemName, cleanItemName).Scan(&itemID)
+	if err == nil {
+		log.Printf("   [Item ID Search] Found exact local match for '%s': ID %d", cleanItemName, itemID)
+		return sql.NullInt64{Int64: itemID, Valid: true}, nil
+	}
+	if err != sql.ErrNoRows {
+		return sql.NullInt64{}, fmt.Errorf("error during exact match query for '%s': %w", cleanItemName, err)
+	}
+
+	queryLike := `SELECT item_id FROM rms_item_cache WHERE name_pt LIKE ? OR name LIKE ?`
+	rows, err := db.Query(queryLike, "%"+cleanItemName+"%", "%"+cleanItemName+"%")
+	if err != nil {
+		return sql.NullInt64{}, fmt.Errorf("error during LIKE query for '%s': %w", cleanItemName, err)
+	}
+	defer rows.Close()
+
+	var potentialIDs []int64
+	for rows.Next() {
+		var id int64
+		if err := rows.Scan(&id); err == nil {
+			potentialIDs = append(potentialIDs, id)
+		}
+	}
+
+	if len(potentialIDs) == 1 {
+		itemID = potentialIDs[0]
+		log.Printf("   [Item ID Search] Found unique local LIKE match for '%s': ID %d", cleanItemName, itemID)
+		return sql.NullInt64{Int64: itemID, Valid: true}, nil
+	}
+
+	// --- Step 3: Fallback to concurrent online search if local search fails ---
+	log.Printf("   [Item ID Search] No unique local match for '%s'. Initiating online search...", cleanItemName)
+
+	var wg sync.WaitGroup
+	rmsChan := make(chan []ItemSearchResult, 1)
+	rdbChan := make(chan []int, 1)
+
+	wg.Add(2)
+	go func() {
+		defer wg.Done()
+		results, err := scrapeRMSItemSearch(cleanItemName)
+		if err != nil {
+			log.Printf("   -> [RMS Search] Failed for '%s': %v", cleanItemName, err)
+			rmsChan <- nil
+			return
+		}
+		rmsChan <- results
+	}()
+	go func() {
+		defer wg.Done()
+		ids, err := scrapeRagnarokDatabaseSearch(cleanItemName)
+		if err != nil {
+			log.Printf("   -> [RDB Search] Failed for '%s': %v", cleanItemName, err)
+			rdbChan <- nil
+			return
+		}
+		rdbChan <- ids
+	}()
+	wg.Wait()
+
+	rmsResults := <-rmsChan
+	rdbResults := <-rdbChan
+
+	combinedIDs := make(map[int]string) // map[ID]Name to help with caching later
+	if rmsResults != nil {
+		for _, res := range rmsResults {
+			combinedIDs[res.ID] = res.Name
+		}
+	}
+	if rdbResults != nil {
+		for _, id := range rdbResults {
+			// If the name is not already known from RMS, we can't easily get it here, so just mark it.
+			if _, ok := combinedIDs[id]; !ok {
+				combinedIDs[id] = "" // Mark as found
+			}
+		}
+	}
+
+	if len(combinedIDs) == 1 {
+		// Success! Found a single, unique ID online.
+		var foundID int
+		var foundName string
+		for id, name := range combinedIDs {
+			foundID = id
+			foundName = name
+		}
+		log.Printf("   [Item ID Search] Found unique ONLINE match for '%s': ID %d", cleanItemName, foundID)
+
+		// Trigger background caching for this newly found item.
+		go scrapeAndCacheItemIfNotExists(foundID, foundName)
+
+		return sql.NullInt64{Int64: int64(foundID), Valid: true}, nil
+	}
+
+	// If we're here, the online search was also ambiguous or returned no results.
+	log.Printf("   [Item ID Search] Online search for '%s' was inconclusive (%d results found). Storing name only.", cleanItemName, len(combinedIDs))
+	return sql.NullInt64{Valid: false}, nil
+}
+
+// CreateTradingPostFromDiscord creates a new trading post entry from a Gemini-parsed Discord message.
+func CreateTradingPostFromDiscord(authorName string, tradeData *GeminiTradeResult) (int64, error) {
+	// Sanitize the author's name
+	characterName := sanitizeString(authorName, nameSanitizer)
+	if strings.TrimSpace(characterName) == "" {
+		return 0, fmt.Errorf("author name is empty after sanitization")
+	}
+
+	// Generate a title based on the action
+	title := fmt.Sprintf("%s items via Discord", strings.Title(tradeData.Action))
+
+	// No user interaction, so we generate a token but don't display it.
+	// It's hashed for consistency with the schema, but is effectively a "dead" token.
+	token, err := generateSecretToken(16)
+	if err != nil {
+		return 0, fmt.Errorf("could not generate security token for discord post: %w", err)
+	}
+	tokenHash, err := bcrypt.GenerateFromPassword([]byte(token), bcrypt.DefaultCost)
+	if err != nil {
+		return 0, fmt.Errorf("could not hash token for discord post: %w", err)
+	}
+
+	// Use a transaction to ensure all-or-nothing insertion.
+	tx, err := db.Begin()
+	if err != nil {
+		return 0, fmt.Errorf("failed to start database transaction: %w", err)
+	}
+	defer tx.Rollback() // Rollback on any error
+
+	// Insert the main post record
+	res, err := tx.Exec(`INSERT INTO trading_posts (title, post_type, character_name, contact_info, notes, created_at, edit_token_hash)
+            VALUES (?, ?, ?, ?, ?, ?, ?)`,
+		title,
+		tradeData.Action,
+		characterName,
+		fmt.Sprintf("Discord: %s", authorName), // Use original author name for contact
+		"Posted automatically from Discord.",
+		time.Now().Format(time.RFC3339),
+		string(tokenHash),
+	)
+	if err != nil {
+		return 0, fmt.Errorf("failed to save post from discord: %w", err)
+	}
+	postID, _ := res.LastInsertId()
+
+	// Prepare to insert the items, now including item_id
+	stmt, err := tx.Prepare("INSERT INTO trading_post_items (post_id, item_name, item_id, quantity, price, currency) VALUES (?, ?, ?, ?, ?, ?)")
+	if err != nil {
+		return 0, fmt.Errorf("database preparation failed for discord post items: %w", err)
+	}
+	defer stmt.Close()
+
+	for _, item := range tradeData.Items {
+		// Sanitize item name just in case
+		itemName := sanitizeString(item.Name, itemSanitizer)
+		if strings.TrimSpace(itemName) == "" {
+			continue // Skip empty items
+		}
+
+		// --- NEW LOGIC: Identify the item ID ---
+		itemID, findErr := findItemIDByName(itemName)
+		if findErr != nil {
+			// Log the error but continue, as we can still insert the item by name.
+			log.Printf("⚠️ Error finding item ID for '%s': %v. Proceeding without ID.", itemName, findErr)
+		}
+
+		// Ensure currency is valid, default to zeny
+		currency := "zeny"
+		if item.Currency == "rmt" {
+			currency = "rmt"
+		}
+
+		if _, err := stmt.Exec(postID, itemName, itemID, item.Quantity, item.Price, currency); err != nil {
+			// Don't just return, log which item failed
+			return 0, fmt.Errorf("failed to save item '%s' for discord post: %w", itemName, err)
+		}
+	}
+
+	// If all went well, commit the transaction
+	if err := tx.Commit(); err != nil {
+		return 0, fmt.Errorf("failed to finalize discord post transaction: %w", err)
+	}
+
+	return postID, nil
+}

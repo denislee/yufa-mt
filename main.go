@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
@@ -8,7 +9,10 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"os/signal"
 	"strings"
+	"sync"
+	"syscall"
 	"time"
 )
 
@@ -76,6 +80,23 @@ func main() {
 	}
 	defer db.Close()
 
+	// --- Graceful Shutdown Setup ---
+	// Create a context that can be canceled.
+	ctx, cancel := context.WithCancel(context.Background())
+	// Create a WaitGroup to wait for all goroutines to finish.
+	var wg sync.WaitGroup
+
+	// Set up a channel to listen for OS signals (like CTRL-C).
+	sigChan := make(chan os.Signal, 1)
+	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
+
+	// Start a goroutine that will wait for a signal and then cancel the context.
+	go func() {
+		<-sigChan // Block until a signal is received.
+		log.Println("🚨 Shutdown signal received, initiating graceful shutdown...")
+		cancel() // Cancel the context to signal all dependent goroutines.
+	}()
+
 	// --- DYNAMIC PASSWORD GENERATION ---
 	// Generate and set the dynamic admin password for this session.
 	adminPass = generateRandomPassword(16) // Sets the package-level variable in admin_handlers.go
@@ -100,6 +121,8 @@ func main() {
 	// Start background tasks.
 	go populateMissingCachesOnStartup() // Verifies and populates the item details cache on startup.
 	go startBackgroundJobs()            // Starts all recurring scrapers.
+	wg.Add(1)
+	go startDiscordBot(ctx, &wg) // Starts the Discord bot listener.
 
 	// Register all HTTP routes to their handler functions.
 	// Public routes are wrapped with the visitorTracker middleware.
@@ -146,10 +169,38 @@ func main() {
 	http.HandleFunc("/admin/scrape/zeny", basicAuth(adminTriggerScrapeHandler(scrapeZeny, "Zeny")))
 	http.HandleFunc("/admin/scrape/mvp", basicAuth(adminTriggerScrapeHandler(scrapeMvpKills, "MVP")))
 
-	// Start the web server.
+	// --- HTTP Server Setup and Shutdown ---
 	port := "8080"
-	log.Printf("🚀 Web server started. Open http://localhost:%s in your browser.", port)
-	if err := http.ListenAndServe(":"+port, nil); err != nil {
-		log.Fatalf("❌ Failed to start web server: %v", err)
+	server := &http.Server{Addr: ":" + port}
+
+	// Start the server in a new goroutine.
+	go func() {
+		log.Printf("🚀 Web server started. Open http://localhost:%s in your browser.", port)
+		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			log.Fatalf("❌ Failed to start web server: %v", err)
+		}
+	}()
+
+	// Block here until the context is canceled (which happens when a signal is received).
+	<-ctx.Done()
+
+	// Context is canceled, so we begin the shutdown process.
+	log.Println("🔌 Shutting down HTTP server...")
+
+	// Create a new context for the server shutdown with a timeout.
+	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer shutdownCancel()
+
+	// Attempt to gracefully shut down the server.
+	if err := server.Shutdown(shutdownCtx); err != nil {
+		log.Printf("⚠️ HTTP server shutdown error: %v", err)
+	} else {
+		log.Println("✅ HTTP server shut down gracefully.")
 	}
+
+	// Wait for all other background goroutines (the bot) to finish.
+	log.Println("⏳ Waiting for background processes to shut down...")
+	wg.Wait()
+	log.Println("✅ All processes shut down cleanly. Exiting.")
 }
+
