@@ -78,8 +78,15 @@ For each item, extract its base name, refinement level, number of slots, any att
     - "currency": "rmt"
     - "payment_methods": "rmt"
     - refinement, slots, cards must be 0 or "".
+- **General Sale (e.g., "V> KK", "V> Zeny")**: If the user lists "Zeny" or "KK" as an item they are *selling* ("V>"), but does not specify a price or amount (unlike the Unit/Bulk sale cases). This is still treated as a Zeny-for-RMT sale.
+    - "name": "Zeny"
+    - "quantity": 1 (default)
+    - "price": 0 (default)
+    - "currency": "rmt"
+    - "payment_methods": "rmt"
+    - refinement, slots, cards must be 0 or "".
 - If the message is only about selling Zeny, the "action" is "selling".
-- Do not parse regular items if the message is clearly just a Zeny for RMT sale.
+- Do not parse regular items if the message is clearly just a Zeny for RMT sale (like the Unit or Bulk sale examples). If it's a mix (like "V> KK" and "V> Carta Hydra (RMT)"), parse all items.
 
 Provide the output *only* as a single, minified JSON object. Do not wrap it in markdown backticks or any other text.
 The JSON object must have two keys: "action" (string: "buying" or "selling") and "items" (an array of objects).
