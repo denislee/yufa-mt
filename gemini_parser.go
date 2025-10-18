@@ -62,6 +62,25 @@ For each item, extract its base name, refinement level, number of slots, any att
 - if the item is "louva-a-deus", it is "Carta Louva-a-Deus"
 - if the item has slots, keep the slots on the name of the item, but always a space between the item name and the slots
 
+- **SPECIAL CASE: Zeny for RMT Sales**:
+- If the user is selling Zeny (kk) for RMT ($, reais), this is a special item.
+- **Unit Sale (e.g., "V>10kk 25 reais cada")**: "cada" implies "per 1kk".
+    - "name": "Zeny (1kk pack)"
+    - "quantity": 10 (the total number of kk's being sold)
+    - "price": 25 (the RMT price per kk)
+    - "currency": "rmt"
+    - "payment_methods": "rmt"
+    - refinement, slots, cards must be 0 or "".
+- **Bulk Sale (e.g., "VENDO 13KK a 300$ no Pix")**: This is a single package.
+    - "name": "Zeny (13kk pack)" (Note: the quantity is in the name)
+    - "quantity": 1 (it's one pack)
+    - "price": 300 (the total RMT price for the pack)
+    - "currency": "rmt"
+    - "payment_methods": "rmt"
+    - refinement, slots, cards must be 0 or "".
+- If the message is only about selling Zeny, the "action" is "selling".
+- Do not parse regular items if the message is clearly just a Zeny for RMT sale.
+
 Provide the output *only* as a single, minified JSON object. Do not wrap it in markdown backticks or any other text.
 The JSON object must have two keys: "action" (string: "buying" or "selling") and "items" (an array of objects).
 Each item object in the array must have these keys: "name" (string), "quantity" (integer), "price" (integer), "currency" (string: "zeny" or "rmt"), "payment_methods" (string: "zeny", "rmt", or "both"), "refinement" (integer), "slots" (integer), "card1" (string), "card2" (string), "card3" (string), "card4" (string).
@@ -100,3 +119,4 @@ Here is the message to parse:
 
 	return &result, nil
 }
+
