@@ -17,10 +17,9 @@
     {{template "navbar.html" .}}
 
     <div class="container mx-auto px-4 py-6">
-        <div class="flex flex-col sm:flex-row justify-between sm:items-center gap-4 mb-4">
+        <div class="flex flex-col sm:flex-row justify-between sm:items-center gap-2 mb-4 border-b border-gray-200 pb-3">
             <div>
-                <h1 class="text-2xl font-bold text-gray-800">Trading Post</h1>
-                <p class="text-gray-600">Player-submitted buy and sell orders.</p>
+                <h1 class="text-2xl font-bold text-gray-800">Discord</h1>
             </div>
         </div>
 
@@ -72,7 +71,7 @@
                       {{else}}
                         bg-gray-200 text-gray-600 hover:bg-gray-300
                       {{end}}">
-                All Currencies
+                Both
             </a>
             <a href="/trading-post?filter_type={{.FilterType}}&query={{.SearchQuery}}&filter_currency=zeny&sort_by={{.SortBy}}&order={{.Order}}"
                class="px-3 py-1 text-xs font-medium rounded-full
@@ -137,7 +136,7 @@
                                 {{if eq $currentSort "posted"}}{{if eq $currentOrder "ASC"}}<span class="text-gray-400">▲</span>{{else}}<span class="text-gray-400">▼</span>{{end}}{{end}}
                             </a>
                         </th>
-                        <th class="px-2 sm:px-3 py-2">Notes</th>
+                        <th class="px-2 sm:px-3 py-2">Source</th>
                     </tr>
                 </thead>
                 <tbody class="divide-y divide-gray-100 text-xs">
@@ -178,7 +177,7 @@
                         <td class="px-2 sm:px-3 py-2 font-mono text-right" data-price="{{.Price}}" data-currency="{{.Currency}}"></td>
                         <td class="px-2 sm:px-3 py-2 text-center">
                             {{if eq .PaymentMethods "both"}}
-                                <span class="font-medium text-purple-600">Both</span>
+                                <span class="font-medium text-gray-700">Both</span>
                             {{else if eq .PaymentMethods "rmt"}}
                                 <span class="font-medium text-blue-600">RMT</span>
                             {{else}}
@@ -194,7 +193,7 @@
                         </td>
                         <td class="px-2 sm:px-3 py-2 text-center">
                             {{if .Notes.Valid}}
-                            <span class="inline-block align-middle px-1.5 py-0.5 bg-gray-200 text-gray-700 text-xs font-medium rounded-full cursor-help" title="{{.Notes.String}}">
+                            <span class="inline-block align-middle px-1.5 py-0.5 bg-gray-200 text-gray-700 text-xs font-medium rounded-full cursor-pointer hover:bg-gray-300 open-notes-lightbox" data-note="{{.Notes.String}}">
                                ... 
                             </span>
                             {{end}}
@@ -208,6 +207,16 @@
                 <p class="text-gray-500">No trading posts found{{if .SearchQuery}} matching your search{{end}}.</p>
             </div>
             {{end}}
+        </div>
+    </div>
+
+    <div id="notes-lightbox" class="fixed inset-0 bg-gray-600 bg-opacity-75 flex items-center justify-center p-4 z-50 hidden">
+        <div class="bg-white rounded-lg shadow-xl max-w-lg w-full p-6 relative">
+            <button id="lightbox-close" class="absolute top-3 right-3 text-gray-400 hover:text-gray-600 text-2xl font-bold leading-none">&times;</button>
+            
+            <h3 class="text-lg font-semibold text-gray-800 mb-4">Notes</h3>
+            <div id="lightbox-content" class="text-gray-600 whitespace-pre-wrap max-h-[60vh] overflow-y-auto">
+                </div>
         </div>
     </div>
 
@@ -260,13 +269,39 @@
                     } else {
                         // Format as Zeny
                         elem.textContent = `${price.toLocaleString()}z`;
+                        elem.classList.add('text-green-600', 'font-semibold');
                     }
                 }
             });
 
-            // --- Show Original Message Button Logic ---
-            // Tooltip is now handled by the 'title' attribute on the span itself.
-            // No click event needed.
+            // --- Notes Lightbox Logic ---
+            const lightbox = document.getElementById('notes-lightbox');
+            const lightboxContent = document.getElementById('lightbox-content');
+            const lightboxClose = document.getElementById('lightbox-close');
+            const noteButtons = document.querySelectorAll('.open-notes-lightbox');
+
+            if (lightbox && lightboxContent && lightboxClose) {
+                // 1. Open the lightbox
+                noteButtons.forEach(button => {
+                    button.addEventListener('click', () => {
+                        const noteText = button.dataset.note;
+                        lightboxContent.textContent = noteText; // Use .textContent to safely insert text
+                        lightbox.classList.remove('hidden');
+                    });
+                });
+
+                // 2. Close with the 'X' button
+                lightboxClose.addEventListener('click', () => {
+                    lightbox.classList.add('hidden');
+                });
+
+                // 3. Close by clicking the overlay (outside the content box)
+                lightbox.addEventListener('click', (e) => {
+                    if (e.target === lightbox) { // Check if the click is on the overlay itself
+                        lightbox.classList.add('hidden');
+                    }
+                });
+            }
         });
     </SCript>
 </body>
