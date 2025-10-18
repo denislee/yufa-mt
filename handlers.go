@@ -230,9 +230,10 @@ func buildItemSearchClause(searchQuery, tableAlias string) (string, []interface{
 
 // renderTemplate is a helper to parse and execute templates, reducing boilerplate.
 func renderTemplate(w http.ResponseWriter, tmplFile string, data interface{}) {
-	tmpl, err := template.New(tmplFile).Funcs(templateFuncs).ParseFiles(tmplFile)
+	// MODIFIED: Parse both the target file and the navbar.html layout file.
+	tmpl, err := template.New(tmplFile).Funcs(templateFuncs).ParseFiles(tmplFile, "navbar.html")
 	if err != nil {
-		log.Printf("❌ Could not load template '%s': %v", tmplFile, err)
+		log.Printf("❌ Could not load template '%s' or 'navbar.html': %v", tmplFile, err)
 		http.Error(w, "Could not load template", http.StatusInternalServerError)
 		return
 	}
@@ -594,6 +595,7 @@ func summaryHandler(w http.ResponseWriter, r *http.Request) {
 		SelectedType:     selectedType,
 		TotalVisitors:    totalVisitors,
 		TotalUniqueItems: totalUniqueItems, // ADDED
+		PageTitle:        "Summary",        // ADDED
 	}
 	renderTemplate(w, "index.html", data)
 }
@@ -724,6 +726,7 @@ func fullListHandler(w http.ResponseWriter, r *http.Request) {
 		SortBy: sortBy, Order: order, ShowAll: showAll, LastScrapeTime: getLastUpdateTime("scrape_history", "timestamp"),
 		VisibleColumns: visibleColumns, AllColumns: allCols, ColumnParams: template.URL(columnParams.Encode()),
 		ItemTypes: getItemTypeTabs(), SelectedType: selectedType,
+		PageTitle: "Full List", // ADDED
 	}
 	renderTemplate(w, "full_list.html", data)
 }
@@ -805,6 +808,7 @@ func activityHandler(w http.ResponseWriter, r *http.Request) {
 		SearchQuery:    searchQuery,
 		SoldOnly:       soldOnly,
 		Pagination:     pagination,
+		PageTitle:      "Activity", // ADDED
 	}
 	renderTemplate(w, "activity.html", data)
 }
@@ -1013,6 +1017,7 @@ func itemHistoryHandler(w http.ResponseWriter, r *http.Request) {
 		LastScrapeTime:     getLastUpdateTime("scrape_history", "timestamp"),
 		TotalListings:      totalListings,
 		Pagination:         pagination,
+		PageTitle:          itemName, // ADDED (PageTitle is the item name)
 	}
 	renderTemplate(w, "history.html", data)
 }
@@ -1113,6 +1118,7 @@ func playerCountHandler(w http.ResponseWriter, r *http.Request) {
 		PlayerDataJSON: template.JS(playerHistoryJSON), LastScrapeTime: getLastUpdateTime("player_history", "timestamp"),
 		SelectedInterval: interval, EventDataJSON: template.JS(eventIntervalsJSON), LatestActivePlayers: latestActivePlayers,
 		HistoricalMaxActivePlayers: historicalMaxActive, HistoricalMaxActivePlayersTime: historicalMaxTime,
+		PageTitle: "Player Count", // ADDED
 	}
 	renderTemplate(w, "players.html", data)
 }
@@ -1293,6 +1299,7 @@ func characterHandler(w http.ResponseWriter, r *http.Request) {
 		Pagination: pagination, TotalPlayers: totalPlayers, TotalZeny: totalZeny.Int64,
 		ClassDistributionJSON: template.JS(classDistJSON), GraphFilter: graphFilterMap, GraphFilterParams: template.URL(graphFilterParams.Encode()),
 		HasChartData: len(chartData) > 1,
+		PageTitle:    "Characters", // ADDED
 	}
 	renderTemplate(w, "characters.html", data)
 }
@@ -1372,6 +1379,7 @@ func guildHandler(w http.ResponseWriter, r *http.Request) {
 		Order:               order,
 		Pagination:          pagination,
 		TotalGuilds:         totalGuilds,
+		PageTitle:           "Guilds", // ADDED
 	}
 	renderTemplate(w, "guilds.html", data)
 }
@@ -1439,6 +1447,7 @@ func mvpKillsHandler(w http.ResponseWriter, r *http.Request) {
 	data := MvpKillPageData{
 		Players: players, Headers: headers, SortBy: sortBy, Order: order,
 		LastScrapeTime: getLastUpdateTime("characters", "last_updated"),
+		PageTitle:      "MVP Kills", // ADDED
 	}
 	renderTemplate(w, "mvp_kills.html", data)
 }
@@ -1579,6 +1588,7 @@ func characterDetailHandler(w http.ResponseWriter, r *http.Request) {
 		ClassImageURL:       classImages[p.Class],
 		ChangelogEntries:    changelogEntries,
 		ChangelogPagination: pagination,
+		PageTitle:           p.Name, // ADDED (PageTitle is the character name)
 	}
 	renderTemplate(w, "character_detail.html", data)
 }
@@ -1621,6 +1631,7 @@ func characterChangelogHandler(w http.ResponseWriter, r *http.Request) {
 		ChangelogEntries: changelogEntries,
 		LastScrapeTime:   getLastUpdateTime("characters", "last_updated"),
 		Pagination:       pagination,
+		PageTitle:        "Character Changelog", // ADDED
 	}
 	renderTemplate(w, "character_changelog.html", data)
 }
@@ -1721,6 +1732,7 @@ func guildDetailHandler(w http.ResponseWriter, r *http.Request) {
 		HasChartData:          len(classDistribution) > 1,
 		ChangelogEntries:      changelogEntries,
 		ChangelogPagination:   pagination,
+		PageTitle:             g.Name, // ADDED (PageTitle is the guild name)
 	}
 	renderTemplate(w, "guild_detail.html", data)
 }
@@ -1788,6 +1800,7 @@ func storeDetailHandler(w http.ResponseWriter, r *http.Request) {
 	data := StoreDetailPageData{
 		StoreName: storeName, SellerName: sellerName, MapName: strings.ToLower(mapName), MapCoordinates: mapCoords,
 		Items: items, LastScrapeTime: getLastUpdateTime("scrape_history", "timestamp"), SortBy: sortBy, Order: order,
+		PageTitle: storeName, // ADDED (PageTitle is the store name)
 	}
 	renderTemplate(w, "store_detail.html", data)
 }
@@ -1925,6 +1938,7 @@ func tradingPostListHandler(w http.ResponseWriter, r *http.Request) {
 		FilterCurrency: filterCurrency, // Pass the active currency filter
 		SortBy:         sortBy,         // Pass sorting info
 		Order:          order,          // Pass sorting info
+		PageTitle:      "Trading Post", // ADDED
 	}
 	renderTemplate(w, "trading_post.html", data)
 }

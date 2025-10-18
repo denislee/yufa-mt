@@ -14,54 +14,7 @@
 </head>
 <body class="bg-gray-100 text-gray-800 text-sm sm:text-base">
 
-    <nav class="bg-white shadow-sm sticky top-0 z-10">
-        <div class="container mx-auto px-4">
-            <div class="flex justify-between items-center py-2">
-                <div class="text-xl font-semibold text-gray-700">Yufa Market Tracker</div>
-                <div class="hidden md:flex items-center space-x-1">
-                    <a href="/" class="text-sm text-gray-600 hover:bg-gray-100 px-3 py-2 rounded-md">Summary</a>
-                    <a href="/full-list" class="text-sm text-gray-600 hover:bg-gray-100 px-3 py-2 rounded-md">Full List</a>
-                    <a href="/activity" class="text-sm font-semibold text-blue-600 bg-blue-50 px-3 py-2 rounded-md">Activity</a>
-                    <a href="/trading-post" class="text-sm text-gray-600 hover:bg-gray-100 px-3 py-2 rounded-md">Trading Post</a>
-                    <a href="/players" class="text-sm text-gray-600 hover:bg-gray-100 px-3 py-2 rounded-md">Player Count</a>
-                    <div class="relative" id="ranking-dropdown-menu">
-                        <button id="ranking-dropdown-button" class="text-sm text-gray-600 hover:bg-gray-100 px-3 py-2 rounded-md flex items-center">
-                            <span>Rankings</span>
-                            <svg class="w-4 h-4 ml-1" fill="currentColor" viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg"><path fill-rule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clip-rule="evenodd"></path></svg>
-                        </button>
-                        <div id="ranking-dropdown-content" class="dropdown-content hidden absolute right-0 mt-2 w-48 bg-white rounded-md shadow-lg py-1 z-20 ring-1 ring-black ring-opacity-5">
-                            <a href="/characters" class="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">Characters</a>
-                            <a href="/guilds" class="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">Guilds</a>
-                            <a href="/mvp-kills" class="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">MVP Kills</a>
-                        </div>
-                    </div>
-                </div>
-                <div class="md:hidden flex items-center">
-                    <button id="mobile-menu-button" class="text-gray-600 hover:text-gray-800 focus:outline-none">
-                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16m-7 6h7"></path></svg>
-                    </button>
-                </div>
-            </div>
-        </div>
-        <div id="mobile-menu" class="hidden md:hidden border-t border-gray-200">
-            <a href="/" class="block py-2 px-4 text-sm text-gray-600 hover:bg-gray-50">Summary</a>
-            <a href="/full-list" class="block py-2 px-4 text-sm text-gray-600 hover:bg-gray-50">Full List</a>
-            <a href="/activity" class="block py-2 px-4 text-sm bg-blue-50 text-blue-600 font-semibold">Activity</a>
-            <a href="/trading-post" class="block py-2 px-4 text-sm text-gray-600 hover:bg-gray-50">Trading Post</a>
-            <a href="/players" class="block py-2 px-4 text-sm text-gray-600 hover:bg-gray-50">Player Count</a>
-            <details class="group">
-                <summary class="py-2 px-4 text-sm text-gray-600 hover:bg-gray-50 list-none flex justify-between cursor-pointer">
-                    <span>Rankings</span>
-                     <svg class="w-4 h-4 transition-transform duration-200 group-open:rotate-90" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path></svg>
-                </summary>
-                <div class="pl-4">
-                    <a href="/characters" class="block py-2 px-4 text-sm text-gray-600 hover:bg-gray-50">Characters</a>
-                    <a href="/guilds" class="block py-2 px-4 text-sm text-gray-600 hover:bg-gray-50">Guilds</a>
-                    <a href="/mvp-kills" class="block py-2 px-4 text-sm text-gray-600 hover:bg-gray-50">MVP Kills</a>
-                </div>
-            </details>
-        </div>
-    </nav>
+    {{template "navbar.html" .}}
 
     <div class="container mx-auto px-4 py-6">
         <div class="flex flex-col sm:flex-row justify-between sm:items-center gap-2 mb-4 border-b border-gray-200 pb-3">

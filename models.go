@@ -184,7 +184,8 @@ type SummaryPageData struct {
 	ItemTypes        []ItemTypeTab
 	SelectedType     string
 	TotalVisitors    int
-	TotalUniqueItems int // ADDED
+	TotalUniqueItems int
+	PageTitle        string
 }
 
 // PageData holds data for the detailed full list view template.
@@ -202,6 +203,7 @@ type PageData struct {
 	ColumnParams   template.URL
 	ItemTypes      []ItemTypeTab
 	SelectedType   string
+	PageTitle      string
 }
 
 // ActivityPageData holds data for the market activity page template.
@@ -213,6 +215,7 @@ type ActivityPageData struct {
 	SoldOnly    bool
 	// Pagination
 	Pagination PaginationData
+	PageTitle  string
 }
 
 // HistoryPageData holds data for the item history page template.
@@ -230,6 +233,7 @@ type HistoryPageData struct {
 	// Pagination for AllListings table
 	Pagination    PaginationData
 	TotalListings int
+	PageTitle     string
 }
 
 // PlayerCountPoint represents a single data point for the player history chart.
@@ -249,6 +253,7 @@ type PlayerCountPageData struct {
 	LatestActivePlayers            int
 	HistoricalMaxActivePlayers     int
 	HistoricalMaxActivePlayersTime string
+	PageTitle                      string
 }
 
 // models.go
@@ -277,6 +282,7 @@ type CharacterPageData struct {
 	GraphFilter           map[string]bool
 	GraphFilterParams     template.URL
 	HasChartData          bool
+	PageTitle             string
 }
 
 // GuildPageData holds data for the guild listing page template.
@@ -291,9 +297,10 @@ type GuildPageData struct {
 	// Pagination
 	Pagination  PaginationData
 	TotalGuilds int
+	PageTitle   string
 }
 
-// ADDED: GuildDetailPageData holds all data for the single guild view.
+// GuildDetailPageData holds all data for the single guild view.
 type GuildDetailPageData struct {
 	Guild                 Guild
 	Members               []PlayerCharacter
@@ -306,9 +313,10 @@ type GuildDetailPageData struct {
 	// Changelog data and pagination
 	ChangelogEntries    []CharacterChangelog
 	ChangelogPagination PaginationData
+	PageTitle           string
 }
 
-// ADDED: FlatTradingPostItem combines post and item data for the flat list view.
+// FlatTradingPostItem combines post and item data for the flat list view.
 type FlatTradingPostItem struct {
 	// Post Info
 	PostID        int
@@ -333,7 +341,7 @@ type FlatTradingPostItem struct {
 	Card4          sql.NullString
 }
 
-// ADDED: StoreDetailPageData holds all data for the single store view.
+// StoreDetailPageData holds all data for the single store view.
 type StoreDetailPageData struct {
 	StoreName      string
 	SellerName     string
@@ -342,8 +350,9 @@ type StoreDetailPageData struct {
 	Items          []Item
 	LastScrapeTime string
 	// Sorting
-	SortBy string
-	Order  string
+	SortBy    string
+	Order     string
+	PageTitle string
 }
 
 // MvpKillPageData holds all data needed for the MVP kill rankings page.
@@ -353,6 +362,7 @@ type MvpKillPageData struct {
 	SortBy         string
 	Order          string
 	LastScrapeTime string
+	PageTitle      string
 }
 
 // CharacterDetailPageData holds all data for the single character view.
@@ -367,6 +377,7 @@ type CharacterDetailPageData struct {
 	// Changelog data and pagination
 	ChangelogEntries    []CharacterChangelog
 	ChangelogPagination PaginationData
+	PageTitle           string
 }
 
 // CharacterChangelog holds a record of a change to a character.
@@ -383,6 +394,7 @@ type CharacterChangelogPageData struct {
 	LastScrapeTime   string
 	// Pagination
 	Pagination PaginationData
+	PageTitle  string
 }
 
 // GuildInfo holds basic info for the admin dropdown.
@@ -466,13 +478,13 @@ type AdminDashboardData struct {
 	TradingPostPrevPage    int
 	TradingPostNextPage    int
 	TradingPostTotal       int
-	// ADDED: Fields for Gemini Trade Parser results
+	// Fields for Gemini Trade Parser results
 	TradeParseResult     *GeminiTradeResult
 	OriginalTradeMessage string
 	TradeParseError      string
 }
 
-// ADDED: AdminEditPostPageData holds data for the admin post edit page.
+// AdminEditPostPageData holds data for the admin post edit page.
 type AdminEditPostPageData struct {
 	Post           TradingPost
 	LastScrapeTime string
@@ -518,6 +530,7 @@ type TradingPostPageData struct {
 	FilterCurrency string
 	SortBy         string
 	Order          string
+	PageTitle      string
 }
 
 func (tp TradingPost) CreatedAgo() string {
