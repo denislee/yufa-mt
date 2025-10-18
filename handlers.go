@@ -442,6 +442,10 @@ func mapItemTypeToTabData(typeName string) ItemTypeTab {
 	case "Weapon":
 		tab.ShortName = ""
 		tab.IconItemID = 1162
+	case "Cash Shop Item":
+		tab.ShortName = ""
+		tab.IconItemID = 200441
+
 	}
 	return tab
 }
@@ -466,17 +470,11 @@ func summaryHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var params []interface{}
+	// MODIFIED: This is the base query for both counting and fetching items
 	baseQuery := `
-        SELECT
-            i.name_of_the_item,
-            rms.name_pt,
-            MIN(i.item_id) as item_id,
-            MIN(CASE WHEN i.is_available = 1 THEN CAST(REPLACE(i.price, ',', '') AS INTEGER) ELSE NULL END) as lowest_price,
-            MAX(CASE WHEN i.is_available = 1 THEN CAST(REPLACE(i.price, ',', '') AS INTEGER) ELSE NULL END) as highest_price,
-            SUM(CASE WHEN i.is_available = 1 THEN 1 ELSE 0 END) as listing_count
-        FROM items i
-        LEFT JOIN rms_item_cache rms ON i.item_id = rms.item_id
-    `
+		FROM items i
+		LEFT JOIN rms_item_cache rms ON i.item_id = rms.item_id
+	`
 	var whereConditions []string
 
 	if searchClause, searchParams, err := buildItemSearchClause(searchQuery, "i"); err != nil {
@@ -497,10 +495,53 @@ func summaryHandler(w http.ResponseWriter, r *http.Request) {
 		whereClause = "WHERE " + strings.Join(whereConditions, " AND ")
 	}
 
-	groupByClause := " GROUP BY i.name_of_the_item, rms.name_pt"
+	// --- ADDED: Count the total number of unique items ---
+	// We must also apply the 'HAVING' clause logic for an accurate count.
+	countQuery := `
+		SELECT COUNT(*)
+		FROM (
+			SELECT 1
+			FROM items i
+			LEFT JOIN rms_item_cache rms ON i.item_id = rms.item_id
+			%s
+			GROUP BY i.name_of_the_item, rms.name_pt
+			%s
+		) AS UniqueItems
+	`
+
 	havingClause := ""
 	if !showAll {
+		// This condition must be applied to the outer group by,
+		// but for counting, we must apply it as a HAVING clause inside the subquery.
+		havingClause = " HAVING SUM(CASE WHEN i.is_available = 1 THEN 1 ELSE 0 END) > 0"
+	}
+
+	var totalUniqueItems int
+	err := db.QueryRow(fmt.Sprintf(countQuery, whereClause, havingClause), params...).Scan(&totalUniqueItems)
+	if err != nil {
+		log.Printf("❌ Summary count query error: %v", err)
+		// Don't fail the request, just log the error and show 0
+		totalUniqueItems = 0
+	}
+	// --- END ADDED SECTION ---
+
+	// Main query for fetching item details
+	selectClause := `
+        SELECT
+            i.name_of_the_item,
+            rms.name_pt,
+            MIN(i.item_id) as item_id,
+            MIN(CASE WHEN i.is_available = 1 THEN CAST(REPLACE(i.price, ',', '') AS INTEGER) ELSE NULL END) as lowest_price,
+            MAX(CASE WHEN i.is_available = 1 THEN CAST(REPLACE(i.price, ',', '') AS INTEGER) ELSE NULL END) as highest_price,
+            SUM(CASE WHEN i.is_available = 1 THEN 1 ELSE 0 END) as listing_count
+    `
+	groupByClause := " GROUP BY i.name_of_the_item, rms.name_pt"
+
+	// Re-apply havingClause for the main query (it was local to the count query)
+	if !showAll {
 		havingClause = " HAVING listing_count > 0"
+	} else {
+		havingClause = "" // Ensure it's reset
 	}
 
 	allowedSorts := map[string]string{
@@ -509,7 +550,9 @@ func summaryHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	orderByClause, sortBy, order := getSortClause(r, allowedSorts, "highest_price", "DESC")
 
-	query := fmt.Sprintf("%s %s %s %s %s, i.name_of_the_item ASC;", baseQuery, whereClause, groupByClause, havingClause, orderByClause)
+	// MODIFIED: Added a missing '%s' for the orderByClause.
+	// This was the source of the "near ','" syntax error.
+	query := fmt.Sprintf("%s %s %s %s %s %s, i.name_of_the_item ASC;", selectClause, baseQuery, whereClause, groupByClause, havingClause, orderByClause)
 
 	rows, err := db.Query(query, params...)
 	if err != nil {
@@ -532,16 +575,18 @@ func summaryHandler(w http.ResponseWriter, r *http.Request) {
 	var totalVisitors int
 	db.QueryRow("SELECT COUNT(*) FROM visitors").Scan(&totalVisitors)
 
+	// MODIFIED: Pass TotalUniqueItems to the data struct
 	data := SummaryPageData{
-		Items:          items,
-		SearchQuery:    searchQuery,
-		SortBy:         sortBy,
-		Order:          order,
-		ShowAll:        showAll,
-		LastScrapeTime: getLastUpdateTime("scrape_history", "timestamp"),
-		ItemTypes:      getItemTypeTabs(),
-		SelectedType:   selectedType,
-		TotalVisitors:  totalVisitors,
+		Items:            items,
+		SearchQuery:      searchQuery,
+		SortBy:           sortBy,
+		Order:            order,
+		ShowAll:          showAll,
+		LastScrapeTime:   getLastUpdateTime("scrape_history", "timestamp"),
+		ItemTypes:        getItemTypeTabs(),
+		SelectedType:     selectedType,
+		TotalVisitors:    totalVisitors,
+		TotalUniqueItems: totalUniqueItems, // ADDED
 	}
 	renderTemplate(w, "index.html", data)
 }
@@ -1750,98 +1795,130 @@ func generateSecretToken(length int) (string, error) {
 }
 
 // tradingPostListHandler displays the list of all trading posts.
+// MODIFIED: This handler was rewritten to query for a flat item list.
 func tradingPostListHandler(w http.ResponseWriter, r *http.Request) {
 	searchQuery := r.URL.Query().Get("query")
+	// ADDED: Get the filter_type from the URL query
+	filterType := r.URL.Query().Get("filter_type")
+	if filterType == "" {
+		filterType = "all" // Default to "all"
+	}
+	// ADDED: Get the filter_currency from the URL query
+	filterCurrency := r.URL.Query().Get("filter_currency")
+	if filterCurrency == "" {
+		filterCurrency = "all" // Default to "all"
+	}
 
-	var postParams []interface{}
-	postQuery := `SELECT id, title, post_type, character_name, contact_info, created_at, notes FROM trading_posts`
+	var queryParams []interface{}
+	baseQuery := `
+		SELECT
+			p.id, p.title, p.post_type, p.character_name, p.contact_info, p.created_at, p.notes,
+			i.item_name, rms.name_pt, i.item_id, i.quantity, i.price, i.currency, 
+			i.payment_methods, i.refinement, i.card1, i.card2, i.card3, i.card4
+		FROM trading_post_items i
+		JOIN trading_posts p ON i.post_id = p.id
+		LEFT JOIN rms_item_cache rms ON i.item_id = rms.item_id
+	`
+	var whereConditions []string
 
 	if searchQuery != "" {
+		// Check if it's a numeric ID
 		if _, err := strconv.Atoi(searchQuery); err == nil {
-			postQuery += ` WHERE id IN (SELECT DISTINCT post_id FROM trading_post_items WHERE item_id = ?)`
-			postParams = append(postParams, searchQuery)
+			whereConditions = append(whereConditions, "i.item_id = ?")
+			queryParams = append(queryParams, searchQuery)
 		} else {
+			// Search by combined ID list (from remote and local cache)
 			idList, _ := getCombinedItemIDs(searchQuery)
-			postIDsByName, _ := db.Query("SELECT DISTINCT post_id FROM trading_post_items WHERE item_name LIKE ?", "%"+searchQuery+"%")
-			var directMatchPostIDs []int
-			if postIDsByName != nil {
-				defer postIDsByName.Close()
-				for postIDsByName.Next() {
-					var postID int
-					if err := postIDsByName.Scan(&postID); err == nil {
-						directMatchPostIDs = append(directMatchPostIDs, postID)
-					}
-				}
-			}
 
-			if len(idList) > 0 || len(directMatchPostIDs) > 0 {
-				var whereClauses []string
-				if len(idList) > 0 {
-					placeholders := strings.Repeat("?,", len(idList)-1) + "?"
-					whereClauses = append(whereClauses, fmt.Sprintf("id IN (SELECT DISTINCT post_id FROM trading_post_items WHERE item_id IN (%s))", placeholders))
-					for _, id := range idList {
-						postParams = append(postParams, id)
-					}
+			// Also search by item_name directly in the posts table
+			var nameClauses []string
+			nameClauses = append(nameClauses, "i.item_name LIKE ?")
+			queryParams = append(queryParams, "%"+searchQuery+"%")
+
+			if len(idList) > 0 {
+				placeholders := strings.Repeat("?,", len(idList)-1) + "?"
+				nameClauses = append(nameClauses, fmt.Sprintf("i.item_id IN (%s)", placeholders))
+				for _, id := range idList {
+					queryParams = append(queryParams, id)
 				}
-				if len(directMatchPostIDs) > 0 {
-					placeholders := strings.Repeat("?,", len(directMatchPostIDs)-1) + "?"
-					whereClauses = append(whereClauses, fmt.Sprintf("id IN (%s)", placeholders))
-					for _, id := range directMatchPostIDs {
-						postParams = append(postParams, id)
-					}
-				}
-				postQuery += " WHERE " + strings.Join(whereClauses, " OR ")
-			} else {
-				postQuery += " WHERE 1 = 0"
 			}
+			whereConditions = append(whereConditions, "("+strings.Join(nameClauses, " OR ")+")")
 		}
 	}
-	postQuery += ` ORDER BY created_at DESC`
 
-	postRows, err := db.Query(postQuery, postParams...)
+	// ADDED: Filter by post type based on the tab
+	if filterType == "selling" {
+		whereConditions = append(whereConditions, "p.post_type = ?")
+		queryParams = append(queryParams, "selling")
+	} else if filterType == "buying" {
+		whereConditions = append(whereConditions, "p.post_type = ?")
+		queryParams = append(queryParams, "buying")
+	}
+	// If filterType is "all", no condition is added, so all types are shown.
+
+	// ADDED: Filter by currency
+	if filterCurrency == "zeny" {
+		whereConditions = append(whereConditions, "i.currency = ?")
+		queryParams = append(queryParams, "zeny")
+	} else if filterCurrency == "rmt" {
+		whereConditions = append(whereConditions, "i.currency = ?")
+		queryParams = append(queryParams, "rmt")
+	}
+	// If filterCurrency is "all", no condition is added.
+
+	whereClause := ""
+	if len(whereConditions) > 0 {
+		whereClause = "WHERE " + strings.Join(whereConditions, " AND ")
+	}
+
+	// ADDED: Sorting logic
+	allowedSorts := map[string]string{
+		"item_name": "i.item_name",
+		// Sort price, but put 0 (Negotiable) at the end when sorting ASC
+		"price":    "CASE WHEN i.price = 0 THEN 9223372036854775807 ELSE i.price END",
+		"quantity": "i.quantity",
+		"seller":   "p.character_name",
+		"posted":   "p.created_at",
+	}
+	// MODIFIED: Use getSortClause instead of hardcoded order
+	orderByClause, sortBy, order := getSortClause(r, allowedSorts, "posted", "DESC")
+
+	finalQuery := baseQuery + whereClause + " " + orderByClause
+
+	rows, err := db.Query(finalQuery, queryParams...)
 	if err != nil {
-		log.Printf("❌ Trading Post query error: %v", err)
+		log.Printf("❌ Trading Post flat list query error: %v", err)
 		http.Error(w, "Database query failed", http.StatusInternalServerError)
 		return
 	}
-	defer postRows.Close()
+	defer rows.Close()
 
-	var posts []TradingPost
-	postMap := make(map[int]int)
-	var postIDs []interface{}
-
-	for postRows.Next() {
-		var post TradingPost
-		if err := postRows.Scan(&post.ID, &post.Title, &post.PostType, &post.CharacterName, &post.ContactInfo, &post.CreatedAt, &post.Notes); err == nil {
-			post.Items = []TradingPostItem{}
-			posts = append(posts, post)
-			postMap[post.ID] = len(posts) - 1
-			postIDs = append(postIDs, post.ID)
+	var items []FlatTradingPostItem
+	for rows.Next() {
+		var item FlatTradingPostItem
+		err := rows.Scan(
+			&item.PostID, &item.Title, &item.PostType, &item.CharacterName, &item.ContactInfo, &item.CreatedAt, &item.Notes,
+			&item.ItemName, &item.NamePT, &item.ItemID, &item.Quantity, &item.Price, &item.Currency,
+			&item.PaymentMethods,
+			&item.Refinement, &item.Card1, &item.Card2, &item.Card3, &item.Card4,
+		)
+		if err != nil {
+			log.Printf("⚠️ Failed to scan flat trading post item: %v", err)
+			continue
 		}
+		items = append(items, item)
 	}
 
-	if len(postIDs) > 0 {
-		placeholders := strings.Repeat("?,", len(postIDs)-1) + "?"
-		itemQuery := fmt.Sprintf(`
-            SELECT tpi.post_id, tpi.item_name, rms.name_pt, tpi.item_id, tpi.quantity, tpi.price, tpi.currency, tpi.payment_methods, tpi.refinement, tpi.slots, tpi.card1, tpi.card2, tpi.card3, tpi.card4
-            FROM trading_post_items tpi
-            LEFT JOIN rms_item_cache rms ON tpi.item_id = rms.item_id
-            WHERE tpi.post_id IN (%s)`, placeholders)
-		itemRows, err := db.Query(itemQuery, postIDs...)
-		if err == nil {
-			defer itemRows.Close()
-			for itemRows.Next() {
-				var item TradingPostItem
-				var postID int
-				if err := itemRows.Scan(&postID, &item.ItemName, &item.NamePT, &item.ItemID, &item.Quantity, &item.Price, &item.Currency, &item.PaymentMethods, &item.Refinement, &item.Slots, &item.Card1, &item.Card2, &item.Card3, &item.Card4); err == nil {
-					if index, ok := postMap[postID]; ok {
-						posts[index].Items = append(posts[index].Items, item)
-					}
-				}
-			}
-		}
+	// MODIFIED: Pass the FilterType, SortBy, and Order to the template
+	data := TradingPostPageData{
+		Items:          items,
+		LastScrapeTime: getLastUpdateTime("scrape_history", "timestamp"),
+		SearchQuery:    searchQuery,
+		FilterType:     filterType,     // Pass the active filter
+		FilterCurrency: filterCurrency, // Pass the active currency filter
+		SortBy:         sortBy,         // Pass sorting info
+		Order:          order,          // Pass sorting info
 	}
-	data := TradingPostPageData{Posts: posts, LastScrapeTime: getLastUpdateTime("scrape_history", "timestamp"), SearchQuery: searchQuery}
 	renderTemplate(w, "trading_post.html", data)
 }
 
@@ -2273,7 +2350,7 @@ func findItemIDByName(itemName string) (sql.NullInt64, error) {
 }
 
 // CreateTradingPostFromDiscord creates a new trading post entry from a Gemini-parsed Discord message.
-func CreateTradingPostFromDiscord(authorName string, tradeData *GeminiTradeResult) (int64, error) {
+func CreateTradingPostFromDiscord(authorName string, originalMessage string, tradeData *GeminiTradeResult) (int64, error) {
 	// Sanitize the author's name
 	characterName := sanitizeString(authorName, nameSanitizer)
 	if strings.TrimSpace(characterName) == "" {
@@ -2308,7 +2385,8 @@ func CreateTradingPostFromDiscord(authorName string, tradeData *GeminiTradeResul
 		tradeData.Action,
 		characterName,
 		fmt.Sprintf("Discord: %s", authorName), // Use original author name for contact
-		"Posted automatically from Discord.",
+		// MODIFIED: Add the original message to the notes.
+		fmt.Sprintf("Posted automatically from Discord.\n\nOriginal Message:\n%s", originalMessage),
 		time.Now().Format(time.RFC3339),
 		string(tokenHash),
 	)

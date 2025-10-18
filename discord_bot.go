@@ -80,34 +80,36 @@ func messageCreate(s *discordgo.Session, m *discordgo.MessageCreate) {
 		tradeResult, err := parseTradeMessageWithGemini(m.Content)
 		if err != nil {
 			log.Printf("❌ [Discord->Gemini] Failed to parse trade message from '%s': %v", m.Author.Username, err)
-			s.MessageReactionAdd(m.ChannelID, m.ID, "❌") // React with an error
+			// s.MessageReactionAdd(m.ChannelID, m.ID, "❌") // React with an error
 			return
 		}
 
 		// Validate the result
 		if tradeResult == nil || len(tradeResult.Items) == 0 {
 			log.Printf("⚠️ [Discord->Gemini] Gemini returned no valid items for message from '%s'. Ignoring.", m.Author.Username)
-			s.MessageReactionAdd(m.ChannelID, m.ID, "❓") // React with a question mark
+			// s.MessageReactionAdd(m.ChannelID, m.ID, "❓") // React with a question mark
 			return
 		}
 
 		log.Printf("✅ [Discord->Gemini] Successfully parsed trade message. Action: %s, Items: %d", tradeResult.Action, len(tradeResult.Items))
 
 		// Create the trading post entry in the database
-		postID, err := CreateTradingPostFromDiscord(m.Author.Username, tradeResult)
+		// MODIFIED: Added m.Content as the second argument
+		postID, err := CreateTradingPostFromDiscord(m.Author.Username, m.Content, tradeResult)
 		if err != nil {
 			log.Printf("❌ [Discord->DB] Failed to create trading post for '%s': %v", m.Author.Username, err)
-			s.MessageReactionAdd(m.ChannelID, m.ID, "🔥") // React with a server error emoji
+			// s.MessageReactionAdd(m.ChannelID, m.ID, "🔥") // React with a server error emoji
 			return
 		}
 
 		log.Printf("✅ [Discord->DB] Successfully created trading post #%d for '%s'.", postID, m.Author.Username)
 
 		// React to the original message with a success emoji
-		s.MessageReactionAdd(m.ChannelID, m.ID, "✅")
+		// s.MessageReactionAdd(m.ChannelID, m.ID, "✅")
 
 		// Send a confirmation message back to the channel
-		confirmationMessage := fmt.Sprintf("✅ Trade post #%d created for **%s**.", postID, m.Author.Username)
-		s.ChannelMessageSend(m.ChannelID, confirmationMessage)
+		_ = fmt.Sprintf("✅ Trade post #%d created for **%s**.", postID, m.Author.Username)
+		// s.ChannelMessageSend(m.ChannelID, confirmationMessage)
 	}()
 }
+

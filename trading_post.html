@@ -69,100 +69,190 @@
                 <h1 class="text-2xl font-bold text-gray-800">Trading Post</h1>
                 <p class="text-gray-600">Player-submitted buy and sell orders.</p>
             </div>
-            <a href="/trading-post/new" class="bg-green-500 hover:bg-green-700 text-white font-bold py-2 px-4 rounded-md shadow transition duration-300 ease-in-out transform hover:-translate-y-px">
-                Create New Post
-            </a>
         </div>
 
-        <div class="mb-6">
-            <form action="/trading-post" method="GET" class="bg-white p-4 rounded-lg shadow-md">
-                <div class="flex items-center">
-                    <input type="text" name="query" id="query" class="flex-grow w-full px-3 py-2 border border-gray-300 rounded-l-md focus:outline-none focus:ring-blue-500 focus:border-blue-500" placeholder="Search by item name or ID..." value="{{.SearchQuery}}">
-                    <button type="submit" class="bg-blue-500 hover:bg-blue-600 text-white font-bold py-2 px-4 rounded-r-md transition duration-300">Search</button>
-                </div>
+        <div class="bg-white p-3 rounded-lg shadow mb-4">
+            <form action="/trading-post" method="GET" class="flex flex-wrap items-center gap-3">
+                <input type="hidden" name="filter_type" value="{{.FilterType}}">
+                <input type="hidden" name="filter_currency" value="{{.FilterCurrency}}"> <input type="hidden" name="sort_by" value="{{.SortBy}}">
+                <input type="hidden" name="order" value="{{.Order}}">
+                <input type="text" name="query" id="query" class="flex-grow mt-1 block w-full md:w-auto rounded-md border-gray-300 shadow-sm focus:border-indigo-300 focus:ring focus:ring-indigo-200 focus:ring-opacity-50 text-sm" placeholder="Search by item name or ID..." value="{{.SearchQuery}}">
+                <button type="submit" class="w-full md:w-auto bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-md">Search</button>
             </form>
         </div>
 
-        <div class="space-y-3">
-            {{range .Posts}}
-            <div class="bg-white shadow-lg rounded-lg overflow-hidden">
-                <div class="p-3 border-b border-gray-200 bg-gray-50 flex flex-wrap justify-between items-center gap-2">
-                    <div class="flex items-center gap-3">
-                        {{if eq .PostType "selling"}}
-                            <span class="font-bold text-lg text-red-600">V></span>
-                        {{else}}
-                            <span class="font-bold text-lg text-green-600">C></span>
-                        {{end}}
-                        <div>
-                            <h2 class="font-semibold text-base text-gray-800">{{.Title}}</h2>
-                            <div class="text-xs text-gray-600">
-                                <span>by <strong>{{.CharacterName}}</strong></span>
-                                {{if .ContactInfo.Valid}}<span class="text-gray-500 ml-2">| {{.ContactInfo.String}}</span>{{end}}
-                            </div>
-                        </div>
-                    </div>
-                    <div class="text-xs text-gray-500" title="{{.CreatedAt}}">
-                        {{.CreatedAgo}}
-                    </div>
-                </div>
+        <div class="flex flex-wrap border-b-2 border-gray-200 mb-2 gap-2">
+            <a href="/trading-post?filter_type=all&query={{.SearchQuery}}&filter_currency={{.FilterCurrency}}&sort_by={{.SortBy}}&order={{.Order}}"
+               class="px-3 py-1 text-sm font-medium flex items-center gap-2 -mb-0.5 border-b-2
+                      {{if eq .FilterType "all"}}
+                        text-blue-600 border-blue-600
+                      {{else}}
+                        text-gray-500 border-transparent hover:text-gray-700 hover:border-gray-300
+                      {{end}}">
+                All Posts
+            </a>
+            <a href="/trading-post?filter_type=selling&query={{.SearchQuery}}&filter_currency={{.FilterCurrency}}&sort_by={{.SortBy}}&order={{.Order}}"
+               class="px-3 py-1 text-sm font-medium flex items-center gap-2 -mb-0.5 border-b-2
+                      {{if eq .FilterType "selling"}}
+                        text-blue-600 border-blue-600
+                      {{else}}
+                        text-gray-500 border-transparent hover:text-gray-700 hover:border-gray-300
+                      {{end}}">
+                Selling
+            </a>
+            <a href="/trading-post?filter_type=buying&query={{.SearchQuery}}&filter_currency={{.FilterCurrency}}&sort_by={{.SortBy}}&order={{.Order}}"
+               class="px-3 py-1 text-sm font-medium flex items-center gap-2 -mb-0.5 border-b-2
+                      {{if eq .FilterType "buying"}}
+                        text-blue-600 border-blue-600
+                      {{else}}
+                        text-gray-500 border-transparent hover:text-gray-700 hover:border-gray-300
+                      {{end}}">
+                Buying
+            </a>
+        </div>
 
-                <div class="px-3 py-1">
-                    <table class="w-full">
-                        <tbody class="text-gray-700 text-xs">
-                            {{range .Items}}
-                            <tr class="border-b border-gray-100 last:border-b-0">
-                                <td class="py-2">
-                                    <div class="font-semibold flex items-center gap-2">
-                                        {{if .ItemID.Valid}}
-                                            <img src="https://static.divine-pride.net/images/items/item/{{.ItemID.Int64}}.png" alt="{{.ItemName}}" class="w-6 h-6" style="image-rendering: pixelated;">
-                                        {{else}}
-                                            <img src="https://static.divine-pride.net/images/items/item/909.png" alt="Item" class="w-6 h-6 opacity-50" style="image-rendering: pixelated;">
-                                        {{end}}
-                                        <div>
-                                            <span>
-                                                {{if gt .Refinement 0}}+{{.Refinement}} {{end}}{{.ItemName}}
-                                                {{if .ItemID.Valid}}<span class="text-gray-400 font-normal ml-1">#{{.ItemID.Int64}}</span>{{end}}
-                                            </span>
-                                            {{if .NamePT.Valid}}
-                                            <div class="text-xs text-gray-500 mt-1 font-normal">{{.NamePT.String}}</div>
-                                            {{end}}
-                                            {{if or .Card1.Valid .Card2.Valid .Card3.Valid .Card4.Valid}}
-                                            <div class="text-xs text-blue-600 mt-1 font-normal flex items-center gap-1">
-                                                <svg class="w-3 h-3" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M11.48 3.499a.562.562 0 011.04 0l2.125 5.111a.563.563 0 00.475.345l5.518.442c.499.04.701.663.321.988l-4.204 3.602a.563.563 0 00-.182.557l1.285 5.385a.562.562 0 01-.84.61l-4.725-3.355a.563.563 0 00-.586 0L6.982 20.54a.562.562 0 01-.84-.61l1.285-5.386a.562.562 0 00-.182-.557l-4.204-3.602a.563.563 0 01.321-.988l5.518-.442a.563.563 0 00.475-.345L11.48 3.5z" /></svg>
-                                                <span>
-                                                    {{if .Card1.Valid}}[{{.Card1.String}}]{{end}}
-                                                    {{if .Card2.Valid}} [{{.Card2.String}}]{{end}}
-                                                    {{if .Card3.Valid}} [{{.Card3.String}}]{{end}}
-                                                    {{if .Card4.Valid}} [{{.Card4.String}}]{{end}}
-                                                </span>
-                                            </div>
-                                            {{end}}
-                                        </div>
-                                    </div>
-                                </td>
-                                <td class="py-2 text-right text-gray-600 w-20">{{.Quantity}}x</td>
-                                <td class="py-2 font-mono text-right w-32" data-price="{{.Price}}" data-currency="{{.Currency}}"></td>
-                            </tr>
+        <div class="flex flex-wrap mb-4 gap-2">
+            <a href="/trading-post?filter_type={{.FilterType}}&query={{.SearchQuery}}&filter_currency=all&sort_by={{.SortBy}}&order={{.Order}}"
+               class="px-3 py-1 text-xs font-medium rounded-full
+                      {{if eq .FilterCurrency "all"}}
+                        bg-gray-700 text-white
+                      {{else}}
+                        bg-gray-200 text-gray-600 hover:bg-gray-300
+                      {{end}}">
+                All Currencies
+            </a>
+            <a href="/trading-post?filter_type={{.FilterType}}&query={{.SearchQuery}}&filter_currency=zeny&sort_by={{.SortBy}}&order={{.Order}}"
+               class="px-3 py-1 text-xs font-medium rounded-full
+                      {{if eq .FilterCurrency "zeny"}}
+                        bg-green-600 text-white
+                      {{else}}
+                        bg-green-100 text-green-700 hover:bg-green-200
+                      {{end}}">
+                Zeny
+            </a>
+            <a href="/trading-post?filter_type={{.FilterType}}&query={{.SearchQuery}}&filter_currency=rmt&sort_by={{.SortBy}}&order={{.Order}}"
+               class="px-3 py-1 text-xs font-medium rounded-full
+                      {{if eq .FilterCurrency "rmt"}}
+                        bg-blue-600 text-white
+                      {{else}}
+                        bg-blue-100 text-blue-700 hover:bg-blue-200
+                      {{end}}">
+                RMT
+            </a>
+        </div>
+
+
+        <div class="bg-white shadow-lg rounded-lg overflow-hidden">
+            <table class="w-full">
+                <thead class="bg-gray-50 border-b border-gray-200">
+                    <tr class="text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                        {{$query := .SearchQuery}}
+                        {{$filterType := .FilterType}}
+                        {{$filterCurrency := .FilterCurrency}} {{$currentSort := .SortBy}}
+                        {{$currentOrder := .Order}}
+                        {{$revOrder := "ASC"}}{{if eq $currentOrder "ASC"}}{{$revOrder = "DESC"}}{{end}}
+                        
+                        <th class="px-2 sm:px-3 py-2">Type</th>
+                        <th class="px-2 sm:px-3 py-2">
+                            <a href="/trading-post?filter_type={{$filterType}}&filter_currency={{$filterCurrency}}&query={{$query}}&sort_by=item_name&order={{if eq $currentSort "item_name"}}{{$revOrder}}{{else}}ASC{{end}}">
+                                Item
+                                {{if eq $currentSort "item_name"}}{{if eq $currentOrder "ASC"}}<span class="text-gray-400">▲</span>{{else}}<span class="text-gray-400">▼</span>{{end}}{{end}}
+                            </a>
+                        </th>
+                        <th class="px-2 sm:px-3 py-2 text-right">
+                            <a href="/trading-post?filter_type={{$filterType}}&filter_currency={{$filterCurrency}}&query={{$query}}&sort_by=price&order={{if eq $currentSort "price"}}{{$revOrder}}{{else}}ASC{{end}}">
+                                Price (ea)
+                                {{if eq $currentSort "price"}}{{if eq $currentOrder "ASC"}}<span class="text-gray-400">▲</span>{{else}}<span class="text-gray-400">▼</span>{{end}}{{end}}
+                            </a>
+                        </th>
+                        <th class="px-2 sm:px-3 py-2 text-center">Payment</th>
+                        <th class="px-2 sm:px-3 py-2 text-right">
+                            <a href="/trading-post?filter_type={{$filterType}}&filter_currency={{$filterCurrency}}&query={{$query}}&sort_by=quantity&order={{if eq $currentSort "quantity"}}{{$revOrder}}{{else}}DESC{{end}}">
+                                Qty
+                                {{if eq $currentSort "quantity"}}{{if eq $currentOrder "ASC"}}<span class="text-gray-400">▲</span>{{else}}<span class="text-gray-400">▼</span>{{end}}{{end}}
+                            </a>
+                        </th>
+                        <th class="px-2 sm:px-3 py-2">
+                            <a href="/trading-post?filter_type={{$filterType}}&filter_currency={{$filterCurrency}}&query={{$query}}&sort_by=seller&order={{if eq $currentSort "seller"}}{{$revOrder}}{{else}}ASC{{end}}">
+                                Discord
+                                {{if eq $currentSort "seller"}}{{if eq $currentOrder "ASC"}}<span class="text-gray-400">▲</span>{{else}}<span class="text-gray-400">▼</span>{{end}}{{end}}
+                            </a>
+                        </th>
+                        <th class="px-2 sm:px-3 py-2">
+                            <a href="/trading-post?filter_type={{$filterType}}&filter_currency={{$filterCurrency}}&query={{$query}}&sort_by=posted&order={{if eq $currentSort "posted"}}{{$revOrder}}{{else}}DESC{{end}}">
+                                Posted
+                                {{if eq $currentSort "posted"}}{{if eq $currentOrder "ASC"}}<span class="text-gray-400">▲</span>{{else}}<span class="text-gray-400">▼</span>{{end}}{{end}}
+                            </a>
+                        </th>
+                        <th class="px-2 sm:px-3 py-2">Notes</th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y divide-gray-100 text-xs">
+                    {{range .Items}}
+                    <tr class="hover:bg-gray-50">
+                        <td class="px-2 sm:px-3 py-2">
+                            {{if eq .PostType "selling"}}
+                                <span class="font-bold text-lg text-red-600" title="Selling">V></span>
+                            {{else}}
+                                <span class="font-bold text-lg text-green-600" title="Buying">C></span>
                             {{end}}
-                        </tbody>
-                    </table>
-                </div>
-
-                {{if .Notes.Valid}}
-                <div class="px-3 pb-2 text-sm text-gray-600 border-t border-gray-100 pt-2">
-                    <strong>Notes:</strong> {{.Notes.String}}
-                </div>
-                {{end}}
-
-                <div class="bg-gray-50 px-3 py-1 text-right">
-                    <a href="/trading-post/manage?action=edit&id={{.ID}}" class="text-xs text-blue-500 hover:underline">Edit</a>
-                    <span class="mx-1 text-gray-300">|</span>
-                    <a href="/trading-post/manage?action=delete&id={{.ID}}" class="text-xs text-red-500 hover:underline">Delete</a>
-                </div>
-            </div>
-            {{else}}
-            <div class="text-center py-10 px-4 bg-white rounded-lg shadow">
-                <p class="text-gray-500">No trading posts found. Be the first to create one!</p>
+                        </td>
+                        <td class="px-2 sm:px-3 py-2">
+                            <div class="font-semibold flex items-center gap-2">
+                                {{if .ItemID.Valid}}
+                                    <img src="https://static.divine-pride.net/images/items/item/{{.ItemID.Int64}}.png" alt="{{.ItemName}}" class="w-6 h-6" style="image-rendering: pixelated;">
+                                {{else}}
+                                    <img src="https://static.divine-pride.net/images/items/item/909.png" alt="Item" class="w-6 h-6 opacity-50" style="image-rendering: pixelated;">
+                                {{end}}
+                                <div>
+                                    <span class="text-gray-800">
+                                        {{.ItemName}} {{if gt .Refinement 0}}+{{.Refinement}}{{end}}
+                                        {{if or .Card1.Valid .Card2.Valid .Card3.Valid .Card4.Valid}}
+                                        <span class="text-xs text-blue-600 ml-2 font-normal">
+                                            {{if .Card1.Valid}}[{{.Card1.String}}]{{end}}
+                                            {{if .Card2.Valid}} [{{.Card2.String}}]{{end}}
+                                            {{if .Card3.Valid}} [{{.Card3.String}}]{{end}}
+                                            {{if .Card4.Valid}} [{{.Card4.String}}]{{end}}
+                                        </span>
+                                        {{end}}
+                                    </span>
+                                    {{if .NamePT.Valid}}
+                                    <div class="text-xs text-gray-500 mt-1 font-normal">{{.NamePT.String}}</div>
+                                    {{end}}
+                                </div>
+                            </div>
+                        </td>
+                        <td class="px-2 sm:px-3 py-2 font-mono text-right" data-price="{{.Price}}" data-currency="{{.Currency}}"></td>
+                        <td class="px-2 sm:px-3 py-2 text-center">
+                            {{if eq .PaymentMethods "both"}}
+                                <span class="font-medium text-purple-600">Both</span>
+                            {{else if eq .PaymentMethods "rmt"}}
+                                <span class="font-medium text-blue-600">RMT</span>
+                            {{else}}
+                                <span class="font-medium text-green-600">Zeny</span>
+                            {{end}}
+                        </td>
+                        <td class="px-2 sm:px-3 py-2 text-right text-gray-600">{{.Quantity}}x</td>
+                        <td class="px-2 sm:px-3 py-2">
+                            <div class="font-semibold text-gray-800">{{.CharacterName}}</div>
+                            </td>
+                        <td class="px-2 sm:px-3 py-2 text-gray-500" title="{{.CreatedAt}}">
+                            {{.CreatedAgo}}
+                        </td>
+                        <td class="px-2 sm:px-3 py-2 text-center">
+                            {{if .Notes.Valid}}
+                            <span class="inline-block align-middle px-1.5 py-0.5 bg-gray-200 text-gray-700 text-xs font-medium rounded-full cursor-help" title="{{.Notes.String}}">
+                               ... 
+                            </span>
+                            {{end}}
+                        </td>
+                    </tr>
+                    {{end}}
+                </tbody>
+            </table>
+            {{if not .Items}}
+            <div class="text-center py-10 px-4">
+                <p class="text-gray-500">No trading posts found{{if .SearchQuery}} matching your search{{end}}.</p>
             </div>
             {{end}}
         </div>
@@ -213,14 +303,18 @@
                     } else if (currency === 'rmt') {
                         // Format as BRL (Brazilian Real)
                         elem.textContent = price.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
-                        elem.classList.add('text-blue-600'); // Style RMT differently
+                        elem.classList.add('text-blue-600', 'font-semibold'); // Style RMT differently
                     } else {
                         // Format as Zeny
                         elem.textContent = `${price.toLocaleString()}z`;
                     }
                 }
             });
+
+            // --- Show Original Message Button Logic ---
+            // Tooltip is now handled by the 'title' attribute on the span itself.
+            // No click event needed.
         });
-    </script>
+    </SCript>
 </body>
 </html>

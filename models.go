@@ -175,15 +175,16 @@ type MvpHeader struct {
 
 // SummaryPageData holds all data needed for the main summary page template.
 type SummaryPageData struct {
-	Items          []ItemSummary
-	SearchQuery    string
-	SortBy         string
-	Order          string
-	ShowAll        bool
-	LastScrapeTime string
-	ItemTypes      []ItemTypeTab
-	SelectedType   string
-	TotalVisitors  int
+	Items            []ItemSummary
+	SearchQuery      string
+	SortBy           string
+	Order            string
+	ShowAll          bool
+	LastScrapeTime   string
+	ItemTypes        []ItemTypeTab
+	SelectedType     string
+	TotalVisitors    int
+	TotalUniqueItems int // ADDED
 }
 
 // PageData holds data for the detailed full list view template.
@@ -305,6 +306,31 @@ type GuildDetailPageData struct {
 	// Changelog data and pagination
 	ChangelogEntries    []CharacterChangelog
 	ChangelogPagination PaginationData
+}
+
+// ADDED: FlatTradingPostItem combines post and item data for the flat list view.
+type FlatTradingPostItem struct {
+	// Post Info
+	PostID        int
+	Title         string
+	PostType      string // "buying" or "selling"
+	CharacterName string
+	ContactInfo   sql.NullString
+	Notes         sql.NullString
+	CreatedAt     string
+	// Item Info
+	ItemName       string
+	NamePT         sql.NullString
+	ItemID         sql.NullInt64
+	Quantity       int
+	Price          int64
+	Currency       string
+	PaymentMethods string
+	Refinement     int
+	Card1          sql.NullString
+	Card2          sql.NullString
+	Card3          sql.NullString
+	Card4          sql.NullString
 }
 
 // ADDED: StoreDetailPageData holds all data for the single store view.
@@ -472,7 +498,6 @@ type TradingPostItem struct {
 	Card4          sql.NullString
 }
 
-// MODIFIED: TradingPost now holds post-level info and a slice of items.
 type TradingPost struct {
 	ID            int
 	Title         string
@@ -485,22 +510,21 @@ type TradingPost struct {
 	Items         []TradingPostItem // A post can now have multiple items
 }
 
-// ADDED: TradingPostPageData holds data for the trading post list view.
 type TradingPostPageData struct {
-	Posts          []TradingPost
+	Items          []FlatTradingPostItem
 	LastScrapeTime string // To keep the header consistent
-	// Add filter/sort/pagination fields here as needed
-	FilterType  string
-	SearchQuery string
+	FilterType     string
+	SearchQuery    string
+	FilterCurrency string
+	SortBy         string
+	Order          string
 }
 
-// ADDED: TradingPostSuccessData holds data for the post-creation success page.
 type TradingPostSuccessData struct {
 	Post      TradingPost
 	EditToken string // The raw token to show the user ONCE
 }
 
-// ADDED: Helper to format creation time for display.
 func (tp TradingPost) CreatedAgo() string {
 	t, err := time.Parse(time.RFC3339, tp.CreatedAt)
 	if err != nil {
@@ -508,6 +532,13 @@ func (tp TradingPost) CreatedAgo() string {
 	}
 
 	d := time.Since(t)
+	if d.Hours() < 1 {
+		m := int(d.Minutes())
+		if m < 1 {
+			return "just now"
+		}
+		return fmt.Sprintf("%d minutes ago", m)
+	}
 	if d.Hours() < 24 {
 		return fmt.Sprintf("%d hours ago", int(d.Hours()))
 	}
@@ -521,4 +552,24 @@ type TradingPostFormPageData struct {
 	Post      TradingPost
 	EditToken string // To pass the token to the edit form for re-submission
 	Message   string // For showing errors
+}
+
+func (fi FlatTradingPostItem) CreatedAgo() string {
+	t, err := time.Parse(time.RFC3339, fi.CreatedAt)
+	if err != nil {
+		return "a while ago"
+	}
+
+	d := time.Since(t)
+	if d.Hours() < 1 {
+		m := int(d.Minutes())
+		if m < 1 {
+			return "just now"
+		}
+		return fmt.Sprintf("%d minutes ago", m)
+	}
+	if d.Hours() < 24 {
+		return fmt.Sprintf("%d hours ago", int(d.Hours()))
+	}
+	return fmt.Sprintf("%d days ago", int(d.Hours()/24))
 }
