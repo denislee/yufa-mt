@@ -2050,6 +2050,7 @@ func findItemIDByName(itemName string) (sql.NullInt64, error) {
 }
 
 // CreateTradingPostFromDiscord creates a new trading post entry from a Gemini-parsed Discord message.
+// It now deletes any previous posts from the same Discord user before creating the new one.
 func CreateTradingPostFromDiscord(authorName string, originalMessage string, tradeData *GeminiTradeResult) (int64, error) {
 	// Sanitize the author's name
 	characterName := sanitizeString(authorName, nameSanitizer)
@@ -2078,13 +2079,29 @@ func CreateTradingPostFromDiscord(authorName string, originalMessage string, tra
 	}
 	defer tx.Rollback() // Rollback on any error
 
+	// --- NEW: Delete existing posts from this Discord user ---
+	// We identify the user by their character_name (sanitized) and the contact_info string.
+	// The ON DELETE CASCADE on the trading_post_items table will handle deleting the old items.
+	discordContact := fmt.Sprintf("Discord: %s", authorName)
+	delRes, err := tx.Exec(`DELETE FROM trading_posts WHERE character_name = ? AND contact_info = ?`, characterName, discordContact)
+	if err != nil {
+		// Don't fail the entire transaction, but log that deletion failed.
+		log.Printf("⚠️ [Discord->DB] Failed to delete old post for '%s': %v", characterName, err)
+	} else {
+		deletedCount, _ := delRes.RowsAffected()
+		if deletedCount > 0 {
+			log.Printf("🧹 [Discord->DB] Deleted %d old post(s) for user '%s'.", deletedCount, characterName)
+		}
+	}
+	// --- END NEW SECTION ---
+
 	// Insert the main post record
 	res, err := tx.Exec(`INSERT INTO trading_posts (title, post_type, character_name, contact_info, notes, created_at, edit_token_hash)
             VALUES (?, ?, ?, ?, ?, ?, ?)`,
 		title,
 		tradeData.Action,
 		characterName,
-		fmt.Sprintf("Discord: %s", authorName), // Use original author name for contact
+		discordContact, // Use the generated contact string
 		// MODIFIED: Add the original message to the notes.
 		fmt.Sprintf("Posted automatically from Discord.\n\nOriginal Message:\n%s", originalMessage),
 		time.Now().Format(time.RFC3339),
