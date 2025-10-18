@@ -520,11 +520,6 @@ type TradingPostPageData struct {
 	Order          string
 }
 
-type TradingPostSuccessData struct {
-	Post      TradingPost
-	EditToken string // The raw token to show the user ONCE
-}
-
 func (tp TradingPost) CreatedAgo() string {
 	t, err := time.Parse(time.RFC3339, tp.CreatedAt)
 	if err != nil {
@@ -543,15 +538,6 @@ func (tp TradingPost) CreatedAgo() string {
 		return fmt.Sprintf("%d hours ago", int(d.Hours()))
 	}
 	return fmt.Sprintf("%d days ago", int(d.Hours()/24))
-}
-
-// ADDED: TradingPostFormPageData holds data for the new/edit post form.
-type TradingPostFormPageData struct {
-	Title     string
-	ActionURL string
-	Post      TradingPost
-	EditToken string // To pass the token to the edit form for re-submission
-	Message   string // For showing errors
 }
 
 func (fi FlatTradingPostItem) CreatedAgo() string {

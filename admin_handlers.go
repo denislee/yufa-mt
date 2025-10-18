@@ -161,14 +161,19 @@ func getAdminDashboardData(r *http.Request) (AdminDashboardData, error) {
 		}
 		if len(postIDs) > 0 {
 			placeholders := strings.Repeat("?,", len(postIDs)-1) + "?"
-			itemQuery := fmt.Sprintf("SELECT post_id, item_name, quantity, price FROM trading_post_items WHERE post_id IN (%s)", placeholders)
+			// MODIFIED: Select more item fields for display on the admin dashboard
+			itemQuery := fmt.Sprintf(`
+				SELECT post_id, item_name, quantity, price, currency, refinement, card1 
+				FROM trading_post_items WHERE post_id IN (%s)
+			`, placeholders)
 			itemRows, _ := db.Query(itemQuery, postIDs...)
 			if itemRows != nil {
 				defer itemRows.Close()
 				for itemRows.Next() {
 					var item TradingPostItem
 					var postID int
-					if err := itemRows.Scan(&postID, &item.ItemName, &item.Quantity, &item.Price); err == nil {
+					// MODIFIED: Scan the new fields
+					if err := itemRows.Scan(&postID, &item.ItemName, &item.Quantity, &item.Price, &item.Currency, &item.Refinement, &item.Card1); err == nil {
 						if index, ok := postMap[postID]; ok {
 							posts[index].Items = append(posts[index].Items, item)
 						}
@@ -535,12 +540,27 @@ func adminEditTradingPostHandler(w http.ResponseWriter, r *http.Request) {
 		}
 
 		// 3. Loop through submitted items and re-insert them
+		// MODIFIED: Get all new form fields
 		itemNames := r.Form["item_name[]"]
+		itemIDs := r.Form["item_id[]"]
 		quantities := r.Form["quantity[]"]
 		prices := r.Form["price[]"]
+		currencies := r.Form["currency[]"]
+		paymentMethodsList := r.Form["payment_methods[]"]
+		refinements := r.Form["refinement[]"]
+		slotsList := r.Form["slots[]"]
+		cards1 := r.Form["card1[]"]
+		cards2 := r.Form["card2[]"]
+		cards3 := r.Form["card3[]"]
+		cards4 := r.Form["card4[]"]
 
 		if len(itemNames) > 0 {
-			stmt, err := tx.Prepare("INSERT INTO trading_post_items (post_id, item_name, quantity, price) VALUES (?, ?, ?, ?)")
+			// MODIFIED: Update INSERT statement
+			stmt, err := tx.Prepare(`
+				INSERT INTO trading_post_items 
+				(post_id, item_name, item_id, quantity, price, currency, payment_methods, refinement, slots, card1, card2, card3, card4) 
+				VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+			`)
 			if err != nil {
 				tx.Rollback()
 				http.Error(w, "Database preparation failed.", http.StatusInternalServerError)
@@ -552,14 +572,40 @@ func adminEditTradingPostHandler(w http.ResponseWriter, r *http.Request) {
 				if strings.TrimSpace(itemName) == "" {
 					continue
 				}
+
+				// MODIFIED: Parse all new fields
 				quantity, _ := strconv.Atoi(quantities[i])
 				price, _ := strconv.ParseInt(strings.ReplaceAll(prices[i], ",", ""), 10, 64)
+
+				var itemID sql.NullInt64
+				if id, err := strconv.ParseInt(itemIDs[i], 10, 64); err == nil && id > 0 {
+					itemID = sql.NullInt64{Int64: id, Valid: true}
+				}
+
+				currency := "zeny"
+				if i < len(currencies) && currencies[i] == "rmt" {
+					currency = "rmt"
+				}
+
+				paymentMethods := "zeny"
+				if i < len(paymentMethodsList) && (paymentMethodsList[i] == "rmt" || paymentMethodsList[i] == "both") {
+					paymentMethods = paymentMethodsList[i]
+				}
+
+				refinement, _ := strconv.Atoi(refinements[i])
+				slots, _ := strconv.Atoi(slotsList[i])
+
+				card1 := sql.NullString{String: cards1[i], Valid: strings.TrimSpace(cards1[i]) != ""}
+				card2 := sql.NullString{String: cards2[i], Valid: strings.TrimSpace(cards2[i]) != ""}
+				card3 := sql.NullString{String: cards3[i], Valid: strings.TrimSpace(cards3[i]) != ""}
+				card4 := sql.NullString{String: cards4[i], Valid: strings.TrimSpace(cards4[i]) != ""}
 
 				if quantity <= 0 || price < 0 {
 					continue
 				}
 
-				_, err := stmt.Exec(postID, itemName, quantity, price)
+				// MODIFIED: Execute with all new fields
+				_, err := stmt.Exec(postID, itemName, itemID, quantity, price, currency, paymentMethods, refinement, slots, card1, card2, card3, card4)
 				if err != nil {
 					tx.Rollback()
 					http.Error(w, "Failed to save one of the items.", http.StatusInternalServerError)
@@ -599,7 +645,11 @@ func adminEditTradingPostHandler(w http.ResponseWriter, r *http.Request) {
 		post.CreatedAt = createdAtStr
 
 		// 2. Fetch its items
-		itemRows, err := db.Query("SELECT item_name, quantity, price FROM trading_post_items WHERE post_id = ?", postID)
+		// MODIFIED: Select all item fields
+		itemRows, err := db.Query(`
+			SELECT item_name, item_id, quantity, price, currency, payment_methods, refinement, slots, card1, card2, card3, card4 
+			FROM trading_post_items WHERE post_id = ?
+		`, postID)
 		if err != nil {
 			http.Error(w, "Database item query failed", http.StatusInternalServerError)
 			return
@@ -608,7 +658,11 @@ func adminEditTradingPostHandler(w http.ResponseWriter, r *http.Request) {
 
 		for itemRows.Next() {
 			var item TradingPostItem
-			if err := itemRows.Scan(&item.ItemName, &item.Quantity, &item.Price); err != nil {
+			// MODIFIED: Scan all item fields
+			if err := itemRows.Scan(
+				&item.ItemName, &item.ItemID, &item.Quantity, &item.Price, &item.Currency, &item.PaymentMethods,
+				&item.Refinement, &item.Slots, &item.Card1, &item.Card2, &item.Card3, &item.Card4,
+			); err != nil {
 				log.Printf("⚠️ Failed to scan trading post item row for edit: %v", err)
 				continue
 			}

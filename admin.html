@@ -233,9 +233,15 @@
                                         {{if .Notes.Valid}}<p class="text-xs text-gray-600 mt-1 italic" title="Notes">"{{.Notes.String}}"</p>{{end}}
                                     </td>
                                     <td class="py-3 pr-3 align-top">
-                                        <ul class="list-disc list-inside">
+                                        <ul class="space-y-1">
                                         {{range .Items}}
-                                            <li>{{.ItemName}} ({{.Quantity}}x) @ {{.Price}}z</li>
+                                            <li>
+                                                <span class="font-medium">{{if gt .Refinement 0}}+{{.Refinement}} {{end}}{{.ItemName}}</span>
+                                                <span class="text-gray-600">{{if .Card1.Valid}} [c]{{end}}</span>
+                                                <span class="text-gray-800">({{.Quantity}}x)</span>
+                                                <span class="text-gray-500">@</span>
+                                                <span class="font-mono {{if eq .Currency "rmt"}}text-blue-600{{else}}text-green-700{{end}}">{{.Price}} {{if eq .Currency "rmt"}}R${{else}}z{{end}}</span>
+                                            </li>
                                         {{end}}
                                         </ul>
                                     </td>

@@ -141,12 +141,11 @@ func main() {
 
 	// ... after other http.HandleFunc calls
 	http.HandleFunc("/trading-post", visitorTracker(tradingPostListHandler))
-	http.HandleFunc("/trading-post/new", visitorTracker(tradingPostFormHandler))
-	http.HandleFunc("/trading-post/manage", visitorTracker(tradingPostManageHandler)) // For edit/delete actions
+	// REMOVED: Handlers for /trading-post/new and /trading-post/manage
 
-	// ADDED: API route for item previews on the trading post form
-	http.HandleFunc("/api/item-details", visitorTracker(apiItemDetailsHandler))
-	http.HandleFunc("/api/item-search", visitorTracker(apiItemSearchHandler))
+	// REMOVED: API routes for item previews and search
+	// http.HandleFunc("/api/item-details", visitorTracker(apiItemDetailsHandler))
+	// http.HandleFunc("/api/item-search", visitorTracker(apiItemSearchHandler))
 
 	// --- ADMIN ROUTES ---
 	// Admin routes are NOT tracked.
@@ -203,4 +202,3 @@ func main() {
 	wg.Wait()
 	log.Println("✅ All processes shut down cleanly. Exiting.")
 }
-

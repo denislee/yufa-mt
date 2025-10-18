@@ -49,23 +49,69 @@
             <hr/>
 
             <h2 class="text-lg font-semibold">Items</h2>
-            <div id="items-container" class="space-y-4">
+            <div id="items-container" class="space-y-6">
                 {{range .Post.Items}}
-                <div class="item-row grid grid-cols-12 gap-2 items-center">
-                    <div class="col-span-6">
-                        <label class="text-xs text-gray-600">Item Name</label>
-                        <input type="text" name="item_name[]" value="{{.ItemName}}" required class="mt-1 block w-full rounded-md border-gray-300 shadow-sm text-sm">
-                    </div>
-                    <div class="col-span-2">
-                        <label class="text-xs text-gray-600">Quantity</label>
-                        <input type="number" name="quantity[]" value="{{.Quantity}}" min="1" required class="mt-1 block w-full rounded-md border-gray-300 shadow-sm text-sm">
-                    </div>
-                    <div class="col-span-3">
-                        <label class="text-xs text-gray-600">Price</label>
-                        <input type="number" name="price[]" value="{{.Price}}" min="0" required class="mt-1 block w-full rounded-md border-gray-300 shadow-sm text-sm">
-                    </div>
-                    <div class="col-span-1 flex items-end">
-                        <button type="button" class="remove-item-btn bg-red-500 text-white rounded px-2 py-1 text-xs mt-5">Remove</button>
+                <div class="item-row p-4 border border-gray-200 rounded-lg">
+                    <div class="grid grid-cols-12 gap-x-4 gap-y-3">
+                        <div class="col-span-12 md:col-span-4">
+                            <label class="text-xs text-gray-600">Item Name</label>
+                            <input type="text" name="item_name[]" value="{{.ItemName}}" required class="mt-1 block w-full rounded-md border-gray-300 shadow-sm text-sm">
+                        </div>
+                        <div class="col-span-4 md:col-span-2">
+                            <label class="text-xs text-gray-600">Item ID</label>
+                            <input type="number" name="item_id[]" value="{{if .ItemID.Valid}}{{.ItemID.Int64}}{{end}}" placeholder="e.g. 501" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm text-sm">
+                        </div>
+                        <div class="col-span-2 md:col-span-1">
+                            <label class="text-xs text-gray-600">Qty</label>
+                            <input type="number" name="quantity[]" value="{{.Quantity}}" min="1" required class="mt-1 block w-full rounded-md border-gray-300 shadow-sm text-sm">
+                        </div>
+                        <div class="col-span-2 md:col-span-1">
+                            <label class="text-xs text-gray-600">+Refine</label>
+                            <input type="number" name="refinement[]" value="{{.Refinement}}" min="0" max="10" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm text-sm">
+                        </div>
+                        <div class="col-span-2 md:col-span-1">
+                            <label class="text-xs text-gray-600">Slots</label>
+                            <input type="number" name="slots[]" value="{{.Slots}}" min="0" max="4" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm text-sm">
+                        </div>
+                        <div class="col-span-4 md:col-span-2">
+                            <label class="text-xs text-gray-600">Price</label>
+                            <input type="number" name="price[]" value="{{.Price}}" min="0" required class="mt-1 block w-full rounded-md border-gray-300 shadow-sm text-sm">
+                        </div>
+                        <div class="col-span-4 md:col-span-1">
+                            <label class="text-xs text-gray-600">Currency</label>
+                            <select name="currency[]" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm text-sm">
+                                <option value="zeny" {{if eq .Currency "zeny"}}selected{{end}}>Zeny</option>
+                                <option value="rmt" {{if eq .Currency "rmt"}}selected{{end}}>RMT</option>
+                            </select>
+                        </div>
+                        <div class="col-span-4 md:col-span-2">
+                            <label class="text-xs text-gray-600">Payment</label>
+                            <select name="payment_methods[]" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm text-sm">
+                                <option value="zeny" {{if eq .PaymentMethods "zeny"}}selected{{end}}>Zeny</option>
+                                <option value="rmt" {{if eq .PaymentMethods "rmt"}}selected{{end}}>RMT</option>
+                                <option value="both" {{if eq .PaymentMethods "both"}}selected{{end}}>Both</option>
+                            </select>
+                        </div>
+                        <div class="col-span-12 md:col-span-1 flex items-end">
+                            <button type="button" class="remove-item-btn bg-red-500 text-white rounded px-3 py-2 text-sm w-full md:w-auto">Remove</button>
+                        </div>
+
+                        <div class="col-span-3">
+                            <label class="text-xs text-gray-600">Card 1</label>
+                            <input type="text" name="card1[]" value="{{.Card1.String}}" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm text-sm">
+                        </div>
+                        <div class="col-span-3">
+                            <label class="text-xs text-gray-600">Card 2</label>
+                            <input type="text" name="card2[]" value="{{.Card2.String}}" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm text-sm">
+                        </div>
+                        <div class="col-span-3">
+                            <label class="text-xs text-gray-600">Card 3</label>
+                            <input type="text" name="card3[]" value="{{.Card3.String}}" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm text-sm">
+                        </div>
+                        <div class="col-span-3">
+                            <label class="text-xs text-gray-600">Card 4</label>
+                            <input type="text" name="card4[]" value="{{.Card4.String}}" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm text-sm">
+                        </div>
                     </div>
                 </div>
                 {{end}}
@@ -87,22 +133,68 @@
 
             function createItemRow() {
                 const div = document.createElement('div');
-                div.className = 'item-row grid grid-cols-12 gap-2 items-center';
+                div.className = 'item-row p-4 border border-gray-200 rounded-lg';
                 div.innerHTML = `
-                    <div class="col-span-6">
-                        <label class="text-xs text-gray-600">Item Name</label>
-                        <input type="text" name="item_name[]" required class="mt-1 block w-full rounded-md border-gray-300 shadow-sm text-sm">
-                    </div>
-                    <div class="col-span-2">
-                        <label class="text-xs text-gray-600">Quantity</label>
-                        <input type="number" name="quantity[]" value="1" min="1" required class="mt-1 block w-full rounded-md border-gray-300 shadow-sm text-sm">
-                    </div>
-                    <div class="col-span-3">
-                        <label class="text-xs text-gray-600">Price</label>
-                        <input type="number" name="price[]" value="0" min="0" required class="mt-1 block w-full rounded-md border-gray-300 shadow-sm text-sm">
-                    </div>
-                    <div class="col-span-1 flex items-end">
-                        <button type="button" class="remove-item-btn bg-red-500 text-white rounded px-2 py-1 text-xs mt-5">Remove</button>
+                    <div class="grid grid-cols-12 gap-x-4 gap-y-3">
+                        <div class="col-span-12 md:col-span-4">
+                            <label class="text-xs text-gray-600">Item Name</label>
+                            <input type="text" name="item_name[]" required class="mt-1 block w-full rounded-md border-gray-300 shadow-sm text-sm">
+                        </div>
+                        <div class="col-span-4 md:col-span-2">
+                            <label class="text-xs text-gray-600">Item ID</label>
+                            <input type="number" name="item_id[]" placeholder="e.g. 501" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm text-sm">
+                        </div>
+                        <div class="col-span-2 md:col-span-1">
+                            <label class="text-xs text-gray-600">Qty</label>
+                            <input type="number" name="quantity[]" value="1" min="1" required class="mt-1 block w-full rounded-md border-gray-300 shadow-sm text-sm">
+                        </div>
+                        <div class="col-span-2 md:col-span-1">
+                            <label class="text-xs text-gray-600">+Refine</label>
+                            <input type="number" name="refinement[]" value="0" min="0" max="10" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm text-sm">
+                        </div>
+                        <div class="col-span-2 md:col-span-1">
+                            <label class="text-xs text-gray-600">Slots</label>
+                            <input type="number" name="slots[]" value="0" min="0" max="4" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm text-sm">
+                        </div>
+                        <div class="col-span-4 md:col-span-2">
+                            <label class="text-xs text-gray-600">Price</label>
+                            <input type="number" name="price[]" value="0" min="0" required class="mt-1 block w-full rounded-md border-gray-300 shadow-sm text-sm">
+                        </div>
+                        <div class="col-span-4 md:col-span-1">
+                            <label class="text-xs text-gray-600">Currency</label>
+                            <select name="currency[]" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm text-sm">
+                                <option value="zeny" selected>Zeny</option>
+                                <option value="rmt">RMT</option>
+                            </select>
+                        </div>
+                        <div class="col-span-4 md:col-span-2">
+                            <label class="text-xs text-gray-600">Payment</label>
+                            <select name="payment_methods[]" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm text-sm">
+                                <option value="zeny" selected>Zeny</option>
+                                <option value="rmt">RMT</option>
+                                <option value="both">Both</option>
+                            </select>
+                        </div>
+                        <div class="col-span-12 md:col-span-1 flex items-end">
+                            <button type="button" class="remove-item-btn bg-red-500 text-white rounded px-3 py-2 text-sm w-full md:w-auto">Remove</button>
+                        </div>
+
+                        <div class="col-span-3">
+                            <label class="text-xs text-gray-600">Card 1</label>
+                            <input type="text" name="card1[]" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm text-sm">
+                        </div>
+                        <div class="col-span-3">
+                            <label class="text-xs text-gray-600">Card 2</label>
+                            <input type="text" name="card2[]" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm text-sm">
+                        </div>
+                        <div class="col-span-3">
+                            <label class="text-xs text-gray-600">Card 3</label>
+                            <input type="text" name="card3[]" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm text-sm">
+                        </div>
+                        <div class="col-span-3">
+                            <label class="text-xs text-gray-600">Card 4</label>
+                            <input type="text" name="card4[]" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm text-sm">
+                        </div>
                     </div>
                 `;
                 return div;
@@ -113,9 +205,16 @@
             });
 
             itemsContainer.addEventListener('click', function(e) {
-                if (e.target && e.target.classList.contains('remove-item-btn')) {
+                if (e.target && (e.target.classList.contains('remove-item-btn') || e.target.closest('.remove-item-btn'))) {
                     e.target.closest('.item-row').remove();
                 }
+            });
+
+             // Attach listeners to initially loaded items
+            document.querySelectorAll('.item-row').forEach(row => {
+                row.querySelector('.remove-item-btn').addEventListener('click', function() {
+                    row.remove();
+                });
             });
         });
     </script>
