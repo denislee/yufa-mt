@@ -1945,7 +1945,8 @@ func tradingPostListHandler(w http.ResponseWriter, r *http.Request) {
 
 // findItemIDByName searches for an item ID. It first checks the local cache.
 // If no unique match is found, it performs a concurrent online search as a fallback.
-// If multiple matches are found at any stage, it returns the first one.
+// If multiple matches are found (for non-card items), it returns no ID.
+// If multiple matches are found for an item containing "card" or "carta", it returns the first match.
 func findItemIDByName(itemName string) (sql.NullInt64, error) {
 	var itemID int64
 
@@ -1985,12 +1986,29 @@ func findItemIDByName(itemName string) (sql.NullInt64, error) {
 		}
 	}
 
-	// NEW LOGIC: If we found one or more potential matches, take the first one.
-	if len(potentialIDs) > 0 {
+	// MODIFIED: Check potential local LIKE matches
+	if len(potentialIDs) == 1 {
+		// Found a single, unambiguous LIKE match.
 		itemID = potentialIDs[0]
-		log.Printf("   [Item ID Search] Found local LIKE match for '%s'. Using first result: ID %d (from %d total)", cleanItemName, itemID, len(potentialIDs))
+		log.Printf("   [Item ID Search] Found unique local LIKE match for '%s': ID %d", cleanItemName, itemID)
 		return sql.NullInt64{Int64: itemID, Valid: true}, nil
 	}
+
+	if len(potentialIDs) > 1 {
+		// Found multiple, ambiguous LIKE matches.
+		lowerCleanItemName := strings.ToLower(cleanItemName)
+		if strings.Contains(lowerCleanItemName, "card") || strings.Contains(lowerCleanItemName, "carta") {
+			// Ambiguous, but it's a card search, so take the first match.
+			itemID = potentialIDs[0]
+			log.Printf("   [Item ID Search] Found %d local LIKE matches for '%s'. Using first result (ID %d) due to 'card'/'carta' keyword.", len(potentialIDs), cleanItemName, itemID)
+			return sql.NullInt64{Int64: itemID, Valid: true}, nil
+		}
+
+		// Ambiguous, and not a card search. Do not select one.
+		log.Printf("   [Item ID Search] Found %d ambiguous local LIKE matches for '%s'. Not selecting. Proceeding to online search.", len(potentialIDs), cleanItemName)
+		// Let the function continue to Step 3 (online search)
+	}
+	// --- END MODIFIED SECTION ---
 
 	// --- Step 3: Fallback to concurrent online search if local search fails ---
 	log.Printf("   [Item ID Search] No local match for '%s'. Initiating online search...", cleanItemName)
@@ -2040,26 +2058,45 @@ func findItemIDByName(itemName string) (sql.NullInt64, error) {
 		}
 	}
 
-	// NEW LOGIC: If we found one or more potential matches, take the first one.
-	if len(combinedIDs) > 0 {
+	// MODIFIED: Apply the same logic to online results
+	if len(combinedIDs) == 1 {
+		// Found a single, unambiguous ONLINE match.
 		var foundID int
 		var foundName string
-		// Just grab the first one from the map.
-		for id, name := range combinedIDs {
+		for id, name := range combinedIDs { // This loop will only run once
 			foundID = id
 			foundName = name
-			break // Exit after the first one
 		}
-		log.Printf("   [Item ID Search] Found ONLINE match for '%s'. Using first result: ID %d (from %d total)", cleanItemName, foundID, len(combinedIDs))
-
-		// Trigger background caching for this newly found item.
+		log.Printf("   [Item ID Search] Found unique ONLINE match for '%s': ID %d", cleanItemName, foundID)
 		go scrapeAndCacheItemIfNotExists(foundID, foundName)
-
 		return sql.NullInt64{Int64: int64(foundID), Valid: true}, nil
 	}
 
-	// If we're here, the online search returned no results.
-	log.Printf("   [Item ID Search] Online search for '%s' returned no results. Storing name only.", cleanItemName)
+	if len(combinedIDs) > 1 {
+		// Found multiple, ambiguous ONLINE matches.
+		lowerCleanItemName := strings.ToLower(cleanItemName)
+		if strings.Contains(lowerCleanItemName, "card") || strings.Contains(lowerCleanItemName, "carta") {
+			// Ambiguous, but it's a card search, so take the first match.
+			var foundID int
+			var foundName string
+			for id, name := range combinedIDs {
+				foundID = id
+				foundName = name
+				break // Exit after the first one
+			}
+			log.Printf("   [Item ID Search] Found %d ONLINE matches for '%s'. Using first result (ID %d) due to 'card'/'carta' keyword.", len(combinedIDs), cleanItemName, foundID)
+			go scrapeAndCacheItemIfNotExists(foundID, foundName)
+			return sql.NullInt64{Int64: int64(foundID), Valid: true}, nil
+		}
+
+		// Ambiguous, and not a card search. Do not select one.
+		log.Printf("   [Item ID Search] Found %d ambiguous ONLINE matches for '%s'. Not selecting.", len(combinedIDs), cleanItemName)
+		// Fall through to the final "no results" return
+	}
+	// --- END MODIFIED SECTION ---
+
+	// If we're here, the online search returned no results or was ambiguous for a non-card.
+	log.Printf("   [Item ID Search] Online search for '%s' returned no results or was ambiguous. Storing name only.", cleanItemName)
 	return sql.NullInt64{Valid: false}, nil
 }
 
