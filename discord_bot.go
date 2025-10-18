@@ -5,13 +5,14 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"strings" // <-- Added import
 	"sync"
 
 	"github.com/bwmarrin/discordgo"
 )
 
-// Global variable to hold the target channel ID
-var discordChannelID string
+// Global map to hold the target channel IDs for efficient lookup
+var targetChannelIDs = make(map[string]struct{})
 
 // startDiscordBot initializes and runs the Discord bot.
 func startDiscordBot(ctx context.Context, wg *sync.WaitGroup) {
@@ -19,10 +20,31 @@ func startDiscordBot(ctx context.Context, wg *sync.WaitGroup) {
 	defer wg.Done()
 
 	botToken := os.Getenv("DISCORD_BOT_TOKEN")
-	discordChannelID = os.Getenv("DISCORD_CHANNEL_ID")
+	// Read a comma-separated list of channel IDs
+	channelIDsStr := os.Getenv("DISCORD_CHANNEL_IDS") // <-- Changed to plural
 
-	if botToken == "" || discordChannelID == "" {
-		log.Println("⚠️ [Discord Bot] DISCORD_BOT_TOKEN or DISCORD_CHANNEL_ID not set. Bot will not start.")
+	if botToken == "" {
+		log.Println("⚠️ [Discord Bot] DISCORD_BOT_TOKEN not set. Bot will not start.")
+		return
+	}
+	if channelIDsStr == "" {
+		log.Println("⚠️ [Discord Bot] DISCORD_CHANNEL_IDS not set. Bot will not start.")
+		return
+	}
+
+	// Split the comma-separated string into a slice
+	channelIDs := strings.Split(channelIDsStr, ",")
+
+	// Populate the global map for quick lookups
+	for _, id := range channelIDs {
+		trimmedID := strings.TrimSpace(id) // Handle potential whitespace
+		if trimmedID != "" {
+			targetChannelIDs[trimmedID] = struct{}{}
+		}
+	}
+
+	if len(targetChannelIDs) == 0 {
+		log.Println("⚠️ [Discord Bot] No valid channel IDs found in DISCORD_CHANNEL_IDS. Bot will not start.")
 		return
 	}
 
@@ -56,7 +78,13 @@ func ready(s *discordgo.Session, event *discordgo.Ready) {
 	log.Println("✅ [Discord Bot] Bot is connected and ready!")
 	log.Printf("   -> Logged in as: %v#%v", s.State.User.Username, s.State.User.Discriminator)
 	log.Printf("   -> Bot User ID: %s", s.State.User.ID)
-	log.Printf("   -> Listening on Channel ID: %s", discordChannelID)
+
+	// Log all the channels the bot is listening to
+	var listeningIDs []string
+	for id := range targetChannelIDs {
+		listeningIDs = append(listeningIDs, id)
+	}
+	log.Printf("   -> Listening on %d Channel(s): %s", len(targetChannelIDs), strings.Join(listeningIDs, ", "))
 }
 
 // messageCreate is called every time a new message is created on any channel the bot has access to.
@@ -66,8 +94,9 @@ func messageCreate(s *discordgo.Session, m *discordgo.MessageCreate) {
 		return
 	}
 
-	// Only process messages from the target channel
-	if m.ChannelID != discordChannelID {
+	// Only process messages from the target channels
+	// Check if the message's channel ID is in our map
+	if _, ok := targetChannelIDs[m.ChannelID]; !ok {
 		return
 	}
 
