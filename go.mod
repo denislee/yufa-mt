@@ -7,6 +7,7 @@ require (
 	github.com/bwmarrin/discordgo v0.29.0
 	github.com/chromedp/chromedp v0.14.1
 	github.com/google/generative-ai-go v0.20.1
+	github.com/joho/godotenv v1.5.1
 	github.com/mattn/go-sqlite3 v1.14.32
 	golang.org/x/crypto v0.42.0
 	google.golang.org/api v0.252.0
