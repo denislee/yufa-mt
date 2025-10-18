@@ -2050,7 +2050,8 @@ func findItemIDByName(itemName string) (sql.NullInt64, error) {
 }
 
 // CreateTradingPostFromDiscord creates a new trading post entry from a Gemini-parsed Discord message.
-// It now deletes any previous posts from the same Discord user before creating the new one.
+// It now deletes any previous posts from the same Discord user *and* of the same post type
+// before creating the new one.
 func CreateTradingPostFromDiscord(authorName string, originalMessage string, tradeData *GeminiTradeResult) (int64, error) {
 	// Sanitize the author's name
 	characterName := sanitizeString(authorName, nameSanitizer)
@@ -2079,21 +2080,32 @@ func CreateTradingPostFromDiscord(authorName string, originalMessage string, tra
 	}
 	defer tx.Rollback() // Rollback on any error
 
-	// --- NEW: Delete existing posts from this Discord user ---
+	// --- MODIFIED: Delete existing posts from this user *of the same type* ---
 	// We identify the user by their character_name (sanitized) and the contact_info string.
-	// The ON DELETE CASCADE on the trading_post_items table will handle deleting the old items.
+	// We add a check for post_type to only delete "buying" posts if the new one is "buying",
+	// or "selling" posts if the new one is "selling".
 	discordContact := fmt.Sprintf("Discord: %s", authorName)
-	delRes, err := tx.Exec(`DELETE FROM trading_posts WHERE character_name = ? AND contact_info = ?`, characterName, discordContact)
+	postType := tradeData.Action // This will be "buying" or "selling"
+
+	delRes, err := tx.Exec(`
+		DELETE FROM trading_posts 
+		WHERE character_name = ? 
+		  AND contact_info = ? 
+		  AND post_type = ?`,
+		characterName,
+		discordContact,
+		postType,
+	)
 	if err != nil {
 		// Don't fail the entire transaction, but log that deletion failed.
 		log.Printf("⚠️ [Discord->DB] Failed to delete old post for '%s': %v", characterName, err)
 	} else {
 		deletedCount, _ := delRes.RowsAffected()
 		if deletedCount > 0 {
-			log.Printf("🧹 [Discord->DB] Deleted %d old post(s) for user '%s'.", deletedCount, characterName)
+			log.Printf("🧹 [Discord->DB] Deleted %d old '%s' post(s) for user '%s'.", deletedCount, postType, characterName)
 		}
 	}
-	// --- END NEW SECTION ---
+	// --- END MODIFIED SECTION ---
 
 	// Insert the main post record
 	res, err := tx.Exec(`INSERT INTO trading_posts (title, post_type, character_name, contact_info, notes, created_at, edit_token_hash)
