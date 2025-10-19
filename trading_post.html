@@ -24,7 +24,7 @@
         </div>
 
         <div class="bg-white p-3 rounded-lg shadow mb-4">
-            <form action="/trading-post" method="GET" class="flex flex-wrap items-center gap-3">
+            <form action="/discord" method="GET" class="flex flex-wrap items-center gap-3">
                 <input type="hidden" name="filter_type" value="{{.FilterType}}">
                 <input type="hidden" name="filter_currency" value="{{.FilterCurrency}}"> <input type="hidden" name="sort_by" value="{{.SortBy}}">
                 <input type="hidden" name="order" value="{{.Order}}">
@@ -34,7 +34,7 @@
         </div>
 
         <div class="flex flex-wrap border-b-2 border-gray-200 mb-2 gap-2">
-            <a href="/trading-post?filter_type=all&query={{.SearchQuery}}&filter_currency={{.FilterCurrency}}&sort_by={{.SortBy}}&order={{.Order}}"
+            <a href="/discord?filter_type=all&query={{.SearchQuery}}&filter_currency={{.FilterCurrency}}&sort_by={{.SortBy}}&order={{.Order}}"
                class="px-3 py-1 text-sm font-medium flex items-center gap-2 -mb-0.5 border-b-2
                       {{if eq .FilterType "all"}}
                         text-blue-600 border-blue-600
@@ -43,7 +43,7 @@
                       {{end}}">
                 All Posts
             </a>
-            <a href="/trading-post?filter_type=selling&query={{.SearchQuery}}&filter_currency={{.FilterCurrency}}&sort_by={{.SortBy}}&order={{.Order}}"
+            <a href="/discord?filter_type=selling&query={{.SearchQuery}}&filter_currency={{.FilterCurrency}}&sort_by={{.SortBy}}&order={{.Order}}"
                class="px-3 py-1 text-sm font-medium flex items-center gap-2 -mb-0.5 border-b-2
                       {{if eq .FilterType "selling"}}
                         text-blue-600 border-blue-600
@@ -52,7 +52,7 @@
                       {{end}}">
                 Selling
             </a>
-            <a href="/trading-post?filter_type=buying&query={{.SearchQuery}}&filter_currency={{.FilterCurrency}}&sort_by={{.SortBy}}&order={{.Order}}"
+            <a href="/discord?filter_type=buying&query={{.SearchQuery}}&filter_currency={{.FilterCurrency}}&sort_by={{.SortBy}}&order={{.Order}}"
                class="px-3 py-1 text-sm font-medium flex items-center gap-2 -mb-0.5 border-b-2
                       {{if eq .FilterType "buying"}}
                         text-blue-600 border-blue-600
@@ -64,7 +64,7 @@
         </div>
 
         <div class="flex flex-wrap mb-4 gap-2">
-            <a href="/trading-post?filter_type={{.FilterType}}&query={{.SearchQuery}}&filter_currency=all&sort_by={{.SortBy}}&order={{.Order}}"
+            <a href="/discord?filter_type={{.FilterType}}&query={{.SearchQuery}}&filter_currency=all&sort_by={{.SortBy}}&order={{.Order}}"
                class="px-3 py-1 text-xs font-medium rounded-full
                       {{if eq .FilterCurrency "all"}}
                         bg-gray-700 text-white
@@ -73,7 +73,7 @@
                       {{end}}">
                 Both
             </a>
-            <a href="/trading-post?filter_type={{.FilterType}}&query={{.SearchQuery}}&filter_currency=zeny&sort_by={{.SortBy}}&order={{.Order}}"
+            <a href="/discord?filter_type={{.FilterType}}&query={{.SearchQuery}}&filter_currency=zeny&sort_by={{.SortBy}}&order={{.Order}}"
                class="px-3 py-1 text-xs font-medium rounded-full
                       {{if eq .FilterCurrency "zeny"}}
                         bg-green-600 text-white
@@ -82,7 +82,7 @@
                       {{end}}">
                 Zeny
             </a>
-            <a href="/trading-post?filter_type={{.FilterType}}&query={{.SearchQuery}}&filter_currency=rmt&sort_by={{.SortBy}}&order={{.Order}}"
+            <a href="/discord?filter_type={{.FilterType}}&query={{.SearchQuery}}&filter_currency=rmt&sort_by={{.SortBy}}&order={{.Order}}"
                class="px-3 py-1 text-xs font-medium rounded-full
                       {{if eq .FilterCurrency "rmt"}}
                         bg-blue-600 text-white
@@ -106,32 +106,32 @@
                         
                         <th class="px-2 sm:px-3 py-2">Type</th>
                         <th class="px-2 sm:px-3 py-2">
-                            <a href="/trading-post?filter_type={{$filterType}}&filter_currency={{$filterCurrency}}&query={{$query}}&sort_by=item_name&order={{if eq $currentSort "item_name"}}{{$revOrder}}{{else}}ASC{{end}}">
+                            <a href="/discord?filter_type={{$filterType}}&filter_currency={{$filterCurrency}}&query={{$query}}&sort_by=item_name&order={{if eq $currentSort "item_name"}}{{$revOrder}}{{else}}ASC{{end}}">
                                 Item
                                 {{if eq $currentSort "item_name"}}{{if eq $currentOrder "ASC"}}<span class="text-gray-400">▲</span>{{else}}<span class="text-gray-400">▼</span>{{end}}{{end}}
                             </a>
                         </th>
                         <th class="px-2 sm:px-3 py-2 text-right">
-                            <a href="/trading-post?filter_type={{$filterType}}&filter_currency={{$filterCurrency}}&query={{$query}}&sort_by=price&order={{if eq $currentSort "price"}}{{$revOrder}}{{else}}ASC{{end}}">
+                            <a href="/discord?filter_type={{$filterType}}&filter_currency={{$filterCurrency}}&query={{$query}}&sort_by=price&order={{if eq $currentSort "price"}}{{$revOrder}}{{else}}ASC{{end}}">
                                 Price (ea)
                                 {{if eq $currentSort "price"}}{{if eq $currentOrder "ASC"}}<span class="text-gray-400">▲</span>{{else}}<span class="text-gray-400">▼</span>{{end}}{{end}}
                             </a>
                         </th>
                         <th class="px-2 sm:px-3 py-2 text-center">Payment</th>
                         <th class="px-2 sm:px-3 py-2 text-right">
-                            <a href="/trading-post?filter_type={{$filterType}}&filter_currency={{$filterCurrency}}&query={{$query}}&sort_by=quantity&order={{if eq $currentSort "quantity"}}{{$revOrder}}{{else}}DESC{{end}}">
+                            <a href="/discord?filter_type={{$filterType}}&filter_currency={{$filterCurrency}}&query={{$query}}&sort_by=quantity&order={{if eq $currentSort "quantity"}}{{$revOrder}}{{else}}DESC{{end}}">
                                 Qty
                                 {{if eq $currentSort "quantity"}}{{if eq $currentOrder "ASC"}}<span class="text-gray-400">▲</span>{{else}}<span class="text-gray-400">▼</span>{{end}}{{end}}
                             </a>
                         </th>
                         <th class="px-2 sm:px-3 py-2">
-                            <a href="/trading-post?filter_type={{$filterType}}&filter_currency={{$filterCurrency}}&query={{$query}}&sort_by=seller&order={{if eq $currentSort "seller"}}{{$revOrder}}{{else}}ASC{{end}}">
+                            <a href="/discord?filter_type={{$filterType}}&filter_currency={{$filterCurrency}}&query={{$query}}&sort_by=seller&order={{if eq $currentSort "seller"}}{{$revOrder}}{{else}}ASC{{end}}">
                                 Discord
                                 {{if eq $currentSort "seller"}}{{if eq $currentOrder "ASC"}}<span class="text-gray-400">▲</span>{{else}}<span class="text-gray-400">▼</span>{{end}}{{end}}
                             </a>
                         </th>
                         <th class="px-2 sm:px-3 py-2">
-                            <a href="/trading-post?filter_type={{$filterType}}&filter_currency={{$filterCurrency}}&query={{$query}}&sort_by=posted&order={{if eq $currentSort "posted"}}{{$revOrder}}{{else}}DESC{{end}}">
+                            <a href="/discord?filter_type={{$filterType}}&filter_currency={{$filterCurrency}}&query={{$query}}&sort_by=posted&order={{if eq $currentSort "posted"}}{{$revOrder}}{{else}}DESC{{end}}">
                                 Posted
                                 {{if eq $currentSort "posted"}}{{if eq $currentOrder "ASC"}}<span class="text-gray-400">▲</span>{{else}}<span class="text-gray-400">▼</span>{{end}}{{end}}
                             </a>
