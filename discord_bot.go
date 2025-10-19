@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"log"
 	"os"
-	"strings" // <-- Added import
+	"strings"
 	"sync"
 
 	"github.com/bwmarrin/discordgo"

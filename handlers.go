@@ -2197,7 +2197,7 @@ func createSingleTradingPost(authorName, originalMessage, postType string, items
 		postType,
 		characterName,
 		discordContact, // Use the generated contact string
-		fmt.Sprintf("Posted automatically from Discord.\n\nOriginal Message:\n%s", originalMessage),
+		originalMessage,
 		time.Now().Format(time.RFC3339),
 		string(tokenHash),
 	)

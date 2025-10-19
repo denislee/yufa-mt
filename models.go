@@ -491,9 +491,7 @@ type AdminEditPostPageData struct {
 	Message        string
 }
 
-// in models.go
-
-// MODIFIED: TradingPostItem represents one item within a larger post.
+// TradingPostItem represents one item within a larger post.
 type TradingPostItem struct {
 	ItemName       string
 	NamePT         sql.NullString

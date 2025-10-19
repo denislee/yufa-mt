@@ -161,7 +161,6 @@ func getAdminDashboardData(r *http.Request) (AdminDashboardData, error) {
 		}
 		if len(postIDs) > 0 {
 			placeholders := strings.Repeat("?,", len(postIDs)-1) + "?"
-			// MODIFIED: Select more item fields for display on the admin dashboard
 			itemQuery := fmt.Sprintf(`
 				SELECT post_id, item_name, quantity, price, currency, refinement, card1 
 				FROM trading_post_items WHERE post_id IN (%s)
@@ -172,7 +171,6 @@ func getAdminDashboardData(r *http.Request) (AdminDashboardData, error) {
 				for itemRows.Next() {
 					var item TradingPostItem
 					var postID int
-					// MODIFIED: Scan the new fields
 					if err := itemRows.Scan(&postID, &item.ItemName, &item.Quantity, &item.Price, &item.Currency, &item.Refinement, &item.Card1); err == nil {
 						if index, ok := postMap[postID]; ok {
 							posts[index].Items = append(posts[index].Items, item)
@@ -459,7 +457,6 @@ func adminDeleteVisitorViewsHandler(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, "/admin?msg="+msg, http.StatusSeeOther)
 }
 
-// ADDED: adminDeleteTradingPostHandler removes a trading post.
 func adminDeleteTradingPostHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Redirect(w, r, "/admin", http.StatusSeeOther)
@@ -496,7 +493,6 @@ func adminDeleteTradingPostHandler(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, "/admin?msg="+msg, http.StatusSeeOther)
 }
 
-// ADDED: adminEditTradingPostHandler allows editing or displaying an edit form for a trading post.
 func adminEditTradingPostHandler(w http.ResponseWriter, r *http.Request) {
 	postIDStr := r.URL.Query().Get("id")
 	postID, err := strconv.Atoi(postIDStr)
@@ -540,7 +536,6 @@ func adminEditTradingPostHandler(w http.ResponseWriter, r *http.Request) {
 		}
 
 		// 3. Loop through submitted items and re-insert them
-		// MODIFIED: Get all new form fields
 		itemNames := r.Form["item_name[]"]
 		itemIDs := r.Form["item_id[]"]
 		quantities := r.Form["quantity[]"]
@@ -555,7 +550,6 @@ func adminEditTradingPostHandler(w http.ResponseWriter, r *http.Request) {
 		cards4 := r.Form["card4[]"]
 
 		if len(itemNames) > 0 {
-			// MODIFIED: Update INSERT statement
 			stmt, err := tx.Prepare(`
 				INSERT INTO trading_post_items 
 				(post_id, item_name, item_id, quantity, price, currency, payment_methods, refinement, slots, card1, card2, card3, card4) 
@@ -573,7 +567,6 @@ func adminEditTradingPostHandler(w http.ResponseWriter, r *http.Request) {
 					continue
 				}
 
-				// MODIFIED: Parse all new fields
 				quantity, _ := strconv.Atoi(quantities[i])
 				price, _ := strconv.ParseInt(strings.ReplaceAll(prices[i], ",", ""), 10, 64)
 
@@ -604,7 +597,6 @@ func adminEditTradingPostHandler(w http.ResponseWriter, r *http.Request) {
 					continue
 				}
 
-				// MODIFIED: Execute with all new fields
 				_, err := stmt.Exec(postID, itemName, itemID, quantity, price, currency, paymentMethods, refinement, slots, card1, card2, card3, card4)
 				if err != nil {
 					tx.Rollback()
@@ -645,7 +637,6 @@ func adminEditTradingPostHandler(w http.ResponseWriter, r *http.Request) {
 		post.CreatedAt = createdAtStr
 
 		// 2. Fetch its items
-		// MODIFIED: Select all item fields
 		itemRows, err := db.Query(`
 			SELECT item_name, item_id, quantity, price, currency, payment_methods, refinement, slots, card1, card2, card3, card4 
 			FROM trading_post_items WHERE post_id = ?
@@ -658,7 +649,6 @@ func adminEditTradingPostHandler(w http.ResponseWriter, r *http.Request) {
 
 		for itemRows.Next() {
 			var item TradingPostItem
-			// MODIFIED: Scan all item fields
 			if err := itemRows.Scan(
 				&item.ItemName, &item.ItemID, &item.Quantity, &item.Price, &item.Currency, &item.PaymentMethods,
 				&item.Refinement, &item.Slots, &item.Card1, &item.Card2, &item.Card3, &item.Card4,

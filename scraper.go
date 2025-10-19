@@ -27,7 +27,7 @@ const enableMvpScraperDebugLogs = false
 const enableZenyScraperDebugLogs = false
 const enableMarketScraperDebugLogs = false
 
-// Added a shared slice of MVP IDs for the scraper and database logic to use.
+// Shared slice of MVP IDs for the scraper and database logic to use.
 var mvpMobIDsScrape = []string{
 	"1038", "1039", "1046", "1059", "1086", "1087", "1112", "1115", "1147",
 	"1150", "1157", "1159", "1190", "1251", "1252", "1272", "1312", "1373",
@@ -146,7 +146,6 @@ func scrapeAndStorePlayerCount() {
 		return
 	}
 
-	// --- MODIFICATION: ACQUIRE DATABASE LOCK ---
 	dbMutex.Lock()
 	defer dbMutex.Unlock()
 
@@ -368,7 +367,6 @@ func scrapePlayerCharacters() {
 		return
 	}
 
-	// --- MODIFICATION: ACQUIRE DATABASE LOCK ---
 	dbMutex.Lock()
 	defer dbMutex.Unlock()
 
@@ -377,7 +375,6 @@ func scrapePlayerCharacters() {
 		log.Println("    -> [DB] Fetching existing player data for activity comparison...")
 	}
 	existingPlayers := make(map[string]PlayerCharacter)
-	// **MODIFIED**: Query more fields for change logging.
 	rowsPre, err := db.Query("SELECT name, base_level, job_level, experience, class, last_active FROM characters")
 	if err != nil {
 		log.Printf("❌ [DB] Failed to query existing characters for comparison: %v", err)
@@ -385,7 +382,6 @@ func scrapePlayerCharacters() {
 		defer rowsPre.Close()
 		for rowsPre.Next() {
 			var p PlayerCharacter
-			// **MODIFIED**: Scan more fields.
 			if err := rowsPre.Scan(&p.Name, &p.BaseLevel, &p.JobLevel, &p.Experience, &p.Class, &p.LastActive); err != nil {
 				log.Printf("    -> [DB] WARN: Failed to scan existing player row: %v", err)
 				continue
@@ -650,7 +646,6 @@ func scrapeGuilds() {
 		return
 	}
 
-	// --- MODIFICATION: ACQUIRE DATABASE LOCK ---
 	dbMutex.Lock()
 	defer dbMutex.Unlock()
 
@@ -676,7 +671,6 @@ func scrapeGuilds() {
 	}
 	defer tx.Rollback()
 
-	// --- MODIFICATION START ---
 	// Changed the logic from "DELETE then INSERT" to "UPSERT" to preserve existing data like emblem_url.
 	log.Println("    -> [DB] Upserting guild information into 'guilds' table...")
 	guildStmt, err := tx.Prepare(`
@@ -691,7 +685,6 @@ func scrapeGuilds() {
 		log.Printf("❌ [Guilds][DB] Failed to prepare guilds upsert statement: %v", err)
 		return
 	}
-	// --- MODIFICATION END ---
 	defer guildStmt.Close()
 
 	updateTime := time.Now().Format(time.RFC3339)
@@ -924,7 +917,6 @@ func scrapeZeny() {
 		return
 	}
 
-	// --- MODIFICATION: ACQUIRE DATABASE LOCK ---
 	dbMutex.Lock()
 	defer dbMutex.Unlock()
 
@@ -1116,14 +1108,14 @@ func scrapeData() {
 
 	retrievalTime := time.Now().Format(time.RFC3339)
 	scrapedItemsByName := make(map[string][]Item)
-	activeSellers := make(map[string]bool) // ADDED: Keep track of active sellers
+	activeSellers := make(map[string]bool)
 
 	doc.Find(`div[data-slot="card"]`).Each(func(i int, s *goquery.Selection) {
 		shopName := strings.TrimSpace(s.Find(`div[data-slot="card-title"]`).Text())
 		sellerName := strings.TrimSpace(s.Find("svg.lucide-user").Next().Text())
 		mapName := strings.TrimSpace(s.Find("svg.lucide-map-pin").Next().Text())
 		mapCoordinates := strings.TrimSpace(s.Find("svg.lucide-copy").Next().Text())
-		activeSellers[sellerName] = true // ADDED: Populate the set of active sellers
+		activeSellers[sellerName] = true
 
 		if enableMarketScraperDebugLogs == true {
 			log.Printf("[Market] shop name: %s, seller name: %s, map_name: %s, mapcoord: %s", shopName, sellerName, mapName, mapCoordinates)
@@ -1195,7 +1187,6 @@ func scrapeData() {
 
 	log.Printf("🔎 [Market] Scrape parsed. Found %d unique item names.", len(scrapedItemsByName))
 
-	// --- MODIFICATION: ACQUIRE DATABASE LOCK ---
 	dbMutex.Lock()
 	defer dbMutex.Unlock()
 
@@ -1212,7 +1203,6 @@ func scrapeData() {
 		return
 	}
 
-	// --- ADDED: Pre-calculate old store sizes for context ---
 	dbStoreSizes := make(map[string]int)
 	sellerItems := make(map[string]map[string]bool)
 	rows, err := tx.Query("SELECT seller_name, name_of_the_item FROM items WHERE is_available = 1")
@@ -1234,7 +1224,6 @@ func scrapeData() {
 			dbStoreSizes[seller] = len(items)
 		}
 	}
-	// --- END ADDITION ---
 
 	rows, err = tx.Query("SELECT DISTINCT name_of_the_item FROM items WHERE is_available = 1")
 	if err != nil {
@@ -1273,7 +1262,6 @@ func scrapeData() {
 		}
 		rows.Close()
 
-		// --- MODIFIED: Log specific removal reasons when an item group is updated ---
 		if !areItemSetsIdentical(currentScrapedItems, lastAvailableItems) {
 			currentSet := make(map[comparableItem]bool)
 			for _, item := range currentScrapedItems {
@@ -1290,12 +1278,11 @@ func scrapeData() {
 						eventType = "REMOVED_SINGLE"
 					}
 
-					// MODIFIED: Include details in the event log
 					details, _ := json.Marshal(map[string]interface{}{
 						"price":      lastItem.Price,
 						"quantity":   lastItem.Quantity,
 						"seller":     lastItem.SellerName,
-						"store_name": lastItem.StoreName, // ADDED
+						"store_name": lastItem.StoreName,
 					})
 					_, err := tx.Exec(`INSERT INTO market_events (event_timestamp, event_type, item_name, item_id, details) VALUES (?, ?, ?, ?, ?)`, retrievalTime, eventType, lastItem.Name, lastItem.ItemID, string(details))
 					if err != nil {
@@ -1304,7 +1291,6 @@ func scrapeData() {
 				}
 			}
 		}
-		// --- END MODIFICATION ---
 
 		if areItemSetsIdentical(currentScrapedItems, lastAvailableItems) {
 			itemsUnchanged++
@@ -1337,7 +1323,7 @@ func scrapeData() {
 					"price":      firstItem.Price,
 					"quantity":   firstItem.Quantity,
 					"seller":     firstItem.SellerName,
-					"store_name": firstItem.StoreName, // ADDED
+					"store_name": firstItem.StoreName,
 				})
 				_, err := tx.Exec(`INSERT INTO market_events (event_timestamp, event_type, item_name, item_id, details) VALUES (?, 'ADDED', ?, ?, ?)`, retrievalTime, itemName, firstItem.ItemID, string(details))
 				if err != nil {
@@ -1372,7 +1358,7 @@ func scrapeData() {
 					"price":      lowestPriceListingInBatch.Price,
 					"quantity":   lowestPriceListingInBatch.Quantity,
 					"seller":     lowestPriceListingInBatch.SellerName,
-					"store_name": lowestPriceListingInBatch.StoreName, // ADDED
+					"store_name": lowestPriceListingInBatch.StoreName,
 				})
 				_, err := tx.Exec(`INSERT INTO market_events (event_timestamp, event_type, item_name, item_id, details) VALUES (?, 'NEW_LOW', ?, ?, ?)`, retrievalTime, itemName, lowestPriceListingInBatch.ItemID, string(details))
 				if err != nil {
@@ -1390,7 +1376,6 @@ func scrapeData() {
 		if _, foundInScrape := scrapedItemsByName[name]; !foundInScrape {
 			// This item name has completely disappeared from the market.
 			var removedListings []Item
-			// MODIFIED: Query for price and quantity as well
 			rows, err := tx.Query("SELECT name_of_the_item, item_id, seller_name, price, quantity, store_name FROM items WHERE name_of_the_item = ? AND is_available = 1", name)
 			if err != nil {
 				log.Printf("⚠️ [Market] Could not query details for removed item '%s': %v", name, err)
@@ -1399,7 +1384,6 @@ func scrapeData() {
 
 			for rows.Next() {
 				var listing Item
-				// MODIFIED: Scan the new fields
 				if err := rows.Scan(&listing.Name, &listing.ItemID, &listing.SellerName, &listing.Price, &listing.Quantity, &listing.StoreName); err != nil {
 					continue
 				}
@@ -1416,12 +1400,11 @@ func scrapeData() {
 					eventType = "REMOVED_SINGLE"
 				}
 
-				// MODIFIED: Include details in the event log
 				details, _ := json.Marshal(map[string]interface{}{
 					"price":      listing.Price,
 					"quantity":   listing.Quantity,
 					"seller":     listing.SellerName,
-					"store_name": listing.StoreName, // ADDED
+					"store_name": listing.StoreName,
 				})
 				_, err = tx.Exec(`INSERT INTO market_events (event_timestamp, event_type, item_name, item_id, details) VALUES (?, ?, ?, ?, ?)`, retrievalTime, eventType, name, listing.ItemID, string(details))
 				if err != nil {
@@ -1459,7 +1442,6 @@ func toComparable(item Item) comparableItem {
 	}
 }
 
-// areItemSetsIdentical is modified to use the new helper and fix a bug.
 func areItemSetsIdentical(setA, setB []Item) bool {
 	if len(setA) != len(setB) {
 		return false
@@ -1635,7 +1617,6 @@ func scrapeMvpKills() {
 		return
 	}
 
-	// --- MODIFICATION: ACQUIRE DATABASE LOCK ---
 	dbMutex.Lock()
 	defer dbMutex.Unlock()
 
@@ -1712,7 +1693,6 @@ func scrapeMvpKills() {
 			}
 			existingKillCount := existingKills[mobID]
 
-			// --- MODIFICATION START ---
 			// Compare the new value with the existing one. Only update if the new value is greater.
 			// This prevents overwriting correct data with stale data from a slow-updating ranking page.
 			finalKillCount := newKillCount
@@ -1722,7 +1702,6 @@ func scrapeMvpKills() {
 					log.Printf("    -> [MVP] Stale data for %s on MVP %s. DB has %d, scrape has %d. Keeping DB value.", charName, mobID, existingKillCount, newKillCount)
 				}
 			}
-			// --- MODIFICATION END ---
 
 			// Log the change if the kill count has increased
 			if finalKillCount > existingKillCount {
@@ -1818,4 +1797,3 @@ func startBackgroundJobs() {
 		}
 	}()
 }
-

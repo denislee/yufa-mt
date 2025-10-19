@@ -15,7 +15,7 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/joho/godotenv" // ADDED: Import for .env file loading
+	"github.com/joho/godotenv"
 )
 
 // getVisitorHash creates an anonymized hash for a visitor.
@@ -74,15 +74,9 @@ func visitorTracker(next http.HandlerFunc) http.HandlerFunc {
 }
 
 func main() {
-	// --- ADDED: Load .env file ---
-	// This will load variables from a .env file into the environment.
-	// If the file doesn't exist, it will just log a message and continue.
-	// This allows the app to still work in production environments
-	// where variables are set directly.
 	if err := godotenv.Load(); err != nil {
 		log.Println("ℹ️ No .env file found, relying on system environment variables.")
 	}
-	// --- END OF ADDED BLOCK ---
 
 	var err error
 	// Initialize the database connection. The 'db' variable is global in the 'db.go' file.
