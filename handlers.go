@@ -1924,7 +1924,7 @@ func tradingPostListHandler(w http.ResponseWriter, r *http.Request) {
 		FilterCurrency: filterCurrency, // Pass the active currency filter
 		SortBy:         sortBy,         // Pass sorting info
 		Order:          order,          // Pass sorting info
-		PageTitle:      "Trading Post",
+		PageTitle:      "Discord",
 	}
 	renderTemplate(w, "trading_post.html", data)
 }

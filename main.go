@@ -152,7 +152,7 @@ func main() {
 	http.HandleFunc("/store", visitorTracker(storeDetailHandler))
 
 	// ... after other http.HandleFunc calls
-	http.HandleFunc("/trading-post", visitorTracker(tradingPostListHandler))
+	http.HandleFunc("/discord", visitorTracker(tradingPostListHandler))
 	// REMOVED: Handlers for /trading-post/new and /trading-post/manage
 
 	// REMOVED: API routes for item previews and search
@@ -214,4 +214,3 @@ func main() {
 	wg.Wait()
 	log.Println("✅ All processes shut down cleanly. Exiting.")
 }
-

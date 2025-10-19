@@ -10,7 +10,7 @@
                 <a href="/" class="text-sm px-3 py-2 rounded-md {{if eq .PageTitle "Summary"}}font-semibold text-blue-600 bg-blue-50{{else}}text-gray-600 hover:bg-gray-100{{end}}">Summary</a>
                 <a href="/full-list" class="text-sm px-3 py-2 rounded-md {{if eq .PageTitle "Full List"}}font-semibold text-blue-600 bg-blue-50{{else}}text-gray-600 hover:bg-gray-100{{end}}">Full List</a>
                 <a href="/activity" class="text-sm px-3 py-2 rounded-md {{if eq .PageTitle "Activity"}}font-semibold text-blue-600 bg-blue-50{{else}}text-gray-600 hover:bg-gray-100{{end}}">Activity</a>
-                <a href="/trading-post" class="text-sm px-3 py-2 rounded-md {{if eq .PageTitle "Trading Post"}}font-semibold text-blue-600 bg-blue-50{{else}}text-gray-600 hover:bg-gray-100{{end}}">Discord</a>
+                <a href="/discord" class="text-sm px-3 py-2 rounded-md {{if eq .PageTitle "Discord"}}font-semibold text-blue-600 bg-blue-50{{else}}text-gray-600 hover:bg-gray-100{{end}}">Discord</a>
                 <a href="/players" class="text-sm px-3 py-2 rounded-md {{if eq .PageTitle "Player Count"}}font-semibold text-blue-600 bg-blue-50{{else}}text-gray-600 hover:bg-gray-100{{end}}">Player Count</a>
                 
                 <div class="relative" id="ranking-dropdown-menu">
@@ -36,7 +36,7 @@
         <a href="/" class="block py-2 px-4 text-sm {{if eq .PageTitle "Summary"}}bg-blue-50 text-blue-600 font-semibold{{else}}text-gray-600 hover:bg-gray-50{{end}}">Summary</a>
         <a href="/full-list" class="block py-2 px-4 text-sm {{if eq .PageTitle "Full List"}}bg-blue-50 text-blue-600 font-semibold{{else}}text-gray-600 hover:bg-gray-50{{end}}">Full List</a>
         <a href="/activity" class="block py-2 px-4 text-sm {{if eq .PageTitle "Activity"}}bg-blue-50 text-blue-600 font-semibold{{else}}text-gray-600 hover:bg-gray-50{{end}}">Activity</a>
-        <a href="/trading-post" class="block py-2 px-4 text-sm {{if eq .PageTitle "Trading Post"}}bg-blue-50 text-blue-600 font-semibold{{else}}text-gray-600 hover:bg-gray-50{{end}}">Discord</a>
+        <a href="/discord" class="block py-2 px-4 text-sm {{if eq .PageTitle "Discord"}}bg-blue-50 text-blue-600 font-semibold{{else}}text-gray-600 hover:bg-gray-50{{end}}">Discord</a>
         <a href="/players" class="block py-2 px-4 text-sm {{if eq .PageTitle "Player Count"}}bg-blue-50 text-blue-600 font-semibold{{else}}text-gray-600 hover:bg-gray-50{{end}}">Player Count</a>
         <details class="group" {{if $isRankingPage}}open{{end}}>
             <summary class="py-2 px-4 text-sm list-none flex justify-between cursor-pointer {{if $isRankingPage}}text-blue-600 font-semibold{{else}}text-gray-600 hover:bg-gray-50{{end}}">
