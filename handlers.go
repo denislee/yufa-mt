@@ -2085,10 +2085,26 @@ func findItemIDByName(itemName string, allowRetry bool, slots int) (sql.NullInt6
 		// --- NEW: Perfect Match Check (Online) ---
 		// We have multiple ONLINE results. Check if one is a perfect match.
 		// Note: We can only check the English 'name' from RMS here.
+
+		// --- MODIFICATION: Add regex to strip slot info for perfect match ---
+		reSlots := regexp.MustCompile(`\s*\[\d+\]\s*`)
+		// --- END MODIFICATION ---
+
 		for id, name := range combinedIDs {
-			if name == cleanItemName {
+			// --- MODIFICATION: Clean the result name before comparing ---
+			nameWithoutSlots := reSlots.ReplaceAllString(name, " ")
+			nameWithoutSlots = strings.TrimSpace(nameWithoutSlots)
+			// --- END MODIFICATION ---
+
+			// Check for a perfect match (e.g., "Jur [3]" == "Jur [3]")
+			// OR a slot-stripped match (e.g., "Jur" == "Jur")
+			if name == cleanItemName || (nameWithoutSlots != "" && nameWithoutSlots == cleanItemName) {
 				// Found a perfect match (English name) within the ONLINE results!
-				log.Printf("   [Item ID Search] Found perfect match '%s' (ID %d) within ONLINE results.", cleanItemName, id)
+				if name == cleanItemName {
+					log.Printf("   [Item ID Search] Found perfect match (exact) '%s' (ID %d) within ONLINE results.", cleanItemName, id)
+				} else {
+					log.Printf("   [Item ID Search] Found perfect match (slot-stripped) '%s' (ID %d) within ONLINE results (Original: '%s').", cleanItemName, id, name)
+				}
 				go scrapeAndCacheItemIfNotExists(id, name)
 				return sql.NullInt64{Int64: int64(id), Valid: true}, nil
 			}
