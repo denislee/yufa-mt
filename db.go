@@ -228,7 +228,6 @@ func initDB(filepath string) (*sql.DB, error) {
 		return nil, fmt.Errorf("could not create visitors table: %w", err)
 	}
 
-	// ADDED: SQL statement for the 'page_views' table.
 	createPageViewsTableSQL := `
 	CREATE TABLE IF NOT EXISTS page_views (
 		"id" INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
@@ -240,13 +239,11 @@ func initDB(filepath string) (*sql.DB, error) {
 		return nil, fmt.Errorf("could not create page_views table: %w", err)
 	}
 
-	// ADDED: Add an index for faster lookups on page_path
 	createPageIndexSQL := `CREATE INDEX IF NOT EXISTS idx_page_path ON page_views (page_path);`
 	if _, err = db.Exec(createPageIndexSQL); err != nil {
 		return nil, fmt.Errorf("could not create index on page_views: %w", err)
 	}
 
-	// ADDED: SQL statement for the main 'trading_posts' table.
 	// This table holds info about the post itself, not the items.
 	createTradingPostsTableSQL := `
 CREATE TABLE IF NOT EXISTS trading_posts (
@@ -263,7 +260,6 @@ CREATE TABLE IF NOT EXISTS trading_posts (
 		return nil, fmt.Errorf("could not create trading_posts table: %w", err)
 	}
 
-	// MODIFIED: SQL statement for the 'trading_post_items' table.
 	// This table holds the individual items, linked to a post.
 	createTradingPostItemsTableSQL := `
 CREATE TABLE IF NOT EXISTS trading_post_items (

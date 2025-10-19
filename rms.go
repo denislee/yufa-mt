@@ -125,7 +125,6 @@ func scrapeRMSItemDetails(itemID int) (*RMSItem, error) {
 		if readErr != nil {
 			log.Printf("   -> ⚠️ [RDB] Could not read body from RagnarokDatabase for item %d: %v", itemID, readErr)
 		} else {
-			// **MODIFIED**: Updated regex to match the correct class name "item-title-db".
 			reNamePT := regexp.MustCompile(`<h1 class="item-title-db">([^<]+)</h1>`)
 			matches := reNamePT.FindStringSubmatch(string(body))
 			if len(matches) > 1 {
@@ -465,10 +464,17 @@ func scrapeRagnarokDatabaseSearch(query string) ([]int, error) {
 
 // scrapeRODatabaseSearch performs a search on rodatabase.com to find potential item IDs.
 // It uses regex to parse the HTML response from the search results page.
-func scrapeRODatabaseSearch(query string) ([]int, error) {
+func scrapeRODatabaseSearch(query string, slots int) ([]int, error) {
 	// 1. Construct the URL by escaping the search query.
-	searchURL := fmt.Sprintf("https://rodatabase.com/pt-BR/item/search?name=%s", url.QueryEscape(query))
-	log.Printf("➡️ [RODatabase Search] Performing search for: '%s'", query)
+	v := url.Values{}
+	v.Set("name", query)
+	if slots > 0 {
+		v.Set("slots_operator", "eq")
+		v.Set("slots", strconv.Itoa(slots))
+	}
+	searchURL := fmt.Sprintf("https://rodatabase.com/pt-BR/item/search?%s", v.Encode())
+
+	log.Printf("➡️ [RODatabase Search] Performing search for: '%s' (Slots: %d)", query, slots)
 	log.Printf("	URL: %s", searchURL)
 
 	// 2. Make the HTTP request with a timeout and custom transport.

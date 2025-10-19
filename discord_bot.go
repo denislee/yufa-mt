@@ -120,25 +120,32 @@ func messageCreate(s *discordgo.Session, m *discordgo.MessageCreate) {
 			return
 		}
 
-		log.Printf("✅ [Discord->Gemini] Successfully parsed trade message. Action: %s, Items: %d", tradeResult.Action, len(tradeResult.Items))
+		log.Printf("✅ [Discord->Gemini] Successfully parsed trade message. Found %d items.", len(tradeResult.Items))
 
 		// Create the trading post entry in the database
-		// MODIFIED: Added m.Content as the second argument
-		postID, err := CreateTradingPostFromDiscord(m.Author.Username, m.Content, tradeResult)
+		postIDs, err := CreateTradingPostFromDiscord(m.Author.Username, m.Content, tradeResult)
 		if err != nil {
-			log.Printf("❌ [Discord->DB] Failed to create trading post for '%s': %v", m.Author.Username, err)
+			log.Printf("❌ [Discord->DB] Failed to create trading post(s) for '%s': %v", m.Author.Username, err)
 			// s.MessageReactionAdd(m.ChannelID, m.ID, "🔥") // React with a server error emoji
 			return
 		}
 
-		log.Printf("✅ [Discord->DB] Successfully created trading post #%d for '%s'.", postID, m.Author.Username)
+		if len(postIDs) == 0 {
+			log.Printf("⚠️ [Discord->DB] No trading posts were created for '%s' (e.g., only empty items).", m.Author.Username)
+			return
+		}
+
+		var postIDStrings []string
+		for _, pid := range postIDs {
+			postIDStrings = append(postIDStrings, fmt.Sprintf("#%d", pid))
+		}
+		log.Printf("✅ [Discord->DB] Successfully created trading post(s) %s for '%s'.", strings.Join(postIDStrings, ", "), m.Author.Username)
 
 		// React to the original message with a success emoji
 		// s.MessageReactionAdd(m.ChannelID, m.ID, "✅")
 
 		// Send a confirmation message back to the channel
-		_ = fmt.Sprintf("✅ Trade post #%d created for **%s**.", postID, m.Author.Username)
+		_ = fmt.Sprintf("✅ Trade post(s) %s created for **%s**.", strings.Join(postIDStrings, ", "), m.Author.Username)
 		// s.ChannelMessageSend(m.ChannelID, confirmationMessage)
 	}()
 }
-

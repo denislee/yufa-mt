@@ -421,6 +421,7 @@ func (p PageViewEntry) ShortHash() string {
 // GeminiTradeItem holds the parsed data for a single item from a trade message.
 type GeminiTradeItem struct {
 	Name           string `json:"name"`
+	Action         string `json:"action"`
 	Quantity       int    `json:"quantity"`
 	Price          int64  `json:"price"`
 	Currency       string `json:"currency"`
@@ -435,8 +436,7 @@ type GeminiTradeItem struct {
 
 // GeminiTradeResult holds the complete parsed result from a trade message.
 type GeminiTradeResult struct {
-	Action string            `json:"action"`
-	Items  []GeminiTradeItem `json:"items"`
+	Items []GeminiTradeItem `json:"items"`
 }
 
 // Modify the AdminDashboardData struct to include the new fields.

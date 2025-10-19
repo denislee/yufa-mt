@@ -49,7 +49,7 @@ var (
 	contactSanitizer = regexp.MustCompile(`[^a-zA-Z0-9\s:.,#@-]+`)
 	// Allows letters, numbers, spaces, and basic punctuation for notes.
 	notesSanitizer = regexp.MustCompile(`[^a-zA-Z0-9\s.,?!'-]+`)
-	// MODIFIED: Allows Unicode letters (\p{L}), numbers, spaces, and common item characters.
+	// Allows Unicode letters (\p{L}), numbers, spaces, and common item characters.
 	itemSanitizer = regexp.MustCompile(`[^\p{L}0-9\s\[\]\+\-]+`)
 )
 
@@ -230,7 +230,6 @@ func buildItemSearchClause(searchQuery, tableAlias string) (string, []interface{
 
 // renderTemplate is a helper to parse and execute templates, reducing boilerplate.
 func renderTemplate(w http.ResponseWriter, tmplFile string, data interface{}) {
-	// MODIFIED: Parse both the target file and the navbar.html layout file.
 	tmpl, err := template.New(tmplFile).Funcs(templateFuncs).ParseFiles(tmplFile, "navbar.html")
 	if err != nil {
 		log.Printf("❌ Could not load template '%s' or 'navbar.html': %v", tmplFile, err)
@@ -263,7 +262,7 @@ func getCombinedItemIDs(searchQuery string) ([]int, error) {
 	go func() {
 		defer wg.Done()
 		//		ids, err := scrapeRagnarokDatabaseSearch(searchQuery)
-		ids, err := scrapeRODatabaseSearch(searchQuery)
+		ids, err := scrapeRODatabaseSearch(searchQuery, 0)
 		if err != nil {
 			log.Printf("⚠️ Concurrent scrape failed for '%s': %v", searchQuery, err)
 			scrapedIDsChan <- []int{} // Send empty slice on error
@@ -478,7 +477,6 @@ func summaryHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var params []interface{}
-	// MODIFIED: This is the base query for both counting and fetching items
 	baseQuery := `
 		FROM items i
 		LEFT JOIN rms_item_cache rms ON i.item_id = rms.item_id
@@ -503,7 +501,6 @@ func summaryHandler(w http.ResponseWriter, r *http.Request) {
 		whereClause = "WHERE " + strings.Join(whereConditions, " AND ")
 	}
 
-	// --- ADDED: Count the total number of unique items ---
 	// We must also apply the 'HAVING' clause logic for an accurate count.
 	countQuery := `
 		SELECT COUNT(*)
@@ -531,7 +528,6 @@ func summaryHandler(w http.ResponseWriter, r *http.Request) {
 		// Don't fail the request, just log the error and show 0
 		totalUniqueItems = 0
 	}
-	// --- END ADDED SECTION ---
 
 	// Main query for fetching item details
 	selectClause := `
@@ -558,7 +554,6 @@ func summaryHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	orderByClause, sortBy, order := getSortClause(r, allowedSorts, "highest_price", "DESC")
 
-	// MODIFIED: Added a missing '%s' for the orderByClause.
 	// This was the source of the "near ','" syntax error.
 	query := fmt.Sprintf("%s %s %s %s %s %s, i.name_of_the_item ASC;", selectClause, baseQuery, whereClause, groupByClause, havingClause, orderByClause)
 
@@ -583,7 +578,6 @@ func summaryHandler(w http.ResponseWriter, r *http.Request) {
 	var totalVisitors int
 	db.QueryRow("SELECT COUNT(*) FROM visitors").Scan(&totalVisitors)
 
-	// MODIFIED: Pass TotalUniqueItems to the data struct
 	data := SummaryPageData{
 		Items:            items,
 		SearchQuery:      searchQuery,
@@ -594,8 +588,8 @@ func summaryHandler(w http.ResponseWriter, r *http.Request) {
 		ItemTypes:        getItemTypeTabs(),
 		SelectedType:     selectedType,
 		TotalVisitors:    totalVisitors,
-		TotalUniqueItems: totalUniqueItems, // ADDED
-		PageTitle:        "Summary",        // ADDED
+		TotalUniqueItems: totalUniqueItems,
+		PageTitle:        "Summary",
 	}
 	renderTemplate(w, "index.html", data)
 }
@@ -726,7 +720,7 @@ func fullListHandler(w http.ResponseWriter, r *http.Request) {
 		SortBy: sortBy, Order: order, ShowAll: showAll, LastScrapeTime: getLastUpdateTime("scrape_history", "timestamp"),
 		VisibleColumns: visibleColumns, AllColumns: allCols, ColumnParams: template.URL(columnParams.Encode()),
 		ItemTypes: getItemTypeTabs(), SelectedType: selectedType,
-		PageTitle: "Full List", // ADDED
+		PageTitle: "Full List",
 	}
 	renderTemplate(w, "full_list.html", data)
 }
@@ -808,7 +802,7 @@ func activityHandler(w http.ResponseWriter, r *http.Request) {
 		SearchQuery:    searchQuery,
 		SoldOnly:       soldOnly,
 		Pagination:     pagination,
-		PageTitle:      "Activity", // ADDED
+		PageTitle:      "Activity",
 	}
 	renderTemplate(w, "activity.html", data)
 }
@@ -1017,7 +1011,7 @@ func itemHistoryHandler(w http.ResponseWriter, r *http.Request) {
 		LastScrapeTime:     getLastUpdateTime("scrape_history", "timestamp"),
 		TotalListings:      totalListings,
 		Pagination:         pagination,
-		PageTitle:          itemName, // ADDED (PageTitle is the item name)
+		PageTitle:          itemName,
 	}
 	renderTemplate(w, "history.html", data)
 }
@@ -1118,7 +1112,7 @@ func playerCountHandler(w http.ResponseWriter, r *http.Request) {
 		PlayerDataJSON: template.JS(playerHistoryJSON), LastScrapeTime: getLastUpdateTime("player_history", "timestamp"),
 		SelectedInterval: interval, EventDataJSON: template.JS(eventIntervalsJSON), LatestActivePlayers: latestActivePlayers,
 		HistoricalMaxActivePlayers: historicalMaxActive, HistoricalMaxActivePlayersTime: historicalMaxTime,
-		PageTitle: "Player Count", // ADDED
+		PageTitle: "Player Count",
 	}
 	renderTemplate(w, "players.html", data)
 }
@@ -1299,7 +1293,7 @@ func characterHandler(w http.ResponseWriter, r *http.Request) {
 		Pagination: pagination, TotalPlayers: totalPlayers, TotalZeny: totalZeny.Int64,
 		ClassDistributionJSON: template.JS(classDistJSON), GraphFilter: graphFilterMap, GraphFilterParams: template.URL(graphFilterParams.Encode()),
 		HasChartData: len(chartData) > 1,
-		PageTitle:    "Characters", // ADDED
+		PageTitle:    "Characters",
 	}
 	renderTemplate(w, "characters.html", data)
 }
@@ -1379,7 +1373,7 @@ func guildHandler(w http.ResponseWriter, r *http.Request) {
 		Order:               order,
 		Pagination:          pagination,
 		TotalGuilds:         totalGuilds,
-		PageTitle:           "Guilds", // ADDED
+		PageTitle:           "Guilds",
 	}
 	renderTemplate(w, "guilds.html", data)
 }
@@ -1447,7 +1441,7 @@ func mvpKillsHandler(w http.ResponseWriter, r *http.Request) {
 	data := MvpKillPageData{
 		Players: players, Headers: headers, SortBy: sortBy, Order: order,
 		LastScrapeTime: getLastUpdateTime("characters", "last_updated"),
-		PageTitle:      "MVP Kills", // ADDED
+		PageTitle:      "MVP Kills",
 	}
 	renderTemplate(w, "mvp_kills.html", data)
 }
@@ -1588,7 +1582,7 @@ func characterDetailHandler(w http.ResponseWriter, r *http.Request) {
 		ClassImageURL:       classImages[p.Class],
 		ChangelogEntries:    changelogEntries,
 		ChangelogPagination: pagination,
-		PageTitle:           p.Name, // ADDED (PageTitle is the character name)
+		PageTitle:           p.Name,
 	}
 	renderTemplate(w, "character_detail.html", data)
 }
@@ -1631,7 +1625,7 @@ func characterChangelogHandler(w http.ResponseWriter, r *http.Request) {
 		ChangelogEntries: changelogEntries,
 		LastScrapeTime:   getLastUpdateTime("characters", "last_updated"),
 		Pagination:       pagination,
-		PageTitle:        "Character Changelog", // ADDED
+		PageTitle:        "Character Changelog",
 	}
 	renderTemplate(w, "character_changelog.html", data)
 }
@@ -1732,7 +1726,7 @@ func guildDetailHandler(w http.ResponseWriter, r *http.Request) {
 		HasChartData:          len(classDistribution) > 1,
 		ChangelogEntries:      changelogEntries,
 		ChangelogPagination:   pagination,
-		PageTitle:             g.Name, // ADDED (PageTitle is the guild name)
+		PageTitle:             g.Name,
 	}
 	renderTemplate(w, "guild_detail.html", data)
 }
@@ -1800,7 +1794,7 @@ func storeDetailHandler(w http.ResponseWriter, r *http.Request) {
 	data := StoreDetailPageData{
 		StoreName: storeName, SellerName: sellerName, MapName: strings.ToLower(mapName), MapCoordinates: mapCoords,
 		Items: items, LastScrapeTime: getLastUpdateTime("scrape_history", "timestamp"), SortBy: sortBy, Order: order,
-		PageTitle: storeName, // ADDED (PageTitle is the store name)
+		PageTitle: storeName,
 	}
 	renderTemplate(w, "store_detail.html", data)
 }
@@ -1815,15 +1809,12 @@ func generateSecretToken(length int) (string, error) {
 }
 
 // tradingPostListHandler displays the list of all trading posts.
-// MODIFIED: This handler was rewritten to query for a flat item list.
 func tradingPostListHandler(w http.ResponseWriter, r *http.Request) {
 	searchQuery := r.URL.Query().Get("query")
-	// ADDED: Get the filter_type from the URL query
 	filterType := r.URL.Query().Get("filter_type")
 	if filterType == "" {
 		filterType = "all" // Default to "all"
 	}
-	// ADDED: Get the filter_currency from the URL query
 	filterCurrency := r.URL.Query().Get("filter_currency")
 	if filterCurrency == "" {
 		filterCurrency = "all" // Default to "all"
@@ -1866,7 +1857,6 @@ func tradingPostListHandler(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// ADDED: Filter by post type based on the tab
 	if filterType == "selling" {
 		whereConditions = append(whereConditions, "p.post_type = ?")
 		queryParams = append(queryParams, "selling")
@@ -1876,7 +1866,6 @@ func tradingPostListHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	// If filterType is "all", no condition is added, so all types are shown.
 
-	// ADDED: Filter by currency
 	if filterCurrency == "zeny" {
 		whereConditions = append(whereConditions, "i.currency = ?")
 		queryParams = append(queryParams, "zeny")
@@ -1891,7 +1880,6 @@ func tradingPostListHandler(w http.ResponseWriter, r *http.Request) {
 		whereClause = "WHERE " + strings.Join(whereConditions, " AND ")
 	}
 
-	// ADDED: Sorting logic
 	allowedSorts := map[string]string{
 		"item_name": "i.item_name",
 		// Sort price, but put 0 (Negotiable) at the end when sorting ASC
@@ -1900,7 +1888,6 @@ func tradingPostListHandler(w http.ResponseWriter, r *http.Request) {
 		"seller":   "p.character_name",
 		"posted":   "p.created_at",
 	}
-	// MODIFIED: Use getSortClause instead of hardcoded order
 	orderByClause, sortBy, order := getSortClause(r, allowedSorts, "posted", "DESC")
 
 	finalQuery := baseQuery + whereClause + " " + orderByClause
@@ -1929,7 +1916,6 @@ func tradingPostListHandler(w http.ResponseWriter, r *http.Request) {
 		items = append(items, item)
 	}
 
-	// MODIFIED: Pass the FilterType, SortBy, and Order to the template
 	data := TradingPostPageData{
 		Items:          items,
 		LastScrapeTime: getLastUpdateTime("scrape_history", "timestamp"),
@@ -1938,7 +1924,7 @@ func tradingPostListHandler(w http.ResponseWriter, r *http.Request) {
 		FilterCurrency: filterCurrency, // Pass the active currency filter
 		SortBy:         sortBy,         // Pass sorting info
 		Order:          order,          // Pass sorting info
-		PageTitle:      "Trading Post", // ADDED
+		PageTitle:      "Trading Post",
 	}
 	renderTemplate(w, "trading_post.html", data)
 }
@@ -1947,7 +1933,7 @@ func tradingPostListHandler(w http.ResponseWriter, r *http.Request) {
 // If no unique match is found, it performs a concurrent online search as a fallback.
 // If multiple matches are found (for non-card items), it returns no ID.
 // If multiple matches are found for an item containing "card" or "carta", it returns the first match.
-func findItemIDByName(itemName string) (sql.NullInt64, error) {
+func findItemIDByName(itemName string, allowRetry bool, slots int) (sql.NullInt64, error) {
 	var itemID int64
 
 	reRefine := regexp.MustCompile(`\s*\+\d+\s*`)
@@ -1958,6 +1944,15 @@ func findItemIDByName(itemName string) (sql.NullInt64, error) {
 	if strings.TrimSpace(cleanItemName) == "" {
 		return sql.NullInt64{Valid: false}, nil
 	}
+
+	// --- NEW: Handle "Zeny" as a special case ---
+	// If the item name is "Zeny", "zeny", etc., do not search for an ID.
+	// This is a special item handled by the Gemini parser.
+	if strings.ToLower(cleanItemName) == "zeny" {
+		log.Printf("   [Item ID Search] Detected special item 'Zeny'. Skipping ID search.")
+		return sql.NullInt64{Valid: false}, nil
+	}
+	// --- END NEW SECTION ---
 
 	// --- Step 1 & 2: Search local cache (exact and LIKE match) ---
 	queryExact := `SELECT item_id FROM rms_item_cache WHERE name_pt = ? OR name = ?`
@@ -1970,45 +1965,60 @@ func findItemIDByName(itemName string) (sql.NullInt64, error) {
 		return sql.NullInt64{}, fmt.Errorf("error during exact match query for '%s': %w", cleanItemName, err)
 	}
 
-	// Try a broader LIKE search
-	queryLike := `SELECT item_id FROM rms_item_cache WHERE name_pt LIKE ? OR name LIKE ? ORDER BY name_pt, name LIMIT 10`
+	queryLike := `SELECT item_id, name, name_pt FROM rms_item_cache WHERE name_pt LIKE ? OR name LIKE ? ORDER BY name_pt, name LIMIT 10`
 	rows, err := db.Query(queryLike, "%"+cleanItemName+"%", "%"+cleanItemName+"%")
 	if err != nil {
 		return sql.NullInt64{}, fmt.Errorf("error during LIKE query for '%s': %w", cleanItemName, err)
 	}
 	defer rows.Close()
 
-	var potentialIDs []int64
+	type potentialMatch struct {
+		id     int64
+		name   string
+		namePT sql.NullString // Use sql.NullString for name_pt
+	}
+	var potentialMatches []potentialMatch
+
 	for rows.Next() {
-		var id int64
-		if err := rows.Scan(&id); err == nil {
-			potentialIDs = append(potentialIDs, id)
+		var match potentialMatch
+		if err := rows.Scan(&match.id, &match.name, &match.namePT); err == nil {
+			potentialMatches = append(potentialMatches, match)
 		}
 	}
 
-	// MODIFIED: Check potential local LIKE matches
-	if len(potentialIDs) == 1 {
+	if len(potentialMatches) == 1 {
 		// Found a single, unambiguous LIKE match.
-		itemID = potentialIDs[0]
+		itemID = potentialMatches[0].id
 		log.Printf("   [Item ID Search] Found unique local LIKE match for '%s': ID %d", cleanItemName, itemID)
 		return sql.NullInt64{Int64: itemID, Valid: true}, nil
 	}
 
-	if len(potentialIDs) > 1 {
-		// Found multiple, ambiguous LIKE matches.
+	if len(potentialMatches) > 1 {
+		// --- NEW: Perfect Match Check (Local) ---
+		// We have multiple LIKE results. Check if one is a perfect match.
+		for _, match := range potentialMatches {
+			if match.name == cleanItemName || (match.namePT.Valid && match.namePT.String == cleanItemName) {
+				// Found a perfect match within the LIKE results!
+				log.Printf("   [Item ID Search] Found perfect match '%s' (ID %d) within local LIKE results.", cleanItemName, match.id)
+				return sql.NullInt64{Int64: match.id, Valid: true}, nil
+			}
+		}
+		// --- END NEW SECTION ---
+
+		// Found multiple, ambiguous LIKE matches, and none were a perfect match.
+		// Proceed with card logic.
 		lowerCleanItemName := strings.ToLower(cleanItemName)
 		if strings.Contains(lowerCleanItemName, "card") || strings.Contains(lowerCleanItemName, "carta") {
 			// Ambiguous, but it's a card search, so take the first match.
-			itemID = potentialIDs[0]
-			log.Printf("   [Item ID Search] Found %d local LIKE matches for '%s'. Using first result (ID %d) due to 'card'/'carta' keyword.", len(potentialIDs), cleanItemName, itemID)
+			itemID = potentialMatches[0].id
+			log.Printf("   [Item ID Search] Found %d local LIKE matches for '%s'. Using first result (ID %d) due to 'card'/'carta' keyword.", len(potentialMatches), cleanItemName, itemID)
 			return sql.NullInt64{Int64: itemID, Valid: true}, nil
 		}
 
 		// Ambiguous, and not a card search. Do not select one.
-		log.Printf("   [Item ID Search] Found %d ambiguous local LIKE matches for '%s'. Not selecting. Proceeding to online search.", len(potentialIDs), cleanItemName)
+		log.Printf("   [Item ID Search] Found %d ambiguous local LIKE matches for '%s'. Not selecting. Proceeding to online search.", len(potentialMatches), cleanItemName)
 		// Let the function continue to Step 3 (online search)
 	}
-	// --- END MODIFIED SECTION ---
 
 	// --- Step 3: Fallback to concurrent online search if local search fails ---
 	log.Printf("   [Item ID Search] No local match for '%s'. Initiating online search...", cleanItemName)
@@ -2030,7 +2040,7 @@ func findItemIDByName(itemName string) (sql.NullInt64, error) {
 	}()
 	go func() {
 		defer wg.Done()
-		ids, err := scrapeRODatabaseSearch(cleanItemName)
+		ids, err := scrapeRODatabaseSearch(cleanItemName, slots)
 
 		if err != nil {
 			log.Printf("   -> [RDB Search] Failed for '%s': %v", cleanItemName, err)
@@ -2058,7 +2068,6 @@ func findItemIDByName(itemName string) (sql.NullInt64, error) {
 		}
 	}
 
-	// MODIFIED: Apply the same logic to online results
 	if len(combinedIDs) == 1 {
 		// Found a single, unambiguous ONLINE match.
 		var foundID int
@@ -2073,7 +2082,21 @@ func findItemIDByName(itemName string) (sql.NullInt64, error) {
 	}
 
 	if len(combinedIDs) > 1 {
-		// Found multiple, ambiguous ONLINE matches.
+		// --- NEW: Perfect Match Check (Online) ---
+		// We have multiple ONLINE results. Check if one is a perfect match.
+		// Note: We can only check the English 'name' from RMS here.
+		for id, name := range combinedIDs {
+			if name == cleanItemName {
+				// Found a perfect match (English name) within the ONLINE results!
+				log.Printf("   [Item ID Search] Found perfect match '%s' (ID %d) within ONLINE results.", cleanItemName, id)
+				go scrapeAndCacheItemIfNotExists(id, name)
+				return sql.NullInt64{Int64: int64(id), Valid: true}, nil
+			}
+		}
+		// --- END NEW SECTION ---
+
+		// Found multiple, ambiguous ONLINE matches, and none were a perfect match.
+		// Proceed with card logic.
 		lowerCleanItemName := strings.ToLower(cleanItemName)
 		if strings.Contains(lowerCleanItemName, "card") || strings.Contains(lowerCleanItemName, "carta") {
 			// Ambiguous, but it's a card search, so take the first match.
@@ -2093,17 +2116,33 @@ func findItemIDByName(itemName string) (sql.NullInt64, error) {
 		log.Printf("   [Item ID Search] Found %d ambiguous ONLINE matches for '%s'. Not selecting.", len(combinedIDs), cleanItemName)
 		// Fall through to the final "no results" return
 	}
-	// --- END MODIFIED SECTION ---
 
-	// If we're here, the online search returned no results or was ambiguous for a non-card.
+	// --- NEW: Final step, retry without "card" or "carta" ---
+	lowerCleanItemName := strings.ToLower(cleanItemName)
+	if allowRetry && (strings.Contains(lowerCleanItemName, "card") || strings.Contains(lowerCleanItemName, "carta")) {
+		// Create a regex to remove "card" or "carta" as whole words, case-insensitive
+		reCard := regexp.MustCompile(`(?i)\s*\b(card|carta)\b\s*`)
+		// Use the *original* itemName (with refinement) to avoid issues with sanitization
+		newName := reCard.ReplaceAllString(itemName, " ")
+		newName = strings.TrimSpace(newName)
+
+		if newName != "" && newName != cleanItemName {
+			log.Printf("   [Item ID Search] No results for '%s'. Retrying search without 'card'/'carta' as: '%s'", cleanItemName, newName)
+			// Call again, but this time disallow further retries
+			return findItemIDByName(newName, false, slots)
+		}
+	}
+	// --- END NEW SECTION ---
+
+	// If we're here, all searches failed or were ambiguous.
 	log.Printf("   [Item ID Search] Online search for '%s' returned no results or was ambiguous. Storing name only.", cleanItemName)
 	return sql.NullInt64{Valid: false}, nil
 }
 
-// CreateTradingPostFromDiscord creates a new trading post entry from a Gemini-parsed Discord message.
-// It now deletes any previous posts from the same Discord user *and* of the same post type
-// before creating the new one.
-func CreateTradingPostFromDiscord(authorName string, originalMessage string, tradeData *GeminiTradeResult) (int64, error) {
+// createSingleTradingPost is a helper function to create a post and its items within a transaction.
+// This is called by CreateTradingPostFromDiscord to handle splitting a message into
+// separate "buying" and "selling" posts.
+func createSingleTradingPost(authorName, originalMessage, postType string, items []GeminiTradeItem) (int64, error) {
 	// Sanitize the author's name
 	characterName := sanitizeString(authorName, nameSanitizer)
 	if strings.TrimSpace(characterName) == "" {
@@ -2111,10 +2150,9 @@ func CreateTradingPostFromDiscord(authorName string, originalMessage string, tra
 	}
 
 	// Generate a title based on the action
-	title := fmt.Sprintf("%s items via Discord", strings.Title(tradeData.Action))
+	title := fmt.Sprintf("%s items via Discord", strings.Title(postType))
 
-	// No user interaction, so we generate a token but don't display it.
-	// It's hashed for consistency with the schema, but is effectively a "dead" token.
+	// Generate a "dead" token hash for consistency with the schema.
 	token, err := generateSecretToken(16)
 	if err != nil {
 		return 0, fmt.Errorf("could not generate security token for discord post: %w", err)
@@ -2131,13 +2169,8 @@ func CreateTradingPostFromDiscord(authorName string, originalMessage string, tra
 	}
 	defer tx.Rollback() // Rollback on any error
 
-	// --- MODIFIED: Delete existing posts from this user *of the same type* ---
-	// We identify the user by their character_name (sanitized) and the contact_info string.
-	// We add a check for post_type to only delete "buying" posts if the new one is "buying",
-	// or "selling" posts if the new one is "selling".
+	// Delete existing posts from this user *of the same type*
 	discordContact := fmt.Sprintf("Discord: %s", authorName)
-	postType := tradeData.Action // This will be "buying" or "selling"
-
 	delRes, err := tx.Exec(`
 		DELETE FROM trading_posts 
 		WHERE character_name = ? 
@@ -2156,16 +2189,14 @@ func CreateTradingPostFromDiscord(authorName string, originalMessage string, tra
 			log.Printf("🧹 [Discord->DB] Deleted %d old '%s' post(s) for user '%s'.", deletedCount, postType, characterName)
 		}
 	}
-	// --- END MODIFIED SECTION ---
 
 	// Insert the main post record
 	res, err := tx.Exec(`INSERT INTO trading_posts (title, post_type, character_name, contact_info, notes, created_at, edit_token_hash)
             VALUES (?, ?, ?, ?, ?, ?, ?)`,
 		title,
-		tradeData.Action,
+		postType,
 		characterName,
 		discordContact, // Use the generated contact string
-		// MODIFIED: Add the original message to the notes.
 		fmt.Sprintf("Posted automatically from Discord.\n\nOriginal Message:\n%s", originalMessage),
 		time.Now().Format(time.RFC3339),
 		string(tokenHash),
@@ -2175,22 +2206,24 @@ func CreateTradingPostFromDiscord(authorName string, originalMessage string, tra
 	}
 	postID, _ := res.LastInsertId()
 
-	// Prepare to insert the items, now including all details from Gemini.
+	// Prepare to insert the items.
+	// NOTE: The 'trading_post_items' table does not have an 'action' column,
+	// as the action is defined by the parent 'trading_posts' entry.
 	stmt, err := tx.Prepare("INSERT INTO trading_post_items (post_id, item_name, item_id, quantity, price, currency, payment_methods, refinement, slots, card1, card2, card3, card4) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
 	if err != nil {
 		return 0, fmt.Errorf("database preparation failed for discord post items: %w", err)
 	}
 	defer stmt.Close()
 
-	for _, item := range tradeData.Items {
+	for _, item := range items {
 		// Sanitize item name just in case
 		itemName := sanitizeString(item.Name, itemSanitizer)
 		if strings.TrimSpace(itemName) == "" {
 			continue // Skip empty items
 		}
 
-		// --- NEW LOGIC: Identify the item ID ---
-		itemID, findErr := findItemIDByName(itemName)
+		// Identify the item ID, allowing one retry
+		itemID, findErr := findItemIDByName(itemName, true, item.Slots)
 		if findErr != nil {
 			// Log the error but continue, as we can still insert the item by name.
 			log.Printf("⚠️ Error finding item ID for '%s': %v. Proceeding without ID.", itemName, findErr)
@@ -2226,4 +2259,50 @@ func CreateTradingPostFromDiscord(authorName string, originalMessage string, tra
 	}
 
 	return postID, nil
+}
+
+// CreateTradingPostFromDiscord creates new trading post entries from a Gemini-parsed Discord message.
+// It automatically splits items into "buying" and "selling" posts if a message contains both.
+// It deletes any previous posts from the same Discord user *and* of the same post type
+// before creating the new one.
+func CreateTradingPostFromDiscord(authorName string, originalMessage string, tradeData *GeminiTradeResult) ([]int64, error) {
+	var buyingItems []GeminiTradeItem
+	var sellingItems []GeminiTradeItem
+	var postIDs []int64
+	var finalError error
+
+	// 1. Group items by their action
+	for _, item := range tradeData.Items {
+		if item.Action == "buying" {
+			buyingItems = append(buyingItems, item)
+		} else {
+			// Default to "selling" if action is missing or not "buying"
+			sellingItems = append(sellingItems, item)
+		}
+	}
+
+	// 2. Create a "buying" post if there are buying items
+	if len(buyingItems) > 0 {
+		postID, err := createSingleTradingPost(authorName, originalMessage, "buying", buyingItems)
+		if err != nil {
+			log.Printf("❌ [Discord->DB] Failed to create 'buying' post for '%s': %v", authorName, err)
+			finalError = err // Store the error
+		} else {
+			postIDs = append(postIDs, postID)
+		}
+	}
+
+	// 3. Create a "selling" post if there are selling items
+	if len(sellingItems) > 0 {
+		postID, err := createSingleTradingPost(authorName, originalMessage, "selling", sellingItems)
+		if err != nil {
+			log.Printf("❌ [Discord->DB] Failed to create 'selling' post for '%s': %v", authorName, err)
+			finalError = err // Store the error (will overwrite previous, which is fine)
+		} else {
+			postIDs = append(postIDs, postID)
+		}
+	}
+
+	// 4. Return the list of created IDs and the last error encountered
+	return postIDs, finalError
 }

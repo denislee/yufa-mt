@@ -33,13 +33,19 @@ func parseTradeMessageWithGemini(message string) (*GeminiTradeResult, error) {
 
 	// Configure the model to expect a JSON response.
 	model := client.GenerativeModel("gemini-flash-latest")
+	//model := client.GenerativeModel("gemini-flash-lite-latest")
 	model.GenerationConfig.ResponseMIMEType = "application/json"
 
 	prompt := fmt.Sprintf(`You are an expert at parsing trade messages for the game Ragnarok Online.
 Analyze the following message and extract the trade information.
-The user's intent will be either "buying" or "selling".
-For each item, extract its base name, refinement level, number of slots, any attached cards, quantity, price, and currency.
+For each item, extract its base name, refinement level, number of slots, any attached cards, quantity, price, currency, and action.
 
+- "V>" or "vendo" means the "action" for that item is "selling".
+- "C>" or "compro" means the "action" for that item is "buying".
+- A single message can contain both buying and selling items. Assign the correct "action" to each item.
+- The structure of each item will be "V> name of the item to be sell" or "C> name of the item to be buyed"
+- If the item is "peliz", the name is "Sobrepeliz" and has one slot.
+- If the item is "vemb" or "vembrassa", the name is  "Guard" and has one slot.
 - The base "name" should be the item's name WITHOUT any refinement prefix (e.g., +7), slots (e.g., [3]), or cards. For "+9 Jur [3] [Mummy Card]", the name is "Jur".
 - "refinement" is the number after a '+'. If not present, it is 0.
 - "slots" is the number inside square brackets, like [3]. If it's a card name like [Mummy Card], slots should be 0. If not present, it is 0.
@@ -47,7 +53,6 @@ For each item, extract its base name, refinement level, number of slots, any att
 - If "quantity" is not mentioned, assume 1.
 - If "price" is not mentioned, use 0.
 - Prices can be written with 'k' for thousands (e.g., 500k = 500000) or 'kk' for millions (e.g., 1.5kk = 1500000). Convert all prices to a raw integer.
-- "V>", "vendo", or "V>endo" means the action is "selling". "C>", "compro", or "C>ompro" means the action is "buying".
 - If the user mentions "RMT" or "$", the "currency" should be "rmt". Otherwise, it is "zeny". This "currency" refers to the listed "price".
 - **NEW**: Analyze the accepted payment types. This is separate from the listed price's currency.
 - If the user *only* mentions zeny (k, kk), "payment_methods" should be "zeny".
@@ -58,18 +63,22 @@ For each item, extract its base name, refinement level, number of slots, any att
 - Try to fix typos, but do consider the context of Ragnarok Online game words.
 - Keep the words "Carta" and "Card", if "Carta" exists, put on the begining of the item name; if "Card" exists, put on the end of the item name.
 - replace the word: "peco peco" to "PecoPeco", "cavalo marinho" to "Cavalo-Marinho", "louva a deus" to "Louva-a-Deus"
-- if the item is "thara", it is "Thara Frog Card"
-- if the item is "louva-a-deus", it is "Carta Louva-a-Deus"
-- if the item has slots, keep the slots on the name of the item, but always a space between the item name and the slots
+- If the item is "thara", it is "Thara Frog Card"
+- If the item is "druid" or "druida", it is "Evil Druid Card"
+- If the item is "esporo card", it is "Spore Card"
+- If the item is "louva-a-deus", it is "Carta Louva-a-Deus"
+- An item only have card if the item has the number of slots equal or more than number of cards in the item
+- If the item has slots, keep the slots on the name of the item, but always a space between the item name and the slots
 
 - **SPECIAL CASE: Zeny for RMT Sales**:
-- If the user is selling Zeny (kk) for RMT ($, reais), this is a special item.
+- If the user is selling Zeny (kk) for RMT ($, reais), this is a special item. The "action" is "selling".
 - **Unit Sale (e.g., "V>10kk 25 reais cada")**: "cada" implies "per 1kk".
     - "name": "Zeny (1kk pack)"
     - "quantity": 10 (the total number of kk's being sold)
     - "price": 25 (the RMT price per kk)
     - "currency": "rmt"
     - "payment_methods": "rmt"
+    - "action": "selling"
     - refinement, slots, cards must be 0 or "".
 - **Bulk Sale (e.g., "VENDO 13KK a 300$ no Pix")**: This is a single package.
     - "name": "Zeny (13kk pack)" (Note: the quantity is in the name)
@@ -77,6 +86,7 @@ For each item, extract its base name, refinement level, number of slots, any att
     - "price": 300 (the total RMT price for the pack)
     - "currency": "rmt"
     - "payment_methods": "rmt"
+    - "action": "selling"
     - refinement, slots, cards must be 0 or "".
 - **General Sale (e.g., "V> KK", "V> Zeny")**: If the user lists "Zeny" or "KK" as an item they are *selling* ("V>"), but does not specify a price or amount (unlike the Unit/Bulk sale cases). This is still treated as a Zeny-for-RMT sale.
     - "name": "Zeny"
@@ -84,13 +94,13 @@ For each item, extract its base name, refinement level, number of slots, any att
     - "price": 0 (default)
     - "currency": "rmt"
     - "payment_methods": "rmt"
+    - "action": "selling"
     - refinement, slots, cards must be 0 or "".
-- If the message is only about selling Zeny, the "action" is "selling".
 - Do not parse regular items if the message is clearly just a Zeny for RMT sale (like the Unit or Bulk sale examples). If it's a mix (like "V> KK" and "V> Carta Hydra (RMT)"), parse all items.
 
 Provide the output *only* as a single, minified JSON object. Do not wrap it in markdown backticks or any other text.
-The JSON object must have two keys: "action" (string: "buying" or "selling") and "items" (an array of objects).
-Each item object in the array must have these keys: "name" (string), "quantity" (integer), "price" (integer), "currency" (string: "zeny" or "rmt"), "payment_methods" (string: "zeny", "rmt", or "both"), "refinement" (integer), "slots" (integer), "card1" (string), "card2" (string), "card3" (string), "card4" (string).
+The JSON object must have one key: "items" (an array of objects).
+Each item object in the array must have these keys: "name" (string), "action" (string: "buying" or "selling"), "quantity" (integer), "price" (integer), "currency" (string: "zeny" or "rmt"), "payment_methods" (string: "zeny", "rmt", or "both"), "refinement" (integer), "slots" (integer), "card1" (string), "card2" (string), "card3" (string), "card4" (string).
 
 Here is the message to parse:
 ---
@@ -126,4 +136,3 @@ Here is the message to parse:
 
 	return &result, nil
 }
-
