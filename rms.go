@@ -465,16 +465,26 @@ func scrapeRagnarokDatabaseSearch(query string) ([]int, error) {
 // scrapeRODatabaseSearch performs a search on rodatabase.com to find potential item IDs.
 // It uses regex to parse the HTML response from the search results page.
 func scrapeRODatabaseSearch(query string, slots int) ([]int, error) {
+	// --- ADDED: Remove slot information [N] from the query string ---
+	// This prevents searches like "Jur [3]" from failing, as the site's
+	// search field expects just the name ("Jur") and uses a separate
+	// field for the slot count.
+	reSlots := regexp.MustCompile(`\s*\[\d+\]\s*`)
+	searchQuery := reSlots.ReplaceAllString(query, " ") // Replace with space to avoid merging words
+	searchQuery = strings.TrimSpace(searchQuery)        // Clean up leading/trailing spaces
+	// --- END ADDITION ---
+
 	// 1. Construct the URL by escaping the search query.
 	v := url.Values{}
-	v.Set("name", query)
+	v.Set("name", searchQuery) // Use the cleaned searchQuery
 	if slots > 0 {
 		v.Set("slots_operator", "eq")
 		v.Set("slots", strconv.Itoa(slots))
 	}
 	searchURL := fmt.Sprintf("https://rodatabase.com/pt-BR/item/search?%s", v.Encode())
 
-	log.Printf("➡️ [RODatabase Search] Performing search for: '%s' (Slots: %d)", query, slots)
+	// Modified log to show both original and cleaned query
+	log.Printf("➡️ [RODatabase Search] Performing search for: '%s' (Original: '%s', Slots: %d)", searchQuery, query, slots)
 	log.Printf("	URL: %s", searchURL)
 
 	// 2. Make the HTTP request with a timeout and custom transport.

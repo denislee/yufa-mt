@@ -44,8 +44,6 @@ For each item, extract its base name, refinement level, number of slots, any att
 - "C>" or "compro" means the "action" for that item is "buying".
 - A single message can contain both buying and selling items. Assign the correct "action" to each item.
 - The structure of each item will be "V> name of the item to be sell" or "C> name of the item to be buyed"
-- If the item is "peliz", the name is "Sobrepeliz" and has one slot.
-- If the item is "vemb" or "vembrassa", the name is  "Guard" and has one slot.
 - The base "name" should be the item's name WITHOUT any refinement prefix (e.g., +7), slots (e.g., [3]), or cards. For "+9 Jur [3] [Mummy Card]", the name is "Jur".
 - "refinement" is the number after a '+'. If not present, it is 0.
 - "slots" is the number inside square brackets, like [3]. If it's a card name like [Mummy Card], slots should be 0. If not present, it is 0.
@@ -55,6 +53,7 @@ For each item, extract its base name, refinement level, number of slots, any att
 - Prices can be written with 'k' for thousands (e.g., 500k = 500000) or 'kk' for millions (e.g., 1.5kk = 1500000). Convert all prices to a raw integer.
 - If the user mentions "RMT" or "$", the "currency" should be "rmt". Otherwise, it is "zeny". This "currency" refers to the listed "price".
 - **NEW**: Analyze the accepted payment types. This is separate from the listed price's currency.
+- If in the name contains "slotado" or "com slot", means that the item contains one slot and can be replaced by "[1]"
 - If the user *only* mentions zeny (k, kk), "payment_methods" should be "zeny".
 - If the user *only* mentions RMT ($), "payment_methods" should be "rmt".
 - If the user mentions *both* (e.g., "vendo por 2kk ou 10 reais", "aceito zeny ou rmt"), "payment_methods" should be "both".
@@ -63,6 +62,11 @@ For each item, extract its base name, refinement level, number of slots, any att
 - Try to fix typos, but do consider the context of Ragnarok Online game words.
 - Keep the words "Carta" and "Card", if "Carta" exists, put on the begining of the item name; if "Card" exists, put on the end of the item name.
 - replace the word: "peco peco" to "PecoPeco", "cavalo marinho" to "Cavalo-Marinho", "louva a deus" to "Louva-a-Deus"
+- "solta ou na presilha", means that is the card and the card in the Clip [1], 2 items.
+- If the item is "rosario" or "rosário", the name is "Rosary" and has one slot.
+- If the item is "cartola", the name is "Magician Ha".
+- If the item is "peliz", the name is "Sobrepeliz" and has one slot.
+- If the item is "vemb" or "vembrassa", the name is  "Guard" and has one slot.
 - If the item is "thara", it is "Thara Frog Card"
 - If the item is "druid" or "druida", it is "Evil Druid Card"
 - If the item is "esporo card", it is "Spore Card"
