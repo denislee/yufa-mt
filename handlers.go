@@ -239,7 +239,6 @@ func renderTemplate(w http.ResponseWriter, tmplFile string, data interface{}) {
 	err = tmpl.Execute(w, data)
 	if err != nil {
 		log.Printf("❌ Could not execute template '%s': %v", tmplFile, err)
-		http.Error(w, "Could not render template", http.StatusInternalServerError)
 	}
 }
 
@@ -2185,26 +2184,71 @@ func createSingleTradingPost(authorName, originalMessage, postType string, items
 	}
 	defer tx.Rollback() // Rollback on any error
 
-	// Delete existing posts from this user *of the same type*
-	discordContact := fmt.Sprintf("Discord: %s", authorName)
-	delRes, err := tx.Exec(`
-		DELETE FROM trading_posts 
-		WHERE character_name = ? 
-		  AND contact_info = ? 
-		  AND post_type = ?`,
-		characterName,
-		discordContact,
-		postType,
-	)
-	if err != nil {
-		// Don't fail the entire transaction, but log that deletion failed.
-		log.Printf("⚠️ [Discord->DB] Failed to delete old post for '%s': %v", characterName, err)
-	} else {
-		deletedCount, _ := delRes.RowsAffected()
-		if deletedCount > 0 {
-			log.Printf("🧹 [Discord->DB] Deleted %d old '%s' post(s) for user '%s'.", deletedCount, postType, characterName)
+	// --- NEW DELETION LOGIC ---
+	// 1. Collect all sanitized item names from the new post.
+	var itemNames []string
+	var itemParams []interface{}
+	for _, item := range items {
+		itemName := sanitizeString(item.Name, itemSanitizer)
+		if strings.TrimSpace(itemName) != "" {
+			itemNames = append(itemNames, itemName)
+			itemParams = append(itemParams, itemName) // Add to params list
 		}
 	}
+
+	discordContact := fmt.Sprintf("Discord: %s", authorName)
+
+	if len(itemNames) > 0 {
+		// 2. Build the query to find old post IDs that match author, type, AND contain at least one of the new items.
+		placeholders := strings.Repeat("?,", len(itemNames)-1) + "?"
+
+		findQuery := fmt.Sprintf(`
+			SELECT DISTINCT p.id
+			FROM trading_posts p
+			JOIN trading_post_items i ON p.id = i.post_id
+			WHERE p.character_name = ?
+			  AND p.contact_info = ?
+			  AND p.post_type = ?
+			  AND i.item_name IN (%s)
+		`, placeholders)
+
+		// 3. Collect parameters for the find query
+		findParams := []interface{}{characterName, discordContact, postType}
+		findParams = append(findParams, itemParams...)
+
+		// 4. Find the posts to delete
+		rows, err := tx.Query(findQuery, findParams...)
+		if err != nil {
+			// Don't fail, just log. This isn't a critical failure.
+			log.Printf("⚠️ [Discord->DB] Failed to query for old posts to delete for '%s': %v", characterName, err)
+		} else {
+			var postIDsToDelete []interface{}
+			for rows.Next() {
+				var id int64
+				if err := rows.Scan(&id); err == nil {
+					postIDsToDelete = append(postIDsToDelete, id)
+				}
+			}
+			rows.Close() // Close rows immediately
+
+			// 5. Delete the found posts
+			if len(postIDsToDelete) > 0 {
+				delPlaceholders := strings.Repeat("?,", len(postIDsToDelete)-1) + "?"
+				delQuery := fmt.Sprintf("DELETE FROM trading_posts WHERE id IN (%s)", delPlaceholders)
+
+				delRes, err := tx.Exec(delQuery, postIDsToDelete...)
+				if err != nil {
+					log.Printf("⚠️ [Discord->DB] Failed to delete old post(s) for '%s': %v", characterName, err)
+				} else {
+					deletedCount, _ := delRes.RowsAffected()
+					if deletedCount > 0 {
+						log.Printf("🧹 [Discord->DB] Deleted %d old '%s' post(s) for user '%s' because they contained matching items.", deletedCount, postType, characterName)
+					}
+				}
+			}
+		}
+	}
+	// --- END NEW DELETION LOGIC ---
 
 	// Insert the main post record
 	res, err := tx.Exec(`INSERT INTO trading_posts (title, post_type, character_name, contact_info, notes, created_at, edit_token_hash)
