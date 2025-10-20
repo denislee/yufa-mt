@@ -558,7 +558,7 @@ func runFullRMSCacheJob() {
 	const scrapeDelay = 5 * time.Second      // 5 seconds per item to be polite
 	const startDiscoveryID = 501             // Start from Red Potion (ID 501)
 	const maxPreRenewalItemID = 20000        // Stop searching after this ID
-	const maxConsecutiveFailures = 100       // Stop if 100 empty IDs are found in a row
+	const maxConsecutiveFailures = 1000      // Stop if 100 empty IDs are found in a row
 
 	// =========================================================================
 	// Part 1: Refresh Stale Items from the Market
