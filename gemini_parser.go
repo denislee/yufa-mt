@@ -76,6 +76,7 @@ For each item, extract its base name, refinement level, number of slots, any att
 - If the item is "louva-a-deus", it is "Carta Louva-a-Deus"
 - If the item is "popohat" or "popo hat", it is "Poo Poo Hat"
 - If the item is "ESPADA DE 2 MAOS", it is "Espada de Duas Mãos"
+- If the item is "chave sub", it is "Chave para o Subterrâneo"
 
 - An item only have card if the item has the number of slots equal or more than number of cards in the item
 - If the item has slots, keep the slots on the name of the item, but always a space between the item name and the slots
