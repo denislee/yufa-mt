@@ -51,6 +51,10 @@ var (
 	notesSanitizer = regexp.MustCompile(`[^a-zA-Z0-9\s.,?!'-]+`)
 	// Allows Unicode letters (\p{L}), numbers, spaces, and common item characters.
 	itemSanitizer = regexp.MustCompile(`[^\p{L}0-9\s\[\]\+\-]+`)
+	// Regex to remove "card" or "carta" for similarity checks
+	reCardRemover = regexp.MustCompile(`(?i)\s*\b(card|carta)\b\s*`)
+	// NEW: Regex to remove slot info [1], [2], etc. for similarity checks
+	reSlotRemover = regexp.MustCompile(`\s*\[\d+\]\s*`)
 )
 
 var mvpMobIDs = []string{
@@ -2019,7 +2023,97 @@ func findItemIDByName(itemName string, allowRetry bool, slots int) (sql.NullInt6
 		// Let the function continue to Step 3 (online search)
 	}
 
+	// -----------------------------------------------------------------
+	// --- NEW CODE BLOCK: SIMILARITY SEARCH (STEP 2.5) ---
+	// -----------------------------------------------------------------
+	// This runs if the LIKE search returned 0 results, or if it returned >1 ambiguous results.
+	log.Printf("   [Item ID Search] Local LIKE search failed or was ambiguous. Starting high-similarity search...", cleanItemName)
+
+	var queryPrefix string
+	if len(cleanItemName) > 3 {
+		// Optimize: only check items that start with roughly the same first 3 chars.
+		queryPrefix = cleanItemName[:3]
+	}
+
+	// Query all potential matches from the cache, using the prefix optimization
+	querySim := `SELECT item_id, name, name_pt FROM rms_item_cache WHERE name LIKE ? OR name_pt LIKE ?`
+	simRows, err := db.Query(querySim, queryPrefix+"%", queryPrefix+"%")
+	if err != nil {
+		log.Printf("   [Item ID Search] Similarity query failed: %v. Proceeding to online search.", err)
+		// Don't return error, just proceed to online search
+	} else {
+		defer simRows.Close()
+
+		bestMatchID := int64(-1)
+		bestDistance := 3 // Our threshold: only accept distance 0, 1, or 2.
+		foundAmbiguous := false
+		var bestMatchName string // NEW: Store the name of the best match
+
+		for simRows.Next() {
+			var id int64
+			var name string
+			var namePT sql.NullString
+			if err := simRows.Scan(&id, &name, &namePT); err != nil {
+				continue
+			}
+
+			// Levenshtein function now handles card/carta/slot removal internally
+			dist1 := levenshtein(cleanItemName, name)
+			dist2 := 1000 // default high
+			if namePT.Valid {
+				dist2 = levenshtein(cleanItemName, namePT.String)
+			}
+
+			minDist := min(dist1, dist2)
+
+			// --- ADDED LOGGING ---
+			// Log potential close matches for debugging (distance < 5 is a good threshold)
+			if minDist < 5 {
+				if namePT.Valid {
+					log.Printf("   [Item ID Search] Similarity check: '%s' vs '%s' (dist %d) or '%s' (dist %d) -> ID %d", cleanItemName, name, dist1, namePT.String, dist2, id)
+				} else {
+					log.Printf("   [Item ID Search] Similarity check: '%s' vs '%s' (dist %d) -> ID %d", cleanItemName, name, dist1, id)
+				}
+			}
+			// --- END ADDED LOGGING ---
+
+			if minDist < bestDistance {
+				bestDistance = minDist
+				bestMatchID = id
+				foundAmbiguous = false // We have a new, clearer winner
+				// NEW: Store the name that gave the best distance
+				if dist1 <= dist2 {
+					bestMatchName = name
+				} else {
+					bestMatchName = namePT.String
+				}
+			} else if minDist == bestDistance && bestMatchID != id {
+				foundAmbiguous = true // Two different items have the same "best" distance
+			}
+		}
+
+		if !foundAmbiguous && bestMatchID != -1 {
+			// We found a unique, high-similarity match.
+			log.Printf("   [Item ID Search] Found unique high-similarity match for '%s': ID %d (Distance: %d). Bypassing online search.", cleanItemName, bestMatchID, bestDistance)
+			return sql.NullInt64{Int64: bestMatchID, Valid: true}, nil
+		} else if foundAmbiguous {
+			log.Printf("   [Item ID Search] Similarity search for '%s' was ambiguous (multiple items with distance %d). Proceeding to online search.", cleanItemName, bestDistance)
+			// NEW: If ambiguous, use the *first* best match's name for the online search
+			if bestMatchName != "" {
+				log.Printf("   [Item ID Search] Ambiguity found. Using first best-match '%s' for online search instead of '%s'.", bestMatchName, cleanItemName)
+				cleanItemName = bestMatchName // Overwrite the search query
+			}
+		} else {
+			// bestMatchID is still -1, meaning no match was found within the distance threshold
+			log.Printf("   [Item ID Search] Similarity search for '%s' found no close match (Best distance > %d). Proceeding to online search.", cleanItemName, bestDistance-1)
+		}
+	}
+	// -----------------------------------------------------------------
+	// --- END OF NEW CODE BLOCK ---
+	// -----------------------------------------------------------------
+
 	// --- Step 3: Fallback to concurrent online search if local search fails ---
+	// This log will now show the *original* or *new* (from ambiguity) search term
 	log.Printf("   [Item ID Search] No local match for '%s'. Initiating online search...", cleanItemName)
 
 	var wg sync.WaitGroup
@@ -2083,15 +2177,10 @@ func findItemIDByName(itemName string, allowRetry bool, slots int) (sql.NullInt6
 	if len(combinedIDs) > 1 {
 		// --- NEW: Perfect Match Check (Online) ---
 		// We have multiple ONLINE results. Check if one is a perfect match.
-		// Note: We can only check the English 'name' from RMS here.
-
-		// --- MODIFICATION: Add regex to strip slot info for perfect match ---
-		reSlots := regexp.MustCompile(`\s*\[\d+\]\s*`)
-		// --- END MODIFICATION ---
 
 		for id, name := range combinedIDs {
 			// --- MODIFICATION: Clean the result name before comparing ---
-			nameWithoutSlots := reSlots.ReplaceAllString(name, " ")
+			nameWithoutSlots := reSlotRemover.ReplaceAllString(name, " ") // Use package-level regex
 			nameWithoutSlots = strings.TrimSpace(nameWithoutSlots)
 			// --- END MODIFICATION ---
 
@@ -2135,10 +2224,8 @@ func findItemIDByName(itemName string, allowRetry bool, slots int) (sql.NullInt6
 	// --- NEW: Final step, retry without "card" or "carta" ---
 	lowerCleanItemName := strings.ToLower(cleanItemName)
 	if allowRetry && (strings.Contains(lowerCleanItemName, "card") || strings.Contains(lowerCleanItemName, "carta")) {
-		// Create a regex to remove "card" or "carta" as whole words, case-insensitive
-		reCard := regexp.MustCompile(`(?i)\s*\b(card|carta)\b\s*`)
 		// Use the *original* itemName (with refinement) to avoid issues with sanitization
-		newName := reCard.ReplaceAllString(itemName, " ")
+		newName := reCardRemover.ReplaceAllString(itemName, " ") // Use package-level regex
 		newName = strings.TrimSpace(newName)
 
 		if newName != "" && newName != cleanItemName {
@@ -2365,4 +2452,63 @@ func CreateTradingPostFromDiscord(authorName string, originalMessage string, tra
 
 	// 4. Return the list of created IDs and the last error encountered
 	return postIDs, finalError
+}
+
+func min(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
+}
+
+// levenshtein calculates the Levenshtein distance between two strings.
+// This is used for typo-tolerant similarity matching.
+func levenshtein(s1, s2 string) int {
+	// NEW: Remove "card" or "carta" from both strings before comparing
+	// We replace with a space to avoid merging words (e.g., "TharaFrogCard" -> "TharaFrog ")
+	cleanS1 := reCardRemover.ReplaceAllString(s1, " ")
+	cleanS2 := reCardRemover.ReplaceAllString(s2, " ")
+
+	// NEW: Also remove slot information like [1], [2]
+	cleanS1 = reSlotRemover.ReplaceAllString(cleanS1, " ")
+	cleanS2 = reSlotRemover.ReplaceAllString(cleanS2, " ")
+
+	// Convert to rune slices to handle multi-byte characters
+	r1 := []rune(cleanS1)
+	r2 := []rune(cleanS2)
+	n, m := len(r1), len(r2)
+	if n == 0 {
+		return m
+	}
+	if m == 0 {
+		return n
+	}
+
+	// Use two vectors (current and previous row)
+	v0 := make([]int, m+1)
+	v1 := make([]int, m+1)
+
+	// Initialize v0 (the previous row)
+	for i := 0; i <= m; i++ {
+		v0[i] = i
+	}
+
+	for i := 0; i < n; i++ {
+		// Calculate v1 (current row) from v0
+		v1[0] = i + 1
+
+		for j := 0; j < m; j++ {
+			cost := 0
+			if r1[i] == r2[j] {
+				cost = 0
+			} else {
+				cost = 1
+			}
+			v1[j+1] = min(v1[j]+1, min(v0[j+1]+1, v0[j]+cost))
+		}
+
+		// Copy v1 to v0 for the next iteration
+		copy(v0, v1)
+	}
+	return v1[m]
 }
