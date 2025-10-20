@@ -95,114 +95,114 @@
 
 
         <div class="bg-white shadow-lg rounded-lg overflow-hidden">
-            <table class="w-full">
-                <thead class="bg-gray-50 border-b border-gray-200">
-                    <tr class="text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
-                        {{$query := .SearchQuery}}
-                        {{$filterType := .FilterType}}
-                        {{$filterCurrency := .FilterCurrency}} {{$currentSort := .SortBy}}
-                        {{$currentOrder := .Order}}
-                        {{$revOrder := "ASC"}}{{if eq $currentOrder "ASC"}}{{$revOrder = "DESC"}}{{end}}
-                        
-                        <th class="px-2 sm:px-3 py-2">Type</th>
-                        <th class="px-2 sm:px-3 py-2">
-                            <a href="/discord?filter_type={{$filterType}}&filter_currency={{$filterCurrency}}&query={{$query}}&sort_by=item_name&order={{if eq $currentSort "item_name"}}{{$revOrder}}{{else}}ASC{{end}}">
-                                Item
-                                {{if eq $currentSort "item_name"}}{{if eq $currentOrder "ASC"}}<span class="text-gray-400">▲</span>{{else}}<span class="text-gray-400">▼</span>{{end}}{{end}}
-                            </a>
-                        </th>
-                        <th class="px-2 sm:px-3 py-2 text-right">
-                            <a href="/discord?filter_type={{$filterType}}&filter_currency={{$filterCurrency}}&query={{$query}}&sort_by=price&order={{if eq $currentSort "price"}}{{$revOrder}}{{else}}ASC{{end}}">
-                                Price (ea)
-                                {{if eq $currentSort "price"}}{{if eq $currentOrder "ASC"}}<span class="text-gray-400">▲</span>{{else}}<span class="text-gray-400">▼</span>{{end}}{{end}}
-                            </a>
-                        </th>
-                        <th class="px-2 sm:px-3 py-2 text-center">Payment</th>
-                        <th class="px-2 sm:px-3 py-2 text-right">
-                            <a href="/discord?filter_type={{$filterType}}&filter_currency={{$filterCurrency}}&query={{$query}}&sort_by=quantity&order={{if eq $currentSort "quantity"}}{{$revOrder}}{{else}}DESC{{end}}">
-                                Qty
-                                {{if eq $currentSort "quantity"}}{{if eq $currentOrder "ASC"}}<span class="text-gray-400">▲</span>{{else}}<span class="text-gray-400">▼</span>{{end}}{{end}}
-                            </a>
-                        </th>
-                        <th class="px-2 sm:px-3 py-2">
-                            <a href="/discord?filter_type={{$filterType}}&filter_currency={{$filterCurrency}}&query={{$query}}&sort_by=seller&order={{if eq $currentSort "seller"}}{{$revOrder}}{{else}}ASC{{end}}">
-                                Discord
-                                {{if eq $currentSort "seller"}}{{if eq $currentOrder "ASC"}}<span class="text-gray-400">▲</span>{{else}}<span class="text-gray-400">▼</span>{{end}}{{end}}
-                            </a>
-                        </th>
-                        <th class="px-2 sm:px-3 py-2">
-                            <a href="/discord?filter_type={{$filterType}}&filter_currency={{$filterCurrency}}&query={{$query}}&sort_by=posted&order={{if eq $currentSort "posted"}}{{$revOrder}}{{else}}DESC{{end}}">
-                                Posted
-                                {{if eq $currentSort "posted"}}{{if eq $currentOrder "ASC"}}<span class="text-gray-400">▲</span>{{else}}<span class="text-gray-400">▼</span>{{end}}{{end}}
-                            </a>
-                        </th>
-                        <th class="px-2 sm:px-3 py-2">Source</th>
-                    </tr>
-                </thead>
-                <tbody class="divide-y divide-gray-100 text-xs">
-                    {{range .Items}}
-                    <tr class="hover:bg-gray-50">
-                        <td class="px-2 sm:px-3 py-2">
-                            {{if eq .PostType "selling"}}
-                                <span class="font-bold text-lg text-red-600" title="Selling">V></span>
-                            {{else}}
-                                <span class="font-bold text-lg text-green-600" title="Buying">C></span>
-                            {{end}}
-                        </td>
-                        <td class="px-2 sm:px-3 py-2">
-                            <div class="font-semibold flex items-center gap-2">
-                                {{if .ItemID.Valid}}
-                                    <img src="https://static.divine-pride.net/images/items/item/{{.ItemID.Int64}}.png" alt="{{.ItemName}}" class="w-6 h-6" style="image-rendering: pixelated;">
+            <div class="overflow-x-auto">
+                <table class="min-w-full"> <thead class="bg-gray-50 border-b border-gray-200">
+                        <tr class="text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                            {{$query := .SearchQuery}}
+                            {{$filterType := .FilterType}}
+                            {{$filterCurrency := .FilterCurrency}} {{$currentSort := .SortBy}}
+                            {{$currentOrder := .Order}}
+                            {{$revOrder := "ASC"}}{{if eq $currentOrder "ASC"}}{{$revOrder = "DESC"}}{{end}}
+                            
+                            <th class="px-2 sm:px-3 py-2">Type</th>
+                            <th class="px-2 sm:px-3 py-2">
+                                <a href="/discord?filter_type={{$filterType}}&filter_currency={{$filterCurrency}}&query={{$query}}&sort_by=item_name&order={{if eq $currentSort "item_name"}}{{$revOrder}}{{else}}ASC{{end}}">
+                                    Item
+                                    {{if eq $currentSort "item_name"}}{{if eq $currentOrder "ASC"}}<span class="text-gray-400">▲</span>{{else}}<span class="text-gray-400">▼</span>{{end}}{{end}}
+                                </a>
+                            </th>
+                            <th class="px-2 sm:px-3 py-2 text-right">
+                                <a href="/discord?filter_type={{$filterType}}&filter_currency={{$filterCurrency}}&query={{$query}}&sort_by=price&order={{if eq $currentSort "price"}}{{$revOrder}}{{else}}ASC{{end}}">
+                                    Price (ea)
+                                    {{if eq $currentSort "price"}}{{if eq $currentOrder "ASC"}}<span class="text-gray-400">▲</span>{{else}}<span class="text-gray-400">▼</span>{{end}}{{end}}
+                                </a>
+                            </th>
+                            <th class="px-2 sm:px-3 py-2 text-center">Payment</th>
+                            <th class="px-2 sm:px-3 py-2 text-right">
+                                <a href="/discord?filter_type={{$filterType}}&filter_currency={{$filterCurrency}}&query={{$query}}&sort_by=quantity&order={{if eq $currentSort "quantity"}}{{$revOrder}}{{else}}DESC{{end}}">
+                                    Qty
+                                    {{if eq $currentSort "quantity"}}{{if eq $currentOrder "ASC"}}<span class="text-gray-400">▲</span>{{else}}<span class="text-gray-400">▼</span>{{end}}{{end}}
+                                </a>
+                            </th>
+                            <th class="px-2 sm:px-3 py-2">
+                                <a href="/discord?filter_type={{$filterType}}&filter_currency={{$filterCurrency}}&query={{$query}}&sort_by=seller&order={{if eq $currentSort "seller"}}{{$revOrder}}{{else}}ASC{{end}}">
+                                    Discord
+                                    {{if eq $currentSort "seller"}}{{if eq $currentOrder "ASC"}}<span class="text-gray-400">▲</span>{{else}}<span class="text-gray-400">▼</span>{{end}}{{end}}
+                                </a>
+                            </th>
+                            <th class="px-2 sm:px-3 py-2">
+                                <a href="/discord?filter_type={{$filterType}}&filter_currency={{$filterCurrency}}&query={{$query}}&sort_by=posted&order={{if eq $currentSort "posted"}}{{$revOrder}}{{else}}DESC{{end}}">
+                                    Posted
+                                    {{if eq $currentSort "posted"}}{{if eq $currentOrder "ASC"}}<span class="text-gray-400">▲</span>{{else}}<span class="text-gray-400">▼</span>{{end}}{{end}}
+                                </a>
+                            </th>
+                            <th class="px-2 sm:px-3 py-2">Source</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-gray-100 text-xs">
+                        {{range .Items}}
+                        <tr class="hover:bg-gray-50">
+                            <td class="px-2 sm:px-3 py-2">
+                                {{if eq .PostType "selling"}}
+                                    <span class="font-bold text-lg text-red-600" title="Selling">V></span>
                                 {{else}}
-                                    <img src="https://static.divine-pride.net/images/items/item/909.png" alt="Item" class="w-6 h-6 opacity-50" style="image-rendering: pixelated;">
+                                    <span class="font-bold text-lg text-green-600" title="Buying">C></span>
                                 {{end}}
-                                <div>
-                                    <span class="text-gray-800">
-                                        {{.ItemName}} {{if gt .Refinement 0}}+{{.Refinement}}{{end}}
-                                        {{if or .Card1.Valid .Card2.Valid .Card3.Valid .Card4.Valid}}
-                                        <span class="text-xs text-blue-600 ml-2 font-normal">
-                                            {{if .Card1.Valid}}[{{.Card1.String}}]{{end}}
-                                            {{if .Card2.Valid}} [{{.Card2.String}}]{{end}}
-                                            {{if .Card3.Valid}} [{{.Card3.String}}]{{end}}
-                                            {{if .Card4.Valid}} [{{.Card4.String}}]{{end}}
-                                        </span>
-                                        {{end}}
-                                    </span>
-                                    {{if .NamePT.Valid}}
-                                    <div class="text-xs text-gray-500 mt-1 font-normal">{{.NamePT.String}}</div>
-                                    {{end}}
-                                </div>
-                            </div>
-                        </td>
-                        <td class="px-2 sm:px-3 py-2 font-mono text-right" data-price="{{.Price}}" data-currency="{{.Currency}}"></td>
-                        <td class="px-2 sm:px-3 py-2 text-center">
-                            {{if eq .PaymentMethods "both"}}
-                                <span class="font-medium text-gray-700">Both</span>
-                            {{else if eq .PaymentMethods "rmt"}}
-                                <span class="font-medium text-blue-600">RMT</span>
-                            {{else}}
-                                <span class="font-medium text-green-600">Zeny</span>
-                            {{end}}
-                        </td>
-                        <td class="px-2 sm:px-3 py-2 text-right text-gray-600">{{.Quantity}}x</td>
-                        <td class="px-2 sm:px-3 py-2">
-                            <div class="font-semibold text-gray-800">{{.CharacterName}}</div>
                             </td>
-                        <td class="px-2 sm:px-3 py-2 text-gray-500" title="{{.CreatedAt}}">
-                            {{.CreatedAgo}}
-                        </td>
-                        <td class="px-2 sm:px-3 py-2 text-center">
-                            {{if .Notes.Valid}}
-                            <span class="inline-block align-middle px-1.5 py-0.5 bg-gray-200 text-gray-700 text-xs font-medium rounded-full cursor-pointer hover:bg-gray-300 open-notes-lightbox" data-note="{{.Notes.String}}">
-                               ... 
-                            </span>
-                            {{end}}
-                        </td>
-                    </tr>
-                    {{end}}
-                </tbody>
-            </table>
-            {{if not .Items}}
+                            <td class="px-2 sm:px-3 py-2">
+                                <div class="font-semibold flex items-center gap-2">
+                                    {{if .ItemID.Valid}}
+                                        <img src="https://static.divine-pride.net/images/items/item/{{.ItemID.Int64}}.png" alt="{{.ItemName}}" class="w-6 h-6" style="image-rendering: pixelated;">
+                                    {{else}}
+                                        <img src="https://static.divine-pride.net/images/items/item/909.png" alt="Item" class="w-6 h-6 opacity-50" style="image-rendering: pixelated;">
+                                    {{end}}
+                                    <div>
+                                        <span class="text-gray-800">
+                                            {{.ItemName}} {{if gt .Refinement 0}}+{{.Refinement}}{{end}}
+                                            {{if or .Card1.Valid .Card2.Valid .Card3.Valid .Card4.Valid}}
+                                            <span class="text-xs text-blue-600 ml-2 font-normal">
+                                                {{if .Card1.Valid}}[{{.Card1.String}}]{{end}}
+                                                {{if .Card2.Valid}} [{{.Card2.String}}]{{end}}
+                                                {{if .Card3.Valid}} [{{.Card3.String}}]{{end}}
+                                                {{if .Card4.Valid}} [{{.Card4.String}}]{{end}}
+                                            </span>
+                                            {{end}}
+                                        </span>
+                                        {{if .NamePT.Valid}}
+                                        <div class="text-xs text-gray-500 mt-1 font-normal">{{.NamePT.String}}</div>
+                                        {{end}}
+                                    </div>
+                                </div>
+                            </td>
+                            <td class="px-2 sm:px-3 py-2 font-mono text-right" data-price="{{.Price}}" data-currency="{{.Currency}}"></td>
+                            <td class="px-2 sm:px-3 py-2 text-center">
+                                {{if eq .PaymentMethods "both"}}
+                                    <span class="font-medium text-gray-700">Both</span>
+                                {{else if eq .PaymentMethods "rmt"}}
+                                    <span class="font-medium text-blue-600">RMT</span>
+                                {{else}}
+                                    <span class="font-medium text-green-600">Zeny</span>
+                                {{end}}
+                            </td>
+                            <td class="px-2 sm:px-3 py-2 text-right text-gray-600">{{.Quantity}}x</td>
+                            <td class="px-2 sm:px-3 py-2">
+                                <div class="font-semibold text-gray-800">{{.CharacterName}}</div>
+                                </td>
+                            <td class="px-2 sm:px-3 py-2 text-gray-500" title="{{.CreatedAt}}">
+                                {{.CreatedAgo}}
+                            </td>
+                            <td class="px-2 sm:px-3 py-2 text-center">
+                                {{if .Notes.Valid}}
+                                <span class="inline-block align-middle px-1.5 py-0.5 bg-gray-200 text-gray-700 text-xs font-medium rounded-full cursor-pointer hover:bg-gray-300 open-notes-lightbox" data-note="{{.Notes.String}}">
+                                   ... 
+                                </span>
+                                {{end}}
+                            </td>
+                        </tr>
+                        {{end}}
+                    </tbody>
+                </table>
+            </div> {{if not .Items}}
             <div class="text-center py-10 px-4">
                 <p class="text-gray-500">No trading posts found{{if .SearchQuery}} matching your search{{end}}.</p>
             </div>
