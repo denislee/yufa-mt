@@ -161,16 +161,13 @@
                                             {{.ItemName}} {{if gt .Refinement 0}}+{{.Refinement}}{{end}}
                                             {{if or .Card1.Valid .Card2.Valid .Card3.Valid .Card4.Valid}}
                                             <span class="text-xs text-blue-600 ml-2 font-normal">
-                                                {{if .Card1.Valid}}[{{.Card1.String}}]{{end}}
-                                                {{if .Card2.Valid}} [{{.Card2.String}}]{{end}}
-                                                {{if .Card3.Valid}} [{{.Card3.String}}]{{end}}
-                                                {{if .Card4.Valid}} [{{.Card4.String}}]{{end}}
+                                                {{if .Card1.Valid}}[{{.Card1.String | cleanCardName}}]{{end}}
+                                                {{if .Card2.Valid}} [{{.Card2.String | cleanCardName}}]{{end}}
+                                                {{if .Card3.Valid}} [{{.Card3.String | cleanCardName}}]{{end}}
+                                                {{if .Card4.Valid}} [{{.Card4.String | cleanCardName}}]{{end}}
                                             </span>
                                             {{end}}
                                         </span>
-                                        {{if .NamePT.Valid}}
-                                        <div class="text-xs text-gray-500 mt-1 font-normal">{{.NamePT.String}}</div>
-                                        {{end}}
                                     </div>
                                 </div>
                             </td>

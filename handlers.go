@@ -94,6 +94,9 @@ const MvpKillCountOffset = 3
 // A single, reusable function map for all templates.
 var templateFuncs = template.FuncMap{
 	"lower": strings.ToLower,
+	"cleanCardName": func(cardName string) string {
+		return strings.TrimSpace(reCardRemover.ReplaceAllString(cardName, " "))
+	},
 	"toggleOrder": func(currentOrder string) string {
 		if currentOrder == "ASC" {
 			return "DESC"
