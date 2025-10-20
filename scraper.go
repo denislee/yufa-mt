@@ -1796,4 +1796,20 @@ func startBackgroundJobs() {
 			scrapeMvpKills()
 		}
 	}()
+
+	go func() {
+		go runFullRMSCacheJob()
+		ticker := time.NewTicker(24 * time.Hour)
+		defer ticker.Stop()
+
+		// Run once on startup, but in the background so it doesn't block other tasks.
+		log.Printf("🕒 [Job] RMS Cache Refresh job scheduled. Will run once every 24 hours.")
+
+		for {
+			<-ticker.C
+			log.Printf("🕒 [Job] Starting scheduled 24-hour full RMS cache refresh...")
+			// Run in a goroutine so the job itself doesn't block the ticker
+			go runFullRMSCacheJob()
+		}
+	}()
 }

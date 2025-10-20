@@ -544,3 +544,163 @@ func scrapeRODatabaseSearch(query string, slots int) ([]int, error) {
 	log.Printf("✅ [RODatabase Search] Found %d unique item(s) for query: '%s'", len(itemIDs), query)
 	return itemIDs, nil
 }
+
+// runFullRMSCacheJob is a slow, rate-limited job to refresh the entire RMS cache.
+// It runs in two parts:
+//  1. Refreshes all "stale" items (older than 7 days) that are in the market 'items' table.
+//  2. Proactively discovers new items by iterating from a low ID (501) up to a limit,
+//     skipping any items that are already present in the cache.
+func runFullRMSCacheJob() {
+	log.Println("🛠️ [RMS Refresh] Starting full RMS cache refresh job...")
+
+	// --- Constants for the job ---
+	const staleDuration = 7 * 24 * time.Hour // 7 days
+	const scrapeDelay = 5 * time.Second      // 5 seconds per item to be polite
+	const startDiscoveryID = 501             // Start from Red Potion (ID 501)
+	const maxPreRenewalItemID = 20000        // Stop searching after this ID
+	const maxConsecutiveFailures = 100       // Stop if 100 empty IDs are found in a row
+
+	// =========================================================================
+	// Part 1: Refresh Stale Items from the Market
+	// =========================================================================
+	log.Println("    -> [RMS Refresh] Part 1: Refreshing stale items from market...")
+
+	// 1. Get all unique item IDs from the main items table.
+	rows, err := db.Query("SELECT DISTINCT item_id, name_of_the_item FROM items WHERE item_id > 0")
+	if err != nil {
+		log.Printf("❌ [RMS Refresh] Part 1: Failed to query for all items: %v", err)
+		return
+	}
+	defer rows.Close()
+
+	type dbItem struct {
+		ID   int
+		Name string
+	}
+	var allDBItems []dbItem
+	for rows.Next() {
+		var item dbItem
+		if err := rows.Scan(&item.ID, &item.Name); err != nil {
+			log.Printf("⚠️ [RMS Refresh] Part 1: Failed to scan item: %v", err)
+			continue
+		}
+		allDBItems = append(allDBItems, item)
+	}
+
+	// 2. Get all item IDs and last_checked times that are already in the cache.
+	cacheRows, err := db.Query("SELECT item_id, last_checked FROM rms_item_cache")
+	if err != nil {
+		log.Printf("❌ [RMS Refresh] Part 1: Failed to query for cached items: %v", err)
+		return
+	}
+	defer cacheRows.Close()
+
+	cacheMap := make(map[int]time.Time)
+	for cacheRows.Next() {
+		var id int
+		var lastCheckedStr sql.NullString
+		if err := cacheRows.Scan(&id, &lastCheckedStr); err != nil {
+			continue
+		}
+		if lastCheckedStr.Valid {
+			if t, err := time.Parse(time.RFC3339, lastCheckedStr.String); err == nil {
+				cacheMap[id] = t
+			}
+		}
+	}
+
+	// 3. Determine which items are missing or stale.
+	var itemsToRefresh []dbItem
+	for _, item := range allDBItems {
+		lastChecked, exists := cacheMap[item.ID]
+		if !exists {
+			// Item is missing
+			itemsToRefresh = append(itemsToRefresh, item)
+		} else if time.Since(lastChecked) > staleDuration {
+			// Item is stale
+			itemsToRefresh = append(itemsToRefresh, item)
+		}
+	}
+
+	if len(itemsToRefresh) > 0 {
+		log.Printf("    -> [RMS Refresh] Part 1: Found %d market item(s) to refresh. Starting slow refresh (1 item / %v)...", len(itemsToRefresh), scrapeDelay)
+
+		// 4. Scrape and cache the missing/stale items, with a delay.
+		for i, item := range itemsToRefresh {
+			log.Printf("    -> [RMS Refresh] Refreshing %d/%d: %s (ID: %d)", i+1, len(itemsToRefresh), item.Name, item.ID)
+
+			scrapedItem, scrapeErr := scrapeRMSItemDetails(item.ID)
+			if scrapeErr != nil {
+				log.Printf("    -> ❌ [RMS Refresh] FAILED to scrape (Part 1) for item ID %d (%s): %v", item.ID, item.Name, scrapeErr)
+				time.Sleep(scrapeDelay)
+				continue
+			}
+			if saveErr := saveItemDetailsToCache(scrapedItem); saveErr != nil {
+				log.Printf("    -> ⚠️ [RMS Refresh] FAILED to save (Part 1) for item ID %d (%s): %v", item.ID, item.Name, saveErr)
+			}
+			time.Sleep(scrapeDelay)
+		}
+	} else {
+		log.Println("    -> [RMS Refresh] Part 1: All market item caches are up-to-date.")
+	}
+	log.Println("    -> [RMS Refresh] Part 1 complete.")
+
+	// =========================================================================
+	// Part 2: Proactively Discover New Items
+	// =========================================================================
+	log.Println("    -> [RMS Refresh] Part 2: Discovering new items by iterating IDs...")
+
+	// 1. Start discovery from our defined constant (e.g., 501).
+	//    We no longer query for MAX(item_id) here, as we want to fill gaps from the beginning.
+	log.Printf("    -> [RMS Refresh] Part 2: Starting discovery from ID %d.", startDiscoveryID)
+	consecutiveFailures := 0
+
+	for currentItemID := startDiscoveryID; currentItemID <= maxPreRenewalItemID; currentItemID++ {
+		// 2. Check if we *already* have this item in the cache.
+		var exists int
+		err := db.QueryRow("SELECT 1 FROM rms_item_cache WHERE item_id = ?", currentItemID).Scan(&exists)
+		if err == nil {
+			// Item is already cached. Skip it.
+			consecutiveFailures = 0 // Reset failure count
+			continue
+		}
+
+		// If the error was *not* "no rows", it was a real DB error. Log and skip.
+		if err != sql.ErrNoRows {
+			log.Printf("    -> ⚠️ [RMS Refresh] Part 2: DB error checking for item %d: %v. Skipping.", currentItemID, err)
+			continue
+		}
+
+		// 3. This is a new ID (err was sql.ErrNoRows). Scrape it.
+		log.Printf("    -> [RMS Refresh] Discovering ID %d...", currentItemID)
+		scrapedItem, scrapeErr := scrapeRMSItemDetails(currentItemID)
+
+		if scrapeErr != nil {
+			log.Printf("    -> ⚠️ [RMS Refresh] Part 2: Failed to find item ID %d. %v", currentItemID, scrapeErr)
+			consecutiveFailures++
+		} else {
+			// 4. Success! Save it to the cache.
+			if saveErr := saveItemDetailsToCache(scrapedItem); saveErr != nil {
+				log.Printf("    -> ⚠️ [RMS Refresh] FAILED to save (Part 2) for item ID %d (%s): %v", currentItemID, scrapedItem.Name, saveErr)
+			} else {
+				log.Printf("    -> ✅ [RMS Refresh] Part 2: Successfully discovered and cached ID %d (%s)", currentItemID, scrapedItem.Name)
+			}
+			consecutiveFailures = 0 // Reset failure count on success
+		}
+
+		// 5. Check if we should stop
+		if consecutiveFailures >= maxConsecutiveFailures {
+			log.Printf("    -> [RMS Refresh] Part 2: Stopping discovery after %d consecutive failures. Assuming end of item list.", maxConsecutiveFailures)
+			break
+		}
+		if currentItemID == maxPreRenewalItemID {
+			log.Printf("    -> [RMS Refresh] Part 2: Stopping discovery after hitting max ID %d.", maxPreRenewalItemID)
+			break
+		}
+
+		// 6. Wait before the next attempt, regardless of success or failure.
+		time.Sleep(scrapeDelay)
+	}
+
+	log.Println("✅ [RMS Refresh] Full refresh and discovery job complete.")
+}

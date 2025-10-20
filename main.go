@@ -175,7 +175,7 @@ func main() {
 	http.HandleFunc("/admin/scrape/guilds", basicAuth(adminTriggerScrapeHandler(scrapeGuilds, "Guild")))
 	http.HandleFunc("/admin/scrape/zeny", basicAuth(adminTriggerScrapeHandler(scrapeZeny, "Zeny")))
 	http.HandleFunc("/admin/scrape/mvp", basicAuth(adminTriggerScrapeHandler(scrapeMvpKills, "MVP")))
-
+	http.HandleFunc("/admin/scrape/rms-cache", basicAuth(adminTriggerScrapeHandler(runFullRMSCacheJob, "RMS-Cache-Refresh")))
 	// --- HTTP Server Setup and Shutdown ---
 	port := "8080"
 	server := &http.Server{Addr: ":" + port}
@@ -210,4 +210,3 @@ func main() {
 	wg.Wait()
 	log.Println("✅ All processes shut down cleanly. Exiting.")
 }
-
