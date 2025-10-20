@@ -64,6 +64,7 @@ For each item, extract its base name, refinement level, number of slots, any att
 - replace the word: "peco peco" to "PecoPeco", "cavalo marinho" to "Cavalo-Marinho", "louva a deus" to "Louva-a-Deus"
 - "solta ou na presilha", means that is the card and the card in the Clip [1], 2 items.
 - "(0)" means that the item has no slot.
+
 - If the item is "rosario" or "rosário", the name is "Rosary" and has one slot.
 - If the item is "cartola", the name is "Magician Ha".
 - If the item is "peliz", the name is "Sobrepeliz" and has one slot.
@@ -73,6 +74,9 @@ For each item, extract its base name, refinement level, number of slots, any att
 - If the item is "esporo card", it is "Spore Card"
 - If the item is "carta marc", it is "Marc Card"
 - If the item is "louva-a-deus", it is "Carta Louva-a-Deus"
+- If the item is "popohat" or "popo hat", it is "Poo Poo Hat"
+- If the item is "ESPADA DE 2 MAOS", it is "Espada de Duas Mãos"
+
 - An item only have card if the item has the number of slots equal or more than number of cards in the item
 - If the item has slots, keep the slots on the name of the item, but always a space between the item name and the slots
 
