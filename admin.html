@@ -250,6 +250,12 @@
                                             <a href="/admin/trading-post/edit?id={{.ID}}" class="text-xs bg-blue-500 hover:bg-blue-700 text-white font-bold py-1 px-2 rounded">
                                                 Edit
                                             </a>
+                                            <form action="/admin/trading-post/reparse" method="POST" onsubmit="return confirm('Are you sure you want to re-parse this post with the AI? This will replace all its items.');">
+                                                <input type="hidden" name="post_id" value="{{.ID}}">
+                                                <button type="submit" class="text-xs bg-yellow-500 hover:bg-yellow-700 text-white font-bold py-1 px-2 rounded">
+                                                    Re-parse
+                                                </button>
+                                            </form>
                                             <form action="/admin/trading-post/delete" method="POST" onsubmit="return confirm('Are you sure you want to delete this post? This cannot be undone.');">
                                                 <input type="hidden" name="post_id" value="{{.ID}}">
                                                 <button type="submit" class="text-xs bg-red-500 hover:bg-red-700 text-white font-bold py-1 px-2 rounded">

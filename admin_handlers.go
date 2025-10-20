@@ -493,6 +493,161 @@ func adminDeleteTradingPostHandler(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, "/admin?msg="+msg, http.StatusSeeOther)
 }
 
+// adminReparseTradingPostHandler re-processes an existing post's original message through Gemini.
+func adminReparseTradingPostHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Redirect(w, r, "/admin", http.StatusSeeOther)
+		return
+	}
+
+	if err := r.ParseForm(); err != nil {
+		http.Redirect(w, r, "/admin?msg=Error+parsing+form.", http.StatusSeeOther)
+		return
+	}
+
+	postIDStr := r.FormValue("post_id")
+	postID, err := strconv.Atoi(postIDStr)
+	if err != nil {
+		http.Redirect(w, r, "/admin?msg=Error:+Invalid+post+ID.", http.StatusSeeOther)
+		return
+	}
+
+	var msg string
+	var originalMessage, originalPostType, characterName sql.NullString // Use NullString for safety
+
+	// 1. Fetch the post's original message and type
+	err = db.QueryRow("SELECT notes, post_type, character_name FROM trading_posts WHERE id = ?", postID).Scan(&originalMessage, &originalPostType, &characterName)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			msg = "Error:+Post+not+found."
+		} else {
+			msg = "Error:+Database+query+failed."
+			log.Printf("❌ Failed to fetch post %d for re-parse: %v", postID, err)
+		}
+		http.Redirect(w, r, "/admin?msg="+msg, http.StatusSeeOther)
+		return
+	}
+
+	if !originalMessage.Valid || originalMessage.String == "" {
+		msg = "Error:+Post+has+no+original+message+(notes)+to+re-parse."
+		http.Redirect(w, r, "/admin?msg="+msg, http.StatusSeeOther)
+		return
+	}
+
+	if !originalPostType.Valid || (originalPostType.String != "buying" && originalPostType.String != "selling") {
+		msg = "Error:+Post+has+an+invalid+type."
+		http.Redirect(w, r, "/admin?msg="+msg, http.StatusSeeOther)
+		return
+	}
+
+	// 2. Send to Gemini
+	geminiResult, geminiErr := parseTradeMessageWithGemini(originalMessage.String)
+	if geminiErr != nil {
+		msg = fmt.Sprintf("Error:+Gemini+parse+failed:+%s", url.QueryEscape(geminiErr.Error()))
+		http.Redirect(w, r, "/admin?msg="+msg, http.StatusSeeOther)
+		return
+	}
+
+	// 3. Filter items matching the post's original type
+	var itemsToUpdate []GeminiTradeItem
+	for _, item := range geminiResult.Items {
+		if item.Action == originalPostType.String {
+			itemsToUpdate = append(itemsToUpdate, item)
+		}
+	}
+
+	if len(itemsToUpdate) == 0 {
+		// Still a "success", but we should clear the items.
+		// The transaction logic below will handle this (DELETE followed by 0 INSERTs).
+		log.Printf("👤 Admin re-parsed post %d. No items matching type '%s' were found by Gemini. Clearing items.", postID, originalPostType.String)
+	}
+
+	// 4. Begin transaction to update items
+	tx, err := db.Begin()
+	if err != nil {
+		msg = "Error:+Failed+to+start+database+transaction."
+		log.Printf("❌ Failed to begin transaction for re-parsing post %d: %v", postID, err)
+		http.Redirect(w, r, "/admin?msg="+msg, http.StatusSeeOther)
+		return
+	}
+
+	// 5. Delete all existing items for this post
+	_, err = tx.Exec("DELETE FROM trading_post_items WHERE post_id = ?", postID)
+	if err != nil {
+		tx.Rollback()
+		msg = "Error:+Failed+to+clear+old+items."
+		log.Printf("❌ Failed to delete old items for post %d during re-parse: %v", postID, err)
+		http.Redirect(w, r, "/admin?msg="+msg, http.StatusSeeOther)
+		return
+	}
+
+	// 6. Loop through new items and re-insert them
+	if len(itemsToUpdate) > 0 {
+		stmt, err := tx.Prepare(`
+			INSERT INTO trading_post_items 
+			(post_id, item_name, item_id, quantity, price, currency, payment_methods, refinement, slots, card1, card2, card3, card4) 
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		`)
+		if err != nil {
+			tx.Rollback()
+			msg = "Error:+Database+preparation+failed."
+			log.Printf("❌ Failed to prepare insert statement for re-parsing post %d: %v", postID, err)
+			http.Redirect(w, r, "/admin?msg="+msg, http.StatusSeeOther)
+			return
+		}
+		defer stmt.Close()
+
+		for _, item := range itemsToUpdate {
+			itemName := sanitizeString(item.Name, itemSanitizer) // itemSanitizer is in handlers.go
+			if strings.TrimSpace(itemName) == "" {
+				continue
+			}
+
+			// Find Item ID
+			itemID, findErr := findItemIDByName(itemName, true, item.Slots) // findItemIDByName is in handlers.go
+			if findErr != nil {
+				log.Printf("⚠️ Error finding item ID for '%s' during re-parse: %v. Proceeding without ID.", itemName, findErr)
+			}
+
+			// Validate currency/payment
+			currency := "zeny"
+			if item.Currency == "rmt" {
+				currency = "rmt"
+			}
+			paymentMethods := "zeny"
+			if item.PaymentMethods == "rmt" || item.PaymentMethods == "both" {
+				paymentMethods = item.PaymentMethods
+			}
+
+			card1 := sql.NullString{String: item.Card1, Valid: item.Card1 != ""}
+			card2 := sql.NullString{String: item.Card2, Valid: item.Card2 != ""}
+			card3 := sql.NullString{String: item.Card3, Valid: item.Card3 != ""}
+			card4 := sql.NullString{String: item.Card4, Valid: item.Card4 != ""}
+
+			_, err := stmt.Exec(postID, itemName, itemID, item.Quantity, item.Price, currency, paymentMethods, item.Refinement, item.Slots, card1, card2, card3, card4)
+			if err != nil {
+				tx.Rollback()
+				msg = "Error:+Failed+to+save+one+of+the+new+items."
+				log.Printf("❌ Failed to insert re-parsed item '%s' for post %d: %v", itemName, postID, err)
+				http.Redirect(w, r, "/admin?msg="+msg, http.StatusSeeOther)
+				return
+			}
+		}
+	}
+
+	// 7. Commit transaction
+	if err := tx.Commit(); err != nil {
+		msg = "Error:+Failed+to+finalize+transaction."
+		log.Printf("❌ Failed to commit transaction for re-parsing post %d: %v", postID, err)
+		http.Redirect(w, r, "/admin?msg="+msg, http.StatusSeeOther)
+		return
+	}
+
+	log.Printf("👤 Admin successfully re-parsed trading post %d (%s) with %d items.", postID, characterName.String, len(itemsToUpdate))
+	msg = fmt.Sprintf("Successfully+re-parsed+post+%d.+Found+%d+items.", postID, len(itemsToUpdate))
+	http.Redirect(w, r, "/admin?msg="+msg, http.StatusSeeOther)
+}
+
 func adminEditTradingPostHandler(w http.ResponseWriter, r *http.Request) {
 	postIDStr := r.URL.Query().Get("id")
 	postID, err := strconv.Atoi(postIDStr)
@@ -727,3 +882,4 @@ func adminClearTradingPostsHandler(w http.ResponseWriter, r *http.Request) {
 
 	http.Redirect(w, r, "/admin?msg="+msg, http.StatusSeeOther)
 }
+

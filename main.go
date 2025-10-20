@@ -164,6 +164,8 @@ func main() {
 	http.HandleFunc("/admin/character/clear-mvp-kills", basicAuth(adminClearMvpKillsHandler))
 	http.HandleFunc("/admin/trading-post/delete", basicAuth(adminDeleteTradingPostHandler))
 	http.HandleFunc("/admin/trading-post/edit", basicAuth(adminEditTradingPostHandler))
+	// ADDED NEW ROUTE HERE
+	http.HandleFunc("/admin/trading-post/reparse", basicAuth(adminReparseTradingPostHandler))
 	http.HandleFunc("/admin/trading/clear-items", basicAuth(adminClearTradingPostItemsHandler))
 	http.HandleFunc("/admin/trading/clear-posts", basicAuth(adminClearTradingPostsHandler))
 	// Manual Scraper Triggers
@@ -208,3 +210,4 @@ func main() {
 	wg.Wait()
 	log.Println("✅ All processes shut down cleanly. Exiting.")
 }
+
