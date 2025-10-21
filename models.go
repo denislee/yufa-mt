@@ -570,3 +570,21 @@ func (fi FlatTradingPostItem) CreatedAgo() string {
 	}
 	return fmt.Sprintf("%d days ago", int(d.Hours()/24))
 }
+
+// DisplayName returns the Portuguese name if available, otherwise the original parsed name.
+func (fi FlatTradingPostItem) DisplayName() string {
+	if fi.NamePT.Valid && fi.NamePT.String != "" {
+		return fi.NamePT.String
+	}
+	return fi.ItemName
+}
+
+// OriginalName returns the original parsed name, but only if it's different from the DisplayName.
+// This is for showing "(original name)" in the template.
+func (fi FlatTradingPostItem) OriginalName() string {
+	displayName := fi.DisplayName()
+	if fi.ItemName != "" && fi.ItemName != displayName {
+		return fi.ItemName
+	}
+	return "" // Return empty string if they are the same
+}

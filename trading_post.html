@@ -158,7 +158,14 @@
                                     {{end}}
                                     <div>
                                         <span class="text-gray-800">
-                                            {{.ItemName}} {{if gt .Refinement 0}}+{{.Refinement}}{{end}}
+                                            {{.DisplayName}} {{if gt .Refinement 0}}+{{.Refinement}}{{end}}
+
+                                            {{/* Add a small grey text for the original parsed name if it's different from the PT name */}}
+                                            <!-- {{$original := .OriginalName}} -->
+                                            <!-- {{if $original}} -->
+                                            <!--     <span class="text-xs text-gray-500 font-normal ml-1">({{$original}})</span> -->
+                                            <!-- {{end}} -->
+
                                             {{if or .Card1.Valid .Card2.Valid .Card3.Valid .Card4.Valid}}
                                             <span class="text-xs text-blue-600 ml-2 font-normal">
                                                 {{if .Card1.Valid}}[{{.Card1.String | cleanCardName}}]{{end}}
@@ -168,7 +175,7 @@
                                             </span>
                                             {{end}}
                                         </span>
-                                    </div>
+                                     </div>
                                 </div>
                             </td>
                             <td class="px-2 sm:px-3 py-2 font-mono text-right" data-price="{{.Price}}" data-currency="{{.Currency}}"></td>
