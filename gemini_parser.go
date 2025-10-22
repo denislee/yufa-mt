@@ -80,7 +80,9 @@ For each item, extract its base name, refinement level, number of slots, any att
 - If the item is "Sappo de Roda" or "sappo de roda", it is "Carta Sapo de Rodda"
 - If the item is "composto", it is "Arco Composto"
 - If the item is "presilha de cura", it is "Clip" with "vitata card" in it
-- if the item name contains "Guilherme Tell" or is "AoA", it is "Apple of Archer"
+- If the item name contains "Guilherme Tell" or is "AoA", it is "Apple of Archer"
+- If the item is "Cota de Malha do Pânico", it is "Cota de Malha"
+- If the item has "SW" in the name, it is "Skeleton Worker"
 
 - An item only have card if the item has the number of slots equal or more than number of cards in the item
 - If the item has slots, keep the slots on the name of the item, but always a space between the item name and the slots
