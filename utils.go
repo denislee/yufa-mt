@@ -92,4 +92,3 @@ func GetLastCharacterScrapeTime() string {
 	}
 	return "Never"
 }
-

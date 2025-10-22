@@ -161,11 +161,6 @@
                                             {{.DisplayName}} {{if gt .Refinement 0}}+{{.Refinement}}{{end}}
 
                                             {{/* Add a small grey text for the original parsed name if it's different from the PT name */}}
-                                            <!-- {{$original := .OriginalName}} -->
-                                            <!-- {{if $original}} -->
-                                            <!--     <span class="text-xs text-gray-500 font-normal ml-1">({{$original}})</span> -->
-                                            <!-- {{end}} -->
-
                                             {{if or .Card1.Valid .Card2.Valid .Card3.Valid .Card4.Valid}}
                                             <span class="text-xs text-blue-600 ml-2 font-normal">
                                                 {{if .Card1.Valid}}[{{.Card1.String | cleanCardName}}]{{end}}
@@ -178,7 +173,17 @@
                                      </div>
                                 </div>
                             </td>
-                            <td class="px-2 sm:px-3 py-2 font-mono text-right" data-price="{{.Price}}" data-currency="{{.Currency}}"></td>
+                            <td class="px-2 sm:px-3 py-2 font-mono text-right">
+                                {{if gt .PriceZeny 0}}
+                                <div class="text-green-600 font-semibold" title="{{.PriceZeny}} Zeny">{{formatZeny .PriceZeny}}z</div>
+                                {{end}}
+                                {{if gt .PriceRMT 0}}
+                                <div class="text-blue-600 font-semibold" title="{{.PriceRMT}} RMT">{{formatRMT .PriceRMT}}</div>
+                                {{end}}
+                                {{if and (eq .PriceZeny 0) (eq .PriceRMT 0)}}
+                                <div class="text-gray-500 italic">Negotiable</div>
+                                {{end}}
+                            </td>
                             <td class="px-2 sm:px-3 py-2 text-center">
                                 {{if eq .PaymentMethods "both"}}
                                     <span class="font-medium text-gray-700">Both</span>
@@ -255,27 +260,6 @@
                 document.querySelectorAll('.dropdown-content').forEach(el => {
                     el.classList.add('hidden');
                 });
-            });
-
-            // --- Page-Specific Logic ---
-            document.querySelectorAll('[data-price]').forEach(elem => {
-                const price = parseInt(elem.dataset.price, 10);
-                const currency = elem.dataset.currency || 'zeny'; // Default to zeny
-
-                if (!isNaN(price)) {
-                    if (price === 0) {
-                        elem.textContent = 'Negotiable';
-                        elem.classList.add('text-gray-500', 'italic');
-                    } else if (currency === 'rmt') {
-                        // Format as BRL (Brazilian Real)
-                        elem.textContent = price.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
-                        elem.classList.add('text-blue-600', 'font-semibold'); // Style RMT differently
-                    } else {
-                        // Format as Zeny
-                        elem.textContent = `${price.toLocaleString()}z`;
-                        elem.classList.add('text-green-600', 'font-semibold');
-                    }
-                }
             });
 
             // --- Notes Lightbox Logic ---

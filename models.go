@@ -331,8 +331,8 @@ type FlatTradingPostItem struct {
 	NamePT         sql.NullString
 	ItemID         sql.NullInt64
 	Quantity       int
-	Price          int64
-	Currency       string
+	PriceZeny      int64
+	PriceRMT       int64
 	PaymentMethods string
 	Refinement     int
 	Card1          sql.NullString
@@ -423,8 +423,8 @@ type GeminiTradeItem struct {
 	Name           string `json:"name"`
 	Action         string `json:"action"`
 	Quantity       int    `json:"quantity"`
-	Price          int64  `json:"price"`
-	Currency       string `json:"currency"`
+	PriceZeny      int64  `json:"price_zeny"`
+	PriceRMT       int64  `json:"price_rmt"`
 	PaymentMethods string `json:"payment_methods"`
 	Refinement     int    `json:"refinement"`
 	Slots          int    `json:"slots"`
@@ -497,8 +497,8 @@ type TradingPostItem struct {
 	NamePT         sql.NullString
 	ItemID         sql.NullInt64 // To handle optional item ID
 	Quantity       int
-	Price          int64
-	Currency       string // "zeny" or "rmt"
+	PriceZeny      int64
+	PriceRMT       int64
 	PaymentMethods string // "zeny", "rmt", or "both"
 	Refinement     int
 	Slots          int

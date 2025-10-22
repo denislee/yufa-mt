@@ -38,7 +38,7 @@ func parseTradeMessageWithGemini(message string) (*GeminiTradeResult, error) {
 
 	prompt := fmt.Sprintf(`You are an expert at parsing trade messages for the game Ragnarok Online.
 Analyze the following message and extract the trade information.
-For each item, extract its base name, refinement level, number of slots, any attached cards, quantity, price, currency, and action.
+For each item, extract its base name, refinement level, number of slots, any attached cards, quantity, Zeny price, RMT price, and action.
 
 - "V>" or "vendo" means the "action" for that item is "selling".
 - "C>" or "compro" means the "action" for that item is "buying".
@@ -49,10 +49,12 @@ For each item, extract its base name, refinement level, number of slots, any att
 - "slots" is the number inside square brackets, like [3]. If it's a card name like [Mummy Card], slots should be 0. If not present, it is 0.
 - "card1", "card2", "card3", "card4" are the names of the cards in the item. If not present, the value should be an empty string "". Extract the card name, like "Mummy Card".
 - If "quantity" is not mentioned, assume 1.
-- If "price" is not mentioned, use 0.
-- Prices can be written with 'k' for thousands (e.g., 500k = 500000) or 'kk' for millions (e.g., 1.5kk = 1500000). Convert all prices to a raw integer.
-- If the user mentions "RMT" or "$", the "currency" should be "rmt". Otherwise, it is "zeny". This "currency" refers to the listed "price".
-- **NEW**: Analyze the accepted payment types. This is separate from the listed price's currency.
+- An item can have a Zeny price (e.g., 500k, 1.5kk) and/or an RMT price (e.g., $10, 50 reais).
+- Extract Zeny prices into "price_zeny" (as an integer). Convert 'k' (500k = 500000) and 'kk' (1.5kk = 1500000).
+- Extract RMT prices into "price_rmt" (as an integer).
+- If a specific price type (Zeny or RMT) is not mentioned for an item, its value should be 0.
+- Example: "V> +7 Jur [3] 2kk or $5" -> name: "Jur", refinement: 7, slots: 3, price_zeny: 2000000, price_rmt: 5, action: "selling".
+- **NEW**: Analyze the accepted payment types. This is separate from the listed price.
 - If in the name contains "slotado" or "com slot", means that the item contains one slot and can be replaced by "[1]"
 - If the user *only* mentions zeny (k, kk), "payment_methods" should be "zeny".
 - If the user *only* mentions RMT ($), "payment_methods" should be "rmt".
@@ -92,23 +94,24 @@ For each item, extract its base name, refinement level, number of slots, any att
 - **Unit Sale (e.g., "V>10kk 25 reais cada")**: "cada" implies "per 1kk".
     - "name": "Zeny (1kk pack)"
     - "quantity": 10 (the total number of kk's being sold)
-    - "price": 25 (the RMT price per kk)
-    - "currency": "rmt"
+    - "price_zeny": 0
+    - "price_rmt": 25 (the RMT price per kk)
     - "payment_methods": "rmt"
     - "action": "selling"
     - refinement, slots, cards must be 0 or "".
 - **Bulk Sale (e.g., "VENDO 13KK a 300$ no Pix")**: This is a single package.
     - "name": "Zeny (13kk pack)" (Note: the quantity is in the name)
     - "quantity": 1 (it's one pack)
-    - "price": 300 (the total RMT price for the pack)
-    - "currency": "rmt"
+    - "price_zeny": 0
+    - "price_rmt": 300 (the total RMT price for the pack)
     - "payment_methods": "rmt"
     - "action": "selling"
     - refinement, slots, cards must be 0 or "".
-- **General Sale (e.g., "V> KK", "V> Zeny")**: If the user lists "Zeny" or "KK" as an item they are *selling* ("V>"), but does not specify a price or amount (unlike the Unit/Bulk sale cases). This is still treated as a Zeny-for-RMT sale.
+- **General Sale (e.g., "V> KK", "V> Zeny")**: If the user lists "Zeny" or "KK" as an item they are *selling* ("V>"), but does not specify a price or amount (unlike the Unit or Bulk sale cases). This is still treated as a Zeny-for-RMT sale.
     - "name": "Zeny"
     - "quantity": 1 (default)
-    - "price": 0 (default)
+    - "price_zeny": 0
+    - "price_rmt": 0
     - "currency": "rmt"
     - "payment_methods": "rmt"
     - "action": "selling"
@@ -117,7 +120,7 @@ For each item, extract its base name, refinement level, number of slots, any att
 
 Provide the output *only* as a single, minified JSON object. Do not wrap it in markdown backticks or any other text.
 The JSON object must have one key: "items" (an array of objects).
-Each item object in the array must have these keys: "name" (string), "action" (string: "buying" or "selling"), "quantity" (integer), "price" (integer), "currency" (string: "zeny" or "rmt"), "payment_methods" (string: "zeny", "rmt", or "both"), "refinement" (integer), "slots" (integer), "card1" (string), "card2" (string), "card3" (string), "card4" (string).
+Each item object in the array must have these keys: "name" (string), "action" (string: "buying" or "selling"), "quantity" (integer), "price_zeny" (integer), "price_rmt" (integer), "payment_methods" (string: "zeny", "rmt", or "both"), "refinement" (integer), "slots" (integer), "card1" (string), "card2" (string), "card3" (string), "card4" (string).
 
 Here is the message to parse:
 ---

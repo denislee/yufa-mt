@@ -118,6 +118,11 @@ var templateFuncs = template.FuncMap{
 		}
 		return strings.Join(result, ".")
 	},
+	"formatRMT": func(rmt int64) string {
+		// This is a simple integer formatting for BRL.
+		// It will show "R$ 10" instead of "R$ 10,00".
+		return fmt.Sprintf("R$ %d", rmt)
+	},
 	"getKillCount": func(kills map[string]int, mobID string) int {
 		return kills[mobID]
 	},
@@ -1830,7 +1835,7 @@ func tradingPostListHandler(w http.ResponseWriter, r *http.Request) {
 	baseQuery := `
 		SELECT
 			p.id, p.title, p.post_type, p.character_name, p.contact_info, p.created_at, p.notes,
-			i.item_name, rms.name_pt, i.item_id, i.quantity, i.price, i.currency, 
+			i.item_name, rms.name_pt, i.item_id, i.quantity, i.price_zeny, i.price_rmt, 
 			i.payment_methods, i.refinement, i.card1, i.card2, i.card3, i.card4
 		FROM trading_post_items i
 		JOIN trading_posts p ON i.post_id = p.id
@@ -1873,11 +1878,11 @@ func tradingPostListHandler(w http.ResponseWriter, r *http.Request) {
 	// If filterType is "all", no condition is added, so all types are shown.
 
 	if filterCurrency == "zeny" {
-		whereConditions = append(whereConditions, "i.currency = ?")
-		queryParams = append(queryParams, "zeny")
+		// Show items that have a zeny price OR accept zeny payment
+		whereConditions = append(whereConditions, "(i.price_zeny > 0 OR i.payment_methods IN ('zeny', 'both'))")
 	} else if filterCurrency == "rmt" {
-		whereConditions = append(whereConditions, "i.currency = ?")
-		queryParams = append(queryParams, "rmt")
+		// Show items that have an RMT price OR accept RMT payment
+		whereConditions = append(whereConditions, "(i.price_rmt > 0 OR i.payment_methods IN ('rmt', 'both'))")
 	}
 	// If filterCurrency is "all", no condition is added.
 
@@ -1888,12 +1893,17 @@ func tradingPostListHandler(w http.ResponseWriter, r *http.Request) {
 
 	allowedSorts := map[string]string{
 		"item_name": "i.item_name",
-		// Sort price, but put 0 (Negotiable) at the end when sorting ASC
-		"price":    "CASE WHEN i.price = 0 THEN 9223372036854775807 ELSE i.price END",
-		"quantity": "i.quantity",
-		"seller":   "p.character_name",
-		"posted":   "p.created_at",
+		"quantity":  "i.quantity",
+		"seller":    "p.character_name",
+		"posted":    "p.created_at",
 	}
+	// Dynamically set the price sort based on the currency filter
+	if filterCurrency == "rmt" {
+		allowedSorts["price"] = "CASE WHEN i.price_rmt = 0 THEN 9223372036854775807 ELSE i.price_rmt END"
+	} else {
+		allowedSorts["price"] = "CASE WHEN i.price_zeny = 0 THEN 9223372036854775807 ELSE i.price_zeny END"
+	}
+
 	orderByClause, sortBy, order := getSortClause(r, allowedSorts, "posted", "DESC")
 
 	finalQuery := baseQuery + whereClause + " " + orderByClause
@@ -1911,7 +1921,7 @@ func tradingPostListHandler(w http.ResponseWriter, r *http.Request) {
 		var item FlatTradingPostItem
 		err := rows.Scan(
 			&item.PostID, &item.Title, &item.PostType, &item.CharacterName, &item.ContactInfo, &item.CreatedAt, &item.Notes,
-			&item.ItemName, &item.NamePT, &item.ItemID, &item.Quantity, &item.Price, &item.Currency,
+			&item.ItemName, &item.NamePT, &item.ItemID, &item.Quantity, &item.PriceZeny, &item.PriceRMT,
 			&item.PaymentMethods,
 			&item.Refinement, &item.Card1, &item.Card2, &item.Card3, &item.Card4,
 		)
@@ -2359,7 +2369,7 @@ func createSingleTradingPost(authorName, originalMessage, postType string, items
 	// Prepare to insert the items.
 	// NOTE: The 'trading_post_items' table does not have an 'action' column,
 	// as the action is defined by the parent 'trading_posts' entry.
-	stmt, err := tx.Prepare("INSERT INTO trading_post_items (post_id, item_name, item_id, quantity, price, currency, payment_methods, refinement, slots, card1, card2, card3, card4) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
+	stmt, err := tx.Prepare("INSERT INTO trading_post_items (post_id, item_name, item_id, quantity, price_zeny, price_rmt, payment_methods, refinement, slots, card1, card2, card3, card4) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
 	if err != nil {
 		return 0, fmt.Errorf("database preparation failed for discord post items: %w", err)
 	}
@@ -2379,12 +2389,6 @@ func createSingleTradingPost(authorName, originalMessage, postType string, items
 			log.Printf("⚠️ Error finding item ID for '%s': %v. Proceeding without ID.", itemName, findErr)
 		}
 
-		// Ensure currency is valid, default to zeny
-		currency := "zeny"
-		if item.Currency == "rmt" {
-			currency = "rmt"
-		}
-
 		// Ensure payment_methods is valid, default to zeny
 		paymentMethods := "zeny"
 		if item.PaymentMethods == "rmt" || item.PaymentMethods == "both" {
@@ -2397,7 +2401,7 @@ func createSingleTradingPost(authorName, originalMessage, postType string, items
 		card3 := sql.NullString{String: item.Card3, Valid: item.Card3 != ""}
 		card4 := sql.NullString{String: item.Card4, Valid: item.Card4 != ""}
 
-		if _, err := stmt.Exec(postID, itemName, itemID, item.Quantity, item.Price, currency, paymentMethods, item.Refinement, item.Slots, card1, card2, card3, card4); err != nil {
+		if _, err := stmt.Exec(postID, itemName, itemID, item.Quantity, item.PriceZeny, item.PriceRMT, paymentMethods, item.Refinement, item.Slots, card1, card2, card3, card4); err != nil {
 			// Don't just return, log which item failed
 			return 0, fmt.Errorf("failed to save item '%s' for discord post: %w", itemName, err)
 		}

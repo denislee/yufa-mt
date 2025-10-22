@@ -74,15 +74,12 @@
                             <input type="number" name="slots[]" value="{{.Slots}}" min="0" max="4" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm text-sm">
                         </div>
                         <div class="col-span-4 md:col-span-2">
-                            <label class="text-xs text-gray-600">Price</label>
-                            <input type="number" name="price[]" value="{{.Price}}" min="0" required class="mt-1 block w-full rounded-md border-gray-300 shadow-sm text-sm">
+                            <label class="text-xs text-gray-600">Price (Zeny)</label>
+                            <input type="number" name="price_zeny[]" value="{{.PriceZeny}}" min="0" placeholder="e.g. 1500000" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm text-sm">
                         </div>
                         <div class="col-span-4 md:col-span-1">
-                            <label class="text-xs text-gray-600">Currency</label>
-                            <select name="currency[]" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm text-sm">
-                                <option value="zeny" {{if eq .Currency "zeny"}}selected{{end}}>Zeny</option>
-                                <option value="rmt" {{if eq .Currency "rmt"}}selected{{end}}>RMT</option>
-                            </select>
+                            <label class="text-xs text-gray-600">Price (RMT)</label>
+                            <input type="number" name="price_rmt[]" value="{{.PriceRMT}}" min="0" placeholder="e.g. 10" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm text-sm">
                         </div>
                         <div class="col-span-4 md:col-span-2">
                             <label class="text-xs text-gray-600">Payment</label>
@@ -157,15 +154,12 @@
                             <input type="number" name="slots[]" value="0" min="0" max="4" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm text-sm">
                         </div>
                         <div class="col-span-4 md:col-span-2">
-                            <label class="text-xs text-gray-600">Price</label>
-                            <input type="number" name="price[]" value="0" min="0" required class="mt-1 block w-full rounded-md border-gray-300 shadow-sm text-sm">
+                            <label class="text-xs text-gray-600">Price (Zeny)</label>
+                            <input type="number" name="price_zeny[]" value="0" min="0" placeholder="e.g. 1500000" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm text-sm">
                         </div>
                         <div class="col-span-4 md:col-span-1">
-                            <label class="text-xs text-gray-600">Currency</label>
-                            <select name="currency[]" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm text-sm">
-                                <option value="zeny" selected>Zeny</option>
-                                <option value="rmt">RMT</option>
-                            </select>
+                            <label class="text-xs text-gray-600">Price (RMT)</label>
+                            <input type="number" name="price_rmt[]" value="0" min="0" placeholder="e.g. 10" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm text-sm">
                         </div>
                         <div class="col-span-4 md:col-span-2">
                             <label class="text-xs text-gray-600">Payment</label>
