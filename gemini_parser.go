@@ -85,6 +85,7 @@ For each item, extract its base name, refinement level, number of slots, any att
 - If the item name contains "Guilherme Tell" or is "AoA", it is "Apple of Archer"
 - If the item is "Cota de Malha do Pânico", it is "Cota de Malha"
 - If the item has "SW" in the name, it is "Skeleton Worker"
+- If the item is "Gakk", it is "Gakkung"
 
 - An item only have card if the item has the number of slots equal or more than number of cards in the item
 - If the item has slots, keep the slots on the name of the item, but always a space between the item name and the slots
