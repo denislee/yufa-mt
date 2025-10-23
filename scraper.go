@@ -59,9 +59,14 @@ var mvpNamesScraper = map[string]string{
 	"1511": "Amon Ra",
 }
 
-// --- SOLUTION: GLOBAL MUTEX FOR DATABASE ACCESS ---
-// This mutex will ensure that only one goroutine can write to the database at a time.
-var dbMutex sync.Mutex
+// --- SOLUTION: GRANULAR MUTEXES FOR DATABASE ACCESS ---
+// These mutexes allow different scrapers to write to the DB concurrently
+// as long as they don't touch the same domain.
+var (
+	marketMutex      sync.Mutex // For scrapeData (items, market_events)
+	characterMutex   sync.Mutex // For scrapePlayerCharacters, scrapeGuilds, scrapeZeny, scrapeMvpKills
+	playerCountMutex sync.Mutex // For scrapeAndStorePlayerCount
+)
 
 // newOptimizedAllocator creates a new chromedp allocator context with optimized flags
 // for scraping, disabling unnecessary resources like images to improve performance.
@@ -146,8 +151,8 @@ func scrapeAndStorePlayerCount() {
 		return
 	}
 
-	dbMutex.Lock()
-	defer dbMutex.Unlock()
+	playerCountMutex.Lock()
+	defer playerCountMutex.Unlock()
 
 	var sellerCount int
 	err = db.QueryRow("SELECT COUNT(DISTINCT seller_name) FROM items WHERE is_available = 1").Scan(&sellerCount)
@@ -367,8 +372,8 @@ func scrapePlayerCharacters() {
 		return
 	}
 
-	dbMutex.Lock()
-	defer dbMutex.Unlock()
+	characterMutex.Lock()
+	defer characterMutex.Unlock()
 
 	// Fetch existing player data for comparison ONCE at the beginning.
 	if enableCharacterScraperDebugLogs {
@@ -646,8 +651,8 @@ func scrapeGuilds() {
 		return
 	}
 
-	dbMutex.Lock()
-	defer dbMutex.Unlock()
+	characterMutex.Lock()
+	defer characterMutex.Unlock()
 
 	// --- Pre-fetch old guild associations for change logging ---
 	oldAssociations := make(map[string]string)
@@ -917,8 +922,8 @@ func scrapeZeny() {
 		return
 	}
 
-	dbMutex.Lock()
-	defer dbMutex.Unlock()
+	characterMutex.Lock()
+	defer characterMutex.Unlock()
 
 	// --- PRE-FETCH EXISTING DATA ---
 	log.Println("    -> [DB] Fetching existing character zeny data for activity comparison...")
@@ -1187,8 +1192,8 @@ func scrapeData() {
 
 	log.Printf("🔎 [Market] Scrape parsed. Found %d unique item names.", len(scrapedItemsByName))
 
-	dbMutex.Lock()
-	defer dbMutex.Unlock()
+	marketMutex.Lock()
+	defer marketMutex.Unlock()
 
 	tx, err := db.Begin()
 	if err != nil {
@@ -1617,8 +1622,8 @@ func scrapeMvpKills() {
 		return
 	}
 
-	dbMutex.Lock()
-	defer dbMutex.Unlock()
+	characterMutex.Lock()
+	defer characterMutex.Unlock()
 
 	tx, err := db.Begin()
 	if err != nil {
