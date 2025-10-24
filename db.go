@@ -124,6 +124,41 @@ func initDB(filepath string) (*sql.DB, error) {
 		return nil, fmt.Errorf("could not create rms_item_cache table: %w", err)
 	}
 
+	// SQL to create the FTS5 virtual table for searching items
+	createRMSFTSSTableSQL := `
+	CREATE VIRTUAL TABLE IF NOT EXISTS rms_item_cache_fts USING fts5(
+		name, 
+		name_pt, 
+		content='rms_item_cache', 
+		content_rowid='item_id'
+	);`
+	if _, err = db.Exec(createRMSFTSSTableSQL); err != nil {
+		return nil, fmt.Errorf("could not create rms_item_cache_fts table: %w", err)
+	}
+
+	// SQL for Triggers to keep FTS table in sync with rms_item_cache
+	// These triggers automatically update the FTS table when you INSERT,
+	// UPDATE, or DELETE from rms_item_cache.
+	createTriggersSQL := `
+	CREATE TRIGGER IF NOT EXISTS rms_item_cache_ai AFTER INSERT ON rms_item_cache BEGIN
+		INSERT INTO rms_item_cache_fts(rowid, name, name_pt) 
+		VALUES (new.item_id, new.name, new.name_pt);
+	END;
+	CREATE TRIGGER IF NOT EXISTS rms_item_cache_ad AFTER DELETE ON rms_item_cache BEGIN
+		INSERT INTO rms_item_cache_fts(rms_item_cache_fts, rowid, name, name_pt) 
+		VALUES ('delete', old.item_id, old.name, old.name_pt);
+	END;
+	CREATE TRIGGER IF NOT EXISTS rms_item_cache_au AFTER UPDATE ON rms_item_cache BEGIN
+		INSERT INTO rms_item_cache_fts(rms_item_cache_fts, rowid, name, name_pt) 
+		VALUES ('delete', old.item_id, old.name, old.name_pt);
+		INSERT INTO rms_item_cache_fts(rowid, name, name_pt) 
+		VALUES (new.item_id, new.name, new.name_pt);
+	END;
+	`
+	if _, err = db.Exec(createTriggersSQL); err != nil {
+		return nil, fmt.Errorf("could not create FTS triggers: %w", err)
+	}
+
 	// SQL statement to create the 'player_history' table.
 	createPlayerHistoryTableSQL := `
 	CREATE TABLE IF NOT EXISTS player_history (

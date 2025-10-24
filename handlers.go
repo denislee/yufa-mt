@@ -1945,13 +1945,10 @@ func tradingPostListHandler(w http.ResponseWriter, r *http.Request) {
 	renderTemplate(w, "trading_post.html", data)
 }
 
-// findItemIDByName searches for an item ID. It first checks the local cache.
-// If no unique match is found, it performs a concurrent online search as a fallback.
-// If multiple matches are found (for non-card items), it returns no ID.
-// If multiple matches are found for an item containing "card" or "carta", it returns the first match.
+// findItemIDByName searches for an item ID using FTS5 and online fallbacks.
+// It is now a method on the Application struct.
 func findItemIDByName(itemName string, allowRetry bool, slots int) (sql.NullInt64, error) {
-	var itemID int64
-
+	// 1. Clean the input name
 	reRefine := regexp.MustCompile(`\s*\+\d+\s*`)
 	itemNameWithoutRefine := reRefine.ReplaceAllString(itemName, "")
 	itemNameWithoutRefine = strings.TrimSpace(itemNameWithoutRefine)
@@ -1961,37 +1958,43 @@ func findItemIDByName(itemName string, allowRetry bool, slots int) (sql.NullInt6
 		return sql.NullInt64{Valid: false}, nil
 	}
 
-	// --- NEW: Handle "Zeny" as a special case ---
-	// If the item name is "Zeny", "zeny", etc., do not search for an ID.
-	// This is a special item handled by the Gemini parser.
+	// Handle "Zeny" as a special case
 	if strings.ToLower(cleanItemName) == "zeny" {
 		log.Printf("   [Item ID Search] Detected special item 'Zeny'. Skipping ID search.")
 		return sql.NullInt64{Valid: false}, nil
 	}
-	// --- END NEW SECTION ---
 
-	// --- Step 1 & 2: Search local cache (exact and LIKE match) ---
-	queryExact := `SELECT item_id FROM rms_item_cache WHERE name_pt = ? OR name = ?`
-	err := db.QueryRow(queryExact, cleanItemName, cleanItemName).Scan(&itemID)
-	if err == nil {
-		log.Printf("   [Item ID Search] Found exact local match for '%s': ID %d", cleanItemName, itemID)
-		return sql.NullInt64{Int64: itemID, Valid: true}, nil
+	// 2. Build an FTS5 query.
+	// This creates a "prefix" query for all terms. "Blue Potion" -> "Blue* Potion*"
+	terms := strings.Fields(cleanItemName)
+	for i, term := range terms {
+		// Avoid making stop words or tiny particles like "[" into prefix queries
+		if len(term) > 1 {
+			terms[i] = term + "*"
+		}
 	}
-	if err != sql.ErrNoRows {
-		return sql.NullInt64{}, fmt.Errorf("error during exact match query for '%s': %w", cleanItemName, err)
-	}
+	ftsQuery := strings.Join(terms, " ")
 
-	queryLike := `SELECT item_id, name, name_pt FROM rms_item_cache WHERE name_pt LIKE ? OR name LIKE ? ORDER BY name_pt, name LIMIT 10`
-	rows, err := db.Query(queryLike, "%"+cleanItemName+"%", "%"+cleanItemName+"%")
+	// 3. Search the FTS table. `rowid` is the item_id.
+	// We also select the names to check for an exact match.
+	query := `
+		SELECT rowid, name, name_pt 
+		FROM rms_item_cache_fts 
+		WHERE rms_item_cache_fts MATCH ? 
+		ORDER BY rank  -- FTS5 automatically ranks relevance
+		LIMIT 10`
+
+	// Use app.db (from the Application struct)
+	rows, err := db.Query(query, ftsQuery)
 	if err != nil {
-		return sql.NullInt64{}, fmt.Errorf("error during LIKE query for '%s': %w", cleanItemName, err)
+		return sql.NullInt64{}, fmt.Errorf("error during FTS query for '%s': %w", ftsQuery, err)
 	}
 	defer rows.Close()
 
 	type potentialMatch struct {
 		id     int64
 		name   string
-		namePT sql.NullString // Use sql.NullString for name_pt
+		namePT string // FTS table stores this, no need for sql.NullString
 	}
 	var potentialMatches []potentialMatch
 
@@ -2002,132 +2005,36 @@ func findItemIDByName(itemName string, allowRetry bool, slots int) (sql.NullInt6
 		}
 	}
 
+	// 4. Evaluate FTS results
 	if len(potentialMatches) == 1 {
-		// Found a single, unambiguous LIKE match.
-		itemID = potentialMatches[0].id
-		log.Printf("   [Item ID Search] Found unique local LIKE match for '%s': ID %d", cleanItemName, itemID)
+		// Found a single, unambiguous FTS match.
+		itemID := potentialMatches[0].id
+		log.Printf("   [Item ID Search] Found unique local FTS match for '%s': ID %d", cleanItemName, itemID)
 		return sql.NullInt64{Int64: itemID, Valid: true}, nil
 	}
 
 	if len(potentialMatches) > 1 {
-		// --- NEW: Perfect Match Check (Local) ---
-		// We have multiple LIKE results. Check if one is a perfect match.
+		// Multiple matches. Check for a perfect match.
 		for _, match := range potentialMatches {
-			if match.name == cleanItemName || (match.namePT.Valid && match.namePT.String == cleanItemName) {
-				// Found a perfect match within the LIKE results!
-				log.Printf("   [Item ID Search] Found perfect match '%s' (ID %d) within local LIKE results.", cleanItemName, match.id)
+			if match.name == cleanItemName || match.namePT == cleanItemName {
+				log.Printf("   [Item ID Search] Found perfect match '%s' (ID %d) within FTS results.", cleanItemName, match.id)
 				return sql.NullInt64{Int64: match.id, Valid: true}, nil
 			}
 		}
-		// --- END NEW SECTION ---
 
-		// Found multiple, ambiguous LIKE matches, and none were a perfect match.
-		// Proceed with card logic.
+		// Still ambiguous. Handle "card" logic.
 		lowerCleanItemName := strings.ToLower(cleanItemName)
 		if strings.Contains(lowerCleanItemName, "card") || strings.Contains(lowerCleanItemName, "carta") {
-			// Ambiguous, but it's a card search, so take the first match.
-			itemID = potentialMatches[0].id
-			log.Printf("   [Item ID Search] Found %d local LIKE matches for '%s'. Using first result (ID %d) due to 'card'/'carta' keyword.", len(potentialMatches), cleanItemName, itemID)
+			itemID := potentialMatches[0].id
+			log.Printf("   [Item ID Search] Found %d FTS matches for '%s'. Using first result (ID %d) due to 'card'/'carta' keyword.", len(potentialMatches), cleanItemName, itemID)
 			return sql.NullInt64{Int64: itemID, Valid: true}, nil
 		}
 
-		// Ambiguous, and not a card search. Do not select one.
-		log.Printf("   [Item ID Search] Found %d ambiguous local LIKE matches for '%s'. Not selecting. Proceeding to online search.", len(potentialMatches), cleanItemName)
-		// Let the function continue to Step 3 (online search)
+		log.Printf("   [Item ID Search] Found %d ambiguous FTS matches for '%s'. Proceeding to online search.", len(potentialMatches), cleanItemName)
 	}
 
-	// -----------------------------------------------------------------
-	// --- NEW CODE BLOCK: SIMILARITY SEARCH (STEP 2.5) ---
-	// -----------------------------------------------------------------
-	// This runs if the LIKE search returned 0 results, or if it returned >1 ambiguous results.
-	log.Printf("   [Item ID Search] Local LIKE search failed or was ambiguous. Starting high-similarity search...", cleanItemName)
-
-	var queryPrefix string
-	if len(cleanItemName) > 3 {
-		// Optimize: only check items that start with roughly the same first 3 chars.
-		queryPrefix = cleanItemName[:3]
-	}
-
-	// Query all potential matches from the cache, using the prefix optimization
-	querySim := `SELECT item_id, name, name_pt FROM rms_item_cache WHERE name LIKE ? OR name_pt LIKE ?`
-	simRows, err := db.Query(querySim, queryPrefix+"%", queryPrefix+"%")
-	if err != nil {
-		log.Printf("   [Item ID Search] Similarity query failed: %v. Proceeding to online search.", err)
-		// Don't return error, just proceed to online search
-	} else {
-		defer simRows.Close()
-
-		bestMatchID := int64(-1)
-		bestDistance := 3 // Our threshold: only accept distance 0, 1, or 2.
-		foundAmbiguous := false
-		var bestMatchName string // NEW: Store the name of the best match
-
-		for simRows.Next() {
-			var id int64
-			var name string
-			var namePT sql.NullString
-			if err := simRows.Scan(&id, &name, &namePT); err != nil {
-				continue
-			}
-
-			// Levenshtein function now handles card/carta/slot removal internally
-			dist1 := levenshtein(cleanItemName, name)
-			dist2 := 1000 // default high
-			if namePT.Valid {
-				dist2 = levenshtein(cleanItemName, namePT.String)
-			}
-
-			minDist := min(dist1, dist2)
-
-			// --- ADDED LOGGING ---
-			// Log potential close matches for debugging (distance < 5 is a good threshold)
-			if minDist < 5 {
-				if namePT.Valid {
-					log.Printf("   [Item ID Search] Similarity check: '%s' vs '%s' (dist %d) or '%s' (dist %d) -> ID %d", cleanItemName, name, dist1, namePT.String, dist2, id)
-				} else {
-					log.Printf("   [Item ID Search] Similarity check: '%s' vs '%s' (dist %d) -> ID %d", cleanItemName, name, dist1, id)
-				}
-			}
-			// --- END ADDED LOGGING ---
-
-			if minDist < bestDistance {
-				bestDistance = minDist
-				bestMatchID = id
-				foundAmbiguous = false // We have a new, clearer winner
-				// NEW: Store the name that gave the best distance
-				if dist1 <= dist2 {
-					bestMatchName = name
-				} else {
-					bestMatchName = namePT.String
-				}
-			} else if minDist == bestDistance && bestMatchID != id {
-				foundAmbiguous = true // Two different items have the same "best" distance
-			}
-		}
-
-		if !foundAmbiguous && bestMatchID != -1 {
-			// We found a unique, high-similarity match.
-			log.Printf("   [Item ID Search] Found unique high-similarity match for '%s': ID %d (Distance: %d). Bypassing online search.", cleanItemName, bestMatchID, bestDistance)
-			return sql.NullInt64{Int64: bestMatchID, Valid: true}, nil
-		} else if foundAmbiguous {
-			log.Printf("   [Item ID Search] Similarity search for '%s' was ambiguous (multiple items with distance %d). Proceeding to online search.", cleanItemName, bestDistance)
-			// NEW: If ambiguous, use the *first* best match's name for the online search
-			if bestMatchName != "" {
-				log.Printf("   [Item ID Search] Ambiguity found. Using first best-match '%s' for online search instead of '%s'.", bestMatchName, cleanItemName)
-				cleanItemName = bestMatchName // Overwrite the search query
-			}
-		} else {
-			// bestMatchID is still -1, meaning no match was found within the distance threshold
-			log.Printf("   [Item ID Search] Similarity search for '%s' found no close match (Best distance > %d). Proceeding to online search.", cleanItemName, bestDistance-1)
-		}
-	}
-	// -----------------------------------------------------------------
-	// --- END OF NEW CODE BLOCK ---
-	// -----------------------------------------------------------------
-
-	// --- Step 3: Fallback to concurrent online search if local search fails ---
-	// This log will now show the *original* or *new* (from ambiguity) search term
-	log.Printf("   [Item ID Search] No local match for '%s'. Initiating online search...", cleanItemName)
+	// 5. Fallback to concurrent online search if local search fails
+	log.Printf("   [Item ID Search] No local FTS match for '%s'. Initiating online search...", cleanItemName)
 
 	var wg sync.WaitGroup
 	rmsChan := make(chan []ItemSearchResult, 1)
@@ -2136,7 +2043,8 @@ func findItemIDByName(itemName string, allowRetry bool, slots int) (sql.NullInt6
 	wg.Add(2)
 	go func() {
 		defer wg.Done()
-		results, err := scrapeRMSItemSearch(cleanItemName)
+		// scrapeRMSItemSearch would also be a method: app.scrapeRMSItemSearch
+		results, err := scrapeRMSItemSearch(cleanItemName) // Assuming this is a free function for simplicity
 		if err != nil {
 			log.Printf("   -> [RMS Search] Failed for '%s': %v", cleanItemName, err)
 			rmsChan <- nil
@@ -2146,8 +2054,8 @@ func findItemIDByName(itemName string, allowRetry bool, slots int) (sql.NullInt6
 	}()
 	go func() {
 		defer wg.Done()
-		ids, err := scrapeRODatabaseSearch(cleanItemName, slots)
-
+		// scrapeRODatabaseSearch would also be a method: app.scrapeRODatabaseSearch
+		ids, err := scrapeRODatabaseSearch(cleanItemName, slots) // Assuming this is a free function
 		if err != nil {
 			log.Printf("   -> [RDB Search] Failed for '%s': %v", cleanItemName, err)
 			rdbChan <- nil
@@ -2160,7 +2068,7 @@ func findItemIDByName(itemName string, allowRetry bool, slots int) (sql.NullInt6
 	rmsResults := <-rmsChan
 	rdbResults := <-rdbChan
 
-	combinedIDs := make(map[int]string) // map[ID]Name to help with caching later
+	combinedIDs := make(map[int]string) // map[ID]Name
 	if rmsResults != nil {
 		for _, res := range rmsResults {
 			combinedIDs[res.ID] = res.Name
@@ -2183,40 +2091,32 @@ func findItemIDByName(itemName string, allowRetry bool, slots int) (sql.NullInt6
 			foundName = name
 		}
 		log.Printf("   [Item ID Search] Found unique ONLINE match for '%s': ID %d", cleanItemName, foundID)
+		// Call the method on app
 		go scrapeAndCacheItemIfNotExists(foundID, foundName)
 		return sql.NullInt64{Int64: int64(foundID), Valid: true}, nil
 	}
 
 	if len(combinedIDs) > 1 {
-		// --- NEW: Perfect Match Check (Online) ---
-		// We have multiple ONLINE results. Check if one is a perfect match.
-
+		// Multiple ONLINE results. Check for a perfect match.
 		for id, name := range combinedIDs {
-			// --- MODIFICATION: Clean the result name before comparing ---
-			nameWithoutSlots := reSlotRemover.ReplaceAllString(name, " ") // Use package-level regex
+			nameWithoutSlots := reSlotRemover.ReplaceAllString(name, " ")
 			nameWithoutSlots = strings.TrimSpace(nameWithoutSlots)
-			// --- END MODIFICATION ---
 
-			// Check for a perfect match (e.g., "Jur [3]" == "Jur [3]")
-			// OR a slot-stripped match (e.g., "Jur" == "Jur")
 			if name == cleanItemName || (nameWithoutSlots != "" && nameWithoutSlots == cleanItemName) {
-				// Found a perfect match (English name) within the ONLINE results!
 				if name == cleanItemName {
 					log.Printf("   [Item ID Search] Found perfect match (exact) '%s' (ID %d) within ONLINE results.", cleanItemName, id)
 				} else {
 					log.Printf("   [Item ID Search] Found perfect match (slot-stripped) '%s' (ID %d) within ONLINE results (Original: '%s').", cleanItemName, id, name)
 				}
+				// Call the method on app
 				go scrapeAndCacheItemIfNotExists(id, name)
 				return sql.NullInt64{Int64: int64(id), Valid: true}, nil
 			}
 		}
-		// --- END NEW SECTION ---
 
-		// Found multiple, ambiguous ONLINE matches, and none were a perfect match.
-		// Proceed with card logic.
+		// Ambiguous, and not a perfect match. Handle card logic.
 		lowerCleanItemName := strings.ToLower(cleanItemName)
 		if strings.Contains(lowerCleanItemName, "card") || strings.Contains(lowerCleanItemName, "carta") {
-			// Ambiguous, but it's a card search, so take the first match.
 			var foundID int
 			var foundName string
 			for id, name := range combinedIDs {
@@ -2225,29 +2125,27 @@ func findItemIDByName(itemName string, allowRetry bool, slots int) (sql.NullInt6
 				break // Exit after the first one
 			}
 			log.Printf("   [Item ID Search] Found %d ONLINE matches for '%s'. Using first result (ID %d) due to 'card'/'carta' keyword.", len(combinedIDs), cleanItemName, foundID)
+			// Call the method on app
 			go scrapeAndCacheItemIfNotExists(foundID, foundName)
 			return sql.NullInt64{Int64: int64(foundID), Valid: true}, nil
 		}
 
 		// Ambiguous, and not a card search. Do not select one.
 		log.Printf("   [Item ID Search] Found %d ambiguous ONLINE matches for '%s'. Not selecting.", len(combinedIDs), cleanItemName)
-		// Fall through to the final "no results" return
 	}
 
-	// --- NEW: Final step, retry without "card" or "carta" ---
+	// 6. Final step, retry without "card" or "carta"
 	lowerCleanItemName := strings.ToLower(cleanItemName)
 	if allowRetry && (strings.Contains(lowerCleanItemName, "card") || strings.Contains(lowerCleanItemName, "carta")) {
-		// Use the *original* itemName (with refinement) to avoid issues with sanitization
-		newName := reCardRemover.ReplaceAllString(itemName, " ") // Use package-level regex
+		newName := reCardRemover.ReplaceAllString(itemName, " ")
 		newName = strings.TrimSpace(newName)
 
 		if newName != "" && newName != cleanItemName {
 			log.Printf("   [Item ID Search] No results for '%s'. Retrying search without 'card'/'carta' as: '%s'", cleanItemName, newName)
-			// Call again, but this time disallow further retries
+			// Call the method on app
 			return findItemIDByName(newName, false, slots)
 		}
 	}
-	// --- END NEW SECTION ---
 
 	// If we're here, all searches failed or were ambiguous.
 	log.Printf("   [Item ID Search] Online search for '%s' returned no results or was ambiguous. Storing name only.", cleanItemName)
