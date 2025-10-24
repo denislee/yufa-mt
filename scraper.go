@@ -18,8 +18,6 @@ import (
 	"github.com/chromedp/chromedp"
 )
 
-// --- CONFIGURATION ---
-// These constants control verbose logging for each specific scraper module.
 const enablePlayerCountDebugLogs = false
 const enableCharacterScraperDebugLogs = false
 const enableGuildScraperDebugLogs = false
@@ -27,7 +25,6 @@ const enableMvpScraperDebugLogs = false
 const enableZenyScraperDebugLogs = false
 const enableMarketScraperDebugLogs = false
 
-// Shared slice of MVP IDs for the scraper and database logic to use.
 var mvpMobIDsScrape = []string{
 	"1038", "1039", "1046", "1059", "1086", "1087", "1112", "1115", "1147",
 	"1150", "1157", "1159", "1190", "1251", "1252", "1272", "1312", "1373",
@@ -59,17 +56,12 @@ var mvpNamesScraper = map[string]string{
 	"1511": "Amon Ra",
 }
 
-// --- SOLUTION: GRANULAR MUTEXES FOR DATABASE ACCESS ---
-// These mutexes allow different scrapers to write to the DB concurrently
-// as long as they don't touch the same domain.
 var (
-	marketMutex      sync.Mutex // For scrapeData (items, market_events)
-	characterMutex   sync.Mutex // For scrapePlayerCharacters, scrapeGuilds, scrapeZeny, scrapeMvpKills
-	playerCountMutex sync.Mutex // For scrapeAndStorePlayerCount
+	marketMutex      sync.Mutex
+	characterMutex   sync.Mutex
+	playerCountMutex sync.Mutex
 )
 
-// newOptimizedAllocator creates a new chromedp allocator context with optimized flags
-// for scraping, disabling unnecessary resources like images to improve performance.
 func newOptimizedAllocator() (context.Context, context.CancelFunc) {
 	opts := append(chromedp.DefaultExecAllocatorOptions[:],
 		chromedp.UserAgent(`Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36`),
@@ -82,10 +74,9 @@ func newOptimizedAllocator() (context.Context, context.CancelFunc) {
 	return chromedp.NewExecAllocator(context.Background(), opts...)
 }
 
-// logCharacterActivity inserts a record into the character_changelog table with a formatted description.
 func logCharacterActivity(tx *sql.Tx, charName string, description string) error {
 	if description == "" {
-		return nil // Do not log empty descriptions
+		return nil
 	}
 	_, err := tx.Exec(`
 		INSERT INTO character_changelog (character_name, change_time, activity_description)
@@ -97,11 +88,9 @@ func logCharacterActivity(tx *sql.Tx, charName string, description string) error
 	return err
 }
 
-// scrapeAndStorePlayerCount uses net/http and goquery for a lightweight way to get the player count.
 func scrapeAndStorePlayerCount() {
 	log.Println("📊 [Counter] Checking player and seller count...")
 
-	// Create a new HTTP client with a timeout.
 	client := &http.Client{Timeout: 30 * time.Second}
 	req, err := http.NewRequest("GET", "https://projetoyufa.com/info", nil)
 	if err != nil {
@@ -109,7 +98,6 @@ func scrapeAndStorePlayerCount() {
 		return
 	}
 
-	// Set a User-Agent to mimic a real browser.
 	req.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36")
 
 	resp, err := client.Do(req)
@@ -124,14 +112,12 @@ func scrapeAndStorePlayerCount() {
 		return
 	}
 
-	// Parse the response body with goquery.
 	doc, err := goquery.NewDocumentFromReader(resp.Body)
 	if err != nil {
 		log.Printf("❌ [Counter] Failed to parse player info page HTML: %v", err)
 		return
 	}
 
-	// Find the element and extract its text.
 	playerCountText := doc.Find(`span[data-slot="badge"] p`).Text()
 
 	var onlineCount int
@@ -158,7 +144,7 @@ func scrapeAndStorePlayerCount() {
 	err = db.QueryRow("SELECT COUNT(DISTINCT seller_name) FROM items WHERE is_available = 1").Scan(&sellerCount)
 	if err != nil {
 		log.Printf("⚠️ [Counter] Could not query for unique seller count: %v", err)
-		// Don't return, as we can still store the player count. Default sellerCount to 0.
+
 		sellerCount = 0
 	}
 
@@ -187,15 +173,12 @@ func scrapeAndStorePlayerCount() {
 	log.Printf("✅ [Counter] Player/seller count updated. New values: %d players, %d sellers", onlineCount, sellerCount)
 }
 
-// scrapePlayerCharacters uses multiple individual regexes to find data points and assembles
-// characters based on the order the data was found in the raw server response.
 func scrapePlayerCharacters() {
 	log.Println("🏆 [Characters] Starting player character scrape...")
-	// ... (Web scraping logic is unchanged)
+
 	const maxRetries = 3
 	const retryDelay = 3 * time.Second
 
-	// Define individual regexes for each piece of character data.
 	rankRegex := regexp.MustCompile(`p\-1 text\-center font\-medium\\",\\"children\\":(\d+)\}\]`)
 	nameRegex := regexp.MustCompile(`max-w-10 truncate p-1 font-semibold">([^<]+)</td>`)
 	baseLevelRegex := regexp.MustCompile(`\\"level\\":(\d+),`)
@@ -205,7 +188,6 @@ func scrapePlayerCharacters() {
 
 	client := &http.Client{Timeout: 45 * time.Second}
 
-	// --- Determine total number of pages using regex ---
 	var lastPage = 1
 	log.Println("🏆 [Characters] Determining total number of pages...")
 	firstPageURL := "https://projetoyufa.com/rankings?page=1"
@@ -222,7 +204,7 @@ func scrapePlayerCharacters() {
 		log.Printf("⚠️ [Characters] Could not fetch page 1 to determine page count. Assuming one page. Error: %v", err)
 	} else {
 		bodyBytes, readErr := io.ReadAll(resp.Body)
-		// ✅ FIX: Close the body immediately after reading, before checking for errors.
+
 		resp.Body.Close()
 		if readErr != nil {
 			log.Printf("⚠️ [Characters] Failed to read page 1 body. Assuming one page. Error: %v", readErr)
@@ -242,7 +224,6 @@ func scrapePlayerCharacters() {
 	}
 	log.Printf("✅ [Characters] Found %d total pages to scrape.", lastPage)
 
-	// ... (Concurrent scraping logic is unchanged)
 	updateTime := time.Now().Format(time.RFC3339)
 	allPlayers := make(map[string]PlayerCharacter)
 	var mu sync.Mutex
@@ -285,7 +266,7 @@ func scrapePlayerCharacters() {
 				}
 
 				bodyBytes, readErr := io.ReadAll(resp.Body)
-				// ✅ FIX: Close the body immediately after reading, before checking for errors.
+
 				resp.Body.Close()
 				if readErr != nil {
 					log.Printf("    -> ❌ Failed to read body for page %d: %v", p, readErr)
@@ -303,7 +284,6 @@ func scrapePlayerCharacters() {
 				return
 			}
 
-			// Find all matches for each attribute individually.
 			rankMatches := rankRegex.FindAllStringSubmatch(bodyContent, -1)
 			nameMatches := nameRegex.FindAllStringSubmatch(bodyContent, -1)
 			baseLevelMatches := baseLevelRegex.FindAllStringSubmatch(bodyContent, -1)
@@ -316,7 +296,6 @@ func scrapePlayerCharacters() {
 				log.Printf("    -> matches: rank: %d, name: %d, base: %d, job %d, exp %d, class %d", len(rankMatches), len(nameMatches), len(baseLevelMatches), len(jobLevelMatches), len(expMatches), len(classMatches))
 			}
 
-			// Validate that we found the same number of matches for each attribute.
 			numChars := len(nameMatches)
 			if enableCharacterScraperDebugLogs {
 				log.Printf("    -> chars: %d", numChars)
@@ -343,7 +322,7 @@ func scrapePlayerCharacters() {
 					Name:       name,
 					BaseLevel:  baseLevel,
 					JobLevel:   jobLevel,
-					Experience: rawExp / 1000000.0, // Calculate percentage
+					Experience: rawExp / 1000000.0,
 					Class:      class,
 				}
 
@@ -375,7 +354,6 @@ func scrapePlayerCharacters() {
 	characterMutex.Lock()
 	defer characterMutex.Unlock()
 
-	// Fetch existing player data for comparison ONCE at the beginning.
 	if enableCharacterScraperDebugLogs {
 		log.Println("    -> [DB] Fetching existing player data for activity comparison...")
 	}
@@ -403,7 +381,7 @@ func scrapePlayerCharacters() {
 		log.Printf("❌ [DB] Failed to begin transaction: %v", err)
 		return
 	}
-	defer tx.Rollback() // Rollback is a no-op if Commit succeeds
+	defer tx.Rollback()
 
 	stmt, err := tx.Prepare(`
 		INSERT INTO characters (rank, name, base_level, job_level, experience, class, last_updated, last_active)
@@ -435,11 +413,9 @@ func scrapePlayerCharacters() {
 				logCharacterActivity(tx, p.Name, fmt.Sprintf("Leveled up to Job Level %d!", p.JobLevel))
 			}
 
-			// Only log EXP gain/loss if the character didn't gain a BASE level.
-			// This correctly handles cases where experience resets after a level up.
 			if !baseLeveledUp {
 				expDelta := p.Experience - oldPlayer.Experience
-				// Use a small tolerance to avoid logging negligible floating point differences
+
 				if expDelta > 0.001 {
 					logCharacterActivity(tx, p.Name, fmt.Sprintf("Gained %.2f%% experience (now at %.2f%%).", expDelta, p.Experience))
 				} else if expDelta < -0.001 {
@@ -453,7 +429,6 @@ func scrapePlayerCharacters() {
 				logCharacterActivity(tx, p.Name, fmt.Sprintf("Changed class from '%s' to '%s'.", oldPlayer.Class, p.Class))
 			}
 
-			// Compare floats with a small tolerance to avoid issues with precision.
 			if (p.Experience-oldPlayer.Experience) < 0.001 && (p.Experience-oldPlayer.Experience) > -0.001 {
 				lastActiveTime = oldPlayer.LastActive
 			} else {
@@ -486,7 +461,6 @@ func scrapePlayerCharacters() {
 	log.Printf("✅ [Characters] Scrape and update process complete.")
 }
 
-// Helper structs for parsing guild data
 type GuildMemberJSON struct {
 	Name string `json:"name"`
 }
@@ -500,19 +474,17 @@ type GuildJSON struct {
 
 func scrapeGuilds() {
 	log.Println("🏰 [Guilds] Starting guild and character-guild association scrape...")
-	// ... (Web scraping logic is unchanged)
+
 	const maxRetries = 5
 	const retryDelay = 5 * time.Second
 	client := &http.Client{Timeout: 60 * time.Second}
 
-	// Define individual regexes for each piece of guild data.
 	nameRegex := regexp.MustCompile(`<span class="font-medium">([^<]+)</span>`)
 	levelRegex := regexp.MustCompile(`\\"guild_lv\\":(\d+),\\"connect_member\\"`)
 	masterRegex := regexp.MustCompile(`\\"master\\":\\"([^"]+)\\",\\"members\\"`)
 	membersRegex := regexp.MustCompile(`\\"members\\":\[(.*?)\]\}`)
 	memberNameRegex := regexp.MustCompile(`\\"name\\":\\"([^"]+)\\",\\"base_level\\"`)
 
-	// --- Determine total number of pages ---
 	var lastPage = 1
 	log.Println("🏰 [Guilds] Determining total number of pages...")
 	firstPageURL := "https://projetoyufa.com/rankings/guild?page=1"
@@ -547,10 +519,10 @@ func scrapeGuilds() {
 	log.Printf("✅ [Guilds] Found %d total pages to scrape.", lastPage)
 
 	allGuilds := make(map[string]Guild)
-	allMembers := make(map[string]string) // Map character name to guild name
+	allMembers := make(map[string]string)
 	var mu sync.Mutex
 	var wg sync.WaitGroup
-	sem := make(chan struct{}, 5) // Limit to 5 concurrent scrapers
+	sem := make(chan struct{}, 5)
 
 	for page := 1; page <= lastPage; page++ {
 		wg.Add(1)
@@ -654,7 +626,6 @@ func scrapeGuilds() {
 	characterMutex.Lock()
 	defer characterMutex.Unlock()
 
-	// --- Pre-fetch old guild associations for change logging ---
 	oldAssociations := make(map[string]string)
 	oldGuildRows, err := db.Query("SELECT name, guild_name FROM characters WHERE guild_name IS NOT NULL")
 	if err != nil {
@@ -666,7 +637,7 @@ func scrapeGuilds() {
 				oldAssociations[charName] = guildName
 			}
 		}
-		oldGuildRows.Close() // Close the rows connection immediately after use
+		oldGuildRows.Close()
 	}
 
 	tx, errDb := db.Begin()
@@ -676,7 +647,6 @@ func scrapeGuilds() {
 	}
 	defer tx.Rollback()
 
-	// Changed the logic from "DELETE then INSERT" to "UPSERT" to preserve existing data like emblem_url.
 	log.Println("    -> [DB] Upserting guild information into 'guilds' table...")
 	guildStmt, err := tx.Prepare(`
 		INSERT INTO guilds (rank, name, level, experience, master, emblem_url, last_updated)
@@ -694,8 +664,7 @@ func scrapeGuilds() {
 
 	updateTime := time.Now().Format(time.RFC3339)
 	for _, g := range allGuilds {
-		// The emblem_url from the scrape (g.EmblemURL) will only be used for new guild entries.
-		// For existing guilds, the ON CONFLICT clause prevents it from being updated, preserving the old value.
+
 		if _, err := guildStmt.Exec(0, g.Name, g.Level, g.Experience, g.Master, g.EmblemURL, updateTime); err != nil {
 			log.Printf("    -> [DB] WARN: Failed to upsert guild '%s': %v", g.Name, err)
 		}
@@ -728,7 +697,6 @@ func scrapeGuilds() {
 	}
 	log.Printf("    -> [DB] Successfully associated %d characters with their guilds.", updateCount)
 
-	// --- Log Guild Changes ---
 	allInvolvedChars := make(map[string]bool)
 	for charName := range oldAssociations {
 		allInvolvedChars[charName] = true
@@ -738,7 +706,7 @@ func scrapeGuilds() {
 	}
 
 	for charName := range allInvolvedChars {
-		// Verify the character exists before logging any changes.
+
 		var exists int
 		err := tx.QueryRow("SELECT COUNT(*) FROM characters WHERE name = ?", charName).Scan(&exists)
 		if err != nil {
@@ -746,7 +714,7 @@ func scrapeGuilds() {
 			continue
 		}
 		if exists == 0 {
-			// Character was likely deleted but was in a guild before. Don't log.
+
 			if enableGuildScraperDebugLogs {
 				log.Printf("    -> [Guilds] Skipping guild change log for non-existent character '%s'.", charName)
 			}
@@ -773,7 +741,6 @@ func scrapeGuilds() {
 	log.Printf("✅ [Guilds] Scrape and update complete. Saved %d guild records and updated character associations.", len(allGuilds))
 }
 
-// Helper struct for comparing Zeny data
 type CharacterZenyInfo struct {
 	Zeny       sql.NullInt64
 	LastActive string
@@ -781,12 +748,11 @@ type CharacterZenyInfo struct {
 
 func scrapeZeny() {
 	log.Println("💰 [Zeny] Starting Zeny ranking scrape...")
-	// ... (Web scraping logic is unchanged)
+
 	const maxRetries = 3
 	const retryDelay = 3 * time.Second
 	client := &http.Client{Timeout: 45 * time.Second}
 
-	// --- DETERMINE TOTAL PAGES ---
 	var lastPage = 1
 	log.Println("💰 [Zeny] Determining total number of pages...")
 	firstPageURL := "https://projetoyufa.com/rankings/zeny?page=1"
@@ -824,12 +790,11 @@ func scrapeZeny() {
 	}
 	log.Printf("✅ [Zeny] Found %d total pages to scrape.", lastPage)
 
-	// --- SCRAPE ALL PAGES CONCURRENTLY ---
 	updateTime := time.Now().Format(time.RFC3339)
 	allZenyInfo := make(map[string]int64)
 	var mu sync.Mutex
 	var wg sync.WaitGroup
-	sem := make(chan struct{}, 5) // Limit to 5 concurrent scrapers
+	sem := make(chan struct{}, 5)
 
 	for page := 1; page <= lastPage; page++ {
 		wg.Add(1)
@@ -925,7 +890,6 @@ func scrapeZeny() {
 	characterMutex.Lock()
 	defer characterMutex.Unlock()
 
-	// --- PRE-FETCH EXISTING DATA ---
 	log.Println("    -> [DB] Fetching existing character zeny data for activity comparison...")
 	existingCharacters := make(map[string]CharacterZenyInfo)
 	rows, err := db.Query("SELECT name, zeny, last_active FROM characters")
@@ -947,7 +911,6 @@ func scrapeZeny() {
 		}
 	}
 
-	// --- UPDATE DATABASE ---
 	tx, err := db.Begin()
 	if err != nil {
 		log.Printf("❌ [Zeny][DB] Failed to begin transaction: %v", err)
@@ -998,7 +961,7 @@ func scrapeZeny() {
 				formattedDelta := formatWithCommas(delta)
 				description = fmt.Sprintf("Zeny increased by %sz (New total: %sz).", formattedDelta, formattedNewZeny)
 			} else if delta < 0 {
-				formattedDelta := formatWithCommas(-delta) // Use positive delta for the message
+				formattedDelta := formatWithCommas(-delta)
 				description = fmt.Sprintf("Zeny decreased by %sz (New total: %sz).", formattedDelta, formattedNewZeny)
 			}
 
@@ -1037,7 +1000,7 @@ func scrapeZeny() {
 
 func scrapeData() {
 	log.Println("🚀 [Market] Starting scrape...")
-	// Compile regexes once for efficiency.
+
 	reRefineMid := regexp.MustCompile(`\s(\+\d+)`)
 	reRefineStart := regexp.MustCompile(`^(\+\d+)\s`)
 
@@ -1045,7 +1008,6 @@ func scrapeData() {
 	const retryDelay = 5 * time.Second
 	const requestURL = "https://projetoyufa.com/market"
 
-	// Create a new HTTP client with a timeout.
 	client := &http.Client{Timeout: 45 * time.Second}
 
 	var htmlContent string
@@ -1057,11 +1019,10 @@ func scrapeData() {
 		req, err := http.NewRequest("GET", requestURL, nil)
 		if err != nil {
 			log.Printf("⚠️ [Market] Attempt %d/%d failed: could not create request: %v", attempt, maxRetries, err)
-			time.Sleep(retryDelay) // Wait before the next attempt
+			time.Sleep(retryDelay)
 			continue
 		}
 
-		// Set a User-Agent to mimic a real browser to avoid being blocked.
 		req.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36")
 
 		resp, err := client.Do(req)
@@ -1097,7 +1058,7 @@ func scrapeData() {
 
 		htmlContent = string(bodyBytes)
 		scrapeSuccessful = true
-		break // Success, exit the loop.
+		break
 	}
 
 	if !scrapeSuccessful {
@@ -1129,7 +1090,6 @@ func scrapeData() {
 		s.Find(`div[data-slot="card-content"] .flex.items-center.space-x-2`).Each(func(j int, itemSelection *goquery.Selection) {
 			itemName := strings.TrimSpace(itemSelection.Find("p.truncate").Text())
 
-			// Standardize item names by moving refinement level (e.g., +7) to the end.
 			if match := reRefineMid.FindStringSubmatch(itemName); len(match) > 1 && !strings.HasSuffix(itemName, match[0]) {
 				cleanedName := strings.Replace(itemName, match[0], "", 1)
 				cleanedName = strings.Join(strings.Fields(cleanedName), " ")
@@ -1160,7 +1120,7 @@ func scrapeData() {
 
 			quantityStr := strings.TrimSuffix(strings.TrimSpace(itemSelection.Find("span.text-xs.text-muted-foreground").Text()), "x")
 			priceStr := strings.TrimSpace(itemSelection.Find("span.text-xs.font-medium.text-green-600").Text())
-			// Use a more specific selector for the ID to avoid picking up card badges.
+
 			idStr := strings.TrimPrefix(strings.TrimSpace(itemSelection.Find("div.flex.items-center.gap-1 span[data-slot='badge']").First().Text()), "ID: ")
 
 			if itemName == "" || priceStr == "" || shopName == "" {
@@ -1230,11 +1190,8 @@ func scrapeData() {
 		}
 	}
 
-	// --- OPTIMIZATION START: Pre-fetch all available items ---
-	// Instead of querying one-by-one in the loop, fetch all available items
-	// and group them into a map for fast lookup.
 	dbAvailableItemsMap := make(map[string][]Item)
-	dbAvailableNames := make(map[string]bool) // Still need this for the final "removed" check
+	dbAvailableNames := make(map[string]bool)
 
 	rows, err = tx.Query("SELECT name_of_the_item, item_id, quantity, price, store_name, seller_name, map_name, map_coordinates FROM items WHERE is_available = 1")
 	if err != nil {
@@ -1252,16 +1209,14 @@ func scrapeData() {
 		dbAvailableNames[item.Name] = true
 	}
 	rows.Close()
-	// --- OPTIMIZATION END ---
 
 	itemsUpdated := 0
 	itemsUnchanged := 0
 	itemsAdded := 0
 
 	for itemName, currentScrapedItems := range scrapedItemsByName {
-		// --- OPTIMIZATION: Use the map instead of querying the DB ---
+
 		lastAvailableItems := dbAvailableItemsMap[itemName]
-		// ---
 
 		if !areItemSetsIdentical(currentScrapedItems, lastAvailableItems) {
 			currentSet := make(map[comparableItem]bool)
@@ -1271,7 +1226,7 @@ func scrapeData() {
 
 			for _, lastItem := range lastAvailableItems {
 				if _, found := currentSet[toComparable(lastItem)]; !found {
-					// This specific listing was removed. Log the reason.
+
 					eventType := "REMOVED"
 					if _, sellerIsActive := activeSellers[lastItem.SellerName]; sellerIsActive {
 						eventType = "SOLD"
@@ -1371,17 +1326,14 @@ func scrapeData() {
 		}
 	}
 
-	// --- REVISED: This entire loop is replaced to provide better context ---
 	itemsRemoved := 0
 	for name := range dbAvailableNames {
 		if _, foundInScrape := scrapedItemsByName[name]; !foundInScrape {
-			// This item name has completely disappeared from the market.
-			// --- OPTIMIZATION: We already have the listings from the map ---
+
 			removedListings := dbAvailableItemsMap[name]
-			// ---
 
 			for _, listing := range removedListings {
-				// The logic is the same: check if the seller is still active with other items.
+
 				eventType := "REMOVED"
 				if _, sellerIsActive := activeSellers[listing.SellerName]; sellerIsActive {
 					eventType = "SOLD"
@@ -1408,7 +1360,6 @@ func scrapeData() {
 			}
 		}
 	}
-	// --- END REVISION ---
 
 	if err := tx.Commit(); err != nil {
 		log.Printf("❌ [Market] Failed to commit transaction: %v", err)
@@ -1417,11 +1368,10 @@ func scrapeData() {
 	log.Printf("✅ [Market] Scrape complete. Unchanged: %d groups. Updated: %d groups. Newly Added: %d groups. Removed: %d groups.", itemsUnchanged, itemsUpdated, itemsAdded, itemsRemoved)
 }
 
-// Helper function to create a comparable representation of an item, used for set comparison.
 func toComparable(item Item) comparableItem {
 	return comparableItem{
 		Name:           item.Name,
-		ItemID:         item.ItemID, // Corrected from item.ID
+		ItemID:         item.ItemID,
 		Quantity:       item.Quantity,
 		Price:          item.Price,
 		StoreName:      item.StoreName,
@@ -1448,22 +1398,18 @@ func areItemSetsIdentical(setA, setB []Item) bool {
 	return true
 }
 
-// scrapeMvpKills scrapes the MVP kill rankings using regex against the raw HTTP response.
 func scrapeMvpKills() {
 	log.Println("☠️  [MVP] Starting MVP kill count scrape...")
-	// ... (Web scraping logic is unchanged)
+
 	const maxRetries = 3
 	const retryDelay = 3 * time.Second
 
-	// This regex targets the JSON-like data structure found in the page's source,
-	// capturing the character name and the array of their MVP kills.
 	playerBlockRegex := regexp.MustCompile(`\\"name\\":\\"([^"]+)\\",\\"base_level\\".*?\\"mvp_kills\\":\[(.*?)]`)
-	// This regex parses individual MVP entries within the captured array.
+
 	mvpKillsRegex := regexp.MustCompile(`{\\"mob_id\\":(\d+),\\"kills\\":(\d+)}`)
 
 	client := &http.Client{Timeout: 45 * time.Second}
 
-	// --- Determine total number of pages ---
 	var lastPage = 1
 	log.Println("☠️  [MVP] Determining total number of pages...")
 	firstPageURL := "https://projetoyufa.com/rankings/mvp?page=1"
@@ -1499,7 +1445,6 @@ func scrapeMvpKills() {
 	}
 	log.Printf("✅ [MVP] Found %d total pages to scrape.", lastPage)
 
-	// map[characterName]map[mobID]killCount
 	allMvpKills := make(map[string]map[string]int)
 	var mu sync.Mutex
 	var wg sync.WaitGroup
@@ -1545,8 +1490,6 @@ func scrapeMvpKills() {
 				pageScrapedSuccessfully = true
 				break
 			}
-
-			//log.Printf("    -> [MVP] body content page %d: %s", page, bodyContent)
 
 			if !pageScrapedSuccessfully {
 				log.Printf("    -> ❌ [MVP] All retries failed for page %d.", p)
@@ -1609,8 +1552,6 @@ func scrapeMvpKills() {
 	characterMutex.Lock()
 	defer characterMutex.Unlock()
 
-	// --- OPTIMIZATION START ---
-	// 1. Fetch all existing character names into a map for fast lookup.
 	allCharacterNames := make(map[string]bool)
 	charRows, err := db.Query("SELECT name FROM characters")
 	if err != nil {
@@ -1625,10 +1566,8 @@ func scrapeMvpKills() {
 	}
 	charRows.Close()
 
-	// 2. Fetch all existing MVP kills into a nested map for fast lookup.
 	allExistingKills := make(map[string]map[string]int)
 
-	// Build the SELECT query for all MVP columns
 	selectCols := make([]string, 0, len(mvpMobIDsScrape)+1)
 	selectCols = append(selectCols, "character_name")
 	scanDest := make([]interface{}, len(mvpMobIDsScrape)+1)
@@ -1637,7 +1576,7 @@ func scrapeMvpKills() {
 
 	for i, mobID := range mvpMobIDsScrape {
 		selectCols = append(selectCols, fmt.Sprintf("mvp_%s", mobID))
-		scanDest[i+1] = &columnValues[i] // +1 to offset character_name
+		scanDest[i+1] = &columnValues[i]
 	}
 
 	mvpQuery := fmt.Sprintf("SELECT %s FROM character_mvp_kills", strings.Join(selectCols, ", "))
@@ -1662,7 +1601,6 @@ func scrapeMvpKills() {
 		allExistingKills[charName] = playerKills
 	}
 	mvpRows.Close()
-	// --- OPTIMIZATION END ---
 
 	tx, err := db.Begin()
 	if err != nil {
@@ -1671,7 +1609,6 @@ func scrapeMvpKills() {
 	}
 	defer tx.Rollback()
 
-	// Prepare the dynamic UPSERT statement
 	columnNames := []string{"character_name"}
 	valuePlaceholders := []string{"?"}
 	updateSetters := []string{}
@@ -1696,21 +1633,18 @@ func scrapeMvpKills() {
 	defer stmt.Close()
 
 	for charName, kills := range allMvpKills {
-		// --- OPTIMIZATION: Replaced DB query with map lookup ---
+
 		if !allCharacterNames[charName] {
 			if enableMvpScraperDebugLogs {
 				log.Printf("    -> [MVP][DB] Character '%s' not found in main table. Skipping MVP data insert.", charName)
 			}
 			continue
 		}
-		// ---
 
-		// --- OPTIMIZATION: Replaced DB query with map lookup ---
 		existingKills := allExistingKills[charName]
 		if existingKills == nil {
 			existingKills = make(map[string]int)
 		}
-		// ---
 
 		params := []interface{}{charName}
 		for _, mobID := range mvpMobIDsScrape {
@@ -1720,28 +1654,21 @@ func scrapeMvpKills() {
 			}
 			existingKillCount := existingKills[mobID]
 
-			// Compare the new value with the existing one. Only update if the new value is greater.
-			// This prevents overwriting correct data with stale data from a slow-updating ranking page.
 			finalKillCount := newKillCount
 			if existingKillCount > newKillCount {
-				finalKillCount = existingKillCount // Keep the higher, existing value
+				finalKillCount = existingKillCount
 				if enableMvpScraperDebugLogs {
 					log.Printf("    -> [MVP] Stale data for %s on MVP %s. DB has %d, scrape has %d. Keeping DB value.", charName, mobID, existingKillCount, newKillCount)
 				}
 			}
 
-			// Log the change if the kill count has increased
 			if finalKillCount > existingKillCount {
 
 				log.Printf("    -> [MVP] Stale data for %s on MVP %s. DB has %d, scrape has %d. updating DB value.", charName, mobID, existingKillCount, newKillCount)
-				// mvpName, ok := mvpNamesScraper[mobID]
-				// if !ok {
-				// 	mvpName = fmt.Sprintf("MVP %s", mobID)
-				// }
-				//logCharacterActivity(tx, charName, fmt.Sprintf("Defeated %s. (Total: %d)", mvpName, finalKillCount))
+
 			}
 
-			params = append(params, finalKillCount) // Use the determined final value
+			params = append(params, finalKillCount)
 		}
 
 		if _, err := stmt.Exec(params...); err != nil {
@@ -1761,7 +1688,7 @@ func startBackgroundJobs() {
 	go func() {
 		ticker := time.NewTicker(3 * time.Minute)
 		defer ticker.Stop()
-		scrapeData() // Run once immediately on start
+		scrapeData()
 		for {
 			log.Printf("🕒 [Job] Waiting for the next 5-minute market scrape schedule...")
 			<-ticker.C
@@ -1772,7 +1699,7 @@ func startBackgroundJobs() {
 	go func() {
 		ticker := time.NewTicker(1 * time.Minute)
 		defer ticker.Stop()
-		scrapeAndStorePlayerCount() // Run once immediately on start
+		scrapeAndStorePlayerCount()
 		for {
 			log.Printf("🕒 [Job] Waiting for the next 1-minute player count schedule...")
 			<-ticker.C
@@ -1781,7 +1708,7 @@ func startBackgroundJobs() {
 	}()
 
 	go func() {
-		//scrapePlayerCharacters()
+
 		ticker := time.NewTicker(30 * time.Minute)
 		defer ticker.Stop()
 		for {
@@ -1803,7 +1730,7 @@ func startBackgroundJobs() {
 	}()
 
 	go func() {
-		//scrapeZeny()
+
 		ticker := time.NewTicker(1 * time.Hour)
 		defer ticker.Stop()
 		for {
@@ -1829,13 +1756,12 @@ func startBackgroundJobs() {
 		ticker := time.NewTicker(24 * time.Hour)
 		defer ticker.Stop()
 
-		// Run once on startup, but in the background so it doesn't block other tasks.
 		log.Printf("🕒 [Job] RMS Cache Refresh job scheduled. Will run once every 24 hours.")
 
 		for {
 			<-ticker.C
 			log.Printf("🕒 [Job] Starting scheduled 24-hour full RMS cache refresh...")
-			// Run in a goroutine so the job itself doesn't block the ticker
+
 			go runFullRMSCacheJob()
 		}
 	}()

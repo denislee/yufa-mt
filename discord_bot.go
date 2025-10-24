@@ -11,17 +11,15 @@ import (
 	"github.com/bwmarrin/discordgo"
 )
 
-// Global map to hold the target channel IDs for efficient lookup
 var targetChannelIDs = make(map[string]struct{})
 
-// startDiscordBot initializes and runs the Discord bot.
 func startDiscordBot(ctx context.Context, wg *sync.WaitGroup) {
-	// Ensure that wg.Done() is called when this function exits.
+
 	defer wg.Done()
 
 	botToken := os.Getenv("DISCORD_BOT_TOKEN")
-	// Read a comma-separated list of channel IDs
-	channelIDsStr := os.Getenv("DISCORD_CHANNEL_IDS") // <-- Changed to plural
+
+	channelIDsStr := os.Getenv("DISCORD_CHANNEL_IDS")
 
 	if botToken == "" {
 		log.Println("⚠️ [Discord Bot] DISCORD_BOT_TOKEN not set. Bot will not start.")
@@ -32,12 +30,10 @@ func startDiscordBot(ctx context.Context, wg *sync.WaitGroup) {
 		return
 	}
 
-	// Split the comma-separated string into a slice
 	channelIDs := strings.Split(channelIDsStr, ",")
 
-	// Populate the global map for quick lookups
 	for _, id := range channelIDs {
-		trimmedID := strings.TrimSpace(id) // Handle potential whitespace
+		trimmedID := strings.TrimSpace(id)
 		if trimmedID != "" {
 			targetChannelIDs[trimmedID] = struct{}{}
 		}
@@ -53,7 +49,7 @@ func startDiscordBot(ctx context.Context, wg *sync.WaitGroup) {
 		log.Printf("❌ [Discord Bot] Error creating Discord session: %v", err)
 		return
 	}
-	defer dg.Close() // Ensure the connection is closed on exit.
+	defer dg.Close()
 
 	dg.AddHandler(ready)
 	dg.AddHandler(messageCreate)
@@ -67,19 +63,16 @@ func startDiscordBot(ctx context.Context, wg *sync.WaitGroup) {
 
 	log.Println("🤖 [Discord Bot] Bot is running. Waiting for shutdown signal from main app...")
 
-	// Block here until the context is canceled by the main function.
 	<-ctx.Done()
 
 	log.Println("🔌 [Discord Bot] Shutdown signal received. Closing Discord connection...")
 }
 
-// ready is a handler that runs when the bot successfully connects and is ready.
 func ready(s *discordgo.Session, event *discordgo.Ready) {
 	log.Println("✅ [Discord Bot] Bot is connected and ready!")
 	log.Printf("   -> Logged in as: %v#%v", s.State.User.Username, s.State.User.Discriminator)
 	log.Printf("   -> Bot User ID: %s", s.State.User.ID)
 
-	// Log all the channels the bot is listening to
 	var listeningIDs []string
 	for id := range targetChannelIDs {
 		listeningIDs = append(listeningIDs, id)
@@ -87,46 +80,38 @@ func ready(s *discordgo.Session, event *discordgo.Ready) {
 	log.Printf("   -> Listening on %d Channel(s): %s", len(targetChannelIDs), strings.Join(listeningIDs, ", "))
 }
 
-// messageCreate is called every time a new message is created on any channel the bot has access to.
 func messageCreate(s *discordgo.Session, m *discordgo.MessageCreate) {
-	// Ignore all messages created by the bot itself
+
 	if m.Author.ID == s.State.User.ID {
 		return
 	}
 
-	// Only process messages from the target channels
-	// Check if the message's channel ID is in our map
 	if _, ok := targetChannelIDs[m.ChannelID]; !ok {
 		return
 	}
 
-	// Log the message being processed.
 	log.Printf("🗣️  [Discord] Processing message from '%s': \"%s\"", m.Author.Username, m.Content)
 
-	// --- NEW LOGIC: PARSE AND CREATE TRADING POST ---
-	// Run the parsing and DB insertion in a goroutine to avoid blocking the bot.
 	go func() {
 		tradeResult, err := parseTradeMessageWithGemini(m.Content)
 		if err != nil {
 			log.Printf("❌ [Discord->Gemini] Failed to parse trade message from '%s': %v", m.Author.Username, err)
-			// s.MessageReactionAdd(m.ChannelID, m.ID, "❌") // React with an error
+
 			return
 		}
 
-		// Validate the result
 		if tradeResult == nil || len(tradeResult.Items) == 0 {
 			log.Printf("⚠️ [Discord->Gemini] Gemini returned no valid items for message from '%s'. Ignoring.", m.Author.Username)
-			// s.MessageReactionAdd(m.ChannelID, m.ID, "❓") // React with a question mark
+
 			return
 		}
 
 		log.Printf("✅ [Discord->Gemini] Successfully parsed trade message. Found %d items.", len(tradeResult.Items))
 
-		// Create the trading post entry in the database
 		postIDs, err := CreateTradingPostFromDiscord(m.Author.Username, m.Content, tradeResult)
 		if err != nil {
 			log.Printf("❌ [Discord->DB] Failed to create trading post(s) for '%s': %v", m.Author.Username, err)
-			// s.MessageReactionAdd(m.ChannelID, m.ID, "🔥") // React with a server error emoji
+
 			return
 		}
 
@@ -141,11 +126,7 @@ func messageCreate(s *discordgo.Session, m *discordgo.MessageCreate) {
 		}
 		log.Printf("✅ [Discord->DB] Successfully created trading post(s) %s for '%s'.", strings.Join(postIDStrings, ", "), m.Author.Username)
 
-		// React to the original message with a success emoji
-		// s.MessageReactionAdd(m.ChannelID, m.ID, "✅")
-
-		// Send a confirmation message back to the channel
 		_ = fmt.Sprintf("✅ Trade post(s) %s created for **%s**.", strings.Join(postIDStrings, ", "), m.Author.Username)
-		// s.ChannelMessageSend(m.ChannelID, confirmationMessage)
+
 	}()
 }

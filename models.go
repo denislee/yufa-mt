@@ -7,7 +7,6 @@ import (
 	"time"
 )
 
-// Item represents a single listing scraped from the market.
 type Item struct {
 	ID             int
 	Name           string
@@ -23,7 +22,6 @@ type Item struct {
 	IsAvailable    bool
 }
 
-// comparableItem is a version of Item used for checking for differences without considering the ID or Timestamp.
 type comparableItem struct {
 	Name           string
 	ItemID         int
@@ -35,13 +33,11 @@ type comparableItem struct {
 	MapCoordinates string
 }
 
-// Column defines a toggleable column in the full list view.
 type Column struct {
 	ID          string
 	DisplayName string
 }
 
-// MarketEvent logs a change in the market, such as an item being added or removed.
 type MarketEvent struct {
 	Timestamp string
 	EventType string
@@ -51,7 +47,6 @@ type MarketEvent struct {
 	Details   map[string]interface{}
 }
 
-// ItemSummary aggregates data for an item for the main page view.
 type ItemSummary struct {
 	Name         string
 	NamePT       sql.NullString
@@ -61,7 +56,6 @@ type ItemSummary struct {
 	ListingCount int
 }
 
-// ItemListing holds details for a single current listing, used for the info cards on the history page.
 type ItemListing struct {
 	Price          int    `json:"Price"`
 	Quantity       int    `json:"Quantity"`
@@ -72,7 +66,6 @@ type ItemListing struct {
 	Timestamp      string `json:"Timestamp"`
 }
 
-// PricePointDetails captures the state of an item's price at a specific point in time for the history chart.
 type PricePointDetails struct {
 	Timestamp         string `json:"Timestamp"`
 	LowestPrice       int    `json:"LowestPrice"`
@@ -89,7 +82,6 @@ type PricePointDetails struct {
 	HighestMapCoords  string `json:"HighestMapCoords"`
 }
 
-// RMSItem holds detailed information scraped from RateMyServer.
 type RMSItem struct {
 	ID             int
 	Name           string
@@ -107,28 +99,24 @@ type RMSItem struct {
 	ObtainableFrom []string
 }
 
-// RMSDrop holds monster drop information from RateMyServer.
 type RMSDrop struct {
 	Monster string `json:"Monster"`
 	Rate    string `json:"Rate"`
 }
 
-// EventDefinition defines a recurring event with a name, a time, and days of the week.
 type EventDefinition struct {
 	Name      string
-	StartTime string // "HH:MM"
-	EndTime   string // "HH:MM"
+	StartTime string
+	EndTime   string
 	Days      []time.Weekday
 }
 
-// ItemTypeTab defines the data for a category tab.
 type ItemTypeTab struct {
 	FullName   string
 	ShortName  string
 	IconItemID int
 }
 
-// PlayerCharacter represents a single player's data from the characters page.
 type PlayerCharacter struct {
 	Rank          int
 	Name          string
@@ -137,7 +125,7 @@ type PlayerCharacter struct {
 	Experience    float64
 	Class         string
 	Zeny          int64
-	GuildName     sql.NullString // Use sql.NullString to handle players without a guild.
+	GuildName     sql.NullString
 	LastUpdated   string
 	LastActive    string
 	IsActive      bool
@@ -145,7 +133,6 @@ type PlayerCharacter struct {
 	IsSpecial     bool
 }
 
-// Guild represents a single guild's data from the rankings.
 type Guild struct {
 	Rank         int
 	Name         string
@@ -158,22 +145,17 @@ type Guild struct {
 	AvgBaseLevel float64
 }
 
-// MvpKillEntry holds the kill counts for a single character.
 type MvpKillEntry struct {
 	CharacterName string
 	TotalKills    int
 	Kills         map[string]int
 }
 
-// MvpHeader defines a column header for the MVP kills table.
 type MvpHeader struct {
 	MobID   string
 	MobName string
 }
 
-// --- Page Data Structs for HTML Templates ---
-
-// SummaryPageData holds all data needed for the main summary page template.
 type SummaryPageData struct {
 	Items            []ItemSummary
 	SearchQuery      string
@@ -188,7 +170,6 @@ type SummaryPageData struct {
 	PageTitle        string
 }
 
-// PageData holds data for the detailed full list view template.
 type PageData struct {
 	Items          []Item
 	SearchQuery    string
@@ -206,19 +187,17 @@ type PageData struct {
 	PageTitle      string
 }
 
-// ActivityPageData holds data for the market activity page template.
 type ActivityPageData struct {
 	MarketEvents   []MarketEvent
 	LastScrapeTime string
-	// Search and Filter
+
 	SearchQuery string
 	SoldOnly    bool
-	// Pagination
+
 	Pagination PaginationData
 	PageTitle  string
 }
 
-// HistoryPageData holds data for the item history page template.
 type HistoryPageData struct {
 	ItemName           string
 	ItemNamePT         sql.NullString
@@ -230,13 +209,12 @@ type HistoryPageData struct {
 	ItemDetails        *RMSItem
 	AllListings        []Item
 	LastScrapeTime     string
-	// Pagination for AllListings table
+
 	Pagination    PaginationData
 	TotalListings int
 	PageTitle     string
 }
 
-// PlayerCountPoint represents a single data point for the player history chart.
 type PlayerCountPoint struct {
 	Timestamp   string `json:"Timestamp"`
 	Count       int    `json:"Count"`
@@ -244,7 +222,6 @@ type PlayerCountPoint struct {
 	Delta       int    `json:"Delta"`
 }
 
-// PlayerCountPageData holds data for the player count history page template.
 type PlayerCountPageData struct {
 	PlayerDataJSON                 template.JS
 	LastScrapeTime                 string
@@ -256,28 +233,26 @@ type PlayerCountPageData struct {
 	PageTitle                      string
 }
 
-// models.go
-
 type CharacterPageData struct {
 	Players        []PlayerCharacter
 	LastScrapeTime string
-	// Search and Filter
+
 	SearchName    string
 	SelectedClass string
 	SelectedGuild string
 	AllClasses    []string
-	// Sorting
+
 	SortBy string
 	Order  string
-	// Column Visibility
+
 	VisibleColumns map[string]bool
 	AllColumns     []Column
 	ColumnParams   template.URL
-	// Pagination
+
 	Pagination   PaginationData
 	TotalPlayers int
 	TotalZeny    int64
-	// Graph Data
+
 	ClassDistributionJSON template.JS
 	GraphFilter           map[string]bool
 	GraphFilterParams     template.URL
@@ -285,48 +260,44 @@ type CharacterPageData struct {
 	PageTitle             string
 }
 
-// GuildPageData holds data for the guild listing page template.
 type GuildPageData struct {
 	Guilds              []Guild
 	LastGuildUpdateTime string
-	// Search and Filter
+
 	SearchName string
-	// Sorting
+
 	SortBy string
 	Order  string
-	// Pagination
+
 	Pagination  PaginationData
 	TotalGuilds int
 	PageTitle   string
 }
 
-// GuildDetailPageData holds all data for the single guild view.
 type GuildDetailPageData struct {
 	Guild                 Guild
 	Members               []PlayerCharacter
 	LastScrapeTime        string
 	ClassDistributionJSON template.JS
 	HasChartData          bool
-	// Sorting for members table
+
 	SortBy string
 	Order  string
-	// Changelog data and pagination
+
 	ChangelogEntries    []CharacterChangelog
 	ChangelogPagination PaginationData
 	PageTitle           string
 }
 
-// FlatTradingPostItem combines post and item data for the flat list view.
 type FlatTradingPostItem struct {
-	// Post Info
 	PostID        int
 	Title         string
-	PostType      string // "buying" or "selling"
+	PostType      string
 	CharacterName string
 	ContactInfo   sql.NullString
 	Notes         sql.NullString
 	CreatedAt     string
-	// Item Info
+
 	ItemName       string
 	NamePT         sql.NullString
 	ItemID         sql.NullInt64
@@ -341,7 +312,6 @@ type FlatTradingPostItem struct {
 	Card4          sql.NullString
 }
 
-// StoreDetailPageData holds all data for the single store view.
 type StoreDetailPageData struct {
 	StoreName      string
 	SellerName     string
@@ -349,13 +319,12 @@ type StoreDetailPageData struct {
 	MapCoordinates string
 	Items          []Item
 	LastScrapeTime string
-	// Sorting
+
 	SortBy    string
 	Order     string
 	PageTitle string
 }
 
-// MvpKillPageData holds all data needed for the MVP kill rankings page.
 type MvpKillPageData struct {
 	Players        []MvpKillEntry
 	Headers        []MvpHeader
@@ -365,22 +334,20 @@ type MvpKillPageData struct {
 	PageTitle      string
 }
 
-// CharacterDetailPageData holds all data for the single character view.
 type CharacterDetailPageData struct {
 	Character      PlayerCharacter
-	Guild          *Guild // Pointer to handle characters without a guild
+	Guild          *Guild
 	MvpKills       MvpKillEntry
 	MvpHeaders     []MvpHeader
 	LastScrapeTime string
 	GuildHistory   []CharacterChangelog
 	ClassImageURL  string
-	// Changelog data and pagination
+
 	ChangelogEntries    []CharacterChangelog
 	ChangelogPagination PaginationData
 	PageTitle           string
 }
 
-// CharacterChangelog holds a record of a change to a character.
 type CharacterChangelog struct {
 	ID                  int
 	CharacterName       string
@@ -388,29 +355,25 @@ type CharacterChangelog struct {
 	ChangeTime          string
 }
 
-// CharacterChangelogPageData holds data for the character changelog page.
 type CharacterChangelogPageData struct {
 	ChangelogEntries []CharacterChangelog
 	LastScrapeTime   string
-	// Pagination
+
 	Pagination PaginationData
 	PageTitle  string
 }
 
-// GuildInfo holds basic info for the admin dropdown.
 type GuildInfo struct {
 	Name      string
 	EmblemURL string
 }
 
-// PageViewEntry holds data for a single recent page view.
 type PageViewEntry struct {
 	Path        string
 	Timestamp   string
 	VisitorHash string
 }
 
-// ShortHash returns a truncated version of the VisitorHash for display.
 func (p PageViewEntry) ShortHash() string {
 	if len(p.VisitorHash) > 12 {
 		return p.VisitorHash[:12]
@@ -418,7 +381,6 @@ func (p PageViewEntry) ShortHash() string {
 	return p.VisitorHash
 }
 
-// GeminiTradeItem holds the parsed data for a single item from a trade message.
 type GeminiTradeItem struct {
 	Name           string `json:"name"`
 	Action         string `json:"action"`
@@ -434,12 +396,10 @@ type GeminiTradeItem struct {
 	Card4          string `json:"card4"`
 }
 
-// GeminiTradeResult holds the complete parsed result from a trade message.
 type GeminiTradeResult struct {
 	Items []GeminiTradeItem `json:"items"`
 }
 
-// Modify the AdminDashboardData struct to include the new fields.
 type AdminDashboardData struct {
 	Message               string
 	AllGuilds             []GuildInfo
@@ -461,7 +421,7 @@ type AdminDashboardData struct {
 	MostVisitedPage       string
 	MostVisitedPageCount  int
 	RecentPageViews       []PageViewEntry
-	// Pagination for Recent Page Views
+
 	PageViewsCurrentPage int
 	PageViewsTotalPages  int
 	PageViewsHasPrevPage bool
@@ -469,7 +429,7 @@ type AdminDashboardData struct {
 	PageViewsPrevPage    int
 	PageViewsNextPage    int
 	PageViewsTotal       int
-	// Trading Posts
+
 	RecentTradingPosts     []TradingPost
 	TradingPostCurrentPage int
 	TradingPostTotalPages  int
@@ -478,28 +438,26 @@ type AdminDashboardData struct {
 	TradingPostPrevPage    int
 	TradingPostNextPage    int
 	TradingPostTotal       int
-	// Fields for Gemini Trade Parser results
+
 	TradeParseResult     *GeminiTradeResult
 	OriginalTradeMessage string
 	TradeParseError      string
 }
 
-// AdminEditPostPageData holds data for the admin post edit page.
 type AdminEditPostPageData struct {
 	Post           TradingPost
 	LastScrapeTime string
 	Message        string
 }
 
-// TradingPostItem represents one item within a larger post.
 type TradingPostItem struct {
 	ItemName       string
 	NamePT         sql.NullString
-	ItemID         sql.NullInt64 // To handle optional item ID
+	ItemID         sql.NullInt64
 	Quantity       int
 	PriceZeny      int64
 	PriceRMT       int64
-	PaymentMethods string // "zeny", "rmt", or "both"
+	PaymentMethods string
 	Refinement     int
 	Slots          int
 	Card1          sql.NullString
@@ -511,18 +469,18 @@ type TradingPostItem struct {
 type TradingPost struct {
 	ID            int
 	Title         string
-	PostType      string // "buying" or "selling"
+	PostType      string
 	CharacterName string
 	ContactInfo   sql.NullString
 	Notes         sql.NullString
 	CreatedAt     string
 	EditTokenHash string
-	Items         []TradingPostItem // A post can now have multiple items
+	Items         []TradingPostItem
 }
 
 type TradingPostPageData struct {
 	Items          []FlatTradingPostItem
-	LastScrapeTime string // To keep the header consistent
+	LastScrapeTime string
 	FilterType     string
 	SearchQuery    string
 	FilterCurrency string
@@ -571,7 +529,6 @@ func (fi FlatTradingPostItem) CreatedAgo() string {
 	return fmt.Sprintf("%d days ago", int(d.Hours()/24))
 }
 
-// DisplayName returns the Portuguese name if available, otherwise the original parsed name.
 func (fi FlatTradingPostItem) DisplayName() string {
 	if fi.NamePT.Valid && fi.NamePT.String != "" {
 		return fi.NamePT.String
@@ -579,12 +536,10 @@ func (fi FlatTradingPostItem) DisplayName() string {
 	return fi.ItemName
 }
 
-// OriginalName returns the original parsed name, but only if it's different from the DisplayName.
-// This is for showing "(original name)" in the template.
 func (fi FlatTradingPostItem) OriginalName() string {
 	displayName := fi.DisplayName()
 	if fi.ItemName != "" && fi.ItemName != displayName {
 		return fi.ItemName
 	}
-	return "" // Return empty string if they are the same
+	return ""
 }

@@ -14,8 +14,6 @@ import (
 	"google.golang.org/api/option"
 )
 
-// parseTradeMessageWithGemini sends a trade message to the Gemini API for analysis.
-// It expects the API to return a JSON object that can be unmarshalled into a GeminiTradeResult struct.
 func parseTradeMessageWithGemini(message string) (*GeminiTradeResult, error) {
 	apiKey := os.Getenv("GEMINI_API_KEY")
 	if apiKey == "" {
@@ -31,9 +29,8 @@ func parseTradeMessageWithGemini(message string) (*GeminiTradeResult, error) {
 	}
 	defer client.Close()
 
-	// Configure the model to expect a JSON response.
 	model := client.GenerativeModel("gemini-flash-latest")
-	//model := client.GenerativeModel("gemini-flash-lite-latest")
+
 	model.GenerationConfig.ResponseMIMEType = "application/json"
 
 	prompt := fmt.Sprintf(`You are an expert at parsing trade messages for the game Ragnarok Online.
@@ -141,7 +138,6 @@ Here is the message to parse:
 
 	rawJSON := fmt.Sprintf("%s", resp.Candidates[0].Content.Parts[0])
 
-	// Clean up potential markdown formatting from the response, just in case.
 	re := regexp.MustCompile("(?s)```json(.*)```")
 	matches := re.FindStringSubmatch(rawJSON)
 	if len(matches) > 1 {

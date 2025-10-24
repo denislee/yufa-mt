@@ -13,19 +13,14 @@ import (
 	"time"
 )
 
-// The admin user remains constant.
 const adminUser = "admin"
 
-// The admin password will now be a variable, set at runtime.
 var adminPass string
 
-// basicAuth is a middleware function to protect admin routes.
 func basicAuth(handler http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		user, pass, ok := r.BasicAuth()
 
-		// Use subtle.ConstantTimeCompare to prevent timing attacks.
-		// It now compares against the 'adminPass' variable.
 		if !ok || subtle.ConstantTimeCompare([]byte(user), []byte(adminUser)) != 1 || subtle.ConstantTimeCompare([]byte(pass), []byte(adminPass)) != 1 {
 			w.Header().Set("WWW-Authenticate", `Basic realm="Restricted"`)
 			w.WriteHeader(http.StatusUnauthorized)
@@ -37,13 +32,11 @@ func basicAuth(handler http.HandlerFunc) http.HandlerFunc {
 	}
 }
 
-// getAdminDashboardData centralizes the logic for fetching all dashboard stats.
 func getAdminDashboardData(r *http.Request) (AdminDashboardData, error) {
 	stats := AdminDashboardData{
 		Message: r.URL.Query().Get("msg"),
 	}
 
-	// Fetch all guilds for the emblem update dropdown
 	guildRows, err := db.Query("SELECT name, COALESCE(emblem_url, '') FROM guilds ORDER BY name ASC")
 	if err != nil {
 		return stats, fmt.Errorf("could not query for guild list for admin page: %w", err)
@@ -58,7 +51,6 @@ func getAdminDashboardData(r *http.Request) (AdminDashboardData, error) {
 		stats.AllGuilds = append(stats.AllGuilds, info)
 	}
 
-	// --- OPTIMIZATION: Combine all simple counts into a single query ---
 	statsQuery := `
 		SELECT
 			(SELECT COUNT(*) FROM items),
@@ -73,7 +65,7 @@ func getAdminDashboardData(r *http.Request) (AdminDashboardData, error) {
 			(SELECT COUNT(*) FROM visitors),
 			(SELECT COUNT(*) FROM visitors WHERE date(last_visit) = date('now', 'localtime'))
 	`
-	// Use sql.NullInt64 for scanning to gracefully handle potential NULLs, though COUNT(*) shouldn't return NULL.
+
 	var (
 		totalItems, availableItems, uniqueItems, cachedItems,
 		totalCharacters, totalGuilds, playerHistoryEntries,
@@ -89,7 +81,6 @@ func getAdminDashboardData(r *http.Request) (AdminDashboardData, error) {
 		return stats, fmt.Errorf("could not query for dashboard stats: %w", err)
 	}
 
-	// Assign scanned values to the struct
 	stats.TotalItems = int(totalItems.Int64)
 	stats.AvailableItems = int(availableItems.Int64)
 	stats.UniqueItems = int(uniqueItems.Int64)
@@ -101,9 +92,7 @@ func getAdminDashboardData(r *http.Request) (AdminDashboardData, error) {
 	stats.ChangelogEntries = int(changelogEntries.Int64)
 	stats.TotalVisitors = int(totalVisitors.Int64)
 	stats.VisitorsToday = int(visitorsToday.Int64)
-	// --- END OPTIMIZATION ---
 
-	// Get most visited page (This is a complex query, so it remains separate)
 	err = db.QueryRow(`
 		SELECT page_path, COUNT(page_path) as Cnt
 		FROM page_views
@@ -116,7 +105,6 @@ func getAdminDashboardData(r *http.Request) (AdminDashboardData, error) {
 		stats.MostVisitedPage = "Error"
 	}
 
-	// Pagination for Recent Page Views
 	const viewsPerPage = 20
 	pageStr := r.URL.Query().Get("page")
 	page, _ := strconv.Atoi(pageStr)
@@ -153,7 +141,6 @@ func getAdminDashboardData(r *http.Request) (AdminDashboardData, error) {
 		}
 	}
 
-	// Pagination for Trading Posts
 	const postsPerPage = 10
 	tpPageStr := r.URL.Query().Get("tp_page")
 	tpPage, _ := strconv.Atoi(tpPageStr)
@@ -230,7 +217,6 @@ func adminHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Use template.New().Funcs() to make formatZeny available
 	tmpl, err := template.New("admin.html").Funcs(templateFuncs).ParseFiles("admin.html")
 	if err != nil {
 		http.Error(w, "Could not load admin template", http.StatusInternalServerError)
@@ -241,14 +227,12 @@ func adminHandler(w http.ResponseWriter, r *http.Request) {
 	tmpl.Execute(w, stats)
 }
 
-// adminParseTradeHandler processes the trade message from the admin form.
 func adminParseTradeHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Redirect(w, r, "/admin", http.StatusSeeOther)
 		return
 	}
 
-	// Get base dashboard data to render the full page
 	stats, err := getAdminDashboardData(r)
 	if err != nil {
 		http.Error(w, "Could not load dashboard data", http.StatusInternalServerError)
@@ -256,7 +240,6 @@ func adminParseTradeHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Parse the form to get the message
 	if err := r.ParseForm(); err != nil {
 		stats.TradeParseError = "Could not parse form input."
 	} else {
@@ -264,7 +247,7 @@ func adminParseTradeHandler(w http.ResponseWriter, r *http.Request) {
 		stats.OriginalTradeMessage = message
 
 		if strings.TrimSpace(message) != "" {
-			// Call Gemini to process the message
+
 			geminiResult, geminiErr := parseTradeMessageWithGemini(message)
 			if geminiErr != nil {
 				stats.TradeParseError = geminiErr.Error()
@@ -276,7 +259,6 @@ func adminParseTradeHandler(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// Render the admin page again, now with the parsing results
 	tmpl, err := template.New("admin.html").Funcs(templateFuncs).ParseFiles("admin.html")
 	if err != nil {
 		http.Error(w, "Could not load admin template", http.StatusInternalServerError)
@@ -288,7 +270,6 @@ func adminParseTradeHandler(w http.ResponseWriter, r *http.Request) {
 	tmpl.Execute(w, stats)
 }
 
-// adminTriggerScrapeHandler creates a handler for a specific scraper function.
 func adminTriggerScrapeHandler(scraperFunc func(), name string) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
@@ -296,12 +277,11 @@ func adminTriggerScrapeHandler(scraperFunc func(), name string) http.HandlerFunc
 			return
 		}
 		log.Printf("👤 Admin triggered '%s' scrape manually.", name)
-		go scraperFunc() // Run in a goroutine so it doesn't block the HTTP response
+		go scraperFunc()
 		http.Redirect(w, r, fmt.Sprintf("/admin?msg=%s+scrape+started.", name), http.StatusSeeOther)
 	}
 }
 
-// adminCacheActionHandler handles actions related to the RMS item cache.
 func adminCacheActionHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Redirect(w, r, "/admin", http.StatusSeeOther)
@@ -341,7 +321,6 @@ func adminCacheActionHandler(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, "/admin?msg="+msg, http.StatusSeeOther)
 }
 
-// adminUpdateGuildEmblemHandler handles the request to update a guild's emblem URL.
 func adminUpdateGuildEmblemHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Redirect(w, r, "/admin", http.StatusSeeOther)
@@ -363,7 +342,6 @@ func adminUpdateGuildEmblemHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Execute the update query
 	result, err := db.Exec("UPDATE guilds SET emblem_url = ? WHERE name = ?", emblemURL, guildName)
 	if err != nil {
 		log.Printf("❌ Failed to update emblem for guild '%s': %v", guildName, err)
@@ -380,7 +358,6 @@ func adminUpdateGuildEmblemHandler(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, "/admin?msg="+msg, http.StatusSeeOther)
 }
 
-// adminClearLastActiveHandler resets the last_active timestamp for all characters.
 func adminClearLastActiveHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Redirect(w, r, "/admin", http.StatusSeeOther)
@@ -388,8 +365,7 @@ func adminClearLastActiveHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var msg string
-	// The 'characters' table schema specifies last_active is NOT NULL.
-	// We'll use the zero value for time, formatted according to RFC3339.
+
 	zeroTime := time.Time{}.Format(time.RFC3339)
 
 	result, err := db.Exec("UPDATE characters SET last_active = ?", zeroTime)
@@ -404,7 +380,6 @@ func adminClearLastActiveHandler(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, "/admin?msg="+msg, http.StatusSeeOther)
 }
 
-// adminClearMvpKillsHandler truncates the character_mvp_kills table.
 func adminClearMvpKillsHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Redirect(w, r, "/admin", http.StatusSeeOther)
@@ -425,7 +400,6 @@ func adminClearMvpKillsHandler(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, "/admin?msg="+msg, http.StatusSeeOther)
 }
 
-// adminDeleteVisitorViewsHandler deletes all records for a specific visitor.
 func adminDeleteVisitorViewsHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Redirect(w, r, "/admin", http.StatusSeeOther)
@@ -446,7 +420,6 @@ func adminDeleteVisitorViewsHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Use a transaction to ensure both tables are updated correctly.
 	tx, err := db.Begin()
 	if err != nil {
 		log.Printf("❌ Failed to begin transaction for deleting visitor: %v", err)
@@ -454,7 +427,6 @@ func adminDeleteVisitorViewsHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Delete from page_views first
 	_, err = tx.Exec("DELETE FROM page_views WHERE visitor_hash = ?", visitorHash)
 	if err != nil {
 		tx.Rollback()
@@ -463,7 +435,6 @@ func adminDeleteVisitorViewsHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Then delete from the main visitors table
 	result, err := tx.Exec("DELETE FROM visitors WHERE visitor_hash = ?", visitorHash)
 	if err != nil {
 		tx.Rollback()
@@ -506,7 +477,7 @@ func adminDeleteTradingPostHandler(w http.ResponseWriter, r *http.Request) {
 	if postID == "" {
 		msg = "Error:+Missing+post+ID."
 	} else {
-		// The schema has ON DELETE CASCADE, so deleting the post will delete its items.
+
 		result, err := db.Exec("DELETE FROM trading_posts WHERE id = ?", postID)
 		if err != nil {
 			msg = "Database+error+occurred+while+deleting+post."
@@ -525,7 +496,6 @@ func adminDeleteTradingPostHandler(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, "/admin?msg="+msg, http.StatusSeeOther)
 }
 
-// adminReparseTradingPostHandler re-processes an existing post's original message through Gemini.
 func adminReparseTradingPostHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Redirect(w, r, "/admin", http.StatusSeeOther)
@@ -545,9 +515,8 @@ func adminReparseTradingPostHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var msg string
-	var originalMessage, originalPostType, characterName sql.NullString // Use NullString for safety
+	var originalMessage, originalPostType, characterName sql.NullString
 
-	// 1. Fetch the post's original message and type
 	err = db.QueryRow("SELECT notes, post_type, character_name FROM trading_posts WHERE id = ?", postID).Scan(&originalMessage, &originalPostType, &characterName)
 	if err != nil {
 		if err == sql.ErrNoRows {
@@ -572,7 +541,6 @@ func adminReparseTradingPostHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// 2. Send to Gemini
 	geminiResult, geminiErr := parseTradeMessageWithGemini(originalMessage.String)
 	if geminiErr != nil {
 		msg = fmt.Sprintf("Error:+Gemini+parse+failed:+%s", url.QueryEscape(geminiErr.Error()))
@@ -580,7 +548,6 @@ func adminReparseTradingPostHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// 3. Filter items matching the post's original type
 	var itemsToUpdate []GeminiTradeItem
 	for _, item := range geminiResult.Items {
 		if item.Action == originalPostType.String {
@@ -589,12 +556,10 @@ func adminReparseTradingPostHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if len(itemsToUpdate) == 0 {
-		// Still a "success", but we should clear the items.
-		// The transaction logic below will handle this (DELETE followed by 0 INSERTs).
+
 		log.Printf("👤 Admin re-parsed post %d. No items matching type '%s' were found by Gemini. Clearing items.", postID, originalPostType.String)
 	}
 
-	// 4. Begin transaction to update items
 	tx, err := db.Begin()
 	if err != nil {
 		msg = "Error:+Failed+to+start+database+transaction."
@@ -603,7 +568,6 @@ func adminReparseTradingPostHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// 5. Delete all existing items for this post
 	_, err = tx.Exec("DELETE FROM trading_post_items WHERE post_id = ?", postID)
 	if err != nil {
 		tx.Rollback()
@@ -613,7 +577,6 @@ func adminReparseTradingPostHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// 6. Loop through new items and re-insert them
 	if len(itemsToUpdate) > 0 {
 		stmt, err := tx.Prepare(`
 			INSERT INTO trading_post_items 
@@ -630,18 +593,16 @@ func adminReparseTradingPostHandler(w http.ResponseWriter, r *http.Request) {
 		defer stmt.Close()
 
 		for _, item := range itemsToUpdate {
-			itemName := sanitizeString(item.Name, itemSanitizer) // itemSanitizer is in handlers.go
+			itemName := sanitizeString(item.Name, itemSanitizer)
 			if strings.TrimSpace(itemName) == "" {
 				continue
 			}
 
-			// Find Item ID
-			itemID, findErr := findItemIDByName(itemName, true, item.Slots) // findItemIDByName is in handlers.go
+			itemID, findErr := findItemIDByName(itemName, true, item.Slots)
 			if findErr != nil {
 				log.Printf("⚠️ Error finding item ID for '%s' during re-parse: %v. Proceeding without ID.", itemName, findErr)
 			}
 
-			// Validate payment
 			paymentMethods := "zeny"
 			if item.PaymentMethods == "rmt" || item.PaymentMethods == "both" {
 				paymentMethods = item.PaymentMethods
@@ -663,7 +624,6 @@ func adminReparseTradingPostHandler(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// 7. Commit transaction
 	if err := tx.Commit(); err != nil {
 		msg = "Error:+Failed+to+finalize+transaction."
 		log.Printf("❌ Failed to commit transaction for re-parsing post %d: %v", postID, err)
@@ -685,20 +645,18 @@ func adminEditTradingPostHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if r.Method == http.MethodPost {
-		// --- HANDLE FORM SUBMISSION ---
+
 		if err := r.ParseForm(); err != nil {
 			http.Error(w, "Failed to parse form", http.StatusBadRequest)
 			return
 		}
 
-		// Begin a transaction
 		tx, err := db.Begin()
 		if err != nil {
 			http.Error(w, "Failed to start database transaction.", http.StatusInternalServerError)
 			return
 		}
 
-		// 1. Update the main post record
 		_, err = tx.Exec(`
 			UPDATE trading_posts SET post_type=?, character_name=?, contact_info=?, notes=? WHERE id=?
 		`, r.FormValue("post_type"), r.FormValue("character_name"), r.FormValue("contact_info"), r.FormValue("notes"), postID)
@@ -709,7 +667,6 @@ func adminEditTradingPostHandler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		// 2. Delete all existing items for this post
 		_, err = tx.Exec("DELETE FROM trading_post_items WHERE post_id = ?", postID)
 		if err != nil {
 			tx.Rollback()
@@ -718,7 +675,6 @@ func adminEditTradingPostHandler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		// 3. Loop through submitted items and re-insert them
 		itemNames := r.Form["item_name[]"]
 		itemIDs := r.Form["item_id[]"]
 		quantities := r.Form["quantity[]"]
@@ -786,7 +742,6 @@ func adminEditTradingPostHandler(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 
-		// 4. Commit transaction
 		if err := tx.Commit(); err != nil {
 			http.Error(w, "Failed to finalize transaction.", http.StatusInternalServerError)
 			return
@@ -796,8 +751,7 @@ func adminEditTradingPostHandler(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, "/admin?msg=Trading+post+updated+successfully.", http.StatusSeeOther)
 
 	} else {
-		// --- SHOW THE EDIT FORM ---
-		// 1. Fetch the post
+
 		var post TradingPost
 		var createdAtStr string
 		err := db.QueryRow(`
@@ -815,7 +769,6 @@ func adminEditTradingPostHandler(w http.ResponseWriter, r *http.Request) {
 		}
 		post.CreatedAt = createdAtStr
 
-		// 2. Fetch its items
 		itemRows, err := db.Query(`
 			SELECT item_name, item_id, quantity, price_zeny, price_rmt, payment_methods, refinement, slots, card1, card2, card3, card4 
 			FROM trading_post_items WHERE post_id = ?
@@ -838,7 +791,6 @@ func adminEditTradingPostHandler(w http.ResponseWriter, r *http.Request) {
 			post.Items = append(post.Items, item)
 		}
 
-		// 3. Render template
 		tmpl, err := template.ParseFiles("admin_edit_post.html")
 		if err != nil {
 			http.Error(w, "Could not load edit template", http.StatusInternalServerError)
@@ -854,7 +806,6 @@ func adminEditTradingPostHandler(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// adminClearTradingPostItemsHandler drops the trading_post_items table.
 func adminClearTradingPostItemsHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Redirect(w, r, "/admin", http.StatusSeeOther)
@@ -862,7 +813,7 @@ func adminClearTradingPostItemsHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var msg string
-	// This now drops the entire table. It will be recreated on next app start.
+
 	_, err := db.Exec("DROP TABLE IF EXISTS trading_post_items")
 	if err != nil {
 		log.Printf("❌ Failed to drop trading_post_items table: %v", err)
@@ -875,7 +826,6 @@ func adminClearTradingPostItemsHandler(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, "/admin?msg="+msg, http.StatusSeeOther)
 }
 
-// adminClearTradingPostsHandler drops the trading_posts and trading_post_items tables.
 func adminClearTradingPostsHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Redirect(w, r, "/admin", http.StatusSeeOther)
@@ -885,7 +835,6 @@ func adminClearTradingPostsHandler(w http.ResponseWriter, r *http.Request) {
 	var msg string
 	var err error
 
-	// Drop items table first due to foreign key constraint
 	_, err = db.Exec("DROP TABLE IF EXISTS trading_post_items")
 	if err != nil {
 		log.Printf("❌ Failed to drop trading_post_items table (dependency): %v", err)
@@ -894,7 +843,6 @@ func adminClearTradingPostsHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Then, drop the posts table
 	_, err = db.Exec("DROP TABLE IF EXISTS trading_posts")
 	if err != nil {
 		log.Printf("❌ Failed to drop trading_posts table: %v", err)

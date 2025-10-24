@@ -19,14 +19,12 @@ import (
 	"time"
 )
 
-// ItemSearchResult is a lightweight struct for API search results.
 type ItemSearchResult struct {
 	ID       int    `json:"ID"`
 	Name     string `json:"Name"`
 	ImageURL string `json:"ImageURL"`
 }
 
-// Define recurring server events.
 var definedEvents = []EventDefinition{
 	{
 		Name:      "Battlegrounds",
@@ -43,17 +41,16 @@ var definedEvents = []EventDefinition{
 }
 
 var (
-	// Allows letters (upper/lower), numbers, and spaces.
 	nameSanitizer = regexp.MustCompile(`[^a-zA-Z0-9 ]+`)
-	// Allows letters, numbers, spaces, and common characters for contact info.
+
 	contactSanitizer = regexp.MustCompile(`[^a-zA-Z0-9\s:.,#@-]+`)
-	// Allows letters, numbers, spaces, and basic punctuation for notes.
+
 	notesSanitizer = regexp.MustCompile(`[^a-zA-Z0-9\s.,?!'-]+`)
-	// Allows Unicode letters (\p{L}), numbers, spaces, and common item characters.
+
 	itemSanitizer = regexp.MustCompile(`[^\p{L}0-9\s\[\]\+\-]+`)
-	// Regex to remove "card" or "carta" for similarity checks
+
 	reCardRemover = regexp.MustCompile(`(?i)\s*\b(card|carta)\b\s*`)
-	// NEW: Regex to remove slot info [1], [2], etc. for similarity checks
+
 	reSlotRemover = regexp.MustCompile(`\s*\[\d+\]\s*`)
 )
 
@@ -88,10 +85,8 @@ var mvpNames = map[string]string{
 	"1511": "Amon Ra",
 }
 
-// MvpKillCountOffset is a value subtracted from MVP kills for display purposes.
 const MvpKillCountOffset = 3
 
-// A single, reusable function map for all templates.
 var templateFuncs = template.FuncMap{
 	"lower": strings.ToLower,
 	"cleanCardName": func(cardName string) string {
@@ -119,8 +114,7 @@ var templateFuncs = template.FuncMap{
 		return strings.Join(result, ".")
 	},
 	"formatRMT": func(rmt int64) string {
-		// This is a simple integer formatting for BRL.
-		// It will show "R$ 10" instead of "R$ 10,00".
+
 		return fmt.Sprintf("R$ %d", rmt)
 	},
 	"getKillCount": func(kills map[string]int, mobID string) int {
@@ -134,11 +128,6 @@ var templateFuncs = template.FuncMap{
 	},
 }
 
-// -------------------------
-// -- GENERIC HELPERS --
-// -------------------------
-
-// PaginationData holds all the data needed to render pagination controls.
 type PaginationData struct {
 	CurrentPage int
 	TotalPages  int
@@ -149,7 +138,6 @@ type PaginationData struct {
 	Offset      int
 }
 
-// newPaginationData creates a PaginationData object from the request and total item count.
 func newPaginationData(r *http.Request, totalItems int, itemsPerPage int) PaginationData {
 	pageStr := r.FormValue("page")
 	page, err := strconv.Atoi(pageStr)
@@ -161,7 +149,7 @@ func newPaginationData(r *http.Request, totalItems int, itemsPerPage int) Pagina
 	if totalItems > 0 {
 		pd.TotalPages = int(math.Ceil(float64(totalItems) / float64(itemsPerPage)))
 	} else {
-		pd.TotalPages = 1 // Ensure at least one page, even if empty
+		pd.TotalPages = 1
 	}
 
 	if page > pd.TotalPages {
@@ -180,7 +168,6 @@ func newPaginationData(r *http.Request, totalItems int, itemsPerPage int) Pagina
 	return pd
 }
 
-// getSortClause validates sorting parameters and constructs an SQL ORDER BY clause.
 func getSortClause(r *http.Request, allowedSorts map[string]string, defaultSortBy, defaultOrder string) (string, string, string) {
 	sortBy := r.FormValue("sort_by")
 	order := r.FormValue("order")
@@ -199,24 +186,20 @@ func getSortClause(r *http.Request, allowedSorts map[string]string, defaultSortB
 	return fmt.Sprintf("ORDER BY %s %s", orderByColumn, order), sortBy, order
 }
 
-// buildItemSearchClause generates the WHERE condition for an item search (by name or ID).
 func buildItemSearchClause(searchQuery, tableAlias string) (string, []interface{}, error) {
 	if searchQuery == "" {
 		return "", nil, nil
 	}
 
-	// Sanitize alias to prevent injection, though it's developer-controlled.
 	alias := strings.Trim(regexp.MustCompile(`[^a-zA-Z0-9_]`).ReplaceAllString(tableAlias, ""), ".")
 	if alias != "" {
 		alias += "."
 	}
 
-	// Check if the query is a numeric ID.
 	if _, err := strconv.Atoi(searchQuery); err == nil {
 		return fmt.Sprintf("%sitem_id = ?", alias), []interface{}{searchQuery}, nil
 	}
 
-	// If not numeric, search by name using pre-cached IDs.
 	idList, err := getCombinedItemIDs(searchQuery)
 	if err != nil {
 		return "", nil, fmt.Errorf("failed to perform combined item search: %w", err)
@@ -232,40 +215,29 @@ func buildItemSearchClause(searchQuery, tableAlias string) (string, []interface{
 		return clause, params, nil
 	}
 
-	// If no IDs are found, return a condition that yields no results.
 	return "1 = 0", nil, nil
 }
 
-// -------------------------
-// -- HELPER FUNCTIONS --
-// -------------------------
-
-// renderTemplate is a helper to parse and execute templates, reducing boilerplate.
 func renderTemplate(w http.ResponseWriter, tmplFile string, data interface{}) {
-	// Retrieve the parsed template from the map.
+
 	tmpl, ok := templateCache[tmplFile]
 	if !ok {
-		// This should not happen if all templates are in the init() list.
+
 		log.Printf("❌ Could not find template '%s' in cache!", tmplFile)
 		http.Error(w, "Could not load template", http.StatusInternalServerError)
 		return
 	}
 
-	// Execute the template (no parsing needed).
 	err := tmpl.Execute(w, data)
 	if err != nil {
 		log.Printf("❌ Could not execute template '%s': %v", tmplFile, err)
 	}
 }
 
-// sanitizeString removes unwanted characters from a string based on a given regex sanitizer.
-// This is used to prevent injection attacks by enforcing a character whitelist.
 func sanitizeString(input string, sanitizer *regexp.Regexp) string {
 	return sanitizer.ReplaceAllString(input, "")
 }
 
-// getCombinedItemIDs performs a concurrent search on a remote database and the local DB
-// to find all relevant item IDs for a given search query.
 func getCombinedItemIDs(searchQuery string) ([]int, error) {
 	var wg sync.WaitGroup
 	scrapedIDsChan := make(chan []int, 1)
@@ -273,36 +245,33 @@ func getCombinedItemIDs(searchQuery string) ([]int, error) {
 
 	wg.Add(2)
 
-	// Goroutine 1: Scrape ragnarokdatabase.com
 	go func() {
 		defer wg.Done()
-		//		ids, err := scrapeRagnarokDatabaseSearch(searchQuery)
+
 		ids, err := scrapeRODatabaseSearch(searchQuery, 0)
 		if err != nil {
 			log.Printf("⚠️ Concurrent scrape failed for '%s': %v", searchQuery, err)
-			scrapedIDsChan <- []int{} // Send empty slice on error
+			scrapedIDsChan <- []int{}
 			return
 		}
 		scrapedIDsChan <- ids
 	}()
 
-	// Goroutine 2: Search local DB by name for matching IDs
 	go func() {
 		defer wg.Done()
 		var ids []int
-		// This query now searches both the English name in the 'items' table
-		// and the Portuguese name in the 'rms_item_cache' table.
+
 		query := `
 			SELECT item_id FROM (
 				SELECT DISTINCT item_id FROM items WHERE name_of_the_item LIKE ? AND item_id > 0
 				UNION
 				SELECT item_id FROM rms_item_cache WHERE name_pt LIKE ?
 			)`
-		// The search query parameter is used twice.
+
 		rows, err := db.Query(query, "%"+searchQuery+"%", "%"+searchQuery+"%")
 		if err != nil {
 			log.Printf("⚠️ Concurrent local ID search failed for '%s': %v", searchQuery, err)
-			localIDsChan <- []int{} // Send empty slice on error
+			localIDsChan <- []int{}
 			return
 		}
 		defer rows.Close()
@@ -322,7 +291,6 @@ func getCombinedItemIDs(searchQuery string) ([]int, error) {
 	scrapedIDs := <-scrapedIDsChan
 	localIDs := <-localIDsChan
 
-	// Combine and de-duplicate IDs using a map
 	combinedIDs := make(map[int]struct{})
 	for _, id := range scrapedIDs {
 		combinedIDs[id] = struct{}{}
@@ -342,13 +310,12 @@ func getCombinedItemIDs(searchQuery string) ([]int, error) {
 	return idList, nil
 }
 
-// getItemTypeTabs queries the database for all unique item types to display as filter tabs.
 func getItemTypeTabs() []ItemTypeTab {
 	var itemTypes []ItemTypeTab
 	rows, err := db.Query("SELECT DISTINCT item_type FROM rms_item_cache WHERE item_type IS NOT NULL AND item_type != '' ORDER BY item_type ASC")
 	if err != nil {
 		log.Printf("⚠️ Could not query for item types: %v", err)
-		return itemTypes // Return empty slice on error
+		return itemTypes
 	}
 	defer rows.Close()
 
@@ -363,7 +330,6 @@ func getItemTypeTabs() []ItemTypeTab {
 	return itemTypes
 }
 
-// getLastUpdateTime is a generic helper to get the most recent timestamp from a table.
 func getLastUpdateTime(tableName, columnName string) string {
 	var lastTimestamp sql.NullString
 	query := fmt.Sprintf("SELECT MAX(%s) FROM %s", columnName, tableName)
@@ -380,7 +346,6 @@ func getLastUpdateTime(tableName, columnName string) string {
 	return "Never"
 }
 
-// generateEventIntervals creates a list of event occurrences within a given time window.
 func generateEventIntervals(viewStart, viewEnd time.Time, events []EventDefinition, activeDates map[string]struct{}) []map[string]interface{} {
 	var intervals []map[string]interface{}
 	loc := viewStart.Location()
@@ -427,9 +392,8 @@ func generateEventIntervals(viewStart, viewEnd time.Time, events []EventDefiniti
 	return intervals
 }
 
-// mapItemTypeToTabData converts a full item type name to a struct with a short name and icon ID.
 func mapItemTypeToTabData(typeName string) ItemTypeTab {
-	tab := ItemTypeTab{FullName: typeName, ShortName: typeName, IconItemID: 909} // Default to Jellopy
+	tab := ItemTypeTab{FullName: typeName, ShortName: typeName, IconItemID: 909}
 	switch typeName {
 	case "Ammunition":
 		tab.ShortName = ""
@@ -472,13 +436,10 @@ func mapItemTypeToTabData(typeName string) ItemTypeTab {
 	return tab
 }
 
-// templateCache holds all parsed templates, keyed by the base filename.
 var templateCache = make(map[string]*template.Template)
 
-// init is a special Go function that runs once when the package is loaded.
-// We use it to parse all our templates into the cache on application start.
 func init() {
-	// Define all template files that need to be parsed.
+
 	templates := []string{
 		"index.html",
 		"full_list.html",
@@ -495,25 +456,22 @@ func init() {
 		"trading_post.html",
 	}
 
-	// The 'navbar.html' is a common dependency for many templates.
 	navbarPath := "navbar.html"
 
 	log.Println("Parsing all application templates...")
 	for _, tmplName := range templates {
-		// Create a new template with the shared function map.
-		// We must also explicitly parse 'navbar.html' for every template that needs it.
+
 		tmpl, err := template.New(tmplName).Funcs(templateFuncs).ParseFiles(tmplName, navbarPath)
 		if err != nil {
-			// This is a fatal error because the app can't run without templates.
-			// Handle cases where navbar might not be needed (e.g., admin_edit_post)
+
 			if strings.Contains(err.Error(), "no such file or directory") && tmplName == "admin_edit_post.html" {
-				// admin_edit_post.html doesn't use navbar.html, parse it alone.
+
 				tmpl, err = template.New(tmplName).Funcs(templateFuncs).ParseFiles(tmplName)
 				if err != nil {
 					log.Fatalf("❌ FATAL: Could not parse template '%s' (standalone): %v", tmplName, err)
 				}
 			} else if strings.Contains(err.Error(), "no such file or directory") && tmplName == "admin.html" {
-				// admin.html also doesn't use navbar.html, parse it alone.
+
 				tmpl, err = template.New(tmplName).Funcs(templateFuncs).ParseFiles(tmplName)
 				if err != nil {
 					log.Fatalf("❌ FATAL: Could not parse template '%s' (standalone): %v", tmplName, err)
@@ -522,17 +480,12 @@ func init() {
 				log.Fatalf("❌ FATAL: Could not parse template '%s': %v", tmplName, err)
 			}
 		}
-		// Store the parsed template in the map.
+
 		templateCache[tmplName] = tmpl
 	}
 	log.Println("✅ All templates parsed and cached successfully.")
 }
 
-// -------------------------
-// -- HTTP HANDLERS --
-// -------------------------
-
-// summaryHandler serves the main summary page.
 func summaryHandler(w http.ResponseWriter, r *http.Request) {
 	if err := r.ParseForm(); err != nil {
 		http.Error(w, "Failed to parse form", http.StatusBadRequest)
@@ -572,7 +525,6 @@ func summaryHandler(w http.ResponseWriter, r *http.Request) {
 		whereClause = "WHERE " + strings.Join(whereConditions, " AND ")
 	}
 
-	// We must also apply the 'HAVING' clause logic for an accurate count.
 	countQuery := `
 		SELECT COUNT(*)
 		FROM (
@@ -587,8 +539,7 @@ func summaryHandler(w http.ResponseWriter, r *http.Request) {
 
 	havingClause := ""
 	if !showAll {
-		// This condition must be applied to the outer group by,
-		// but for counting, we must apply it as a HAVING clause inside the subquery.
+
 		havingClause = " HAVING SUM(CASE WHEN i.is_available = 1 THEN 1 ELSE 0 END) > 0"
 	}
 
@@ -596,11 +547,10 @@ func summaryHandler(w http.ResponseWriter, r *http.Request) {
 	err := db.QueryRow(fmt.Sprintf(countQuery, whereClause, havingClause), params...).Scan(&totalUniqueItems)
 	if err != nil {
 		log.Printf("❌ Summary count query error: %v", err)
-		// Don't fail the request, just log the error and show 0
+
 		totalUniqueItems = 0
 	}
 
-	// Main query for fetching item details
 	selectClause := `
         SELECT
             i.name_of_the_item,
@@ -612,11 +562,10 @@ func summaryHandler(w http.ResponseWriter, r *http.Request) {
     `
 	groupByClause := " GROUP BY i.name_of_the_item, rms.name_pt"
 
-	// Re-apply havingClause for the main query (it was local to the count query)
 	if !showAll {
 		havingClause = " HAVING listing_count > 0"
 	} else {
-		havingClause = "" // Ensure it's reset
+		havingClause = ""
 	}
 
 	allowedSorts := map[string]string{
@@ -625,7 +574,6 @@ func summaryHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	orderByClause, sortBy, order := getSortClause(r, allowedSorts, "highest_price", "DESC")
 
-	// This was the source of the "near ','" syntax error.
 	query := fmt.Sprintf("%s %s %s %s %s %s, i.name_of_the_item ASC;", selectClause, baseQuery, whereClause, groupByClause, havingClause, orderByClause)
 
 	rows, err := db.Query(query, params...)
@@ -665,7 +613,6 @@ func summaryHandler(w http.ResponseWriter, r *http.Request) {
 	renderTemplate(w, "index.html", data)
 }
 
-// fullListHandler shows the complete, detailed market list.
 func fullListHandler(w http.ResponseWriter, r *http.Request) {
 	if err := r.ParseForm(); err != nil {
 		http.Error(w, "Failed to parse form", http.StatusBadRequest)
@@ -796,7 +743,6 @@ func fullListHandler(w http.ResponseWriter, r *http.Request) {
 	renderTemplate(w, "full_list.html", data)
 }
 
-// activityHandler serves the page for recent market activity.
 func activityHandler(w http.ResponseWriter, r *http.Request) {
 	if err := r.ParseForm(); err != nil {
 		http.Error(w, "Failed to parse form", http.StatusBadRequest)
@@ -878,7 +824,6 @@ func activityHandler(w http.ResponseWriter, r *http.Request) {
 	renderTemplate(w, "activity.html", data)
 }
 
-// itemHistoryHandler serves the detailed history page for a single item
 func itemHistoryHandler(w http.ResponseWriter, r *http.Request) {
 	if err := r.ParseForm(); err != nil {
 		http.Error(w, "Failed to parse form", http.StatusBadRequest)
@@ -957,7 +902,6 @@ func itemHistoryHandler(w http.ResponseWriter, r *http.Request) {
         FROM items WHERE name_of_the_item = ?;
     `, itemName).Scan(&overallLowest, &overallHighest)
 
-	// --- OPTIMIZATION: Query only for the item's price points and process in one pass ---
 	priceChangeQuery := `
 		WITH RankedItems AS (
 			SELECT quantity, CAST(REPLACE(price, ',', '') AS INTEGER) as price_int, store_name, seller_name, date_and_time_retrieved, map_name, map_coordinates,
@@ -990,12 +934,9 @@ func itemHistoryHandler(w http.ResponseWriter, r *http.Request) {
 			continue
 		}
 
-		// Format the timestamp for display
 		t, _ := time.Parse(time.RFC3339, timestampStr)
 		p.Timestamp = t.Format("2006-01-02 15:04")
 
-		// De-duplicate in the same loop
-		// Only add this point if it's the first one OR if prices have changed
 		if len(finalPriceHistory) == 0 ||
 			finalPriceHistory[len(finalPriceHistory)-1].LowestPrice != p.LowestPrice ||
 			finalPriceHistory[len(finalPriceHistory)-1].HighestPrice != p.HighestPrice {
@@ -1004,7 +945,6 @@ func itemHistoryHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	priceHistoryJSON, _ := json.Marshal(finalPriceHistory)
-	// --- END OPTIMIZATION ---
 
 	const listingsPerPage = 50
 	var totalListings int
@@ -1058,7 +998,6 @@ func itemHistoryHandler(w http.ResponseWriter, r *http.Request) {
 	renderTemplate(w, "history.html", data)
 }
 
-// playerCountHandler serves the page with a graph of online player history.
 func playerCountHandler(w http.ResponseWriter, r *http.Request) {
 	interval := r.URL.Query().Get("interval")
 	if interval == "" {
@@ -1159,7 +1098,6 @@ func playerCountHandler(w http.ResponseWriter, r *http.Request) {
 	renderTemplate(w, "players.html", data)
 }
 
-// characterHandler serves the player characters page.
 func characterHandler(w http.ResponseWriter, r *http.Request) {
 	if err := r.ParseForm(); err != nil {
 		http.Error(w, "Failed to parse form", http.StatusBadRequest)
@@ -1340,7 +1278,6 @@ func characterHandler(w http.ResponseWriter, r *http.Request) {
 	renderTemplate(w, "characters.html", data)
 }
 
-// guildHandler serves the player guilds page.
 func guildHandler(w http.ResponseWriter, r *http.Request) {
 	if err := r.ParseForm(); err != nil {
 		http.Error(w, "Failed to parse form", http.StatusBadRequest)
@@ -1420,7 +1357,6 @@ func guildHandler(w http.ResponseWriter, r *http.Request) {
 	renderTemplate(w, "guilds.html", data)
 }
 
-// mvpKillsHandler serves the page for MVP kill rankings.
 func mvpKillsHandler(w http.ResponseWriter, r *http.Request) {
 	headers := []MvpHeader{{MobID: "total", MobName: "Total Kills"}}
 	for _, mobID := range mvpMobIDs {
@@ -1488,7 +1424,6 @@ func mvpKillsHandler(w http.ResponseWriter, r *http.Request) {
 	renderTemplate(w, "mvp_kills.html", data)
 }
 
-// characterDetailHandler serves the detailed information page for a single character.
 func characterDetailHandler(w http.ResponseWriter, r *http.Request) {
 	charName := r.URL.Query().Get("name")
 	if charName == "" {
@@ -1629,7 +1564,6 @@ func characterDetailHandler(w http.ResponseWriter, r *http.Request) {
 	renderTemplate(w, "character_detail.html", data)
 }
 
-// characterChangelogHandler serves the page for recent character changes.
 func characterChangelogHandler(w http.ResponseWriter, r *http.Request) {
 	const entriesPerPage = 100
 	var totalEntries int
@@ -1672,7 +1606,6 @@ func characterChangelogHandler(w http.ResponseWriter, r *http.Request) {
 	renderTemplate(w, "character_changelog.html", data)
 }
 
-// guildDetailHandler serves the new guild detail page.
 func guildDetailHandler(w http.ResponseWriter, r *http.Request) {
 	guildName := r.URL.Query().Get("name")
 	if guildName == "" {
@@ -1773,7 +1706,6 @@ func guildDetailHandler(w http.ResponseWriter, r *http.Request) {
 	renderTemplate(w, "guild_detail.html", data)
 }
 
-// storeDetailHandler serves the detailed information page for a single store.
 func storeDetailHandler(w http.ResponseWriter, r *http.Request) {
 	storeName := r.URL.Query().Get("name")
 	sellerNameQuery := r.URL.Query().Get("seller")
@@ -1841,7 +1773,6 @@ func storeDetailHandler(w http.ResponseWriter, r *http.Request) {
 	renderTemplate(w, "store_detail.html", data)
 }
 
-// generateSecretToken creates a cryptographically secure random token.
 func generateSecretToken(length int) (string, error) {
 	bytes := make([]byte, length)
 	if _, err := rand.Read(bytes); err != nil {
@@ -1850,16 +1781,15 @@ func generateSecretToken(length int) (string, error) {
 	return hex.EncodeToString(bytes), nil
 }
 
-// tradingPostListHandler displays the list of all trading posts.
 func tradingPostListHandler(w http.ResponseWriter, r *http.Request) {
 	searchQuery := r.URL.Query().Get("query")
 	filterType := r.URL.Query().Get("filter_type")
 	if filterType == "" {
-		filterType = "all" // Default to "all"
+		filterType = "all"
 	}
 	filterCurrency := r.URL.Query().Get("filter_currency")
 	if filterCurrency == "" {
-		filterCurrency = "all" // Default to "all"
+		filterCurrency = "all"
 	}
 
 	var queryParams []interface{}
@@ -1875,15 +1805,14 @@ func tradingPostListHandler(w http.ResponseWriter, r *http.Request) {
 	var whereConditions []string
 
 	if searchQuery != "" {
-		// Check if it's a numeric ID
+
 		if _, err := strconv.Atoi(searchQuery); err == nil {
 			whereConditions = append(whereConditions, "i.item_id = ?")
 			queryParams = append(queryParams, searchQuery)
 		} else {
-			// Search by combined ID list (from remote and local cache)
+
 			idList, _ := getCombinedItemIDs(searchQuery)
 
-			// Also search by item_name directly in the posts table
 			var nameClauses []string
 			nameClauses = append(nameClauses, "i.item_name LIKE ?")
 			queryParams = append(queryParams, "%"+searchQuery+"%")
@@ -1906,16 +1835,14 @@ func tradingPostListHandler(w http.ResponseWriter, r *http.Request) {
 		whereConditions = append(whereConditions, "p.post_type = ?")
 		queryParams = append(queryParams, "buying")
 	}
-	// If filterType is "all", no condition is added, so all types are shown.
 
 	if filterCurrency == "zeny" {
-		// Show items that have a zeny price OR accept zeny payment
+
 		whereConditions = append(whereConditions, "(i.price_zeny > 0 OR i.payment_methods IN ('zeny', 'both'))")
 	} else if filterCurrency == "rmt" {
-		// Show items that have an RMT price OR accept RMT payment
+
 		whereConditions = append(whereConditions, "(i.price_rmt > 0 OR i.payment_methods IN ('rmt', 'both'))")
 	}
-	// If filterCurrency is "all", no condition is added.
 
 	whereClause := ""
 	if len(whereConditions) > 0 {
@@ -1928,7 +1855,7 @@ func tradingPostListHandler(w http.ResponseWriter, r *http.Request) {
 		"seller":    "p.character_name",
 		"posted":    "p.created_at",
 	}
-	// Dynamically set the price sort based on the currency filter
+
 	if filterCurrency == "rmt" {
 		allowedSorts["price"] = "CASE WHEN i.price_rmt = 0 THEN 9223372036854775807 ELSE i.price_rmt END"
 	} else {
@@ -1967,19 +1894,17 @@ func tradingPostListHandler(w http.ResponseWriter, r *http.Request) {
 		Items:          items,
 		LastScrapeTime: getLastUpdateTime("scrape_history", "timestamp"),
 		SearchQuery:    searchQuery,
-		FilterType:     filterType,     // Pass the active filter
-		FilterCurrency: filterCurrency, // Pass the active currency filter
-		SortBy:         sortBy,         // Pass sorting info
-		Order:          order,          // Pass sorting info
+		FilterType:     filterType,
+		FilterCurrency: filterCurrency,
+		SortBy:         sortBy,
+		Order:          order,
 		PageTitle:      "Discord",
 	}
 	renderTemplate(w, "trading_post.html", data)
 }
 
-// findItemIDByName searches for an item ID using FTS5 and online fallbacks.
-// It is now a method on the Application struct.
 func findItemIDByName(itemName string, allowRetry bool, slots int) (sql.NullInt64, error) {
-	// 1. Clean the input name
+
 	reRefine := regexp.MustCompile(`\s*\+\d+\s*`)
 	itemNameWithoutRefine := reRefine.ReplaceAllString(itemName, "")
 	itemNameWithoutRefine = strings.TrimSpace(itemNameWithoutRefine)
@@ -1989,25 +1914,20 @@ func findItemIDByName(itemName string, allowRetry bool, slots int) (sql.NullInt6
 		return sql.NullInt64{Valid: false}, nil
 	}
 
-	// Handle "Zeny" as a special case
 	if strings.ToLower(cleanItemName) == "zeny" {
 		log.Printf("   [Item ID Search] Detected special item 'Zeny'. Skipping ID search.")
 		return sql.NullInt64{Valid: false}, nil
 	}
 
-	// 2. Build an FTS5 query.
-	// This creates a "prefix" query for all terms. "Blue Potion" -> "Blue* Potion*"
 	terms := strings.Fields(cleanItemName)
 	for i, term := range terms {
-		// Avoid making stop words or tiny particles like "[" into prefix queries
+
 		if len(term) > 1 {
 			terms[i] = term + "*"
 		}
 	}
 	ftsQuery := strings.Join(terms, " ")
 
-	// 3. Search the FTS table. `rowid` is the item_id.
-	// We also select the names to check for an exact match.
 	query := `
 		SELECT rowid, name, name_pt 
 		FROM rms_item_cache_fts 
@@ -2015,7 +1935,6 @@ func findItemIDByName(itemName string, allowRetry bool, slots int) (sql.NullInt6
 		ORDER BY rank  -- FTS5 automatically ranks relevance
 		LIMIT 10`
 
-	// Use app.db (from the Application struct)
 	rows, err := db.Query(query, ftsQuery)
 	if err != nil {
 		return sql.NullInt64{}, fmt.Errorf("error during FTS query for '%s': %w", ftsQuery, err)
@@ -2025,7 +1944,7 @@ func findItemIDByName(itemName string, allowRetry bool, slots int) (sql.NullInt6
 	type potentialMatch struct {
 		id     int64
 		name   string
-		namePT string // FTS table stores this, no need for sql.NullString
+		namePT string
 	}
 	var potentialMatches []potentialMatch
 
@@ -2036,16 +1955,15 @@ func findItemIDByName(itemName string, allowRetry bool, slots int) (sql.NullInt6
 		}
 	}
 
-	// 4. Evaluate FTS results
 	if len(potentialMatches) == 1 {
-		// Found a single, unambiguous FTS match.
+
 		itemID := potentialMatches[0].id
 		log.Printf("   [Item ID Search] Found unique local FTS match for '%s': ID %d", cleanItemName, itemID)
 		return sql.NullInt64{Int64: itemID, Valid: true}, nil
 	}
 
 	if len(potentialMatches) > 1 {
-		// Multiple matches. Check for a perfect match.
+
 		for _, match := range potentialMatches {
 			if match.name == cleanItemName || match.namePT == cleanItemName {
 				log.Printf("   [Item ID Search] Found perfect match '%s' (ID %d) within FTS results.", cleanItemName, match.id)
@@ -2053,7 +1971,6 @@ func findItemIDByName(itemName string, allowRetry bool, slots int) (sql.NullInt6
 			}
 		}
 
-		// Still ambiguous. Handle "card" logic.
 		lowerCleanItemName := strings.ToLower(cleanItemName)
 		if strings.Contains(lowerCleanItemName, "card") || strings.Contains(lowerCleanItemName, "carta") {
 			itemID := potentialMatches[0].id
@@ -2064,7 +1981,6 @@ func findItemIDByName(itemName string, allowRetry bool, slots int) (sql.NullInt6
 		log.Printf("   [Item ID Search] Found %d ambiguous FTS matches for '%s'. Proceeding to online search.", len(potentialMatches), cleanItemName)
 	}
 
-	// 5. Fallback to concurrent online search if local search fails
 	log.Printf("   [Item ID Search] No local FTS match for '%s'. Initiating online search...", cleanItemName)
 
 	var wg sync.WaitGroup
@@ -2074,8 +1990,8 @@ func findItemIDByName(itemName string, allowRetry bool, slots int) (sql.NullInt6
 	wg.Add(2)
 	go func() {
 		defer wg.Done()
-		// scrapeRMSItemSearch would also be a method: app.scrapeRMSItemSearch
-		results, err := scrapeRMSItemSearch(cleanItemName) // Assuming this is a free function for simplicity
+
+		results, err := scrapeRMSItemSearch(cleanItemName)
 		if err != nil {
 			log.Printf("   -> [RMS Search] Failed for '%s': %v", cleanItemName, err)
 			rmsChan <- nil
@@ -2085,8 +2001,8 @@ func findItemIDByName(itemName string, allowRetry bool, slots int) (sql.NullInt6
 	}()
 	go func() {
 		defer wg.Done()
-		// scrapeRODatabaseSearch would also be a method: app.scrapeRODatabaseSearch
-		ids, err := scrapeRODatabaseSearch(cleanItemName, slots) // Assuming this is a free function
+
+		ids, err := scrapeRODatabaseSearch(cleanItemName, slots)
 		if err != nil {
 			log.Printf("   -> [RDB Search] Failed for '%s': %v", cleanItemName, err)
 			rdbChan <- nil
@@ -2099,7 +2015,7 @@ func findItemIDByName(itemName string, allowRetry bool, slots int) (sql.NullInt6
 	rmsResults := <-rmsChan
 	rdbResults := <-rdbChan
 
-	combinedIDs := make(map[int]string) // map[ID]Name
+	combinedIDs := make(map[int]string)
 	if rmsResults != nil {
 		for _, res := range rmsResults {
 			combinedIDs[res.ID] = res.Name
@@ -2108,27 +2024,27 @@ func findItemIDByName(itemName string, allowRetry bool, slots int) (sql.NullInt6
 	if rdbResults != nil {
 		for _, id := range rdbResults {
 			if _, ok := combinedIDs[id]; !ok {
-				combinedIDs[id] = "" // Mark as found
+				combinedIDs[id] = ""
 			}
 		}
 	}
 
 	if len(combinedIDs) == 1 {
-		// Found a single, unambiguous ONLINE match.
+
 		var foundID int
 		var foundName string
-		for id, name := range combinedIDs { // This loop will only run once
+		for id, name := range combinedIDs {
 			foundID = id
 			foundName = name
 		}
 		log.Printf("   [Item ID Search] Found unique ONLINE match for '%s': ID %d", cleanItemName, foundID)
-		// Call the method on app
+
 		go scrapeAndCacheItemIfNotExists(foundID, foundName)
 		return sql.NullInt64{Int64: int64(foundID), Valid: true}, nil
 	}
 
 	if len(combinedIDs) > 1 {
-		// Multiple ONLINE results. Check for a perfect match.
+
 		for id, name := range combinedIDs {
 			nameWithoutSlots := reSlotRemover.ReplaceAllString(name, " ")
 			nameWithoutSlots = strings.TrimSpace(nameWithoutSlots)
@@ -2139,13 +2055,12 @@ func findItemIDByName(itemName string, allowRetry bool, slots int) (sql.NullInt6
 				} else {
 					log.Printf("   [Item ID Search] Found perfect match (slot-stripped) '%s' (ID %d) within ONLINE results (Original: '%s').", cleanItemName, id, name)
 				}
-				// Call the method on app
+
 				go scrapeAndCacheItemIfNotExists(id, name)
 				return sql.NullInt64{Int64: int64(id), Valid: true}, nil
 			}
 		}
 
-		// Ambiguous, and not a perfect match. Handle card logic.
 		lowerCleanItemName := strings.ToLower(cleanItemName)
 		if strings.Contains(lowerCleanItemName, "card") || strings.Contains(lowerCleanItemName, "carta") {
 			var foundID int
@@ -2153,19 +2068,17 @@ func findItemIDByName(itemName string, allowRetry bool, slots int) (sql.NullInt6
 			for id, name := range combinedIDs {
 				foundID = id
 				foundName = name
-				break // Exit after the first one
+				break
 			}
 			log.Printf("   [Item ID Search] Found %d ONLINE matches for '%s'. Using first result (ID %d) due to 'card'/'carta' keyword.", len(combinedIDs), cleanItemName, foundID)
-			// Call the method on app
+
 			go scrapeAndCacheItemIfNotExists(foundID, foundName)
 			return sql.NullInt64{Int64: int64(foundID), Valid: true}, nil
 		}
 
-		// Ambiguous, and not a card search. Do not select one.
 		log.Printf("   [Item ID Search] Found %d ambiguous ONLINE matches for '%s'. Not selecting.", len(combinedIDs), cleanItemName)
 	}
 
-	// 6. Final step, retry without "card" or "carta"
 	lowerCleanItemName := strings.ToLower(cleanItemName)
 	if allowRetry && (strings.Contains(lowerCleanItemName, "card") || strings.Contains(lowerCleanItemName, "carta")) {
 		newName := reCardRemover.ReplaceAllString(itemName, " ")
@@ -2173,30 +2086,24 @@ func findItemIDByName(itemName string, allowRetry bool, slots int) (sql.NullInt6
 
 		if newName != "" && newName != cleanItemName {
 			log.Printf("   [Item ID Search] No results for '%s'. Retrying search without 'card'/'carta' as: '%s'", cleanItemName, newName)
-			// Call the method on app
+
 			return findItemIDByName(newName, false, slots)
 		}
 	}
 
-	// If we're here, all searches failed or were ambiguous.
 	log.Printf("   [Item ID Search] Online search for '%s' returned no results or was ambiguous. Storing name only.", cleanItemName)
 	return sql.NullInt64{Valid: false}, nil
 }
 
-// createSingleTradingPost is a helper function to create a post and its items within a transaction.
-// This is called by CreateTradingPostFromDiscord to handle splitting a message into
-// separate "buying" and "selling" posts.
 func createSingleTradingPost(authorName, originalMessage, postType string, items []GeminiTradeItem) (int64, error) {
-	// Sanitize the author's name
+
 	characterName := sanitizeString(authorName, nameSanitizer)
 	if strings.TrimSpace(characterName) == "" {
 		return 0, fmt.Errorf("author name is empty after sanitization")
 	}
 
-	// Generate a title based on the action
 	title := fmt.Sprintf("%s items via Discord", strings.Title(postType))
 
-	// Generate a "dead" token hash for consistency with the schema.
 	token, err := generateSecretToken(16)
 	if err != nil {
 		return 0, fmt.Errorf("could not generate security token for discord post: %w", err)
@@ -2206,29 +2113,26 @@ func createSingleTradingPost(authorName, originalMessage, postType string, items
 		return 0, fmt.Errorf("could not hash token for discord post: %w", err)
 	}
 
-	// Use a transaction to ensure all-or-nothing insertion.
 	tx, err := db.Begin()
 	if err != nil {
 		return 0, fmt.Errorf("failed to start database transaction: %w", err)
 	}
-	defer tx.Rollback() // Rollback on any error
+	defer tx.Rollback()
 
-	// --- NEW DELETION LOGIC ---
-	// 1. Collect all sanitized item names from the new post.
 	var itemNames []string
 	var itemParams []interface{}
 	for _, item := range items {
 		itemName := sanitizeString(item.Name, itemSanitizer)
 		if strings.TrimSpace(itemName) != "" {
 			itemNames = append(itemNames, itemName)
-			itemParams = append(itemParams, itemName) // Add to params list
+			itemParams = append(itemParams, itemName)
 		}
 	}
 
 	discordContact := fmt.Sprintf("Discord: %s", authorName)
 
 	if len(itemNames) > 0 {
-		// 2. Build the query to find old post IDs that match author, type, AND contain at least one of the new items.
+
 		placeholders := strings.Repeat("?,", len(itemNames)-1) + "?"
 
 		findQuery := fmt.Sprintf(`
@@ -2241,14 +2145,12 @@ func createSingleTradingPost(authorName, originalMessage, postType string, items
 			  AND i.item_name IN (%s)
 		`, placeholders)
 
-		// 3. Collect parameters for the find query
 		findParams := []interface{}{characterName, discordContact, postType}
 		findParams = append(findParams, itemParams...)
 
-		// 4. Find the posts to delete
 		rows, err := tx.Query(findQuery, findParams...)
 		if err != nil {
-			// Don't fail, just log. This isn't a critical failure.
+
 			log.Printf("⚠️ [Discord->DB] Failed to query for old posts to delete for '%s': %v", characterName, err)
 		} else {
 			var postIDsToDelete []interface{}
@@ -2258,9 +2160,8 @@ func createSingleTradingPost(authorName, originalMessage, postType string, items
 					postIDsToDelete = append(postIDsToDelete, id)
 				}
 			}
-			rows.Close() // Close rows immediately
+			rows.Close()
 
-			// 5. Delete the found posts
 			if len(postIDsToDelete) > 0 {
 				delPlaceholders := strings.Repeat("?,", len(postIDsToDelete)-1) + "?"
 				delQuery := fmt.Sprintf("DELETE FROM trading_posts WHERE id IN (%s)", delPlaceholders)
@@ -2277,15 +2178,13 @@ func createSingleTradingPost(authorName, originalMessage, postType string, items
 			}
 		}
 	}
-	// --- END NEW DELETION LOGIC ---
 
-	// Insert the main post record
 	res, err := tx.Exec(`INSERT INTO trading_posts (title, post_type, character_name, contact_info, notes, created_at, edit_token_hash)
             VALUES (?, ?, ?, ?, ?, ?, ?)`,
 		title,
 		postType,
 		characterName,
-		discordContact, // Use the generated contact string
+		discordContact,
 		originalMessage,
 		time.Now().Format(time.RFC3339),
 		string(tokenHash),
@@ -2295,9 +2194,6 @@ func createSingleTradingPost(authorName, originalMessage, postType string, items
 	}
 	postID, _ := res.LastInsertId()
 
-	// Prepare to insert the items.
-	// NOTE: The 'trading_post_items' table does not have an 'action' column,
-	// as the action is defined by the parent 'trading_posts' entry.
 	stmt, err := tx.Prepare("INSERT INTO trading_post_items (post_id, item_name, item_id, quantity, price_zeny, price_rmt, payment_methods, refinement, slots, card1, card2, card3, card4) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
 	if err != nil {
 		return 0, fmt.Errorf("database preparation failed for discord post items: %w", err)
@@ -2305,38 +2201,34 @@ func createSingleTradingPost(authorName, originalMessage, postType string, items
 	defer stmt.Close()
 
 	for _, item := range items {
-		// Sanitize item name just in case
+
 		itemName := sanitizeString(item.Name, itemSanitizer)
 		if strings.TrimSpace(itemName) == "" {
-			continue // Skip empty items
+			continue
 		}
 
-		// Identify the item ID, allowing one retry
 		itemID, findErr := findItemIDByName(itemName, true, item.Slots)
 		if findErr != nil {
-			// Log the error but continue, as we can still insert the item by name.
+
 			log.Printf("⚠️ Error finding item ID for '%s': %v. Proceeding without ID.", itemName, findErr)
 		}
 
-		// Ensure payment_methods is valid, default to zeny
 		paymentMethods := "zeny"
 		if item.PaymentMethods == "rmt" || item.PaymentMethods == "both" {
 			paymentMethods = item.PaymentMethods
 		}
 
-		// Convert card strings to sql.NullString for the database
 		card1 := sql.NullString{String: item.Card1, Valid: item.Card1 != ""}
 		card2 := sql.NullString{String: item.Card2, Valid: item.Card2 != ""}
 		card3 := sql.NullString{String: item.Card3, Valid: item.Card3 != ""}
 		card4 := sql.NullString{String: item.Card4, Valid: item.Card4 != ""}
 
 		if _, err := stmt.Exec(postID, itemName, itemID, item.Quantity, item.PriceZeny, item.PriceRMT, paymentMethods, item.Refinement, item.Slots, card1, card2, card3, card4); err != nil {
-			// Don't just return, log which item failed
+
 			return 0, fmt.Errorf("failed to save item '%s' for discord post: %w", itemName, err)
 		}
 	}
 
-	// If all went well, commit the transaction
 	if err := tx.Commit(); err != nil {
 		return 0, fmt.Errorf("failed to finalize discord post transaction: %w", err)
 	}
@@ -2344,49 +2236,41 @@ func createSingleTradingPost(authorName, originalMessage, postType string, items
 	return postID, nil
 }
 
-// CreateTradingPostFromDiscord creates new trading post entries from a Gemini-parsed Discord message.
-// It automatically splits items into "buying" and "selling" posts if a message contains both.
-// It deletes any previous posts from the same Discord user *and* of the same post type
-// before creating the new one.
 func CreateTradingPostFromDiscord(authorName string, originalMessage string, tradeData *GeminiTradeResult) ([]int64, error) {
 	var buyingItems []GeminiTradeItem
 	var sellingItems []GeminiTradeItem
 	var postIDs []int64
 	var finalError error
 
-	// 1. Group items by their action
 	for _, item := range tradeData.Items {
 		if item.Action == "buying" {
 			buyingItems = append(buyingItems, item)
 		} else {
-			// Default to "selling" if action is missing or not "buying"
+
 			sellingItems = append(sellingItems, item)
 		}
 	}
 
-	// 2. Create a "buying" post if there are buying items
 	if len(buyingItems) > 0 {
 		postID, err := createSingleTradingPost(authorName, originalMessage, "buying", buyingItems)
 		if err != nil {
 			log.Printf("❌ [Discord->DB] Failed to create 'buying' post for '%s': %v", authorName, err)
-			finalError = err // Store the error
+			finalError = err
 		} else {
 			postIDs = append(postIDs, postID)
 		}
 	}
 
-	// 3. Create a "selling" post if there are selling items
 	if len(sellingItems) > 0 {
 		postID, err := createSingleTradingPost(authorName, originalMessage, "selling", sellingItems)
 		if err != nil {
 			log.Printf("❌ [Discord->DB] Failed to create 'selling' post for '%s': %v", authorName, err)
-			finalError = err // Store the error (will overwrite previous, which is fine)
+			finalError = err
 		} else {
 			postIDs = append(postIDs, postID)
 		}
 	}
 
-	// 4. Return the list of created IDs and the last error encountered
 	return postIDs, finalError
 }
 
@@ -2397,21 +2281,17 @@ func min(a, b int) int {
 	return b
 }
 
-// levenshtein calculates the Levenshtein distance between two strings.
-// This is used for typo-tolerant similarity matching.
 func levenshtein(s1, s2 string) int {
-	// NEW: Remove "card" or "carta" from both strings before comparing
-	// We replace with a space to avoid merging words (e.g., "TharaFrogCard" -> "TharaFrog ")
+
 	cleanS1 := reCardRemover.ReplaceAllString(s1, " ")
 	cleanS2 := reCardRemover.ReplaceAllString(s2, " ")
 
-	// NEW: Also remove slot information like [1], [2]
 	cleanS1 = reSlotRemover.ReplaceAllString(cleanS1, " ")
 	cleanS2 = reSlotRemover.ReplaceAllString(cleanS2, " ")
 
-	// Convert to rune slices to handle multi-byte characters
 	r1 := []rune(cleanS1)
 	r2 := []rune(cleanS2)
+
 	n, m := len(r1), len(r2)
 	if n == 0 {
 		return m
@@ -2420,17 +2300,15 @@ func levenshtein(s1, s2 string) int {
 		return n
 	}
 
-	// Use two vectors (current and previous row)
 	v0 := make([]int, m+1)
 	v1 := make([]int, m+1)
 
-	// Initialize v0 (the previous row)
 	for i := 0; i <= m; i++ {
 		v0[i] = i
 	}
 
 	for i := 0; i < n; i++ {
-		// Calculate v1 (current row) from v0
+
 		v1[0] = i + 1
 
 		for j := 0; j < m; j++ {
@@ -2443,7 +2321,6 @@ func levenshtein(s1, s2 string) int {
 			v1[j+1] = min(v1[j]+1, min(v0[j+1]+1, v0[j]+cost))
 		}
 
-		// Copy v1 to v0 for the next iteration
 		copy(v0, v1)
 	}
 	return v1[m]

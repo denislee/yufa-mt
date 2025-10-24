@@ -5,16 +5,13 @@ import (
 	"fmt"
 	"strings"
 
-	_ "github.com/mattn/go-sqlite3" // SQLite driver
+	_ "github.com/mattn/go-sqlite3"
 )
 
-// db is a package-level variable to hold the database connection pool.
 var db *sql.DB
 
-// applyMigrations checks for and applies database schema changes.
 func applyMigrations(db *sql.DB) error {
-	// --- MIGRATION 1: Add 'zeny' column to 'characters' table ---
-	// Check if the column already exists to make this operation idempotent.
+
 	rows, err := db.Query("PRAGMA table_info(characters);")
 	if err != nil {
 		return fmt.Errorf("could not query table info for characters: %w", err)
@@ -41,7 +38,7 @@ func applyMigrations(db *sql.DB) error {
 	}
 
 	if !columnExists {
-		// If the column does not exist, add it. Default to 0 and disallow NULLs.
+
 		_, err := db.Exec("ALTER TABLE characters ADD COLUMN zeny INTEGER NOT NULL DEFAULT 0;")
 		if err != nil {
 			return fmt.Errorf("failed to add 'zeny' column to 'characters' table: %w", err)
@@ -51,7 +48,6 @@ func applyMigrations(db *sql.DB) error {
 	return nil
 }
 
-// initDB opens the database file and creates the application tables if they don't exist.
 func initDB(filepath string) (*sql.DB, error) {
 	var err error
 	db, err = sql.Open("sqlite3", filepath)
@@ -59,7 +55,6 @@ func initDB(filepath string) (*sql.DB, error) {
 		return nil, err
 	}
 
-	// SQL statement to create the 'items' table for market listings.
 	createItemsTableSQL := `
 	CREATE TABLE IF NOT EXISTS items (
 		"id" INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
@@ -78,7 +73,6 @@ func initDB(filepath string) (*sql.DB, error) {
 		return nil, fmt.Errorf("could not create items table: %w", err)
 	}
 
-	// SQL statement to create the 'market_events' table for logging changes.
 	createEventsTableSQL := `
 	CREATE TABLE IF NOT EXISTS market_events (
 		"id" INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
@@ -92,7 +86,6 @@ func initDB(filepath string) (*sql.DB, error) {
 		return nil, fmt.Errorf("could not create market_events table: %w", err)
 	}
 
-	// SQL statement to create the 'scrape_history' table to track scrape times.
 	createHistoryTableSQL := `
 	CREATE TABLE IF NOT EXISTS scrape_history (
 		"timestamp" TEXT NOT NULL PRIMARY KEY
@@ -101,7 +94,6 @@ func initDB(filepath string) (*sql.DB, error) {
 		return nil, fmt.Errorf("could not create scrape_history table: %w", err)
 	}
 
-	// SQL statement to create the 'rms_item_cache' table for RateMyServer data.
 	createRMSCacheTableSQL := `
 	CREATE TABLE IF NOT EXISTS rms_item_cache (
 		"item_id" INTEGER NOT NULL PRIMARY KEY,
@@ -124,7 +116,6 @@ func initDB(filepath string) (*sql.DB, error) {
 		return nil, fmt.Errorf("could not create rms_item_cache table: %w", err)
 	}
 
-	// SQL to create the FTS5 virtual table for searching items
 	createRMSFTSSTableSQL := `
 	CREATE VIRTUAL TABLE IF NOT EXISTS rms_item_cache_fts USING fts5(
 		name, 
@@ -136,9 +127,6 @@ func initDB(filepath string) (*sql.DB, error) {
 		return nil, fmt.Errorf("could not create rms_item_cache_fts table: %w", err)
 	}
 
-	// SQL for Triggers to keep FTS table in sync with rms_item_cache
-	// These triggers automatically update the FTS table when you INSERT,
-	// UPDATE, or DELETE from rms_item_cache.
 	createTriggersSQL := `
 	CREATE TRIGGER IF NOT EXISTS rms_item_cache_ai AFTER INSERT ON rms_item_cache BEGIN
 		INSERT INTO rms_item_cache_fts(rowid, name, name_pt) 
@@ -159,7 +147,6 @@ func initDB(filepath string) (*sql.DB, error) {
 		return nil, fmt.Errorf("could not create FTS triggers: %w", err)
 	}
 
-	// SQL statement to create the 'player_history' table.
 	createPlayerHistoryTableSQL := `
 	CREATE TABLE IF NOT EXISTS player_history (
 		"timestamp" TEXT NOT NULL PRIMARY KEY,
@@ -170,7 +157,6 @@ func initDB(filepath string) (*sql.DB, error) {
 		return nil, fmt.Errorf("could not create player_history table: %w", err)
 	}
 
-	// SQL statement to create the 'guilds' table.
 	createGuildsTableSQL := `
 	CREATE TABLE IF NOT EXISTS guilds (
 		"rank" INTEGER NOT NULL,
@@ -185,7 +171,6 @@ func initDB(filepath string) (*sql.DB, error) {
 		return nil, fmt.Errorf("could not create guilds table: %w", err)
 	}
 
-	// SQL statement to create the 'characters' table, now with guild info.
 	createCharactersTableSQL := `
 	CREATE TABLE IF NOT EXISTS characters (
 		"rank" INTEGER NOT NULL,
@@ -203,7 +188,6 @@ func initDB(filepath string) (*sql.DB, error) {
 		return nil, fmt.Errorf("could not create characters table: %w", err)
 	}
 
-	// SQL statement to create the 'character_mvp_kills' table.
 	mvpMobIDsDb := []string{
 		"1038", "1039", "1046", "1059", "1086", "1087", "1112", "1115", "1147",
 		"1150", "1157", "1159", "1190", "1251", "1252", "1272", "1312", "1373",
@@ -225,7 +209,6 @@ func initDB(filepath string) (*sql.DB, error) {
 		return nil, fmt.Errorf("could not create character_mvp_kills table: %w", err)
 	}
 
-	// SQL statement to create the 'character_changelog' table.
 	createChangelogTableSQL := `CREATE TABLE IF NOT EXISTS character_changelog (
 		"id" INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
 		"character_name" TEXT NOT NULL,
@@ -237,7 +220,6 @@ func initDB(filepath string) (*sql.DB, error) {
 		return nil, fmt.Errorf("could not create character_changelog table: %w", err)
 	}
 
-	// SQL statement to create the 'v_character_changelog' view.
 	createChangelogViewSQL := `CREATE VIEW IF NOT EXISTS v_character_changelog AS
 		SELECT
 			id,
@@ -252,7 +234,6 @@ func initDB(filepath string) (*sql.DB, error) {
 		return nil, fmt.Errorf("could not create v_character_changelog view: %w", err)
 	}
 
-	// SQL statement for the 'visitors' table.
 	createVisitorsTableSQL := `
 	CREATE TABLE IF NOT EXISTS visitors (
 		"visitor_hash" TEXT NOT NULL PRIMARY KEY,
@@ -279,7 +260,6 @@ func initDB(filepath string) (*sql.DB, error) {
 		return nil, fmt.Errorf("could not create index on page_views: %w", err)
 	}
 
-	// This table holds info about the post itself, not the items.
 	createTradingPostsTableSQL := `
 CREATE TABLE IF NOT EXISTS trading_posts (
     "id" INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
@@ -295,7 +275,6 @@ CREATE TABLE IF NOT EXISTS trading_posts (
 		return nil, fmt.Errorf("could not create trading_posts table: %w", err)
 	}
 
-	// This table holds the individual items, linked to a post.
 	createTradingPostItemsTableSQL := `
 CREATE TABLE IF NOT EXISTS trading_post_items (
     "id" INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
@@ -317,7 +296,7 @@ CREATE TABLE IF NOT EXISTS trading_post_items (
 	if _, err = db.Exec(createTradingPostItemsTableSQL); err != nil {
 		return nil, fmt.Errorf("could not create trading_post_items table: %w", err)
 	}
-	// After all tables are ensured to exist, apply any pending migrations.
+
 	if err := applyMigrations(db); err != nil {
 		return nil, err
 	}
