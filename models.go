@@ -400,6 +400,12 @@ type GeminiTradeResult struct {
 	Items []GeminiTradeItem `json:"items"`
 }
 
+type RMSCacheSearchResult struct {
+	ItemID int
+	Name   string
+	NamePT sql.NullString
+}
+
 type AdminDashboardData struct {
 	Message               string
 	AllGuilds             []GuildInfo
@@ -442,6 +448,10 @@ type AdminDashboardData struct {
 	TradeParseResult     *GeminiTradeResult
 	OriginalTradeMessage string
 	TradeParseError      string
+
+	// Added fields for RMS cache search
+	RMSCacheSearchQuery   string
+	RMSCacheSearchResults []RMSCacheSearchResult
 }
 
 type AdminEditPostPageData struct {

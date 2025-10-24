@@ -201,12 +201,77 @@ func getAdminDashboardData(r *http.Request) (AdminDashboardData, error) {
 		stats.RecentTradingPosts = posts
 	}
 
+	// Handle RMS Cache Search
+	rmsQuery := r.URL.Query().Get("rms_query")
+	stats.RMSCacheSearchQuery = rmsQuery
+	if rmsQuery != "" {
+		// Use FTS table for searching
+		ftsQuery := rmsQuery + "*" // Append wildcard for prefix matching
+		searchRows, err := db.Query(`
+			SELECT rowid, name, name_pt 
+			FROM rms_item_cache_fts 
+			WHERE rms_item_cache_fts MATCH ? 
+			ORDER BY rank 
+			LIMIT 50`, ftsQuery)
+		if err != nil {
+			log.Printf("⚠️ Admin RMS Cache FTS query error: %v", err)
+		} else {
+			defer searchRows.Close()
+			for searchRows.Next() {
+				var result RMSCacheSearchResult
+				if err := searchRows.Scan(&result.ItemID, &result.Name, &result.NamePT); err == nil {
+					stats.RMSCacheSearchResults = append(stats.RMSCacheSearchResults, result)
+				}
+			}
+		}
+	}
+
 	stats.LastMarketScrape = GetLastScrapeTime()
 	stats.LastPlayerCountScrape = GetLastPlayerCountTime()
 	stats.LastCharacterScrape = GetLastCharacterScrapeTime()
 	stats.LastGuildScrape = GetLastGuildScrapeTime()
 
 	return stats, nil
+}
+
+func adminDeleteCacheEntryHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Redirect(w, r, "/admin", http.StatusSeeOther)
+		return
+	}
+
+	if err := r.ParseForm(); err != nil {
+		http.Redirect(w, r, "/admin?msg=Error+parsing+form.", http.StatusSeeOther)
+		return
+	}
+
+	itemIDs := r.Form["item_id[]"]
+	if len(itemIDs) == 0 {
+		http.Redirect(w, r, "/admin?msg=Error:+No+items+selected+for+deletion.", http.StatusSeeOther)
+		return
+	}
+
+	// Build query with variable placeholders
+	query := "DELETE FROM rms_item_cache WHERE item_id IN (?" + strings.Repeat(",?", len(itemIDs)-1) + ")"
+
+	// Convert string slice to interface slice for Exec
+	args := make([]interface{}, len(itemIDs))
+	for i, idStr := range itemIDs {
+		args[i] = idStr
+	}
+
+	result, err := db.Exec(query, args...)
+	if err != nil {
+		log.Printf("❌ Failed to delete RMS cache entries: %v", err)
+		http.Redirect(w, r, "/admin?msg=Database+error+while+deleting+entries.", http.StatusSeeOther)
+		return
+	}
+
+	rowsAffected, _ := result.RowsAffected()
+	msg := fmt.Sprintf("Successfully+deleted+%d+cache+entries.", rowsAffected)
+	log.Printf("👤 Admin deleted %d RMS cache entries: %v", rowsAffected, itemIDs)
+
+	http.Redirect(w, r, "/admin?msg="+msg, http.StatusSeeOther)
 }
 
 func adminHandler(w http.ResponseWriter, r *http.Request) {

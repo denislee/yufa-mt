@@ -242,6 +242,8 @@ func main() {
 	http.HandleFunc("/admin/parse-trade", basicAuth(adminParseTradeHandler))
 	http.HandleFunc("/admin/views/delete-visitor", basicAuth(adminDeleteVisitorViewsHandler))
 	http.HandleFunc("/admin/cache", basicAuth(adminCacheActionHandler))
+	http.HandleFunc("/admin/cache/delete-entry", basicAuth(adminDeleteCacheEntryHandler))
+
 	http.HandleFunc("/admin/guild/update-emblem", basicAuth(adminUpdateGuildEmblemHandler))
 	http.HandleFunc("/admin/character/clear-last-active", basicAuth(adminClearLastActiveHandler))
 	http.HandleFunc("/admin/character/clear-mvp-kills", basicAuth(adminClearMvpKillsHandler))
