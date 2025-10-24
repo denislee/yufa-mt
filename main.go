@@ -179,7 +179,7 @@ func main() {
 	}
 	defer db.Close()
 
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx := context.Background()
 
 	var wg sync.WaitGroup
 
@@ -187,10 +187,16 @@ func main() {
 	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
 
 	go func() {
-		<-sigChan
-		log.Println("🚨 Shutdown signal received, initiating graceful shutdown...")
-		cancel()
+		sig := <-sigChan
 		close(sigChan)
+		switch sig {
+		case syscall.SIGINT:
+			log.Println("🚨 CTRL+C (SIGINT) received. Forcing immediate shutdown...")
+			os.Exit(0)
+		case syscall.SIGTERM:
+			log.Println("🚨 SIGTERM received. Forcing immediate shutdown...")
+			os.Exit(0)
+		}
 	}()
 
 	adminPass = generateRandomPassword(16)
