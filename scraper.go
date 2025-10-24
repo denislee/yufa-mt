@@ -1625,6 +1625,61 @@ func scrapeMvpKills() {
 	characterMutex.Lock()
 	defer characterMutex.Unlock()
 
+	// --- OPTIMIZATION START ---
+	// 1. Fetch all existing character names into a map for fast lookup.
+	allCharacterNames := make(map[string]bool)
+	charRows, err := db.Query("SELECT name FROM characters")
+	if err != nil {
+		log.Printf("❌ [MVP][DB] Failed to pre-fetch character names: %v. Aborting update.", err)
+		return
+	}
+	for charRows.Next() {
+		var name string
+		if err := charRows.Scan(&name); err == nil {
+			allCharacterNames[name] = true
+		}
+	}
+	charRows.Close()
+
+	// 2. Fetch all existing MVP kills into a nested map for fast lookup.
+	allExistingKills := make(map[string]map[string]int)
+
+	// Build the SELECT query for all MVP columns
+	selectCols := make([]string, 0, len(mvpMobIDsScrape)+1)
+	selectCols = append(selectCols, "character_name")
+	scanDest := make([]interface{}, len(mvpMobIDsScrape)+1)
+	scanDest[0] = new(string)
+	columnValues := make([]sql.NullInt64, len(mvpMobIDsScrape))
+
+	for i, mobID := range mvpMobIDsScrape {
+		selectCols = append(selectCols, fmt.Sprintf("mvp_%s", mobID))
+		scanDest[i+1] = &columnValues[i] // +1 to offset character_name
+	}
+
+	mvpQuery := fmt.Sprintf("SELECT %s FROM character_mvp_kills", strings.Join(selectCols, ", "))
+	mvpRows, err := db.Query(mvpQuery)
+	if err != nil {
+		log.Printf("❌ [MVP][DB] Failed to pre-fetch MVP kills: %v. Aborting update.", err)
+		return
+	}
+
+	for mvpRows.Next() {
+		if err := mvpRows.Scan(scanDest...); err != nil {
+			log.Printf("    -> [MVP][DB] WARN: Failed to scan existing MVP row: %v", err)
+			continue
+		}
+		charName := *(scanDest[0].(*string))
+		playerKills := make(map[string]int)
+		for i, mobID := range mvpMobIDsScrape {
+			if columnValues[i].Valid {
+				playerKills[mobID] = int(columnValues[i].Int64)
+			}
+		}
+		allExistingKills[charName] = playerKills
+	}
+	mvpRows.Close()
+	// --- OPTIMIZATION END ---
+
 	tx, err := db.Begin()
 	if err != nil {
 		log.Printf("❌ [MVP][DB] Failed to begin transaction: %v", err)
@@ -1657,38 +1712,21 @@ func scrapeMvpKills() {
 	defer stmt.Close()
 
 	for charName, kills := range allMvpKills {
-		var exists int
-		err := tx.QueryRow("SELECT COUNT(*) FROM characters WHERE name = ?", charName).Scan(&exists)
-		if err != nil {
-			log.Printf("    -> [MVP][DB] WARN: Could not check for existence of character '%s': %v. Skipping.", charName, err)
-			continue
-		}
-		if exists == 0 {
+		// --- OPTIMIZATION: Replaced DB query with map lookup ---
+		if !allCharacterNames[charName] {
 			if enableMvpScraperDebugLogs {
 				log.Printf("    -> [MVP][DB] Character '%s' not found in main table. Skipping MVP data insert.", charName)
 			}
 			continue
 		}
+		// ---
 
-		existingKills := make(map[string]int)
-		columnPointers := make([]interface{}, len(mvpMobIDsScrape))
-		columnValues := make([]sql.NullInt64, len(mvpMobIDsScrape))
-		for i := range mvpMobIDsScrape {
-			columnPointers[i] = &columnValues[i]
+		// --- OPTIMIZATION: Replaced DB query with map lookup ---
+		existingKills := allExistingKills[charName]
+		if existingKills == nil {
+			existingKills = make(map[string]int)
 		}
-		selectCols := make([]string, len(mvpMobIDsScrape))
-		for i, mobID := range mvpMobIDsScrape {
-			selectCols[i] = fmt.Sprintf("mvp_%s", mobID)
-		}
-		query := fmt.Sprintf("SELECT %s FROM character_mvp_kills WHERE character_name = ?", strings.Join(selectCols, ", "))
-		err = tx.QueryRow(query, charName).Scan(columnPointers...)
-		if err == nil {
-			for i, mobID := range mvpMobIDsScrape {
-				if columnValues[i].Valid {
-					existingKills[mobID] = int(columnValues[i].Int64)
-				}
-			}
-		}
+		// ---
 
 		params := []interface{}{charName}
 		for _, mobID := range mvpMobIDsScrape {
