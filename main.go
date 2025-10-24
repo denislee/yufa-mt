@@ -38,37 +38,141 @@ func getVisitorHash(r *http.Request) string {
 	return hex.EncodeToString(hash[:])
 }
 
-// visitorTracker is a middleware to log unique visitors and their page views.
-func visitorTracker(next http.HandlerFunc) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		visitorHash := getVisitorHash(r)
-		now := time.Now().Format(time.RFC3339)
+type pageViewLog struct {
+	VisitorHash string
+	PageURI     string
+	Timestamp   string
+}
 
-		// Use an UPSERT to either insert a new visitor or update the last_visit time.
-		_, err := db.Exec(`
+var pageViewChannel = make(chan pageViewLog, 1000)
+
+// startVisitorLogger is a background worker that batch-processes page views.
+func startVisitorLogger(ctx context.Context, wg *sync.WaitGroup) {
+	defer wg.Done()
+
+	var batch []pageViewLog
+	ticker := time.NewTicker(10 * time.Second) // Flush every 10 seconds
+	defer ticker.Stop()
+
+	const batchSize = 100 // Or flush when batch reaches 100
+
+	flushBatch := func() {
+		if len(batch) == 0 {
+			return
+		}
+
+		// Use a transaction for batch processing
+		tx, err := db.Begin()
+		if err != nil {
+			log.Printf("❌ Visitor Logger: Failed to begin transaction: %v", err)
+			return // Keep items in batch and retry next time
+		}
+
+		visitorStmt, err := tx.Prepare(`
 			INSERT INTO visitors (visitor_hash, first_visit, last_visit)
 			VALUES (?, ?, ?)
 			ON CONFLICT(visitor_hash) DO UPDATE SET
 				last_visit = excluded.last_visit;
-		`, visitorHash, now, now)
-
+		`)
 		if err != nil {
-			// Log the error but don't block the request. Tracking is a best-effort feature.
-			log.Printf("⚠️ Visitor tracking error: %v", err)
+			log.Printf("❌ Visitor Logger: Failed to prepare visitor statement: %v", err)
+			tx.Rollback()
+			return
 		}
+		defer visitorStmt.Close()
 
-		// Log the specific page view, now including query parameters.
-		pageURI := r.URL.RequestURI()
-		_, err = db.Exec(`
+		viewStmt, err := tx.Prepare(`
 			INSERT INTO page_views (visitor_hash, page_path, view_timestamp)
 			VALUES (?, ?, ?);
-		`, visitorHash, pageURI, now)
-
+		`)
 		if err != nil {
-			log.Printf("⚠️ Page view tracking error for path %s: %v", pageURI, err)
+			log.Printf("❌ Visitor Logger: Failed to prepare page_view statement: %v", err)
+			tx.Rollback()
+			return
+		}
+		defer viewStmt.Close()
+
+		// Keep track of processed visitors in this batch to avoid duplicate UPSERTs
+		visitorsProcessed := make(map[string]bool)
+
+		for _, logEntry := range batch {
+			if !visitorsProcessed[logEntry.VisitorHash] {
+				_, err := visitorStmt.Exec(logEntry.VisitorHash, logEntry.Timestamp, logEntry.Timestamp)
+				if err != nil {
+					log.Printf("⚠️ Visitor Logger: Failed to exec visitor upsert: %v", err)
+				}
+				visitorsProcessed[logEntry.VisitorHash] = true
+			}
+
+			_, err := viewStmt.Exec(logEntry.VisitorHash, logEntry.PageURI, logEntry.Timestamp)
+			if err != nil {
+				log.Printf("⚠️ Visitor Logger: Failed to exec page_view insert: %v", err)
+			}
 		}
 
-		// Call the next handler in the chain
+		if err := tx.Commit(); err != nil {
+			log.Printf("❌ Visitor Logger: Failed to commit batch: %v", err)
+			// On commit fail, items remain in batch and will be retried
+		} else {
+			log.Printf("📝 Visitor Logger: Flushed %d page views to database.", len(batch))
+			batch = nil // Clear the batch on success
+		}
+	}
+
+	for {
+		select {
+		case <-ctx.Done():
+			// Shutdown signal received
+			log.Println("🔌 Visitor Logger: Shutdown signal received. Draining channel...")
+			// Drain any remaining items in the channel
+			for logEntry := range pageViewChannel {
+				batch = append(batch, logEntry)
+				if len(batch) >= batchSize {
+					flushBatch()
+				}
+			}
+			log.Println("🔌 Visitor Logger: Flushing final batch...")
+			flushBatch() // Flush anything left
+			log.Println("✅ Visitor Logger: Shut down gracefully.")
+			return
+		case logEntry := <-pageViewChannel:
+			batch = append(batch, logEntry)
+			if len(batch) >= batchSize {
+				flushBatch()
+			}
+		case <-ticker.C:
+			// Time to flush whatever we have
+			flushBatch()
+		}
+	}
+}
+
+// visitorTracker is a middleware to log unique visitors and their page views.
+func visitorTracker(next http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		// This part is fast
+		visitorHash := getVisitorHash(r)
+		now := time.Now().Format(time.RFC3339)
+		pageURI := r.URL.RequestURI()
+
+		// Send to the channel instead of writing to DB
+		logEntry := pageViewLog{
+			VisitorHash: visitorHash,
+			PageURI:     pageURI,
+			Timestamp:   now,
+		}
+
+		// Use a non-blocking send.
+		// If the channel is full, we drop the log to prevent blocking the user's request.
+		select {
+		case pageViewChannel <- logEntry:
+			// Sent successfully
+		default:
+			// Channel is full, drop the log.
+			log.Println("⚠️ Page view log channel is full. Dropping a page view.")
+		}
+
+		// Call the next handler immediately
 		next.ServeHTTP(w, r)
 	}
 }
@@ -100,7 +204,8 @@ func main() {
 	go func() {
 		<-sigChan // Block until a signal is received.
 		log.Println("🚨 Shutdown signal received, initiating graceful shutdown...")
-		cancel() // Cancel the context to signal all dependent goroutines.
+		cancel()       // Cancel the context to signal all dependent goroutines.
+		close(sigChan) // Close the channel to signal shutdown
 	}()
 
 	// --- DYNAMIC PASSWORD GENERATION ---
@@ -127,8 +232,11 @@ func main() {
 	// Start background tasks.
 	go populateMissingCachesOnStartup() // Verifies and populates the item details cache on startup.
 	go startBackgroundJobs()            // Starts all recurring scrapers.
-	wg.Add(1)
-	go startDiscordBot(ctx, &wg) // Starts the Discord bot listener.
+
+	// Increment WaitGroup for background workers that respect context.
+	wg.Add(2)                       // One for DiscordBot, one for VisitorLogger
+	go startDiscordBot(ctx, &wg)    // Starts the Discord bot listener.
+	go startVisitorLogger(ctx, &wg) // Starts the async visitor logger.
 
 	// Register all HTTP routes to their handler functions.
 	// Public routes are wrapped with the visitorTracker middleware.
