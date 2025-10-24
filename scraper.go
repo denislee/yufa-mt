@@ -1230,42 +1230,38 @@ func scrapeData() {
 		}
 	}
 
-	rows, err = tx.Query("SELECT DISTINCT name_of_the_item FROM items WHERE is_available = 1")
+	// --- OPTIMIZATION START: Pre-fetch all available items ---
+	// Instead of querying one-by-one in the loop, fetch all available items
+	// and group them into a map for fast lookup.
+	dbAvailableItemsMap := make(map[string][]Item)
+	dbAvailableNames := make(map[string]bool) // Still need this for the final "removed" check
+
+	rows, err = tx.Query("SELECT name_of_the_item, item_id, quantity, price, store_name, seller_name, map_name, map_coordinates FROM items WHERE is_available = 1")
 	if err != nil {
-		log.Printf("❌ [Market] Could not get list of available items: %v", err)
+		log.Printf("❌ [Market] Could not get list of all available items: %v", err)
 		return
 	}
-	dbAvailableNames := make(map[string]bool)
 	for rows.Next() {
-		var name string
-		if err := rows.Scan(&name); err != nil {
+		var item Item
+		err := rows.Scan(&item.Name, &item.ItemID, &item.Quantity, &item.Price, &item.StoreName, &item.SellerName, &item.MapName, &item.MapCoordinates)
+		if err != nil {
+			log.Printf("⚠️ [Market] Failed to scan existing item: %v", err)
 			continue
 		}
-		dbAvailableNames[name] = true
+		dbAvailableItemsMap[item.Name] = append(dbAvailableItemsMap[item.Name], item)
+		dbAvailableNames[item.Name] = true
 	}
 	rows.Close()
+	// --- OPTIMIZATION END ---
 
 	itemsUpdated := 0
 	itemsUnchanged := 0
 	itemsAdded := 0
 
 	for itemName, currentScrapedItems := range scrapedItemsByName {
-		var lastAvailableItems []Item
-		rows, err := tx.Query("SELECT name_of_the_item, item_id, quantity, price, store_name, seller_name, map_name, map_coordinates FROM items WHERE name_of_the_item = ? AND is_available = 1", itemName)
-		if err != nil {
-			log.Printf("⚠️ [Market] Failed to query for existing item %s: %v", itemName, err)
-			continue
-		}
-		for rows.Next() {
-			var item Item
-			err := rows.Scan(&item.Name, &item.ItemID, &item.Quantity, &item.Price, &item.StoreName, &item.SellerName, &item.MapName, &item.MapCoordinates)
-			if err != nil {
-				log.Printf("⚠️ [Market] Failed to scan existing item: %v", err)
-				continue
-			}
-			lastAvailableItems = append(lastAvailableItems, item)
-		}
-		rows.Close()
+		// --- OPTIMIZATION: Use the map instead of querying the DB ---
+		lastAvailableItems := dbAvailableItemsMap[itemName]
+		// ---
 
 		if !areItemSetsIdentical(currentScrapedItems, lastAvailableItems) {
 			currentSet := make(map[comparableItem]bool)
@@ -1380,21 +1376,9 @@ func scrapeData() {
 	for name := range dbAvailableNames {
 		if _, foundInScrape := scrapedItemsByName[name]; !foundInScrape {
 			// This item name has completely disappeared from the market.
-			var removedListings []Item
-			rows, err := tx.Query("SELECT name_of_the_item, item_id, seller_name, price, quantity, store_name FROM items WHERE name_of_the_item = ? AND is_available = 1", name)
-			if err != nil {
-				log.Printf("⚠️ [Market] Could not query details for removed item '%s': %v", name, err)
-				continue
-			}
-
-			for rows.Next() {
-				var listing Item
-				if err := rows.Scan(&listing.Name, &listing.ItemID, &listing.SellerName, &listing.Price, &listing.Quantity, &listing.StoreName); err != nil {
-					continue
-				}
-				removedListings = append(removedListings, listing)
-			}
-			rows.Close()
+			// --- OPTIMIZATION: We already have the listings from the map ---
+			removedListings := dbAvailableItemsMap[name]
+			// ---
 
 			for _, listing := range removedListings {
 				// The logic is the same: check if the seller is still active with other items.
