@@ -643,28 +643,32 @@ func runFullRMSCacheJob() {
 	// =========================================================================
 	log.Println("    -> [RMS Refresh] Part 2: Discovering new items by iterating IDs...")
 
-	// 1. Start discovery from our defined constant (e.g., 501).
-	//    We no longer query for MAX(item_id) here, as we want to fill gaps from the beginning.
-	log.Printf("    -> [RMS Refresh] Part 2: Starting discovery from ID %d.", startDiscoveryID)
+	// --- OPTIMIZATION START: Pre-fetch all cached IDs into a map ---
+	log.Println("    -> [RMS Refresh] Part 2: Fetching all existing cached item IDs...")
+	cachedIDs := make(map[int]bool)
+	// Use the cacheMap we already fetched in Part 1 if it's comprehensive,
+	// but querying again is safer if Part 1 was skipped or logic changes.
+	// Let's re-use cacheMap's keys for efficiency.
+	for id := range cacheMap {
+		cachedIDs[id] = true
+	}
+	// If Part 1 didn't run or cacheMap is empty, we should pre-fetch.
+	// For simplicity and robustness, we'll just use the cacheMap from Part 1.
+	log.Printf("    -> [RMS Refresh] Part 2: Found %d existing IDs from Part 1's map. Starting discovery from ID %d.", len(cachedIDs), startDiscoveryID)
+	// --- OPTIMIZATION END ---
+
 	consecutiveFailures := 0
 
 	for currentItemID := startDiscoveryID; currentItemID <= maxPreRenewalItemID; currentItemID++ {
-		// 2. Check if we *already* have this item in the cache.
-		var exists int
-		err := db.QueryRow("SELECT 1 FROM rms_item_cache WHERE item_id = ?", currentItemID).Scan(&exists)
-		if err == nil {
+		// --- OPTIMIZATION: Check against the map, not the database ---
+		if cachedIDs[currentItemID] {
 			// Item is already cached. Skip it.
 			consecutiveFailures = 0 // Reset failure count
 			continue
 		}
+		// ---
 
-		// If the error was *not* "no rows", it was a real DB error. Log and skip.
-		if err != sql.ErrNoRows {
-			log.Printf("    -> ⚠️ [RMS Refresh] Part 2: DB error checking for item %d: %v. Skipping.", currentItemID, err)
-			continue
-		}
-
-		// 3. This is a new ID (err was sql.ErrNoRows). Scrape it.
+		// 3. This is a new ID. Scrape it.
 		log.Printf("    -> [RMS Refresh] Discovering ID %d...", currentItemID)
 		scrapedItem, scrapeErr := scrapeRMSItemDetails(currentItemID)
 
@@ -677,6 +681,9 @@ func runFullRMSCacheJob() {
 				log.Printf("    -> ⚠️ [RMS Refresh] FAILED to save (Part 2) for item ID %d (%s): %v", currentItemID, scrapedItem.Name, saveErr)
 			} else {
 				log.Printf("    -> ✅ [RMS Refresh] Part 2: Successfully discovered and cached ID %d (%s)", currentItemID, scrapedItem.Name)
+				// --- OPTIMIZATION: Add new ID to our map so we don't re-scrape if job restarts ---
+				cachedIDs[currentItemID] = true
+				// ---
 			}
 			consecutiveFailures = 0 // Reset failure count on success
 		}
