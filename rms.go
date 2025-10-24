@@ -237,51 +237,44 @@ func scrapeAndCacheItemIfNotExists(itemID int, itemName string) {
 func populateMissingCachesOnStartup() {
 	log.Println("🛠️ Starting background task: Verifying RMS item cache...")
 
-	// 1. Get all unique item IDs from the main items table.
-	rows, err := db.Query("SELECT DISTINCT item_id, name_of_the_item FROM items WHERE item_id > 0")
-	if err != nil {
-		log.Printf("❌ [Cache Verification] Failed to query for all items: %v", err)
-		return
-	}
-	defer rows.Close()
-
 	type dbItem struct {
 		ID   int
 		Name string
 	}
-	var allDBItems []dbItem
+	var itemsToCache []dbItem
+
+	// 1. Use a single SQL query to find items in 'items' that do NOT exist in 'rms_item_cache'.
+	// We use 'NOT EXISTS' which is generally efficient in SQLite.
+	// We also use 'GROUP BY' on item_id to ensure we only get one entry per item,
+	// selecting the most recent 'name_of_the_item' associated with it.
+	query := `
+		SELECT
+			i.item_id,
+			SUBSTR(MAX(i.date_and_time_retrieved || i.name_of_the_item), 20) as name
+		FROM items i
+		WHERE i.item_id > 0
+		AND NOT EXISTS (
+			SELECT 1
+			FROM rms_item_cache r
+			WHERE r.item_id = i.item_id
+		)
+		GROUP BY i.item_id;
+	`
+	rows, err := db.Query(query)
+	if err != nil {
+		log.Printf("❌ [Cache Verification] Failed to query for missing items: %v", err)
+		return
+	}
+	defer rows.Close()
+
+	// 2. Scan the results directly into the list of items to cache.
 	for rows.Next() {
 		var item dbItem
 		if err := rows.Scan(&item.ID, &item.Name); err != nil {
 			log.Printf("⚠️ [Cache Verification] Failed to scan item: %v", err)
 			continue
 		}
-		allDBItems = append(allDBItems, item)
-	}
-
-	// 2. Get all item IDs that are already in the cache.
-	cacheRows, err := db.Query("SELECT item_id FROM rms_item_cache")
-	if err != nil {
-		log.Printf("❌ [Cache Verification] Failed to query for cached items: %v", err)
-		return
-	}
-	defer cacheRows.Close()
-
-	cachedIDs := make(map[int]bool)
-	for cacheRows.Next() {
-		var id int
-		if err := cacheRows.Scan(&id); err != nil {
-			continue
-		}
-		cachedIDs[id] = true
-	}
-
-	// 3. Determine which items are missing from the cache.
-	var itemsToCache []dbItem
-	for _, item := range allDBItems {
-		if !cachedIDs[item.ID] {
-			itemsToCache = append(itemsToCache, item)
-		}
+		itemsToCache = append(itemsToCache, item)
 	}
 
 	if len(itemsToCache) == 0 {
@@ -291,7 +284,7 @@ func populateMissingCachesOnStartup() {
 
 	log.Printf("ℹ️ [Cache Verification] Found %d item(s) missing from the RMS cache. Populating now...", len(itemsToCache))
 
-	// 4. Scrape and cache the missing items, with a delay to be polite.
+	// 3. Scrape and cache the missing items, with a delay to be polite.
 	for i, item := range itemsToCache {
 		log.Printf("    -> Caching %d/%d: %s (ID: %d)", i+1, len(itemsToCache), item.Name, item.ID)
 		scrapeAndCacheItemIfNotExists(item.ID, item.Name)
