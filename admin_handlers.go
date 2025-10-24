@@ -58,20 +58,52 @@ func getAdminDashboardData(r *http.Request) (AdminDashboardData, error) {
 		stats.AllGuilds = append(stats.AllGuilds, info)
 	}
 
-	// Gather statistics from the database
-	_ = db.QueryRow("SELECT COUNT(*) FROM items").Scan(&stats.TotalItems)
-	_ = db.QueryRow("SELECT COUNT(*) FROM items WHERE is_available = 1").Scan(&stats.AvailableItems)
-	_ = db.QueryRow("SELECT COUNT(DISTINCT name_of_the_item) FROM items").Scan(&stats.UniqueItems)
-	_ = db.QueryRow("SELECT COUNT(*) FROM rms_item_cache").Scan(&stats.CachedItems)
-	_ = db.QueryRow("SELECT COUNT(*) FROM characters").Scan(&stats.TotalCharacters)
-	_ = db.QueryRow("SELECT COUNT(*) FROM guilds").Scan(&stats.TotalGuilds)
-	_ = db.QueryRow("SELECT COUNT(*) FROM player_history").Scan(&stats.PlayerHistoryEntries)
-	_ = db.QueryRow("SELECT COUNT(*) FROM market_events").Scan(&stats.MarketEvents)
-	_ = db.QueryRow("SELECT COUNT(*) FROM character_changelog").Scan(&stats.ChangelogEntries)
-	_ = db.QueryRow("SELECT COUNT(*) FROM visitors").Scan(&stats.TotalVisitors)
-	_ = db.QueryRow("SELECT COUNT(*) FROM visitors WHERE date(last_visit) = date('now', 'localtime')").Scan(&stats.VisitorsToday)
+	// --- OPTIMIZATION: Combine all simple counts into a single query ---
+	statsQuery := `
+		SELECT
+			(SELECT COUNT(*) FROM items),
+			(SELECT COUNT(*) FROM items WHERE is_available = 1),
+			(SELECT COUNT(DISTINCT name_of_the_item) FROM items),
+			(SELECT COUNT(*) FROM rms_item_cache),
+			(SELECT COUNT(*) FROM characters),
+			(SELECT COUNT(*) FROM guilds),
+			(SELECT COUNT(*) FROM player_history),
+			(SELECT COUNT(*) FROM market_events),
+			(SELECT COUNT(*) FROM character_changelog),
+			(SELECT COUNT(*) FROM visitors),
+			(SELECT COUNT(*) FROM visitors WHERE date(last_visit) = date('now', 'localtime'))
+	`
+	// Use sql.NullInt64 for scanning to gracefully handle potential NULLs, though COUNT(*) shouldn't return NULL.
+	var (
+		totalItems, availableItems, uniqueItems, cachedItems,
+		totalCharacters, totalGuilds, playerHistoryEntries,
+		marketEvents, changelogEntries, totalVisitors, visitorsToday sql.NullInt64
+	)
 
-	// Get most visited page
+	err = db.QueryRow(statsQuery).Scan(
+		&totalItems, &availableItems, &uniqueItems, &cachedItems,
+		&totalCharacters, &totalGuilds, &playerHistoryEntries,
+		&marketEvents, &changelogEntries, &totalVisitors, &visitorsToday,
+	)
+	if err != nil {
+		return stats, fmt.Errorf("could not query for dashboard stats: %w", err)
+	}
+
+	// Assign scanned values to the struct
+	stats.TotalItems = int(totalItems.Int64)
+	stats.AvailableItems = int(availableItems.Int64)
+	stats.UniqueItems = int(uniqueItems.Int64)
+	stats.CachedItems = int(cachedItems.Int64)
+	stats.TotalCharacters = int(totalCharacters.Int64)
+	stats.TotalGuilds = int(totalGuilds.Int64)
+	stats.PlayerHistoryEntries = int(playerHistoryEntries.Int64)
+	stats.MarketEvents = int(marketEvents.Int64)
+	stats.ChangelogEntries = int(changelogEntries.Int64)
+	stats.TotalVisitors = int(totalVisitors.Int64)
+	stats.VisitorsToday = int(visitorsToday.Int64)
+	// --- END OPTIMIZATION ---
+
+	// Get most visited page (This is a complex query, so it remains separate)
 	err = db.QueryRow(`
 		SELECT page_path, COUNT(page_path) as Cnt
 		FROM page_views

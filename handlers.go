@@ -897,6 +897,7 @@ func itemHistoryHandler(w http.ResponseWriter, r *http.Request) {
         FROM items WHERE name_of_the_item = ?;
     `, itemName).Scan(&overallLowest, &overallHighest)
 
+	// --- OPTIMIZATION: Query only for the item's price points and process in one pass ---
 	priceChangeQuery := `
 		WITH RankedItems AS (
 			SELECT quantity, CAST(REPLACE(price, ',', '') AS INTEGER) as price_int, store_name, seller_name, date_and_time_retrieved, map_name, map_coordinates,
@@ -918,7 +919,7 @@ func itemHistoryHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	defer rows.Close()
 
-	priceEvents := make(map[string]PricePointDetails)
+	var finalPriceHistory []PricePointDetails
 	for rows.Next() {
 		var p PricePointDetails
 		var timestampStr string
@@ -928,52 +929,22 @@ func itemHistoryHandler(w http.ResponseWriter, r *http.Request) {
 			log.Printf("⚠️ Failed to scan history row: %v", err)
 			continue
 		}
-		priceEvents[timestampStr] = p
-	}
 
-	scrapeHistoryRows, err := db.Query("SELECT timestamp FROM scrape_history ORDER BY timestamp ASC;")
-	if err != nil {
-		http.Error(w, "Database query for scrape history failed", http.StatusInternalServerError)
-		return
-	}
-	defer scrapeHistoryRows.Close()
+		// Format the timestamp for display
+		t, _ := time.Parse(time.RFC3339, timestampStr)
+		p.Timestamp = t.Format("2006-01-02 15:04")
 
-	var allScrapeTimes []string
-	for scrapeHistoryRows.Next() {
-		var ts string
-		if err := scrapeHistoryRows.Scan(&ts); err == nil {
-			allScrapeTimes = append(allScrapeTimes, ts)
+		// De-duplicate in the same loop
+		// Only add this point if it's the first one OR if prices have changed
+		if len(finalPriceHistory) == 0 ||
+			finalPriceHistory[len(finalPriceHistory)-1].LowestPrice != p.LowestPrice ||
+			finalPriceHistory[len(finalPriceHistory)-1].HighestPrice != p.HighestPrice {
+			finalPriceHistory = append(finalPriceHistory, p)
 		}
 	}
 
-	var fullPriceHistory []PricePointDetails
-	var lastKnownDetails PricePointDetails
-	var detailsInitialized bool
-
-	for _, scrapeTimeStr := range allScrapeTimes {
-		if event, ok := priceEvents[scrapeTimeStr]; ok {
-			lastKnownDetails = event
-			detailsInitialized = true
-		}
-		if detailsInitialized {
-			t, _ := time.Parse(time.RFC3339, scrapeTimeStr)
-			currentPoint := lastKnownDetails
-			currentPoint.Timestamp = t.Format("2006-01-02 15:04")
-			fullPriceHistory = append(fullPriceHistory, currentPoint)
-		}
-	}
-
-	var finalPriceHistory []PricePointDetails
-	if len(fullPriceHistory) > 0 {
-		finalPriceHistory = append(finalPriceHistory, fullPriceHistory[0])
-		for i := 1; i < len(fullPriceHistory); i++ {
-			if finalPriceHistory[len(finalPriceHistory)-1].LowestPrice != fullPriceHistory[i].LowestPrice ||
-				finalPriceHistory[len(finalPriceHistory)-1].HighestPrice != fullPriceHistory[i].HighestPrice {
-				finalPriceHistory = append(finalPriceHistory, fullPriceHistory[i])
-			}
-		}
-	}
 	priceHistoryJSON, _ := json.Marshal(finalPriceHistory)
+	// --- END OPTIMIZATION ---
 
 	const listingsPerPage = 50
 	var totalListings int
