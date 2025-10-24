@@ -226,12 +226,59 @@ func getAdminDashboardData(r *http.Request) (AdminDashboardData, error) {
 		}
 	}
 
+	// Handle RMS Cache Live Search
+	rmsLiveSearchQuery := r.URL.Query().Get("rms_live_search")
+	stats.RMSLiveSearchQuery = rmsLiveSearchQuery
+	if rmsLiveSearchQuery != "" {
+		liveResults, err := scrapeRMSItemSearch(rmsLiveSearchQuery)
+		if err != nil {
+			log.Printf("⚠️ Admin RMS Live Search query error: %v", err)
+			// Optionally set an error message in stats
+		} else {
+			stats.RMSLiveSearchResults = liveResults
+		}
+	}
+
 	stats.LastMarketScrape = GetLastScrapeTime()
 	stats.LastPlayerCountScrape = GetLastPlayerCountTime()
 	stats.LastCharacterScrape = GetLastCharacterScrapeTime()
 	stats.LastGuildScrape = GetLastGuildScrapeTime()
 
 	return stats, nil
+}
+
+func adminSaveCacheEntryHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Redirect(w, r, "/admin", http.StatusSeeOther)
+		return
+	}
+
+	if err := r.ParseForm(); err != nil {
+		http.Redirect(w, r, "/admin?msg=Error+parsing+form.", http.StatusSeeOther)
+		return
+	}
+
+	itemIDStr := r.FormValue("item_id")
+	itemName := r.FormValue("item_name") // Pass name for logging
+	itemID, err := strconv.Atoi(itemIDStr)
+	if err != nil {
+		http.Redirect(w, r, "/admin?msg=Error:+Invalid+item+ID.", http.StatusSeeOther)
+		return
+	}
+
+	if itemID <= 0 {
+		http.Redirect(w, r, "/admin?msg=Error:+Invalid+item+ID.", http.StatusSeeOther)
+		return
+	}
+
+	// Run in a goroutine so it doesn't block the admin
+	go scrapeAndCacheItemIfNotExists(itemID, itemName)
+
+	msg := fmt.Sprintf("Caching+for+item+%d+(%s)+started+in+background.", itemID, url.QueryEscape(itemName))
+	log.Printf("👤 Admin triggered manual cache for item ID %d (%s).", itemID, itemName)
+
+	// Redirect back to the search results
+	http.Redirect(w, r, "/admin?rms_live_search="+url.QueryEscape(r.FormValue("rms_live_search"))+"&msg="+msg, http.StatusSeeOther)
 }
 
 func adminDeleteCacheEntryHandler(w http.ResponseWriter, r *http.Request) {

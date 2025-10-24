@@ -452,6 +452,10 @@ type AdminDashboardData struct {
 	// Added fields for RMS cache search
 	RMSCacheSearchQuery   string
 	RMSCacheSearchResults []RMSCacheSearchResult
+
+	// Added fields for RMS live search
+	RMSLiveSearchQuery   string
+	RMSLiveSearchResults []ItemSearchResult
 }
 
 type AdminEditPostPageData struct {

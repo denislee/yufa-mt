@@ -243,6 +243,7 @@ func main() {
 	http.HandleFunc("/admin/views/delete-visitor", basicAuth(adminDeleteVisitorViewsHandler))
 	http.HandleFunc("/admin/cache", basicAuth(adminCacheActionHandler))
 	http.HandleFunc("/admin/cache/delete-entry", basicAuth(adminDeleteCacheEntryHandler))
+	http.HandleFunc("/admin/cache/save-entry", basicAuth(adminSaveCacheEntryHandler))
 
 	http.HandleFunc("/admin/guild/update-emblem", basicAuth(adminUpdateGuildEmblemHandler))
 	http.HandleFunc("/admin/character/clear-last-active", basicAuth(adminClearLastActiveHandler))
