@@ -410,7 +410,7 @@ func scrapeRagnarokDatabaseSearch(query string) ([]int, error) {
 	return itemIDs, nil
 }
 
-func scrapeRODatabaseSearch(query string, slots int) ([]int, error) {
+func scrapeRODatabaseSearch(query string, slots int) ([]ItemSearchResult, error) {
 
 	reSlots := regexp.MustCompile(`\s*\[\d+\]\s*`)
 	searchQuery := reSlots.ReplaceAllString(query, " ")
@@ -452,32 +452,37 @@ func scrapeRODatabaseSearch(query string, slots int) ([]int, error) {
 		return nil, fmt.Errorf("failed to read response body: %w", err)
 	}
 
-	idRegex := regexp.MustCompile(`href="[^"]*/pt-BR/item/id/(\d+)"`)
-	matches := idRegex.FindAllStringSubmatch(string(body), -1)
+	idNameRegex := regexp.MustCompile(`href="[^"]*/pt-BR/item/id/(\d+)"[^>]*>\s*([^<]+)\s*</a>`)
+	matches := idNameRegex.FindAllStringSubmatch(string(body), -1)
 
 	if len(matches) == 0 {
 		log.Printf("	[RODatabase Search] No item IDs found on the page for query '%s'.", query)
 		return nil, nil
 	}
 
-	var itemIDs []int
+	var results []ItemSearchResult
 	seenIDs := make(map[int]bool)
 
 	for _, match := range matches {
-		if len(match) > 1 {
+		if len(match) > 2 {
 			id, convErr := strconv.Atoi(match[1])
 			if convErr != nil {
 				continue
 			}
 			if !seenIDs[id] {
-				itemIDs = append(itemIDs, id)
+				name := strings.TrimSpace(match[2])
+				results = append(results, ItemSearchResult{
+					ID:       id,
+					Name:     name,
+					ImageURL: fmt.Sprintf("https://divine-pride.net/img/items/collection/iRO/%d", id),
+				})
 				seenIDs[id] = true
 			}
 		}
 	}
 
-	log.Printf("✅ [RODatabase Search] Found %d unique item(s) for query: '%s'", len(itemIDs), query)
-	return itemIDs, nil
+	log.Printf("✅ [RODatabase Search] Found %d unique item(s) for query: '%s'", len(results), query)
+	return results, nil
 }
 
 func runFullRMSCacheJob() {

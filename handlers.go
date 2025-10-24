@@ -248,11 +248,18 @@ func getCombinedItemIDs(searchQuery string) ([]int, error) {
 	go func() {
 		defer wg.Done()
 
-		ids, err := scrapeRODatabaseSearch(searchQuery, 0)
+		results, err := scrapeRODatabaseSearch(searchQuery, 0)
 		if err != nil {
 			log.Printf("⚠️ Concurrent scrape failed for '%s': %v", searchQuery, err)
 			scrapedIDsChan <- []int{}
 			return
+		}
+
+		var ids []int
+		if results != nil {
+			for _, res := range results {
+				ids = append(ids, res.ID)
+			}
 		}
 		scrapedIDsChan <- ids
 	}()
@@ -1985,7 +1992,7 @@ func findItemIDByName(itemName string, allowRetry bool, slots int) (sql.NullInt6
 
 	var wg sync.WaitGroup
 	rmsChan := make(chan []ItemSearchResult, 1)
-	rdbChan := make(chan []int, 1)
+	rdbChan := make(chan []ItemSearchResult, 1)
 
 	wg.Add(2)
 	go func() {
@@ -2002,13 +2009,13 @@ func findItemIDByName(itemName string, allowRetry bool, slots int) (sql.NullInt6
 	go func() {
 		defer wg.Done()
 
-		ids, err := scrapeRODatabaseSearch(cleanItemName, slots)
+		results, err := scrapeRODatabaseSearch(cleanItemName, slots)
 		if err != nil {
 			log.Printf("   -> [RDB Search] Failed for '%s': %v", cleanItemName, err)
 			rdbChan <- nil
 			return
 		}
-		rdbChan <- ids
+		rdbChan <- results
 	}()
 	wg.Wait()
 
@@ -2022,9 +2029,9 @@ func findItemIDByName(itemName string, allowRetry bool, slots int) (sql.NullInt6
 		}
 	}
 	if rdbResults != nil {
-		for _, id := range rdbResults {
-			if _, ok := combinedIDs[id]; !ok {
-				combinedIDs[id] = ""
+		for _, res := range rdbResults {
+			if _, ok := combinedIDs[res.ID]; !ok {
+				combinedIDs[res.ID] = res.Name
 			}
 		}
 	}

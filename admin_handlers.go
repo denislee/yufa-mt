@@ -10,6 +10,7 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -230,13 +231,60 @@ func getAdminDashboardData(r *http.Request) (AdminDashboardData, error) {
 	rmsLiveSearchQuery := r.URL.Query().Get("rms_live_search")
 	stats.RMSLiveSearchQuery = rmsLiveSearchQuery
 	if rmsLiveSearchQuery != "" {
-		liveResults, err := scrapeRMSItemSearch(rmsLiveSearchQuery)
-		if err != nil {
-			log.Printf("⚠️ Admin RMS Live Search query error: %v", err)
-			// Optionally set an error message in stats
-		} else {
-			stats.RMSLiveSearchResults = liveResults
+		log.Printf("👤 Admin performing live search for: '%s'", rmsLiveSearchQuery)
+		var wg sync.WaitGroup
+		rmsChan := make(chan []ItemSearchResult, 1)
+		rodbChan := make(chan []ItemSearchResult, 1)
+
+		wg.Add(2)
+		go func() {
+			defer wg.Done()
+			results, err := scrapeRMSItemSearch(rmsLiveSearchQuery)
+			if err != nil {
+				log.Printf("⚠️ Admin RMS Live Search (RMS) query error: %v", err)
+				rmsChan <- nil
+				return
+			}
+			rmsChan <- results
+		}()
+		go func() {
+			defer wg.Done()
+			// slots=0 for a general search
+			results, err := scrapeRODatabaseSearch(rmsLiveSearchQuery, 0)
+			if err != nil {
+				log.Printf("⚠️ Admin RMS Live Search (RODB) query error: %v", err)
+				rodbChan <- nil
+				return
+			}
+			rodbChan <- results
+		}()
+		wg.Wait()
+
+		rmsResults := <-rmsChan
+		rodbResults := <-rodbChan
+
+		combinedResults := make([]ItemSearchResult, 0)
+		seenIDs := make(map[int]bool)
+
+		if rmsResults != nil {
+			for _, res := range rmsResults {
+				if !seenIDs[res.ID] {
+					combinedResults = append(combinedResults, res)
+					seenIDs[res.ID] = true
+				}
+			}
 		}
+		if rodbResults != nil {
+			for _, res := range rodbResults {
+				if !seenIDs[res.ID] {
+					combinedResults = append(combinedResults, res)
+					seenIDs[res.ID] = true
+				}
+			}
+		}
+
+		stats.RMSLiveSearchResults = combinedResults
+		log.Printf("👤 Admin live search for '%s' found %d combined results.", rmsLiveSearchQuery, len(combinedResults))
 	}
 
 	stats.LastMarketScrape = GetLastScrapeTime()
