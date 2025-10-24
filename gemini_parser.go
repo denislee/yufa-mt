@@ -60,7 +60,7 @@ For each item, extract its base name, refinement level, number of slots, any att
 - Each item name can be in portuguese or english, and can be mixed in the same message.
 - Try to fix typos, but do consider the context of Ragnarok Online game words.
 - Keep the words "Carta" and "Card", if "Carta" exists, put on the begining of the item name; if "Card" exists, put on the end of the item name.
-- replace the word: "peco peco" to "PecoPeco", "cavalo marinho" to "Cavalo-Marinho", "louva a deus" to "Louva-a-Deus"
+- replace the word: "peco peco" to "PecoPeco", "cavalo marinho" to "Cavalo-Marinho", "louva a deus" to "Louva-a-Deus", "Besouro Ladrão" to "Besouro-Ladrão"
 - "solta ou na presilha", means that is the card and the card in the Clip [1], 2 items.
 - "(0)" means that the item has no slot.
 
