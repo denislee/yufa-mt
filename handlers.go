@@ -242,13 +242,17 @@ func buildItemSearchClause(searchQuery, tableAlias string) (string, []interface{
 
 // renderTemplate is a helper to parse and execute templates, reducing boilerplate.
 func renderTemplate(w http.ResponseWriter, tmplFile string, data interface{}) {
-	tmpl, err := template.New(tmplFile).Funcs(templateFuncs).ParseFiles(tmplFile, "navbar.html")
-	if err != nil {
-		log.Printf("❌ Could not load template '%s' or 'navbar.html': %v", tmplFile, err)
+	// Retrieve the parsed template from the map.
+	tmpl, ok := templateCache[tmplFile]
+	if !ok {
+		// This should not happen if all templates are in the init() list.
+		log.Printf("❌ Could not find template '%s' in cache!", tmplFile)
 		http.Error(w, "Could not load template", http.StatusInternalServerError)
 		return
 	}
-	err = tmpl.Execute(w, data)
+
+	// Execute the template (no parsing needed).
+	err := tmpl.Execute(w, data)
 	if err != nil {
 		log.Printf("❌ Could not execute template '%s': %v", tmplFile, err)
 	}
@@ -466,6 +470,62 @@ func mapItemTypeToTabData(typeName string) ItemTypeTab {
 
 	}
 	return tab
+}
+
+// templateCache holds all parsed templates, keyed by the base filename.
+var templateCache = make(map[string]*template.Template)
+
+// init is a special Go function that runs once when the package is loaded.
+// We use it to parse all our templates into the cache on application start.
+func init() {
+	// Define all template files that need to be parsed.
+	templates := []string{
+		"index.html",
+		"full_list.html",
+		"activity.html",
+		"history.html",
+		"players.html",
+		"characters.html",
+		"guilds.html",
+		"mvp_kills.html",
+		"character_detail.html",
+		"character_changelog.html",
+		"guild_detail.html",
+		"store_detail.html",
+		"trading_post.html",
+	}
+
+	// The 'navbar.html' is a common dependency for many templates.
+	navbarPath := "navbar.html"
+
+	log.Println("Parsing all application templates...")
+	for _, tmplName := range templates {
+		// Create a new template with the shared function map.
+		// We must also explicitly parse 'navbar.html' for every template that needs it.
+		tmpl, err := template.New(tmplName).Funcs(templateFuncs).ParseFiles(tmplName, navbarPath)
+		if err != nil {
+			// This is a fatal error because the app can't run without templates.
+			// Handle cases where navbar might not be needed (e.g., admin_edit_post)
+			if strings.Contains(err.Error(), "no such file or directory") && tmplName == "admin_edit_post.html" {
+				// admin_edit_post.html doesn't use navbar.html, parse it alone.
+				tmpl, err = template.New(tmplName).Funcs(templateFuncs).ParseFiles(tmplName)
+				if err != nil {
+					log.Fatalf("❌ FATAL: Could not parse template '%s' (standalone): %v", tmplName, err)
+				}
+			} else if strings.Contains(err.Error(), "no such file or directory") && tmplName == "admin.html" {
+				// admin.html also doesn't use navbar.html, parse it alone.
+				tmpl, err = template.New(tmplName).Funcs(templateFuncs).ParseFiles(tmplName)
+				if err != nil {
+					log.Fatalf("❌ FATAL: Could not parse template '%s' (standalone): %v", tmplName, err)
+				}
+			} else if err != nil {
+				log.Fatalf("❌ FATAL: Could not parse template '%s': %v", tmplName, err)
+			}
+		}
+		// Store the parsed template in the map.
+		templateCache[tmplName] = tmpl
+	}
+	log.Println("✅ All templates parsed and cached successfully.")
 }
 
 // -------------------------
