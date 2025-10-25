@@ -187,7 +187,7 @@ func visitorTracker(next http.HandlerFunc) http.HandlerFunc {
 	}
 }
 
-// main is rewritten to support graceful shutdown.
+// main is rewritten to support graceful shutdown and cleaner routing.
 func main() {
 	if err := godotenv.Load(); err != nil {
 		log.Println("ℹ️ No .env file found, relying on system environment variables.")
@@ -231,58 +231,69 @@ func main() {
 	}()
 
 	// Start Background Services with the cancellable context
-	go populateMissingCachesOnStartup() // This is short-lived, fine to run without context
+	go populateMissingCachesOnStartup()
 	go startBackgroundJobs(ctx)
 	go startDiscordBot(ctx)
 	go startVisitorLogger(ctx)
 
+	// --- Setup Routers ---
+	mux := http.NewServeMux()
+
 	// --- Public Routes ---
-	http.HandleFunc("/", visitorTracker(summaryHandler))
-	http.HandleFunc("/full-list", visitorTracker(fullListHandler))
-	http.HandleFunc("/item", visitorTracker(itemHistoryHandler))
-	http.HandleFunc("/activity", visitorTracker(activityHandler))
-	http.HandleFunc("/players", visitorTracker(playerCountHandler))
-	http.HandleFunc("/characters", visitorTracker(characterHandler))
-	http.HandleFunc("/guilds", visitorTracker(guildHandler))
-	http.HandleFunc("/guild", visitorTracker(guildDetailHandler))
-	http.HandleFunc("/mvp-kills", visitorTracker(mvpKillsHandler))
-	http.HandleFunc("/character", visitorTracker(characterDetailHandler))
-	http.HandleFunc("/character-changelog", visitorTracker(characterChangelogHandler))
-	http.HandleFunc("/store", visitorTracker(storeDetailHandler))
-	http.HandleFunc("/discord", visitorTracker(tradingPostListHandler))
+	// Wrap public routes with the visitorTracker middleware
+	mux.HandleFunc("/", visitorTracker(summaryHandler))
+	mux.HandleFunc("/full-list", visitorTracker(fullListHandler))
+	mux.HandleFunc("/item", visitorTracker(itemHistoryHandler))
+	mux.HandleFunc("/activity", visitorTracker(activityHandler))
+	mux.HandleFunc("/players", visitorTracker(playerCountHandler))
+	mux.HandleFunc("/characters", visitorTracker(characterHandler))
+	mux.HandleFunc("/guilds", visitorTracker(guildHandler))
+	mux.HandleFunc("/guild", visitorTracker(guildDetailHandler))
+	mux.HandleFunc("/mvp-kills", visitorTracker(mvpKillsHandler))
+	mux.HandleFunc("/character", visitorTracker(characterDetailHandler))
+	mux.HandleFunc("/character-changelog", visitorTracker(characterChangelogHandler))
+	mux.HandleFunc("/store", visitorTracker(storeDetailHandler))
+	mux.HandleFunc("/discord", visitorTracker(tradingPostListHandler))
 
-	// --- Admin Dashboard & Tools ---
-	http.HandleFunc("/admin", basicAuth(adminHandler))
-	http.HandleFunc("/admin/parse-trade", basicAuth(adminParseTradeHandler))
-	http.HandleFunc("/admin/views/delete-visitor", basicAuth(adminDeleteVisitorViewsHandler))
-	http.HandleFunc("/admin/guild/update-emblem", basicAuth(adminUpdateGuildEmblemHandler))
-	http.HandleFunc("/admin/character/clear-last-active", basicAuth(adminClearLastActiveHandler))
-	http.HandleFunc("/admin/character/clear-mvp-kills", basicAuth(adminClearMvpKillsHandler))
+	// --- Admin Routes ---
+	// All routes under /admin/ are protected by basicAuth
+	adminRouter := http.NewServeMux()
+	adminRouter.HandleFunc("/", adminHandler) // Handles /admin/
+	adminRouter.HandleFunc("/parse-trade", adminParseTradeHandler)
+	adminRouter.HandleFunc("/views/delete-visitor", adminDeleteVisitorViewsHandler)
+	adminRouter.HandleFunc("/guild/update-emblem", adminUpdateGuildEmblemHandler)
+	adminRouter.HandleFunc("/character/clear-last-active", adminClearLastActiveHandler)
+	adminRouter.HandleFunc("/character/clear-mvp-kills", adminClearMvpKillsHandler)
 
-	// --- Admin RMS Cache Management ---
-	http.HandleFunc("/admin/cache", basicAuth(adminCacheActionHandler))
-	http.HandleFunc("/admin/cache/delete-entry", basicAuth(adminDeleteCacheEntryHandler))
-	http.HandleFunc("/admin/cache/save-entry", basicAuth(adminSaveCacheEntryHandler))
+	// Admin RMS Cache Management
+	adminRouter.HandleFunc("/cache", adminCacheActionHandler)
+	adminRouter.HandleFunc("/cache/delete-entry", adminDeleteCacheEntryHandler)
+	adminRouter.HandleFunc("/cache/save-entry", adminSaveCacheEntryHandler)
 
-	// --- Admin Trading Post Management ---
-	http.HandleFunc("/admin/trading-post/delete", basicAuth(adminDeleteTradingPostHandler))
-	http.HandleFunc("/admin/trading-post/edit", basicAuth(adminEditTradingPostHandler))
-	http.HandleFunc("/admin/trading-post/reparse", basicAuth(adminReparseTradingPostHandler))
-	http.HandleFunc("/admin/trading/clear-items", basicAuth(adminClearTradingPostItemsHandler))
-	http.HandleFunc("/admin/trading/clear-posts", basicAuth(adminClearTradingPostsHandler))
+	// Admin Trading Post Management
+	adminRouter.HandleFunc("/trading-post/delete", adminDeleteTradingPostHandler)
+	adminRouter.HandleFunc("/trading-post/edit", adminEditTradingPostHandler)
+	adminRouter.HandleFunc("/trading-post/reparse", adminReparseTradingPostHandler)
+	adminRouter.HandleFunc("/trading/clear-items", adminClearTradingPostItemsHandler)
+	adminRouter.HandleFunc("/trading/clear-posts", adminClearTradingPostsHandler)
 
-	// --- Admin Manual Scrape Triggers ---
-	http.HandleFunc("/admin/scrape/market", basicAuth(adminTriggerScrapeHandler(scrapeData, "Market")))
-	http.HandleFunc("/admin/scrape/players", basicAuth(adminTriggerScrapeHandler(scrapeAndStorePlayerCount, "Player-Count")))
-	http.HandleFunc("/admin/scrape/characters", basicAuth(adminTriggerScrapeHandler(scrapePlayerCharacters, "Character")))
-	http.HandleFunc("/admin/scrape/guilds", basicAuth(adminTriggerScrapeHandler(scrapeGuilds, "Guild")))
-	http.HandleFunc("/admin/scrape/zeny", basicAuth(adminTriggerScrapeHandler(scrapeZeny, "Zeny")))
-	http.HandleFunc("/admin/scrape/mvp", basicAuth(adminTriggerScrapeHandler(scrapeMvpKills, "MVP")))
-	http.HandleFunc("/admin/scrape/rms-cache", basicAuth(adminTriggerScrapeHandler(runFullRMSCacheJob, "RMS-Cache-Refresh")))
+	// Admin Manual Scrape Triggers
+	adminRouter.HandleFunc("/scrape/market", adminTriggerScrapeHandler(scrapeData, "Market"))
+	adminRouter.HandleFunc("/scrape/players", adminTriggerScrapeHandler(scrapeAndStorePlayerCount, "Player-Count"))
+	adminRouter.HandleFunc("/scrape/characters", adminTriggerScrapeHandler(scrapePlayerCharacters, "Character"))
+	adminRouter.HandleFunc("/scrape/guilds", adminTriggerScrapeHandler(scrapeGuilds, "Guild"))
+	adminRouter.HandleFunc("/scrape/zeny", adminTriggerScrapeHandler(scrapeZeny, "Zeny"))
+	adminRouter.HandleFunc("/scrape/mvp", adminTriggerScrapeHandler(scrapeMvpKills, "MVP"))
+	adminRouter.HandleFunc("/scrape/rms-cache", adminTriggerScrapeHandler(runFullRMSCacheJob, "RMS-Cache-Refresh"))
+
+	// Apply the basicAuth middleware to the entire admin router
+	// Note the trailing slash on "/admin/" is important for sub-path matching
+	mux.Handle("/admin/", basicAuth(http.StripPrefix("/admin", adminRouter)))
 
 	// --- Server Start and Shutdown ---
 	port := "8080"
-	server := &http.Server{Addr: ":" + port}
+	// Assign the main router to the server
+	server := &http.Server{Addr: ":" + port, Handler: mux}
 
 	// Goroutine to handle server shutdown when context is cancelled
 	go func() {
@@ -307,4 +318,3 @@ func main() {
 	// This line will be reached after server.Shutdown() completes
 	log.Println("✅ All services shut down. Exiting.")
 }
-

@@ -12,14 +12,16 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"golang.org/x/sync/errgroup"
 )
 
 const adminUser = "admin"
 
 var adminPass string
 
-func basicAuth(handler http.HandlerFunc) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
+func basicAuth(handler http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		user, pass, ok := r.BasicAuth()
 
 		if !ok || subtle.ConstantTimeCompare([]byte(user), []byte(adminUser)) != 1 || subtle.ConstantTimeCompare([]byte(pass), []byte(adminPass)) != 1 {
@@ -29,52 +31,50 @@ func basicAuth(handler http.HandlerFunc) http.HandlerFunc {
 			return
 		}
 
-		handler(w, r)
-	}
+		handler.ServeHTTP(w, r)
+	})
 }
 
-// getDashboardStats populates the main database statistics.
+// getDashboardStats populates the main database statistics concurrently.
 func getDashboardStats(stats *AdminDashboardData) error {
-	statsQuery := `
-		SELECT
-			(SELECT COUNT(*) FROM items),
-			(SELECT COUNT(*) FROM items WHERE is_available = 1),
-			(SELECT COUNT(DISTINCT name_of_the_item) FROM items),
-			(SELECT COUNT(*) FROM rms_item_cache),
-			(SELECT COUNT(*) FROM characters),
-			(SELECT COUNT(*) FROM guilds),
-			(SELECT COUNT(*) FROM player_history),
-			(SELECT COUNT(*) FROM market_events),
-			(SELECT COUNT(*) FROM character_changelog),
-			(SELECT COUNT(*) FROM visitors),
-			(SELECT COUNT(*) FROM visitors WHERE date(last_visit) = date('now', 'localtime'))
-	`
-	var (
-		totalItems, availableItems, uniqueItems, cachedItems,
-		totalCharacters, totalGuilds, playerHistoryEntries,
-		marketEvents, changelogEntries, totalVisitors, visitorsToday sql.NullInt64
-	)
+	var wg sync.WaitGroup
+	var queryErr error
+	var mu sync.Mutex // To protect queryErr
 
-	err := db.QueryRow(statsQuery).Scan(
-		&totalItems, &availableItems, &uniqueItems, &cachedItems,
-		&totalCharacters, &totalGuilds, &playerHistoryEntries,
-		&marketEvents, &changelogEntries, &totalVisitors, &visitorsToday,
-	)
-	if err != nil {
-		return fmt.Errorf("could not query for dashboard stats: %w", err)
+	// Helper function to run a query and assign the result
+	runQuery := func(query string, target *int) {
+		defer wg.Done()
+		var count sql.NullInt64
+		err := db.QueryRow(query).Scan(&count)
+		if err != nil {
+			log.Printf("⚠️ Dashboard stats query failed (%s): %v", query, err)
+			mu.Lock()
+			if queryErr == nil { // Store only the first error
+				queryErr = err
+			}
+			mu.Unlock()
+		}
+		*target = int(count.Int64)
 	}
 
-	stats.TotalItems = int(totalItems.Int64)
-	stats.AvailableItems = int(availableItems.Int64)
-	stats.UniqueItems = int(uniqueItems.Int64)
-	stats.CachedItems = int(cachedItems.Int64)
-	stats.TotalCharacters = int(totalCharacters.Int64)
-	stats.TotalGuilds = int(totalGuilds.Int64)
-	stats.PlayerHistoryEntries = int(playerHistoryEntries.Int64)
-	stats.MarketEvents = int(marketEvents.Int64)
-	stats.ChangelogEntries = int(changelogEntries.Int64)
-	stats.TotalVisitors = int(totalVisitors.Int64)
-	stats.VisitorsToday = int(visitorsToday.Int64)
+	wg.Add(11)
+	go runQuery("SELECT COUNT(*) FROM items", &stats.TotalItems)
+	go runQuery("SELECT COUNT(*) FROM items WHERE is_available = 1", &stats.AvailableItems)
+	go runQuery("SELECT COUNT(DISTINCT name_of_the_item) FROM items", &stats.UniqueItems)
+	go runQuery("SELECT COUNT(*) FROM rms_item_cache", &stats.CachedItems)
+	go runQuery("SELECT COUNT(*) FROM characters", &stats.TotalCharacters)
+	go runQuery("SELECT COUNT(*) FROM guilds", &stats.TotalGuilds)
+	go runQuery("SELECT COUNT(*) FROM player_history", &stats.PlayerHistoryEntries)
+	go runQuery("SELECT COUNT(*) FROM market_events", &stats.MarketEvents)
+	go runQuery("SELECT COUNT(*) FROM character_changelog", &stats.ChangelogEntries)
+	go runQuery("SELECT COUNT(*) FROM visitors", &stats.TotalVisitors)
+	go runQuery("SELECT COUNT(*) FROM visitors WHERE date(last_visit) = date('now', 'localtime')", &stats.VisitorsToday)
+
+	wg.Wait()
+
+	if queryErr != nil {
+		return fmt.Errorf("could not query for one or more dashboard stats: %w", queryErr)
+	}
 	return nil
 }
 
@@ -298,28 +298,68 @@ func performRMSLiveSearch(r *http.Request, stats *AdminDashboardData) {
 	log.Printf("👤 Admin live search for '%s' found %d combined results.", rmsLiveSearchQuery, len(combinedResults))
 }
 
-// getAdminDashboardData orchestrates fetching all data for the admin dashboard.
+// getAdminDashboardData orchestrates fetching all data for the admin dashboard concurrently.
+// This version is refactored to use an errgroup for simpler concurrent error handling.
 func getAdminDashboardData(r *http.Request) (AdminDashboardData, error) {
 	stats := AdminDashboardData{
 		Message: r.URL.Query().Get("msg"),
 	}
 
-	// Run data-fetching tasks.
-	// We can run these concurrently in the future if performance is an issue.
-	if err := getDashboardStats(&stats); err != nil {
-		return stats, err
-	}
-	if err := getDashboardGuilds(&stats); err != nil {
-		// Log but don't fail the whole page
-		log.Printf("⚠️ Could not load dashboard guilds: %v", err)
+	// An errgroup simplifies managing multiple concurrent tasks and their errors.
+	var g errgroup.Group
+
+	// --- Run data-fetching tasks concurrently ---
+
+	// Task 1: Main Stats (Critical)
+	g.Go(func() error {
+		if err := getDashboardStats(&stats); err != nil {
+			log.Printf("❌ Failed to load dashboard stats: %v", err)
+			// Returning an error here will cause g.Wait() to return this error.
+			return err
+		}
+		return nil
+	})
+
+	// Task 2: Guilds (Not Critical)
+	g.Go(func() error {
+		if err := getDashboardGuilds(&stats); err != nil {
+			// Log but don't fail the whole page.
+			log.Printf("⚠️ Could not load dashboard guilds: %v", err)
+		}
+		return nil // Always return nil so this doesn't fail the group.
+	})
+
+	// Task 3: Page Views (Not Critical)
+	g.Go(func() error {
+		getDashboardPageViews(r, &stats)
+		return nil
+	})
+
+	// Task 4: Trading Posts (Not Critical)
+	g.Go(func() error {
+		getDashboardTradingPosts(r, &stats)
+		return nil
+	})
+
+	// Task 5: RMS Cache Search (Not Critical)
+	g.Go(func() error {
+		performRMSCacheSearch(r, &stats)
+		return nil
+	})
+
+	// Task 6: RMS Live Search (Not Critical)
+	g.Go(func() error {
+		performRMSLiveSearch(r, &stats)
+		return nil
+	})
+
+	// Wait for all concurrent tasks to finish.
+	// mainErr will be the first non-nil error returned from any g.Go() func.
+	if mainErr := g.Wait(); mainErr != nil {
+		return stats, mainErr // Return if a critical task failed
 	}
 
-	getDashboardPageViews(r, &stats)
-	getDashboardTradingPosts(r, &stats)
-	performRMSCacheSearch(r, &stats)
-	performRMSLiveSearch(r, &stats)
-
-	// Get scrape times
+	// --- Scrape times (these are fast, run sequentially) ---
 	stats.LastMarketScrape = GetLastScrapeTime()
 	stats.LastPlayerCountScrape = GetLastPlayerCountTime()
 	stats.LastCharacterScrape = GetLastCharacterScrapeTime()
@@ -384,7 +424,12 @@ func adminDeleteCacheEntryHandler(w http.ResponseWriter, r *http.Request) {
 		args[i] = idStr
 	}
 
+	// --- THE FIX IS HERE ---
+	rmsCacheMutex.Lock()
 	result, err := db.Exec(query, args...)
+	rmsCacheMutex.Unlock()
+	// --- END FIX ---
+
 	if err != nil {
 		log.Printf("❌ Failed to delete RMS cache entries: %v", err)
 		http.Redirect(w, r, "/admin?msg=Database+error+while+deleting+entries.", http.StatusSeeOther)
@@ -480,6 +525,11 @@ func adminCacheActionHandler(w http.ResponseWriter, r *http.Request) {
 	action := r.FormValue("action")
 	var msg string
 
+	// --- THE FIX IS HERE ---
+	// Lock for all write actions (clear, drop)
+	rmsCacheMutex.Lock()
+	// --- END FIX ---
+
 	switch action {
 	case "clear":
 		log.Println("👤 Admin triggered cache clear.")
@@ -506,6 +556,10 @@ func adminCacheActionHandler(w http.ResponseWriter, r *http.Request) {
 	default:
 		msg = "Unknown+cache+action."
 	}
+
+	// --- THE FIX IS HERE ---
+	rmsCacheMutex.Unlock()
+	// --- END FIX ---
 
 	http.Redirect(w, r, "/admin?msg="+msg, http.StatusSeeOther)
 }

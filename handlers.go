@@ -306,22 +306,6 @@ func getItemTypeTabs() []ItemTypeTab {
 	return itemTypes
 }
 
-func getLastUpdateTime(tableName, columnName string) string {
-	var lastTimestamp sql.NullString
-	query := fmt.Sprintf("SELECT MAX(%s) FROM %s", columnName, tableName)
-	err := db.QueryRow(query).Scan(&lastTimestamp)
-	if err != nil {
-		log.Printf("⚠️ Could not get last update time for %s: %v", tableName, err)
-	}
-	if lastTimestamp.Valid {
-		parsedTime, err := time.Parse(time.RFC3339, lastTimestamp.String)
-		if err == nil {
-			return parsedTime.Format("2006-01-02 15:04:05")
-		}
-	}
-	return "Never"
-}
-
 func generateEventIntervals(viewStart, viewEnd time.Time, events []EventDefinition, activeDates map[string]struct{}) []map[string]interface{} {
 	var intervals []map[string]interface{}
 	loc := viewStart.Location()
@@ -579,7 +563,7 @@ func summaryHandler(w http.ResponseWriter, r *http.Request) {
 		SortBy:           sortBy,
 		Order:            order,
 		ShowAll:          showAll,
-		LastScrapeTime:   getLastUpdateTime("scrape_history", "timestamp"),
+		LastScrapeTime:   GetLastScrapeTime(),
 		ItemTypes:        getItemTypeTabs(),
 		SelectedType:     selectedType,
 		TotalVisitors:    totalVisitors,
@@ -711,7 +695,7 @@ func fullListHandler(w http.ResponseWriter, r *http.Request) {
 
 	data := PageData{
 		Items: items, SearchQuery: searchQuery, StoreNameQuery: storeNameQuery, AllStoreNames: allStoreNames,
-		SortBy: sortBy, Order: order, ShowAll: showAll, LastScrapeTime: getLastUpdateTime("scrape_history", "timestamp"),
+		SortBy: sortBy, Order: order, ShowAll: showAll, LastScrapeTime: GetLastScrapeTime(),
 		VisibleColumns: visibleColumns, AllColumns: allCols, ColumnParams: template.URL(columnParams.Encode()),
 		ItemTypes: getItemTypeTabs(), SelectedType: selectedType,
 		PageTitle: "Full List",
@@ -791,7 +775,7 @@ func activityHandler(w http.ResponseWriter, r *http.Request) {
 
 	data := ActivityPageData{
 		MarketEvents:   marketEvents,
-		LastScrapeTime: getLastUpdateTime("scrape_history", "timestamp"),
+		LastScrapeTime: GetLastScrapeTime(),
 		SearchQuery:    searchQuery,
 		SoldOnly:       soldOnly,
 		Pagination:     pagination,
@@ -869,8 +853,8 @@ func itemHistoryHandler(w http.ResponseWriter, r *http.Request) {
 		currentLowest = &currentListings[0]
 		currentHighest = &currentListings[len(currentListings)-1]
 	}
-	currentLowestJSON, _ := json.Marshal(currentLowest)
-	currentHighestJSON, _ := json.Marshal(currentHighest)
+	// currentLowestJSON, _ := json.Marshal(currentLowest)     <-- REMOVED
+	// currentHighestJSON, _ := json.Marshal(currentHighest)   <-- REMOVED
 
 	var overallLowest, overallHighest sql.NullInt64
 	db.QueryRow(`
@@ -957,19 +941,19 @@ func itemHistoryHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	data := HistoryPageData{
-		ItemName:           itemName,
-		ItemNamePT:         itemNamePT,
-		PriceDataJSON:      template.JS(priceHistoryJSON),
-		OverallLowest:      int(overallLowest.Int64),
-		OverallHighest:     int(overallHighest.Int64),
-		CurrentLowestJSON:  template.JS(currentLowestJSON),
-		CurrentHighestJSON: template.JS(currentHighestJSON),
-		ItemDetails:        rmsItemDetails,
-		AllListings:        allListings,
-		LastScrapeTime:     getLastUpdateTime("scrape_history", "timestamp"),
-		TotalListings:      totalListings,
-		Pagination:         pagination,
-		PageTitle:          itemName,
+		ItemName:       itemName,
+		ItemNamePT:     itemNamePT,
+		PriceDataJSON:  template.JS(priceHistoryJSON),
+		OverallLowest:  int(overallLowest.Int64),
+		OverallHighest: int(overallHighest.Int64),
+		CurrentLowest:  currentLowest,  // <-- CHANGED
+		CurrentHighest: currentHighest, // <-- CHANGED
+		ItemDetails:    rmsItemDetails,
+		AllListings:    allListings,
+		LastScrapeTime: GetLastScrapeTime(),
+		TotalListings:  totalListings,
+		Pagination:     pagination,
+		PageTitle:      itemName,
 	}
 	renderTemplate(w, "history.html", data)
 }
@@ -1066,7 +1050,7 @@ func playerCountHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	data := PlayerCountPageData{
-		PlayerDataJSON: template.JS(playerHistoryJSON), LastScrapeTime: getLastUpdateTime("player_history", "timestamp"),
+		PlayerDataJSON: template.JS(playerHistoryJSON), LastScrapeTime: GetLastScrapeTime(),
 		SelectedInterval: interval, EventDataJSON: template.JS(eventIntervalsJSON), LatestActivePlayers: latestActivePlayers,
 		HistoricalMaxActivePlayers: historicalMaxActive, HistoricalMaxActivePlayersTime: historicalMaxTime,
 		PageTitle: "Player Count",
@@ -1243,7 +1227,7 @@ func characterHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	data := CharacterPageData{
-		Players: players, LastScrapeTime: getLastUpdateTime("characters", "last_updated"), SearchName: searchName,
+		Players: players, LastScrapeTime: GetLastScrapeTime(),
 		SelectedClass: selectedClass, SelectedGuild: selectedGuild, AllClasses: allClasses, SortBy: sortBy, Order: order,
 		VisibleColumns: visibleColumns, AllColumns: allCols, ColumnParams: template.URL(columnParams.Encode()),
 		Pagination: pagination, TotalPlayers: totalPlayers, TotalZeny: totalZeny.Int64,
@@ -1322,7 +1306,7 @@ func guildHandler(w http.ResponseWriter, r *http.Request) {
 
 	data := GuildPageData{
 		Guilds:              guilds,
-		LastGuildUpdateTime: getLastUpdateTime("guilds", "last_updated"),
+		LastGuildUpdateTime: GetLastScrapeTime(),
 		SearchName:          searchName,
 		SortBy:              sortBy,
 		Order:               order,
@@ -1394,7 +1378,7 @@ func mvpKillsHandler(w http.ResponseWriter, r *http.Request) {
 
 	data := MvpKillPageData{
 		Players: players, Headers: headers, SortBy: sortBy, Order: order,
-		LastScrapeTime: getLastUpdateTime("characters", "last_updated"),
+		LastScrapeTime: GetLastScrapeTime(),
 		PageTitle:      "MVP Kills",
 	}
 	renderTemplate(w, "mvp_kills.html", data)
@@ -1531,7 +1515,7 @@ func characterDetailHandler(w http.ResponseWriter, r *http.Request) {
 		MvpKills:            mvpKills,
 		MvpHeaders:          mvpHeaders,
 		GuildHistory:        guildHistory,
-		LastScrapeTime:      getLastUpdateTime("characters", "last_updated"),
+		LastScrapeTime:      GetLastScrapeTime(),
 		ClassImageURL:       classImages[p.Class],
 		ChangelogEntries:    changelogEntries,
 		ChangelogPagination: pagination,
@@ -1575,7 +1559,7 @@ func characterChangelogHandler(w http.ResponseWriter, r *http.Request) {
 
 	data := CharacterChangelogPageData{
 		ChangelogEntries: changelogEntries,
-		LastScrapeTime:   getLastUpdateTime("characters", "last_updated"),
+		LastScrapeTime:   GetLastScrapeTime(),
 		Pagination:       pagination,
 		PageTitle:        "Character Changelog",
 	}
@@ -1670,7 +1654,7 @@ func guildDetailHandler(w http.ResponseWriter, r *http.Request) {
 	data := GuildDetailPageData{
 		Guild:                 g,
 		Members:               members,
-		LastScrapeTime:        getLastUpdateTime("guilds", "last_updated"),
+		LastScrapeTime:        GetLastScrapeTime(),
 		SortBy:                sortBy,
 		Order:                 order,
 		ClassDistributionJSON: template.JS(classDistJSON),
@@ -1742,9 +1726,15 @@ func storeDetailHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	data := StoreDetailPageData{
-		StoreName: storeName, SellerName: sellerName, MapName: strings.ToLower(mapName), MapCoordinates: mapCoords,
-		Items: items, LastScrapeTime: getLastUpdateTime("scrape_history", "timestamp"), SortBy: sortBy, Order: order,
-		PageTitle: storeName,
+		StoreName:      storeName,
+		SellerName:     sellerName,
+		MapName:        strings.ToLower(mapName),
+		MapCoordinates: mapCoords,
+		Items:          items,
+		LastScrapeTime: GetLastScrapeTime(),
+		SortBy:         sortBy,
+		Order:          order,
+		PageTitle:      storeName,
 	}
 	renderTemplate(w, "store_detail.html", data)
 }
@@ -1868,7 +1858,7 @@ func tradingPostListHandler(w http.ResponseWriter, r *http.Request) {
 
 	data := TradingPostPageData{
 		Items:          items,
-		LastScrapeTime: getLastUpdateTime("scrape_history", "timestamp"),
+		LastScrapeTime: GetLastScrapeTime(),
 		SearchQuery:    searchQuery,
 		FilterType:     filterType,
 		FilterCurrency: filterCurrency,
@@ -2035,7 +2025,7 @@ func findItemIDOnline(cleanItemName string, slots int) (sql.NullInt64, bool) {
 
 // findItemIDByName orchestrates searching the cache and online for an item ID.
 func findItemIDByName(itemName string, allowRetry bool, slots int) (sql.NullInt64, error) {
-	// Clean the name
+	// 1. Clean the name
 	reRefine := regexp.MustCompile(`\s*\+\d+\s*`)
 	itemNameWithoutRefine := reRefine.ReplaceAllString(itemName, "")
 	itemNameWithoutRefine = strings.TrimSpace(itemNameWithoutRefine)
@@ -2044,24 +2034,28 @@ func findItemIDByName(itemName string, allowRetry bool, slots int) (sql.NullInt6
 	if strings.TrimSpace(cleanItemName) == "" {
 		return sql.NullInt64{Valid: false}, nil
 	}
+
+	// 2. Handle special case: "Zeny"
 	if strings.ToLower(cleanItemName) == "zeny" {
 		log.Printf("   [Item ID Search] Detected special item 'Zeny'. Skipping ID search.")
 		return sql.NullInt64{Valid: false}, nil
 	}
 
-	// 1. Try local FTS cache first
+	// 3. Try local FTS cache first
 	if itemID, found := findItemIDInCache(cleanItemName); found {
 		return itemID, nil
 	}
 
-	// 2. If not found, try online search
+	// 4. If not found, try online search
 	if itemID, found := findItemIDOnline(cleanItemName, slots); found {
 		return itemID, nil
 	}
 
-	// 3. Handle retry logic for "card" or "carta"
+	// 5. If still not found, handle retry logic for "card" or "carta"
 	lowerCleanItemName := strings.ToLower(cleanItemName)
-	if allowRetry && (strings.Contains(lowerCleanItemName, "card") || strings.Contains(lowerCleanItemName, "carta")) {
+	isCard := strings.Contains(lowerCleanItemName, "card") || strings.Contains(lowerCleanItemName, "carta")
+
+	if allowRetry && isCard {
 		newName := reCardRemover.ReplaceAllString(itemName, " ")
 		newName = strings.TrimSpace(newName)
 
@@ -2072,6 +2066,7 @@ func findItemIDByName(itemName string, allowRetry bool, slots int) (sql.NullInt6
 		}
 	}
 
+	// 6. All attempts failed
 	log.Printf("   [Item ID Search] All searches for '%s' returned no results or were ambiguous. Storing name only.", cleanItemName)
 	return sql.NullInt64{Valid: false}, nil
 }

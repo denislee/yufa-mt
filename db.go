@@ -240,7 +240,6 @@ func initDB(filepath string) (*sql.DB, error) {
 		"scrape_history":        createHistoryTableSQL,
 		"rms_item_cache":        createRMSCacheTableSQL,
 		"rms_item_cache_fts":    createRMSFTSSTableSQL,
-		"FTS triggers":          createTriggersSQL,
 		"player_history":        createPlayerHistoryTableSQL,
 		"guilds":                createGuildsTableSQL,
 		"characters":            createCharactersTableSQL,
@@ -259,8 +258,13 @@ func initDB(filepath string) (*sql.DB, error) {
 		}
 	}
 
+	// --- FTS Triggers (Combined into one Exec) ---
+	if _, err = db.Exec(createTriggersSQL); err != nil {
+		return nil, fmt.Errorf("could not create FTS triggers: %w", err)
+	}
+
 	// --- Dynamic Table Creation (MVP Kills) ---
-	// Use the new centralized mvpMobIDs variable from models.go
+	// ... (rest of the function is unchanged) ...
 	var mvpColumns []string
 	mvpColumns = append(mvpColumns, `"character_name" TEXT NOT NULL PRIMARY KEY`)
 	for _, mobID := range mvpMobIDs {

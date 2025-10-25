@@ -16,28 +16,9 @@ import (
 
 const (
 	geminiModelName = "gemini-flash-latest"
-)
 
-func parseTradeMessageWithGemini(message string) (*GeminiTradeResult, error) {
-	apiKey := os.Getenv("GEMINI_API_KEY")
-	if apiKey == "" {
-		return nil, fmt.Errorf("GEMINI_API_KEY environment variable not set")
-	}
-
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-	defer cancel()
-
-	client, err := genai.NewClient(ctx, option.WithAPIKey(apiKey))
-	if err != nil {
-		return nil, fmt.Errorf("failed to create genai client: %w", err)
-	}
-	defer client.Close()
-
-	model := client.GenerativeModel(geminiModelName)
-
-	model.GenerationConfig.ResponseMIMEType = "application/json"
-
-	prompt := fmt.Sprintf(`You are an expert at parsing trade messages for the game Ragnarok Online.
+	// promptTemplate contains the full instructions for the Gemini model.
+	promptTemplate = `You are an expert at parsing trade messages for the game Ragnarok Online.
 Analyze the following message and extract the trade information.
 For each item, extract its base name, refinement level, number of slots, any attached cards, quantity, Zeny price, RMT price, and action.
 
@@ -128,7 +109,29 @@ Each item object in the array must have these keys: "name" (string), "action" (s
 Here is the message to parse:
 ---
 %s
----`, message)
+---`
+)
+
+func parseTradeMessageWithGemini(message string) (*GeminiTradeResult, error) {
+	apiKey := os.Getenv("GEMINI_API_KEY")
+	if apiKey == "" {
+		return nil, fmt.Errorf("GEMINI_API_KEY environment variable not set")
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	client, err := genai.NewClient(ctx, option.WithAPIKey(apiKey))
+	if err != nil {
+		return nil, fmt.Errorf("failed to create genai client: %w", err)
+	}
+	defer client.Close()
+
+	model := client.GenerativeModel(geminiModelName)
+	model.GenerationConfig.ResponseMIMEType = "application/json"
+
+	// The prompt is now much cleaner, using the constant.
+	prompt := fmt.Sprintf(promptTemplate, message)
 
 	log.Println("🤖 Sending request to Gemini API...")
 	resp, err := model.GenerateContent(ctx, genai.Text(prompt))
@@ -142,6 +145,7 @@ Here is the message to parse:
 
 	rawJSON := fmt.Sprintf("%s", resp.Candidates[0].Content.Parts[0])
 
+	// This logic to strip markdown backticks is good and remains.
 	re := regexp.MustCompile("(?s)```json(.*)```")
 	matches := re.FindStringSubmatch(rawJSON)
 	if len(matches) > 1 {
@@ -158,3 +162,4 @@ Here is the message to parse:
 
 	return &result, nil
 }
+

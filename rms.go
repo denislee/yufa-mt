@@ -17,6 +17,9 @@ import (
 	"time"
 )
 
+// rmsCacheMutex protects the rms_item_cache table from concurrent write operations.
+var rmsCacheMutex sync.Mutex
+
 func scrapeRMSItemDetails(itemID int) (*RMSItem, error) {
 	log.Printf("ℹ️ [RMS Scraper] Starting detailed scrape for Item ID: %d", itemID)
 
@@ -176,6 +179,11 @@ func saveItemDetailsToCache(item *RMSItem) error {
 		return fmt.Errorf("failed to marshal ObtainableFrom for caching item %d: %w", item.ID, err)
 	}
 
+	// --- THE FIX IS HERE ---
+	// Lock the mutex to ensure only one goroutine writes to this table at a time.
+	rmsCacheMutex.Lock()
+	defer rmsCacheMutex.Unlock()
+
 	_, err = db.Exec(`
 		INSERT OR REPLACE INTO rms_item_cache
 		(item_id, name, name_pt, image_url, item_type, item_class, buy, sell, weight, prefix, description, script, dropped_by_json, obtainable_from_json, last_checked)
@@ -184,6 +192,8 @@ func saveItemDetailsToCache(item *RMSItem) error {
 		item.Weight, item.Prefix, item.Description, item.Script,
 		string(droppedByJSON), string(obtainableFromJSON), time.Now().Format(time.RFC3339),
 	)
+	// --- END FIX ---
+
 	if err != nil {
 		return fmt.Errorf("failed to execute insert/replace for item %d in cache: %w", item.ID, err)
 	}
@@ -407,7 +417,13 @@ func scrapeRagnarokDatabaseSearch(query string) ([]int, error) {
 			if updateStmt != nil {
 				namePT := strings.TrimSpace(match[2])
 				if namePT != "" {
+					// --- THE FIX IS HERE ---
+					// Apply lock for this write operation
+					rmsCacheMutex.Lock()
 					res, updateErr := updateStmt.Exec(namePT, id)
+					rmsCacheMutex.Unlock()
+					// --- END FIX ---
+
 					if updateErr == nil {
 						rowsAffected, _ := res.RowsAffected()
 						if rowsAffected > 0 {

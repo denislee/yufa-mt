@@ -228,107 +228,15 @@ func scrapeAndStorePlayerCount() {
 	log.Printf("✅ [Counter] Player/seller count updated. New values: %d players, %d sellers", onlineCount, sellerCount)
 }
 
-func scrapePlayerCharacters() {
-	log.Println("🏆 [Characters] Starting player character scrape...")
-
-	// ... (Regex definitions are unchanged) ...
-	rankRegex := regexp.MustCompile(`p\-1 text\-center font\-medium\\",\\"children\\":(\d+)\}\]`)
-	nameRegex := regexp.MustCompile(`max-w-10 truncate p-1 font-semibold">([^<]+)</td>`)
-	baseLevelRegex := regexp.MustCompile(`\\"level\\":(\d+),`)
-	jobLevelRegex := regexp.MustCompile(`\\"job_level\\":(\d+),\\"exp`)
-	expRegex := regexp.MustCompile(`\\"exp\\":(\d+)`)
-	classRegex := regexp.MustCompile(`"hidden text\-sm sm:inline\\",\\"children\\":\\"([^"]+)\\"`)
-
-	// Use the new helper to find the last page
-	const firstPageURL = "https://projetoyufa.com/rankings?page=1"
-	lastPage := scraperClient.findLastPage(firstPageURL, "[Characters]")
-
-	updateTime := time.Now().Format(time.RFC3339)
-	allPlayers := make(map[string]PlayerCharacter)
-	var mu sync.Mutex
-	var wg sync.WaitGroup
-	sem := make(chan struct{}, 5) // Concurrency semaphore
-
-	log.Printf("🏆 [Characters] Scraping all %d pages...", lastPage)
-	for page := 1; page <= lastPage; page++ {
-		wg.Add(1)
-		sem <- struct{}{}
-		go func(pageIndex int) { // <-- Renamed 'p' to 'pageIndex'
-			defer wg.Done()
-			defer func() { <-sem }()
-
-			url := fmt.Sprintf("https://projetoyufa.com/rankings?page=%d", pageIndex) // <-- Use 'pageIndex'
-
-			// Use the getPage helper, which includes retries
-			bodyContent, err := scraperClient.getPage(url, "[Characters]")
-			if err != nil {
-				log.Printf("    -> ❌ All retries failed for page %d: %v", pageIndex, err) // <-- Use 'pageIndex'
-				return
-			}
-
-			// --- Start of parsing logic (largely unchanged) ---
-			rankMatches := rankRegex.FindAllStringSubmatch(bodyContent, -1)
-			nameMatches := nameRegex.FindAllStringSubmatch(bodyContent, -1)
-			baseLevelMatches := baseLevelRegex.FindAllStringSubmatch(bodyContent, -1)
-			jobLevelMatches := jobLevelRegex.FindAllStringSubmatch(bodyContent, -1)
-			expMatches := expRegex.FindAllStringSubmatch(bodyContent, -1)
-			classMatches := classRegex.FindAllStringSubmatch(bodyContent, -1)
-
-			// ... (debug logs) ...
-
-			numChars := len(nameMatches)
-			// ... (debug logs) ...
-
-			if numChars == 0 || len(rankMatches) != numChars || len(baseLevelMatches) != numChars || len(jobLevelMatches) != numChars || len(expMatches) != numChars || len(classMatches) != numChars {
-				// ... (mismatch logging) ...
-				log.Printf("    -> ⚠️ [Characters] Mismatch in regex match counts on page %d. Skipping page. (Ranks: %d, Names: %d, Classes: %d)", pageIndex, len(rankMatches), len(nameMatches), len(classMatches)) // <-- Use 'pageIndex'
-				return
-			}
-
-			var pagePlayers []PlayerCharacter
-			for i := 0; i < numChars; i++ {
-				rank, _ := strconv.Atoi(rankMatches[i][1])
-				name := nameMatches[i][1]
-				baseLevel, _ := strconv.Atoi(baseLevelMatches[i][1])
-				jobLevel, _ := strconv.Atoi(jobLevelMatches[i][1])
-				rawExp, _ := strconv.ParseFloat(expMatches[i][1], 64)
-				class := classMatches[i][1]
-
-				player := PlayerCharacter{
-					Rank:       rank,
-					Name:       name,
-					BaseLevel:  baseLevel,
-					JobLevel:   jobLevel,
-					Experience: rawExp / 1000000.0,
-					Class:      class,
-				}
-				// ... (debug logs) ...
-				pagePlayers = append(pagePlayers, player)
-			}
-
-			if len(pagePlayers) > 0 {
-				mu.Lock()
-				for _, player := range pagePlayers {
-					allPlayers[player.Name] = player
-				}
-				mu.Unlock()
-			}
-			log.Printf("    -> Scraped page %d/%d, found %d chars.", pageIndex, lastPage, len(pagePlayers)) // <-- Use 'pageIndex'
-			// --- End of parsing logic ---
-		}(page)
-	}
-
-	wg.Wait()
-	log.Printf("✅ [Characters] Finished scraping all pages. Found %d unique characters.", len(allPlayers))
-
-	if len(allPlayers) == 0 {
-		log.Println("⚠️ [Characters] No players found after scrape. Skipping database update.")
-		return
-	}
-
+// processPlayerData is a dedicated consumer goroutine that handles all database
+// interactions for the character scraper. This decouples DB writes from network I/O.
+func processPlayerData(playerChan <-chan PlayerCharacter, updateTime string) {
 	characterMutex.Lock()
 	defer characterMutex.Unlock()
 
+	log.Println("🏆 [Characters] DB worker started. Processing scraped data...")
+
+	// 1. Fetch existing player data for comparison
 	if enableCharacterScraperDebugLogs {
 		log.Println("    -> [DB] Fetching existing player data for activity comparison...")
 	}
@@ -337,7 +245,6 @@ func scrapePlayerCharacters() {
 	if err != nil {
 		log.Printf("❌ [DB] Failed to query existing characters for comparison: %v", err)
 	} else {
-		defer rowsPre.Close()
 		for rowsPre.Next() {
 			var p PlayerCharacter
 			if err := rowsPre.Scan(&p.Name, &p.BaseLevel, &p.JobLevel, &p.Experience, &p.Class, &p.LastActive); err != nil {
@@ -346,17 +253,19 @@ func scrapePlayerCharacters() {
 			}
 			existingPlayers[p.Name] = p
 		}
+		rowsPre.Close() // Close rows immediately
 		if enableCharacterScraperDebugLogs {
 			log.Printf("    -> [DB] Found %d existing player records for comparison.", len(existingPlayers))
 		}
 	}
 
+	// 2. Prepare database transaction and statements
 	tx, err := db.Begin()
 	if err != nil {
 		log.Printf("❌ [DB] Failed to begin transaction: %v", err)
 		return
 	}
-	defer tx.Rollback()
+	defer tx.Rollback() // Rollback on error
 
 	stmt, err := tx.Prepare(`
 		INSERT INTO characters (rank, name, base_level, job_level, experience, class, last_updated, last_active)
@@ -386,42 +295,44 @@ func scrapePlayerCharacters() {
 	}
 	defer changelogStmt.Close()
 
-	for _, p := range allPlayers {
-		lastActiveTime := updateTime
+	scrapedPlayerNames := make(map[string]bool)
+	totalProcessed := 0
+
+	// 3. Process all players from the channel
+	for p := range playerChan {
+		scrapedPlayerNames[p.Name] = true
+		totalProcessed++
+
+		lastActiveTime := updateTime // Assume active unless proven otherwise
 		if oldPlayer, exists := existingPlayers[p.Name]; exists {
+			// --- Activity Logging Logic (unchanged) ---
 			baseLeveledUp := false
 			if p.BaseLevel > oldPlayer.BaseLevel {
-
 				logCharacterActivity(changelogStmt, p.Name, fmt.Sprintf("Leveled up to Base Level %d!", p.BaseLevel))
 				baseLeveledUp = true
 			}
 			if p.JobLevel > oldPlayer.JobLevel {
-
 				logCharacterActivity(changelogStmt, p.Name, fmt.Sprintf("Leveled up to Job Level %d!", p.JobLevel))
 			}
 
 			if !baseLeveledUp {
 				expDelta := p.Experience - oldPlayer.Experience
-
 				if expDelta > 0.001 {
-
 					logCharacterActivity(changelogStmt, p.Name, fmt.Sprintf("Gained %.2f%% experience (now at %.2f%%).", expDelta, p.Experience))
 				} else if expDelta < -0.001 {
-
 					logCharacterActivity(changelogStmt, p.Name, fmt.Sprintf("Lost %.2f%% experience (now at %.2f%%).", -expDelta, p.Experience))
 				}
 			} else {
-
 				logCharacterActivity(changelogStmt, p.Name, fmt.Sprintf("Gained %.2f%% experience (now at %.2f%%).", p.Experience, p.Experience))
 			}
 
 			if p.Class != oldPlayer.Class {
-
 				logCharacterActivity(changelogStmt, p.Name, fmt.Sprintf("Changed class from '%s' to '%s'.", oldPlayer.Class, p.Class))
 			}
 
+			// Check for inactivity
 			if (p.Experience-oldPlayer.Experience) < 0.001 && (p.Experience-oldPlayer.Experience) > -0.001 {
-				lastActiveTime = oldPlayer.LastActive
+				lastActiveTime = oldPlayer.LastActive // Carry over old last_active time
 			} else {
 				if enableCharacterScraperDebugLogs {
 					log.Printf("    -> [Activity] Player '%s' experience changed from %.2f%% to %.2f%%. Updating last_active.", p.Name, oldPlayer.Experience, p.Experience)
@@ -429,27 +340,153 @@ func scrapePlayerCharacters() {
 			}
 		}
 
+		// Upsert the player
 		if _, err := stmt.Exec(p.Rank, p.Name, p.BaseLevel, p.JobLevel, p.Experience, p.Class, updateTime, lastActiveTime); err != nil {
 			log.Printf("    -> [DB] WARN: Failed to upsert character for player %s: %v", p.Name, err)
 		}
 	}
 
+	// 4. Commit the transaction
 	if err := tx.Commit(); err != nil {
 		log.Printf("❌ [DB] Failed to commit transaction: %v", err)
 		return
 	}
-	log.Printf("✅ [Characters] Saved/updated %d records.", len(allPlayers))
+	log.Printf("✅ [Characters] Saved/updated %d records.", totalProcessed)
 
+	// 5. Clean up stale records
 	log.Println("🧹 [Characters] Cleaning up old player records not found in this scrape...")
-	result, err := db.Exec("DELETE FROM characters WHERE last_updated != ?", updateTime)
-	if err != nil {
-		log.Printf("❌ [Characters] Failed to clean up old player records: %v", err)
+	var stalePlayers []interface{}
+	for existingName := range existingPlayers {
+		if !scrapedPlayerNames[existingName] {
+			stalePlayers = append(stalePlayers, existingName)
+		}
+	}
+
+	if len(stalePlayers) > 0 {
+		// Delete in batches to avoid "too many SQL variables" error
+		const batchSize = 100
+		for i := 0; i < len(stalePlayers); i += batchSize {
+			end := i + batchSize
+			if end > len(stalePlayers) {
+				end = len(stalePlayers)
+			}
+			batch := stalePlayers[i:end]
+
+			placeholders := "WHERE name IN (?" + strings.Repeat(",?", len(batch)-1) + ")"
+			query := "DELETE FROM characters " + placeholders
+
+			result, err := db.Exec(query, batch...)
+			if err != nil {
+				log.Printf("❌ [Characters] Failed to clean up batch of old player records: %v", err)
+				// Continue to next batch
+			} else {
+				rowsAffected, _ := result.RowsAffected()
+				if enableCharacterScraperDebugLogs {
+					log.Printf("    -> [DB] Cleaned %d stale records in batch.", rowsAffected)
+				}
+			}
+		}
+		log.Printf("✅ [Characters] Cleanup complete. Removed %d stale player records in total.", len(stalePlayers))
 	} else {
-		rowsAffected, _ := result.RowsAffected()
-		log.Printf("✅ [Characters] Cleanup complete. Removed %d stale player records.", rowsAffected)
+		log.Println("✅ [Characters] Cleanup complete. No stale records found.")
 	}
 
 	log.Printf("✅ [Characters] Scrape and update process complete.")
+}
+
+func scrapePlayerCharacters() {
+	log.Println("🏆 [Characters] Starting player character scrape...")
+
+	// Regex definitions (unchanged)
+	rankRegex := regexp.MustCompile(`p\-1 text\-center font\-medium\\",\\"children\\":(\d+)\}\]`)
+	nameRegex := regexp.MustCompile(`max-w-10 truncate p-1 font-semibold">([^<]+)</td>`)
+	baseLevelRegex := regexp.MustCompile(`\\"level\\":(\d+),`)
+	jobLevelRegex := regexp.MustCompile(`\\"job_level\\":(\d+),\\"exp`)
+	expRegex := regexp.MustCompile(`\\"exp\\":(\d+)`)
+	classRegex := regexp.MustCompile(`"hidden text\-sm sm:inline\\",\\"children\\":\\"([^"]+)\\"`)
+
+	// Use the helper to find the last page
+	const firstPageURL = "https://projetoyufa.com/rankings?page=1"
+	lastPage := scraperClient.findLastPage(firstPageURL, "[Characters]")
+	updateTime := time.Now().Format(time.RFC3339)
+
+	// --- Producer-Consumer setup ---
+	playerChan := make(chan PlayerCharacter, 100) // Buffered channel
+	var wg sync.WaitGroup
+	sem := make(chan struct{}, 5) // Concurrency semaphore for scraping
+
+	// Start the single DB consumer goroutine
+	// It will wait until playerChan is filled and closed.
+	go processPlayerData(playerChan, updateTime)
+	// --------------------------------
+
+	log.Printf("🏆 [Characters] Scraping all %d pages...", lastPage)
+	for page := 1; page <= lastPage; page++ {
+		wg.Add(1)
+		sem <- struct{}{}
+		go func(pageIndex int) {
+			defer wg.Done()
+			defer func() { <-sem }()
+
+			url := fmt.Sprintf("https://projetoyufa.com/rankings?page=%d", pageIndex)
+
+			bodyContent, err := scraperClient.getPage(url, "[Characters]")
+			if err != nil {
+				log.Printf("    -> ❌ All retries failed for page %d: %v", pageIndex, err)
+				return
+			}
+
+			// --- Parsing logic (unchanged) ---
+			rankMatches := rankRegex.FindAllStringSubmatch(bodyContent, -1)
+			nameMatches := nameRegex.FindAllStringSubmatch(bodyContent, -1)
+			baseLevelMatches := baseLevelRegex.FindAllStringSubmatch(bodyContent, -1)
+			jobLevelMatches := jobLevelRegex.FindAllStringSubmatch(bodyContent, -1)
+			expMatches := expRegex.FindAllStringSubmatch(bodyContent, -1)
+			classMatches := classRegex.FindAllStringSubmatch(bodyContent, -1)
+
+			numChars := len(nameMatches)
+
+			if numChars == 0 || len(rankMatches) != numChars || len(baseLevelMatches) != numChars || len(jobLevelMatches) != numChars || len(expMatches) != numChars || len(classMatches) != numChars {
+				log.Printf("    -> ⚠️ [Characters] Mismatch in regex match counts on page %d. Skipping page. (Ranks: %d, Names: %d, Classes: %d)", pageIndex, len(rankMatches), len(nameMatches), len(classMatches))
+				return
+			}
+
+			var pagePlayers []PlayerCharacter
+			for i := 0; i < numChars; i++ {
+				rank, _ := strconv.Atoi(rankMatches[i][1])
+				name := nameMatches[i][1]
+				baseLevel, _ := strconv.Atoi(baseLevelMatches[i][1])
+				jobLevel, _ := strconv.Atoi(jobLevelMatches[i][1])
+				rawExp, _ := strconv.ParseFloat(expMatches[i][1], 64)
+				class := classMatches[i][1]
+
+				player := PlayerCharacter{
+					Rank:       rank,
+					BaseLevel:  baseLevel,
+					JobLevel:   jobLevel,
+					Experience: rawExp / 1000000.0,
+					Class:      class,
+					Name:       name,
+				}
+				pagePlayers = append(pagePlayers, player)
+			}
+			// --- End parsing logic ---
+
+			// Send found players to the consumer
+			if len(pagePlayers) > 0 {
+				for _, player := range pagePlayers {
+					playerChan <- player
+				}
+			}
+			log.Printf("    -> Scraped page %d/%d, sent %d chars to DB worker.", pageIndex, lastPage, len(pagePlayers))
+		}(page)
+	}
+
+	// Wait for all *scraping* goroutines to finish
+	wg.Wait()
+	// Close the channel to signal the *consumer* that no more data is coming
+	close(playerChan)
+	log.Printf("✅ [Characters] Finished scraping all pages. DB worker is now processing data...")
 }
 
 type GuildMemberJSON struct {
@@ -705,27 +742,27 @@ func scrapeZeny() {
 	for page := 1; page <= lastPage; page++ {
 		wg.Add(1)
 		sem <- struct{}{}
-		go func(pageIndex int) { // <-- Renamed 'p' to 'pageIndex'
+		go func(pageIndex int) {
 			defer wg.Done()
 			defer func() { <-sem }()
 
-			url := fmt.Sprintf("https://projetoyufa.com/rankings/zeny?page=%d", pageIndex) // <-- Use 'pageIndex'
+			url := fmt.Sprintf("https://projetoyufa.com/rankings/zeny?page=%d", pageIndex)
 
 			// Use the getPage helper, which includes retries
 			bodyContent, err := scraperClient.getPage(url, "[Zeny]")
 			if err != nil {
-				log.Printf("    -> ❌ All retries failed for page %d: %v", pageIndex, err) // <-- Use 'pageIndex'
+				log.Printf("    -> ❌ All retries failed for page %d: %v", pageIndex, err)
 				return
 			}
 
 			// Parse with goquery
 			doc, err := goquery.NewDocumentFromReader(strings.NewReader(bodyContent))
 			if err != nil {
-				log.Printf("    -> ❌ Failed to parse body for page %d: %v", pageIndex, err) // <-- Use 'pageIndex'
+				log.Printf("    -> ❌ Failed to parse body for page %d: %v", pageIndex, err)
 				return
 			}
 
-			// --- Start of parsing logic (largely unchanged) ---
+			// --- Start of parsing logic ---
 			doc.Find(`tbody[data-slot="table-body"] tr[data-slot="table-row"]`).Each(func(i int, s *goquery.Selection) {
 				cells := s.Find(`td[data-slot="table-cell"]`)
 				if cells.Length() < 3 {
@@ -735,21 +772,22 @@ func scrapeZeny() {
 				nameStr := strings.TrimSpace(cells.Eq(1).Text())
 				zenyStrRaw := strings.TrimSpace(cells.Eq(2).Text())
 
-				// --- FIX IS HERE ---
-				// These lines were missing. They use zenyStrRaw to create zenyStrClean.
+				// --- FIX WAS HERE ---
+				// Clean the zeny string
 				zenyStrClean := strings.ReplaceAll(zenyStrRaw, ",", "")
 				zenyStrClean = strings.TrimSuffix(zenyStrClean, "z")
 				zenyStrClean = strings.TrimSpace(zenyStrClean)
-				// --- END FIX ---
 
+				// Parse the *clean* string, not the raw one
 				zenyVal, err := strconv.ParseInt(zenyStrClean, 10, 64)
+				// --- END FIX ---
 
 				if enableZenyScraperDebugLogs {
 					log.Printf("    -> [Zeny] name: %s, zeny: %s.", nameStr, zenyStrClean)
 				}
 
 				if err != nil {
-					log.Printf("    -> ⚠️ [Zeny] Could not parse zeny value '%s' for player '%s'", zenyStrRaw, nameStr)
+					log.Printf("    -> ⚠️ [Zeny] Could not parse zeny value '%s' (from raw '%s') for player '%s'", zenyStrClean, zenyStrRaw, nameStr)
 					return
 				}
 
@@ -757,7 +795,7 @@ func scrapeZeny() {
 				allZenyInfo[nameStr] = zenyVal
 				mu.Unlock()
 			})
-			log.Printf("    -> [Zeny] Scraped page %d/%d successfully.", pageIndex, lastPage) // <-- Use 'pageIndex'
+			log.Printf("    -> [Zeny] Scraped page %d/%d successfully.", pageIndex, lastPage)
 			// --- End of parsing logic ---
 		}(page)
 	}
@@ -892,11 +930,91 @@ func scrapeZeny() {
 	log.Printf("✅ [Zeny] Database update complete. Updated activity for %d characters. %d characters were unchanged.", updatedCount, unchangedCount)
 }
 
+// parseMarketItem extracts all item details from a goquery selection.
+// This helper function isolates the complex name-parsing logic from the main scraper loop.
+func parseMarketItem(itemSelection *goquery.Selection) (Item, bool) {
+	// --- Regex for +Refine levels ---
+	// These are kept locally as they are only used here.
+	reRefineMid := regexp.MustCompile(`\s(\+\d+)`)    // e.g., "Item +7 Name"
+	reRefineStart := regexp.MustCompile(`^(\+\d+)\s`) // e.g., "+7 Item Name"
+
+	// --- 1. Get Base Name ---
+	baseItemName := strings.TrimSpace(itemSelection.Find("p.truncate").Text())
+	if baseItemName == "" {
+		return Item{}, false // No name, invalid item
+	}
+
+	// --- 2. Normalize Refinements ---
+	// Move mid-string refinements (e.g., "Slotted +7 Tsurugi") to the end ("Slotted Tsurugi +7")
+	if match := reRefineMid.FindStringSubmatch(baseItemName); len(match) > 1 && !strings.HasSuffix(baseItemName, match[0]) {
+		cleanedName := strings.Replace(baseItemName, match[0], "", 1)
+		cleanedName = strings.Join(strings.Fields(cleanedName), " ") // Remove extra spaces
+		baseItemName = cleanedName + match[0]
+		// Move start-string refinements (e.g., "+7 Tsurugi") to the end ("Tsurugi +7")
+	} else if match := reRefineStart.FindStringSubmatch(baseItemName); len(match) > 1 {
+		cleanedName := strings.Replace(baseItemName, match[0], "", 1)
+		cleanedName = strings.Join(strings.Fields(cleanedName), " ") // Remove extra spaces
+		baseItemName = cleanedName + " " + match[1]
+	}
+
+	// --- 3. Extract and Append Card Names ---
+	var cardNames []string
+	itemSelection.Find("div.mt-1.flex.flex-wrap.gap-1 span[data-slot='badge']").Each(func(k int, cardSelection *goquery.Selection) {
+		// The first badge is the ID, so we skip it.
+		// Card badges don't have the "ID: " prefix.
+		cardText := cardSelection.Text()
+		if !strings.HasPrefix(cardText, "ID: ") {
+			cardName := strings.TrimSpace(strings.TrimSuffix(cardText, " Card"))
+			if cardName != "" {
+				cardNames = append(cardNames, cardName)
+			}
+		}
+	})
+
+	// Finalize the name, e.g., "Tsurugi +7 [Hydra] [Skeleton Worker]"
+	finalItemName := baseItemName
+	if len(cardNames) > 0 {
+		wrapped := make([]string, len(cardNames))
+		for i, c := range cardNames {
+			wrapped[i] = fmt.Sprintf(" [%s]", c)
+		}
+		finalItemName = fmt.Sprintf("%s%s", baseItemName, strings.Join(wrapped, ""))
+	}
+
+	// --- 4. Get Other Details ---
+	quantityStr := strings.TrimSuffix(strings.TrimSpace(itemSelection.Find("span.text-xs.text-muted-foreground").Text()), "x")
+	priceStr := strings.TrimSpace(itemSelection.Find("span.text-xs.font-medium.text-green-600").Text())
+
+	// Find the ID badge specifically
+	idStr := ""
+	itemSelection.Find("span[data-slot='badge']").Each(func(_ int, idSelection *goquery.Selection) {
+		if strings.HasPrefix(idSelection.Text(), "ID: ") {
+			idStr = strings.TrimPrefix(strings.TrimSpace(idSelection.Text()), "ID: ")
+		}
+	})
+
+	if priceStr == "" {
+		return Item{}, false // No price, invalid item
+	}
+
+	quantity, _ := strconv.Atoi(quantityStr)
+	if quantity == 0 {
+		quantity = 1 // Default to 1 if parsing fails or 0
+	}
+	itemID, _ := strconv.Atoi(idStr)
+
+	return Item{
+		Name:     finalItemName,
+		ItemID:   itemID,
+		Quantity: quantity,
+		Price:    priceStr,
+	}, true
+}
+
 func scrapeData() {
 	log.Println("🚀 [Market] Starting scrape...")
 
-	reRefineMid := regexp.MustCompile(`\s(\+\d+)`)
-	reRefineStart := regexp.MustCompile(`^(\+\d+)\s`)
+	// --- REMOVED regex definitions here, they are now in parseMarketItem ---
 
 	const requestURL = "https://projetoyufa.com/market"
 
@@ -917,7 +1035,10 @@ func scrapeData() {
 	scrapedItemsByName := make(map[string][]Item)
 	activeSellers := make(map[string]bool)
 
+	// --- Main Scraper Loop ---
+	// This loop is now much simpler. It just finds shops and items.
 	doc.Find(`div[data-slot="card"]`).Each(func(i int, s *goquery.Selection) {
+		// Get shop-level details
 		shopName := strings.TrimSpace(s.Find(`div[data-slot="card-title"]`).Text())
 		sellerName := strings.TrimSpace(s.Find("svg.lucide-user").Next().Text())
 		mapName := strings.TrimSpace(s.Find("svg.lucide-map-pin").Next().Text())
@@ -928,66 +1049,32 @@ func scrapeData() {
 			log.Printf("[Market] shop name: %s, seller name: %s, map_name: %s, mapcoord: %s", shopName, sellerName, mapName, mapCoordinates)
 		}
 
+		if shopName == "" || sellerName == "" {
+			return // Skip shops with missing critical info
+		}
+
+		// Iterate over items in this shop
 		s.Find(`div[data-slot="card-content"] .flex.items-center.space-x-2`).Each(func(j int, itemSelection *goquery.Selection) {
-			itemName := strings.TrimSpace(itemSelection.Find("p.truncate").Text())
 
-			if match := reRefineMid.FindStringSubmatch(itemName); len(match) > 1 && !strings.HasSuffix(itemName, match[0]) {
-				cleanedName := strings.Replace(itemName, match[0], "", 1)
-				cleanedName = strings.Join(strings.Fields(cleanedName), " ")
-				itemName = cleanedName + match[0]
-			} else {
-				if match := reRefineStart.FindStringSubmatch(itemName); len(match) > 1 {
-					cleanedName := strings.Replace(itemName, match[0], "", 1)
-					cleanedName = strings.Join(strings.Fields(cleanedName), " ")
-					itemName = cleanedName + " " + match[1]
-				}
-			}
-
-			var cardNames []string
-			itemSelection.Find("div.mt-1.flex.flex-wrap.gap-1 span[data-slot='badge']").Each(func(k int, cardSelection *goquery.Selection) {
-				cardName := strings.TrimSpace(strings.TrimSuffix(cardSelection.Text(), " Card"))
-				if cardName != "" {
-					cardNames = append(cardNames, cardName)
-				}
-			})
-
-			if len(cardNames) > 0 {
-				wrapped := make([]string, len(cardNames))
-				for i, c := range cardNames {
-					wrapped[i] = fmt.Sprintf(" [%s]", c)
-				}
-				itemName = fmt.Sprintf("%s%s", itemName, strings.Join(wrapped, ""))
-			}
-
-			quantityStr := strings.TrimSuffix(strings.TrimSpace(itemSelection.Find("span.text-xs.text-muted-foreground").Text()), "x")
-			priceStr := strings.TrimSpace(itemSelection.Find("span.text-xs.font-medium.text-green-600").Text())
-
-			idStr := strings.TrimPrefix(strings.TrimSpace(itemSelection.Find("div.flex.items-center.gap-1 span[data-slot='badge']").First().Text()), "ID: ")
-
-			if itemName == "" || priceStr == "" || shopName == "" {
+			// Use the helper function to do all the hard parsing
+			item, ok := parseMarketItem(itemSelection)
+			if !ok {
+				// Item was invalid (e.g., missing name or price), skip it
 				return
 			}
-			quantity, _ := strconv.Atoi(quantityStr)
-			if quantity == 0 {
-				quantity = 1
-			}
-			itemID, _ := strconv.Atoi(idStr)
 
-			item := Item{
-				Name:           itemName,
-				ItemID:         itemID,
-				Quantity:       quantity,
-				Price:          priceStr,
-				StoreName:      shopName,
-				SellerName:     sellerName,
-				MapName:        mapName,
-				MapCoordinates: mapCoordinates,
-			}
+			// Add the shop-level details to the item
+			item.StoreName = shopName
+			item.SellerName = sellerName
+			item.MapName = mapName
+			item.MapCoordinates = mapCoordinates
+
 			if enableMarketScraperDebugLogs == true {
-				log.Printf("🔎 [Market] name: %s, id: %d, qtd: %d price %s store: %s seller: %s map: %s coord %s", itemName, itemID, quantity, priceStr, shopName, sellerName, mapName, mapCoordinates)
+				log.Printf("🔎 [Market] name: %s, id: %d, qtd: %d price %s store: %s seller: %s map: %s coord %s", item.Name, item.ItemID, item.Quantity, item.Price, shopName, sellerName, mapName, mapCoordinates)
 			}
 
-			scrapedItemsByName[itemName] = append(scrapedItemsByName[itemName], item)
+			// Add the fully-formed item to our map
+			scrapedItemsByName[item.Name] = append(scrapedItemsByName[item.Name], item)
 		})
 	})
 
@@ -1002,6 +1089,8 @@ func scrapeData() {
 		return
 	}
 	defer tx.Rollback()
+
+	// --- Database logic from here down is unchanged ---
 
 	_, err = tx.Exec("INSERT OR IGNORE INTO scrape_history (timestamp) VALUES (?)", retrievalTime)
 	if err != nil {
