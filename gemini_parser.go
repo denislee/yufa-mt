@@ -69,6 +69,8 @@ For each item, extract its base name, refinement level, number of slots, any att
 - If the item has "SW" in the name, it is "Skeleton Worker"
 - If the item is "Gakk", it is "Gakkung Bow"
 - If the item is "pesadelo", it is "Carta Pesadelo"
+- If the item is "Elu", it is "Elunium"
+- If the item is "Ori", it is "Oridecon"
 
 - An item only have card if the item has the number of slots equal or more than number of cards in the item
 - If the item has slots, keep the slots on the name of the item, but always a space between the item name and the slots
