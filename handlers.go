@@ -1156,6 +1156,15 @@ func playerCountHandler(w http.ResponseWriter, r *http.Request) {
 
 	var playerHistory []PlayerCountPoint
 	activeDatesWithData := make(map[string]struct{})
+
+	// --- NEW: Variables for interval stats ---
+	var maxActiveInterval int = -1
+	var minActiveInterval int = -1
+	var totalActiveInterval int64 = 0
+	var maxActiveIntervalTime string = "N/A"
+	var dataPointCount int64 = 0
+	// --- END NEW ---
+
 	for rows.Next() {
 		var point PlayerCountPoint
 		var timestampStr string
@@ -1174,6 +1183,19 @@ func playerCountHandler(w http.ResponseWriter, r *http.Request) {
 			point.Timestamp = timestampStr
 		}
 		playerHistory = append(playerHistory, point)
+
+		// --- NEW: Calculate interval stats ---
+		activePlayers := point.Delta
+		if maxActiveInterval == -1 || activePlayers > maxActiveInterval {
+			maxActiveInterval = activePlayers
+			maxActiveIntervalTime = point.Timestamp
+		}
+		if minActiveInterval == -1 || activePlayers < minActiveInterval {
+			minActiveInterval = activePlayers
+		}
+		totalActiveInterval += int64(activePlayers)
+		dataPointCount++
+		// --- END NEW ---
 	}
 	playerHistoryJSON, _ := json.Marshal(playerHistory)
 	eventIntervals := generateEventIntervals(viewStart, now, definedEvents, activeDatesWithData)
@@ -1194,11 +1216,35 @@ func playerCountHandler(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	// --- NEW: Finalize interval stats ---
+	var avgActiveInterval int
+	if dataPointCount > 0 {
+		avgActiveInterval = int(totalActiveInterval / dataPointCount)
+	}
+	if maxActiveInterval == -1 {
+		maxActiveInterval = 0
+	}
+	if minActiveInterval == -1 {
+		minActiveInterval = 0
+	}
+	// --- END NEW ---
+
 	data := PlayerCountPageData{
-		PlayerDataJSON: template.JS(playerHistoryJSON), LastScrapeTime: GetLastScrapeTime(),
-		SelectedInterval: interval, EventDataJSON: template.JS(eventIntervalsJSON), LatestActivePlayers: latestActivePlayers,
-		HistoricalMaxActivePlayers: historicalMaxActive, HistoricalMaxActivePlayersTime: historicalMaxTime,
-		PageTitle: "Player Count",
+		PlayerDataJSON:                 template.JS(playerHistoryJSON),
+		LastScrapeTime:                 GetLastScrapeTime(),
+		SelectedInterval:               interval,
+		EventDataJSON:                  template.JS(eventIntervalsJSON),
+		LatestActivePlayers:            latestActivePlayers,
+		HistoricalMaxActivePlayers:     historicalMaxActive,
+		HistoricalMaxActivePlayersTime: historicalMaxTime,
+		PageTitle:                      "Player Count",
+
+		// --- NEW: Pass data to template ---
+		IntervalPeakActive:     maxActiveInterval,
+		IntervalPeakActiveTime: maxActiveIntervalTime,
+		IntervalAvgActive:      avgActiveInterval,
+		IntervalLowActive:      minActiveInterval,
+		// --- END NEW ---
 	}
 	renderTemplate(w, "players.html", data)
 }
@@ -2446,4 +2492,3 @@ func levenshtein(s1, s2 string) int {
 	}
 	return v1[m]
 }
-

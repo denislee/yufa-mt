@@ -269,6 +269,12 @@ type PlayerCountPageData struct {
 	HistoricalMaxActivePlayers     int
 	HistoricalMaxActivePlayersTime string
 	PageTitle                      string
+
+	// --- NEW FIELDS ---
+	IntervalPeakActive     int
+	IntervalPeakActiveTime string
+	IntervalAvgActive      int
+	IntervalLowActive      int
 }
 
 type CharacterPageData struct {
