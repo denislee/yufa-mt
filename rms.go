@@ -21,30 +21,30 @@ import (
 var rmsCacheMutex sync.Mutex
 
 func scrapeRMSItemDetails(itemID int) (*RMSItem, error) {
-	log.Printf("ℹ️ [RMS Scraper] Starting detailed scrape for Item ID: %d", itemID)
+	log.Printf("[I] [RMS] Starting detailed scrape for Item ID: %d", itemID)
 
 	rmsURL := fmt.Sprintf("https://ratemyserver.net/item_db.php?item_id=%d", itemID)
-	log.Printf("   -> [RMS] Fetching primary data from: %s", rmsURL)
+	log.Printf("[D] [RMS] Fetching primary data from: %s", rmsURL)
 	client := http.Client{Timeout: 10 * time.Second}
 	res, err := client.Get(rmsURL)
 	if err != nil {
-		log.Printf("   -> ❌ [RMS] FAILED to get URL. Error: %v", err)
+		log.Printf("[E] [RMS] FAILED to get URL. Error: %v", err)
 		return nil, fmt.Errorf("failed to get URL from RMS: %w", err)
 	}
 	defer res.Body.Close()
 	if res.StatusCode != 200 {
-		log.Printf("   -> ❌ [RMS] FAILED with non-200 status code: %d %s", res.StatusCode, res.Status)
+		log.Printf("[E] [RMS] FAILED with non-200 status code: %d %s", res.StatusCode, res.Status)
 
 		return nil, fmt.Errorf("RMS status code error: %d %s", res.StatusCode, res.Status)
 	}
-	log.Printf("   -> ✅ [RMS] Successfully received response.")
+	log.Printf("[D] [RMS] Successfully received response.")
 
 	doc, err := goquery.NewDocumentFromReader(res.Body)
 	if err != nil {
-		log.Printf("   -> ❌ [RMS] FAILED to parse HTML. Error: %v", err)
+		log.Printf("[E] [RMS] FAILED to parse HTML. Error: %v", err)
 		return nil, fmt.Errorf("failed to parse RMS HTML: %w", err)
 	}
-	log.Printf("   -> ✅ [RMS] HTML parsed successfully.")
+	log.Printf("[D] [RMS] HTML parsed successfully.")
 
 	item := &RMSItem{
 		ID:       itemID,
@@ -53,9 +53,9 @@ func scrapeRMSItemDetails(itemID int) (*RMSItem, error) {
 
 	item.Name = strings.TrimSpace(doc.Find("div.main_block b").First().Text())
 	if item.Name == "" {
-		log.Printf("   -> ⚠️ [RMS] Could not find item name.")
+		log.Printf("[W] [RMS] Could not find item name.")
 	} else {
-		log.Printf("   -> [RMS] Found primary name: '%s'", item.Name)
+		log.Printf("[D] [RMS] Found primary name: '%s'", item.Name)
 	}
 
 	doc.Find(".info_grid_item").Each(func(i int, s *goquery.Selection) {
@@ -105,34 +105,34 @@ func scrapeRMSItemDetails(itemID int) (*RMSItem, error) {
 	})
 
 	rdbURL := fmt.Sprintf("https://ragnarokdatabase.com/item/%d", itemID)
-	log.Printf("   -> [RDB] Fetching Portuguese name from: %s", rdbURL)
+	log.Printf("[D] [RDB] Fetching Portuguese name from: %s", rdbURL)
 	rdbRes, err := client.Get(rdbURL)
 	if err != nil {
-		log.Printf("   -> ⚠️ [RDB] Could not fetch from RagnarokDatabase for item %d: %v", itemID, err)
+		log.Printf("[W] [RDB] Could not fetch from RagnarokDatabase for item %d: %v", itemID, err)
 		return item, nil
 	}
 	defer rdbRes.Body.Close()
 
 	if rdbRes.StatusCode == 200 {
-		log.Printf("   -> ✅ [RDB] Successfully received response.")
+		log.Printf("[D] [RDB] Successfully received response.")
 		body, readErr := io.ReadAll(rdbRes.Body)
 		if readErr != nil {
-			log.Printf("   -> ⚠️ [RDB] Could not read body from RagnarokDatabase for item %d: %v", itemID, readErr)
+			log.Printf("[W] [RDB] Could not read body from RagnarokDatabase for item %d: %v", itemID, readErr)
 		} else {
 			reNamePT := regexp.MustCompile(`<h1 class="item-title-db">([^<]+)</h1>`)
 			matches := reNamePT.FindStringSubmatch(string(body))
 			if len(matches) > 1 {
 				item.NamePT = strings.TrimSpace(matches[1])
-				log.Printf("   -> ✅ [RDB] Found Portuguese name: '%s'", item.NamePT)
+				log.Printf("[D] [RDB] Found Portuguese name: '%s'", item.NamePT)
 			} else {
-				log.Printf("   -> ⚠️ [RDB] Could not find Portuguese name with regex on page.")
+				log.Printf("[W] [RDB] Could not find Portuguese name with regex on page.")
 			}
 		}
 	} else {
-		log.Printf("   -> ⚠️ [RDB] Received non-200 status (%d) from RagnarokDatabase for item %d", rdbRes.StatusCode, itemID)
+		log.Printf("[W] [RDB] Received non-200 status (%d) from RagnarokDatabase for item %d", rdbRes.StatusCode, itemID)
 	}
 
-	log.Printf("✅ [RMS Scraper] Finished detailed scrape for Item ID: %d", itemID)
+	log.Printf("[I] [RMS] Finished detailed scrape for Item ID: %d", itemID)
 	return item, nil
 }
 
@@ -211,22 +211,22 @@ func scrapeAndCacheItemIfNotExists(itemID int, itemName string) {
 		return
 	}
 
-	log.Printf("ℹ️ Caching details for new/missing item: %s (ID: %d)", itemName, itemID)
+	log.Printf("[I] [RMS] Caching details for new/missing item: %s (ID: %d)", itemName, itemID)
 	scrapedItem, scrapeErr := scrapeRMSItemDetails(itemID)
 	if scrapeErr != nil {
-		log.Printf("⚠️ Failed to scrape RateMyServer for item ID %d (%s): %v", itemID, itemName, scrapeErr)
+		log.Printf("[W] [RMS] Failed to scrape RateMyServer for item ID %d (%s): %v", itemID, itemName, scrapeErr)
 		return
 	}
 
 	if saveErr := saveItemDetailsToCache(scrapedItem); saveErr != nil {
-		log.Printf("⚠️ Failed to save item ID %d (%s) to cache: %v", itemID, itemName, saveErr)
+		log.Printf("[W] [RMS] Failed to save item ID %d (%s) to cache: %v", itemID, itemName, saveErr)
 	} else {
-		log.Printf("✅ Successfully cached details for item ID %d (%s).", itemID, itemName)
+		log.Printf("[I] [RMS] Successfully cached details for item ID %d (%s).", itemID, itemName)
 	}
 }
 
 func populateMissingCachesOnStartup() {
-	log.Println("🛠️ Starting background task: Verifying RMS item cache...")
+	log.Println("[I] [RMS/Cache] Starting background task: Verifying RMS item cache...")
 
 	type dbItem struct {
 		ID   int
@@ -249,7 +249,7 @@ func populateMissingCachesOnStartup() {
 	`
 	rows, err := db.Query(query)
 	if err != nil {
-		log.Printf("❌ [Cache Verification] Failed to query for missing items: %v", err)
+		log.Printf("[E] [RMS/Cache] Failed to query for missing items: %v", err)
 		return
 	}
 	defer rows.Close()
@@ -257,18 +257,18 @@ func populateMissingCachesOnStartup() {
 	for rows.Next() {
 		var item dbItem
 		if err := rows.Scan(&item.ID, &item.Name); err != nil {
-			log.Printf("⚠️ [Cache Verification] Failed to scan item: %v", err)
+			log.Printf("[W] [RMS/Cache] Failed to scan item: %v", err)
 			continue
 		}
 		itemsToCache = append(itemsToCache, item)
 	}
 
 	if len(itemsToCache) == 0 {
-		log.Println("✅ [Cache Verification] All items are already cached. No work to do.")
+		log.Println("[I] [RMS/Cache] All items are already cached. No work to do.")
 		return
 	}
 
-	log.Printf("ℹ️ [Cache Verification] Found %d item(s) missing from the RMS cache. Populating concurrently...", len(itemsToCache))
+	log.Printf("[I] [RMS/Cache] Found %d item(s) missing from the RMS cache. Populating concurrently...", len(itemsToCache))
 
 	var wg sync.WaitGroup
 
@@ -281,7 +281,7 @@ func populateMissingCachesOnStartup() {
 		go func(idx int, itm dbItem) {
 			defer wg.Done()
 
-			log.Printf("    -> Caching %d/%d: %s (ID: %d)", idx+1, len(itemsToCache), itm.Name, itm.ID)
+			log.Printf("[D] [RMS/Cache] Caching %d/%d: %s (ID: %d)", idx+1, len(itemsToCache), itm.Name, itm.ID)
 			scrapeAndCacheItemIfNotExists(itm.ID, itm.Name)
 
 			time.Sleep(1 * time.Second)
@@ -291,44 +291,44 @@ func populateMissingCachesOnStartup() {
 	}
 
 	wg.Wait()
-	log.Println("✅ [Cache Verification] Finished populating missing cache entries.")
+	log.Println("[I] [RMS/Cache] Finished populating missing cache entries.")
 }
 
 func scrapeRMSItemSearch(query string) ([]ItemSearchResult, error) {
 
 	rmsURL := fmt.Sprintf("https://ratemyserver.net/index.php?iname=%s&page=item_db&quick=1&isearch=Search", url.QueryEscape(query))
-	log.Printf("➡️ [RMS HTML Search] Performing live search for: '%s'", query)
-	log.Printf("   URL: %s", rmsURL)
+	log.Printf("[I] [RMS/Search] Performing live search for: '%s'", query)
+	log.Printf("[D] [RMS/Search] URL: %s", rmsURL)
 
 	client := http.Client{Timeout: 10 * time.Second}
 	res, err := client.Get(rmsURL)
 	if err != nil {
-		log.Printf("❌ [RMS HTML Search] Failed to get URL: %v", err)
+		log.Printf("[E] [RMS/Search] Failed to get URL: %v", err)
 		return nil, fmt.Errorf("failed to get search URL: %w", err)
 	}
 	defer res.Body.Close()
 
 	if res.StatusCode != 200 {
-		log.Printf("⚠️ [RMS HTML Search] Received non-200 status code: %d %s", res.StatusCode, res.Status)
+		log.Printf("[W] [RMS/Search] Received non-200 status code: %d %s", res.StatusCode, res.Status)
 		return nil, fmt.Errorf("status code error: %d %s", res.StatusCode, res.Status)
 	}
 
 	doc, err := goquery.NewDocumentFromReader(res.Body)
 	if err != nil {
-		log.Printf("❌ [RMS HTML Search] Failed to parse search HTML: %v", err)
+		log.Printf("[E] [RMS/Search] Failed to parse search HTML: %v", err)
 		return nil, fmt.Errorf("failed to parse search HTML: %w", err)
 	}
 
 	var results []ItemSearchResult
 	idRegex := regexp.MustCompile(`Item ID# (\d+)`)
 
-	log.Printf("   [RMS HTML Search] Searching for result containers in HTML...")
+	log.Printf("[D] [RMS/Search] Searching for result containers in HTML...")
 	doc.Find("div[style*='display: flex']").Each(func(i int, s *goquery.Selection) {
 		var result ItemSearchResult
 		var found bool
 
 		fullText := s.Text()
-		log.Printf("   [RMS HTML Search] Processing block %d: Raw text -> \"%s\"", i+1, strings.TrimSpace(fullText))
+		log.Printf("[D] [RMS/Search] Processing block %d: Raw text -> \"%s\"", i+1, strings.TrimSpace(fullText))
 
 		matches := idRegex.FindStringSubmatch(fullText)
 
@@ -340,9 +340,9 @@ func scrapeRMSItemSearch(query string) ([]ItemSearchResult, error) {
 			result.Name = strings.TrimSpace(s.Find("b").First().Text())
 
 			result.ImageURL = fmt.Sprintf("https://divine-pride.net/img/items/collection/iRO/%d", id)
-			log.Printf("   [RMS HTML Search]   -> Extracted: ID=%d, Name='%s'", result.ID, result.Name)
+			log.Printf("[D] [RMS/Search] Extracted: ID=%d, Name='%s'", result.ID, result.Name)
 		} else {
-			log.Printf("   [RMS HTML Search]   -> No Item ID found in block %d.", i+1)
+			log.Printf("[D] [RMS/Search] No Item ID found in block %d.", i+1)
 		}
 
 		if found && result.ID > 0 && result.Name != "" {
@@ -351,35 +351,35 @@ func scrapeRMSItemSearch(query string) ([]ItemSearchResult, error) {
 	})
 
 	if len(results) == 0 {
-		log.Printf("   [RMS HTML Search] No valid items were parsed from the page.")
+		log.Printf("[D] [RMS/Search] No valid items were parsed from the page.")
 	}
 
-	log.Printf("✅ [RMS HTML Search] Found %d item(s) for query: '%s'", len(results), query)
+	log.Printf("[I] [RMS/Search] Found %d item(s) for query: '%s'", len(results), query)
 	return results, nil
 }
 
 func scrapeRagnarokDatabaseSearch(query string) ([]int, error) {
 
 	searchURL := fmt.Sprintf("https://ragnarokdatabase.com/search/all/%s", query)
-	log.Printf("➡️ [Fallback Search] Performing search on RagnarokDatabase for: '%s'", query)
-	log.Printf("   URL: %s", searchURL)
+	log.Printf("[I] [RDB/Search] Performing search on RagnarokDatabase for: '%s'", query)
+	log.Printf("[D] [RDB/Search] URL: %s", searchURL)
 
 	client := http.Client{Timeout: 10 * time.Second}
 	res, err := client.Get(searchURL)
 	if err != nil {
-		log.Printf("❌ [Fallback Search] Failed to get URL: %v", err)
+		log.Printf("[E] [RDB/Search] Failed to get URL: %v", err)
 		return nil, fmt.Errorf("failed to get search URL: %w", err)
 	}
 	defer res.Body.Close()
 
 	if res.StatusCode != 200 {
-		log.Printf("⚠️ [Fallback Search] Received non-200 status code: %d %s", res.StatusCode, res.Status)
+		log.Printf("[W] [RDB/Search] Received non-200 status code: %d %s", res.StatusCode, res.Status)
 		return nil, fmt.Errorf("status code error: %d %s", res.StatusCode, res.Status)
 	}
 
 	body, err := io.ReadAll(res.Body)
 	if err != nil {
-		log.Printf("❌ [Fallback Search] Failed to read response body: %v", err)
+		log.Printf("[E] [RDB/Search] Failed to read response body: %v", err)
 		return nil, fmt.Errorf("failed to read response body: %w", err)
 	}
 
@@ -387,7 +387,7 @@ func scrapeRagnarokDatabaseSearch(query string) ([]int, error) {
 	matches := idNameRegex.FindAllStringSubmatch(string(body), -1)
 
 	if len(matches) == 0 {
-		log.Printf("   [Fallback Search] No item IDs found on the page for query '%s'.", query)
+		log.Printf("[D] [RDB/Search] No item IDs found on the page for query '%s'.", query)
 		return nil, nil
 	}
 
@@ -396,7 +396,7 @@ func scrapeRagnarokDatabaseSearch(query string) ([]int, error) {
 
 	updateStmt, err := db.Prepare("UPDATE rms_item_cache SET name_pt = ? WHERE item_id = ?")
 	if err != nil {
-		log.Printf("⚠️ [Fallback Search] Could not prepare update statement for name_pt, will skip updating: %v", err)
+		log.Printf("[W] [RDB/Search] Could not prepare update statement for name_pt, will skip updating: %v", err)
 
 	} else {
 		defer updateStmt.Close()
@@ -427,17 +427,17 @@ func scrapeRagnarokDatabaseSearch(query string) ([]int, error) {
 					if updateErr == nil {
 						rowsAffected, _ := res.RowsAffected()
 						if rowsAffected > 0 {
-							log.Printf("   [Fallback Search] Updated Portuguese name for item ID %d to '%s'", id, namePT)
+							log.Printf("[D] [RDB/Search] Updated Portuguese name for item ID %d to '%s'", id, namePT)
 						}
 					} else {
-						log.Printf("⚠️ [Fallback Search] Failed to execute update for item ID %d: %v", id, updateErr)
+						log.Printf("[W] [RDB/Search] Failed to execute update for item ID %d: %v", id, updateErr)
 					}
 				}
 			}
 		}
 	}
 
-	log.Printf("✅ [Fallback Search] Found %d unique item(s) for query: '%s'", len(itemIDs), query)
+	log.Printf("[I] [RDB/Search] Found %d unique item(s) for query: '%s'", len(itemIDs), query)
 	return itemIDs, nil
 }
 
@@ -455,8 +455,8 @@ func scrapeRODatabaseSearch(query string, slots int) ([]ItemSearchResult, error)
 	}
 	searchURL := fmt.Sprintf("https://rodatabase.com/pt-BR/item/search?%s", v.Encode())
 
-	log.Printf("➡️ [RODatabase Search] Performing search for: '%s' (Original: '%s', Slots: %d)", searchQuery, query, slots)
-	log.Printf("	URL: %s", searchURL)
+	log.Printf("[I] [RODB/Search] Performing search for: '%s' (Original: '%s', Slots: %d)", searchQuery, query, slots)
+	log.Printf("[D] [RODB/Search] URL: %s", searchURL)
 
 	customTransport := &http.Transport{
 		TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
@@ -467,19 +467,19 @@ func scrapeRODatabaseSearch(query string, slots int) ([]ItemSearchResult, error)
 	}
 	res, err := client.Get(searchURL)
 	if err != nil {
-		log.Printf("❌ [RODatabase Search] Failed to get URL: %v", err)
+		log.Printf("[E] [RODB/Search] Failed to get URL: %v", err)
 		return nil, fmt.Errorf("failed to get search URL: %w", err)
 	}
 	defer res.Body.Close()
 
 	if res.StatusCode != 200 {
-		log.Printf("⚠️ [RODatabase Search] Received non-200 status code: %d %s", res.StatusCode, res.Status)
+		log.Printf("[W] [RODB/Search] Received non-200 status code: %d %s", res.StatusCode, res.Status)
 		return nil, fmt.Errorf("status code error: %d %s", res.StatusCode, res.Status)
 	}
 
 	body, err := io.ReadAll(res.Body)
 	if err != nil {
-		log.Printf("❌ [RODatabase Search] Failed to read response body: %v", err)
+		log.Printf("[E] [RODB/Search] Failed to read response body: %v", err)
 		return nil, fmt.Errorf("failed to read response body: %w", err)
 	}
 
@@ -487,7 +487,7 @@ func scrapeRODatabaseSearch(query string, slots int) ([]ItemSearchResult, error)
 	matches := idNameRegex.FindAllStringSubmatch(string(body), -1)
 
 	if len(matches) == 0 {
-		log.Printf("	[RODatabase Search] No item IDs found on the page for query '%s'.", query)
+		log.Printf("[D] [RODB/Search] No item IDs found on the page for query '%s'.", query)
 		return nil, nil
 	}
 
@@ -512,12 +512,12 @@ func scrapeRODatabaseSearch(query string, slots int) ([]ItemSearchResult, error)
 		}
 	}
 
-	log.Printf("✅ [RODatabase Search] Found %d unique item(s) for query: '%s'", len(results), query)
+	log.Printf("[I] [RODB/Search] Found %d unique item(s) for query: '%s'", len(results), query)
 	return results, nil
 }
 
 func runFullRMSCacheJob() {
-	log.Println("🛠️ [RMS Refresh] Starting full RMS cache refresh job...")
+	log.Println("[I] [Job/RMS] Starting full RMS cache refresh job...")
 
 	const staleDuration = 7 * 24 * time.Hour
 	const scrapeDelay = 5 * time.Second
@@ -525,11 +525,11 @@ func runFullRMSCacheJob() {
 	const maxPreRenewalItemID = 20000
 	const maxConsecutiveFailures = 1000
 
-	log.Println("    -> [RMS Refresh] Part 1: Refreshing stale items from market...")
+	log.Println("[I] [Job/RMS] Part 1: Refreshing stale items from market...")
 
 	rows, err := db.Query("SELECT DISTINCT item_id, name_of_the_item FROM items WHERE item_id > 0")
 	if err != nil {
-		log.Printf("❌ [RMS Refresh] Part 1: Failed to query for all items: %v", err)
+		log.Printf("[E] [Job/RMS] Part 1: Failed to query for all items: %v", err)
 		return
 	}
 	defer rows.Close()
@@ -542,7 +542,7 @@ func runFullRMSCacheJob() {
 	for rows.Next() {
 		var item dbItem
 		if err := rows.Scan(&item.ID, &item.Name); err != nil {
-			log.Printf("⚠️ [RMS Refresh] Part 1: Failed to scan item: %v", err)
+			log.Printf("[W] [Job/RMS] Part 1: Failed to scan item: %v", err)
 			continue
 		}
 		allDBItems = append(allDBItems, item)
@@ -550,7 +550,7 @@ func runFullRMSCacheJob() {
 
 	cacheRows, err := db.Query("SELECT item_id, last_checked FROM rms_item_cache")
 	if err != nil {
-		log.Printf("❌ [RMS Refresh] Part 1: Failed to query for cached items: %v", err)
+		log.Printf("[E] [Job/RMS] Part 1: Failed to query for cached items: %v", err)
 		return
 	}
 	defer cacheRows.Close()
@@ -582,37 +582,37 @@ func runFullRMSCacheJob() {
 	}
 
 	if len(itemsToRefresh) > 0 {
-		log.Printf("    -> [RMS Refresh] Part 1: Found %d market item(s) to refresh. Starting slow refresh (1 item / %v)...", len(itemsToRefresh), scrapeDelay)
+		log.Printf("[I] [Job/RMS] Part 1: Found %d market item(s) to refresh. Starting slow refresh (1 item / %v)...", len(itemsToRefresh), scrapeDelay)
 
 		for i, item := range itemsToRefresh {
-			log.Printf("    -> [RMS Refresh] Refreshing %d/%d: %s (ID: %d)", i+1, len(itemsToRefresh), item.Name, item.ID)
+			log.Printf("[D] [Job/RMS] Refreshing %d/%d: %s (ID: %d)", i+1, len(itemsToRefresh), item.Name, item.ID)
 
 			scrapedItem, scrapeErr := scrapeRMSItemDetails(item.ID)
 			if scrapeErr != nil {
-				log.Printf("    -> ❌ [RMS Refresh] FAILED to scrape (Part 1) for item ID %d (%s): %v", item.ID, item.Name, scrapeErr)
+				log.Printf("[E] [Job/RMS] FAILED to scrape (Part 1) for item ID %d (%s): %v", item.ID, item.Name, scrapeErr)
 				time.Sleep(scrapeDelay)
 				continue
 			}
 			if saveErr := saveItemDetailsToCache(scrapedItem); saveErr != nil {
-				log.Printf("    -> ⚠️ [RMS Refresh] FAILED to save (Part 1) for item ID %d (%s): %v", item.ID, item.Name, saveErr)
+				log.Printf("[W] [Job/RMS] FAILED to save (Part 1) for item ID %d (%s): %v", item.ID, item.Name, saveErr)
 			}
 			time.Sleep(scrapeDelay)
 		}
 	} else {
-		log.Println("    -> [RMS Refresh] Part 1: All market item caches are up-to-date.")
+		log.Println("[I] [Job/RMS] Part 1: All market item caches are up-to-date.")
 	}
-	log.Println("    -> [RMS Refresh] Part 1 complete.")
+	log.Println("[I] [Job/RMS] Part 1 complete.")
 
-	log.Println("    -> [RMS Refresh] Part 2: Discovering new items by iterating IDs...")
+	log.Println("[I] [Job/RMS] Part 2: Discovering new items by iterating IDs...")
 
-	log.Println("    -> [RMS Refresh] Part 2: Fetching all existing cached item IDs...")
+	log.Println("[D] [Job/RMS] Part 2: Fetching all existing cached item IDs...")
 	cachedIDs := make(map[int]bool)
 
 	for id := range cacheMap {
 		cachedIDs[id] = true
 	}
 
-	log.Printf("    -> [RMS Refresh] Part 2: Found %d existing IDs from Part 1's map. Starting discovery from ID %d.", len(cachedIDs), startDiscoveryID)
+	log.Printf("[I] [Job/RMS] Part 2: Found %d existing IDs from Part 1's map. Starting discovery from ID %d.", len(cachedIDs), startDiscoveryID)
 
 	consecutiveFailures := 0
 
@@ -624,18 +624,18 @@ func runFullRMSCacheJob() {
 			continue
 		}
 
-		log.Printf("    -> [RMS Refresh] Discovering ID %d...", currentItemID)
+		log.Printf("[D] [Job/RMS] Discovering ID %d...", currentItemID)
 		scrapedItem, scrapeErr := scrapeRMSItemDetails(currentItemID)
 
 		if scrapeErr != nil {
-			log.Printf("    -> ⚠️ [RMS Refresh] Part 2: Failed to find item ID %d. %v", currentItemID, scrapeErr)
+			log.Printf("[W] [Job/RMS] Part 2: Failed to find item ID %d. %v", currentItemID, scrapeErr)
 			consecutiveFailures++
 		} else {
 
 			if saveErr := saveItemDetailsToCache(scrapedItem); saveErr != nil {
-				log.Printf("    -> ⚠️ [RMS Refresh] FAILED to save (Part 2) for item ID %d (%s): %v", currentItemID, scrapedItem.Name, saveErr)
+				log.Printf("[W] [Job/RMS] FAILED to save (Part 2) for item ID %d (%s): %v", currentItemID, scrapedItem.Name, saveErr)
 			} else {
-				log.Printf("    -> ✅ [RMS Refresh] Part 2: Successfully discovered and cached ID %d (%s)", currentItemID, scrapedItem.Name)
+				log.Printf("[I] [Job/RMS] Part 2: Successfully discovered and cached ID %d (%s)", currentItemID, scrapedItem.Name)
 
 				cachedIDs[currentItemID] = true
 
@@ -644,16 +644,17 @@ func runFullRMSCacheJob() {
 		}
 
 		if consecutiveFailures >= maxConsecutiveFailures {
-			log.Printf("    -> [RMS Refresh] Part 2: Stopping discovery after %d consecutive failures. Assuming end of item list.", maxConsecutiveFailures)
+			log.Printf("[I] [Job/RMS] Part 2: Stopping discovery after %d consecutive failures. Assuming end of item list.", maxConsecutiveFailures)
 			break
 		}
 		if currentItemID == maxPreRenewalItemID {
-			log.Printf("    -> [RMS Refresh] Part 2: Stopping discovery after hitting max ID %d.", maxPreRenewalItemID)
+			log.Printf("[I] [Job/RMS] Part 2: Stopping discovery after hitting max ID %d.", maxPreRenewalItemID)
 			break
 		}
 
 		time.Sleep(scrapeDelay)
 	}
 
-	log.Println("✅ [RMS Refresh] Full refresh and discovery job complete.")
+	log.Println("[I] [Job/RMS] Full refresh and discovery job complete.")
 }
+

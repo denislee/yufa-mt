@@ -47,7 +47,7 @@ func getDashboardStats(stats *AdminDashboardData) error {
 		var count sql.NullInt64
 		err := db.QueryRow(query).Scan(&count)
 		if err != nil {
-			log.Printf("⚠️ Dashboard stats query failed (%s): %v", query, err)
+			log.Printf("[W] [Admin/Stats] Dashboard stats query failed (%s): %v", query, err)
 			mu.Lock()
 			if queryErr == nil { // Store only the first error
 				queryErr = err
@@ -89,7 +89,7 @@ func getDashboardGuilds(stats *AdminDashboardData) error {
 	for guildRows.Next() {
 		var info GuildInfo
 		if err := guildRows.Scan(&info.Name, &info.EmblemURL); err != nil {
-			log.Printf("⚠️ Failed to scan guild info for admin page: %v", err)
+			log.Printf("[W] [Admin/Stats] Failed to scan guild info for admin page: %v", err)
 			continue
 		}
 		stats.AllGuilds = append(stats.AllGuilds, info)
@@ -107,7 +107,7 @@ func getDashboardPageViews(r *http.Request, stats *AdminDashboardData) {
 		LIMIT 1
 	`).Scan(&stats.MostVisitedPage, &stats.MostVisitedPageCount)
 	if err != nil && err != sql.ErrNoRows {
-		log.Printf("⚠️ Could not query for most visited page: %v", err)
+		log.Printf("[W] [Admin/Stats] Could not query for most visited page: %v", err)
 		stats.MostVisitedPage = "Error"
 	}
 
@@ -133,7 +133,7 @@ func getDashboardPageViews(r *http.Request, stats *AdminDashboardData) {
 	offset := (page - 1) * viewsPerPage
 	viewRows, err := db.Query(`SELECT page_path, view_timestamp, visitor_hash FROM page_views ORDER BY view_timestamp DESC LIMIT ? OFFSET ?`, viewsPerPage, offset)
 	if err != nil {
-		log.Printf("⚠️ Could not query for recent page views: %v", err)
+		log.Printf("[W] [Admin/Stats] Could not query for recent page views: %v", err)
 		return
 	}
 	defer viewRows.Close()
@@ -174,7 +174,7 @@ func getDashboardTradingPosts(r *http.Request, stats *AdminDashboardData) {
 
 	postRows, err := db.Query(`SELECT id, post_type, character_name, contact_info, created_at, notes FROM trading_posts ORDER BY created_at DESC LIMIT ? OFFSET ?`, postsPerPage, tpOffset)
 	if err != nil {
-		log.Printf("⚠️ Admin Trading Post query error: %v", err)
+		log.Printf("[W] [Admin/Stats] Admin Trading Post query error: %v", err)
 		return
 	}
 	defer postRows.Close()
@@ -231,7 +231,7 @@ func performRMSCacheSearch(r *http.Request, stats *AdminDashboardData) {
 		ORDER BY rank 
 		LIMIT 50`, ftsQuery)
 	if err != nil {
-		log.Printf("⚠️ Admin RMS Cache FTS query error: %v", err)
+		log.Printf("[W] [Admin/Stats] Admin RMS Cache FTS query error: %v", err)
 		return
 	}
 	defer searchRows.Close()
@@ -252,7 +252,7 @@ func performRMSLiveSearch(r *http.Request, stats *AdminDashboardData) {
 		return
 	}
 
-	log.Printf("👤 Admin performing live search for: '%s'", rmsLiveSearchQuery)
+	log.Printf("[I] [Admin] Admin performing live search for: '%s'", rmsLiveSearchQuery)
 	var wg sync.WaitGroup
 	var rmsResults, rodbResults []ItemSearchResult
 	var rmsErr, rodbErr error
@@ -262,14 +262,14 @@ func performRMSLiveSearch(r *http.Request, stats *AdminDashboardData) {
 		defer wg.Done()
 		rmsResults, rmsErr = scrapeRMSItemSearch(rmsLiveSearchQuery)
 		if rmsErr != nil {
-			log.Printf("⚠️ Admin RMS Live Search (RMS) query error: %v", rmsErr)
+			log.Printf("[W] [Admin/Search] Admin RMS Live Search (RMS) query error: %v", rmsErr)
 		}
 	}()
 	go func() {
 		defer wg.Done()
 		rodbResults, rodbErr = scrapeRODatabaseSearch(rmsLiveSearchQuery, 0)
 		if rodbErr != nil {
-			log.Printf("⚠️ Admin RMS Live Search (RODB) query error: %v", rodbErr)
+			log.Printf("[W] [Admin/Search] Admin RMS Live Search (RODB) query error: %v", rodbErr)
 		}
 	}()
 	wg.Wait()
@@ -295,7 +295,7 @@ func performRMSLiveSearch(r *http.Request, stats *AdminDashboardData) {
 	}
 
 	stats.RMSLiveSearchResults = combinedResults
-	log.Printf("👤 Admin live search for '%s' found %d combined results.", rmsLiveSearchQuery, len(combinedResults))
+	log.Printf("[I] [Admin] Admin live search for '%s' found %d combined results.", rmsLiveSearchQuery, len(combinedResults))
 }
 
 // getAdminDashboardData orchestrates fetching all data for the admin dashboard concurrently.
@@ -313,7 +313,7 @@ func getAdminDashboardData(r *http.Request) (AdminDashboardData, error) {
 	// Task 1: Main Stats (Critical)
 	g.Go(func() error {
 		if err := getDashboardStats(&stats); err != nil {
-			log.Printf("❌ Failed to load dashboard stats: %v", err)
+			log.Printf("[E] [Admin] Failed to load dashboard stats: %v", err)
 			// Returning an error here will cause g.Wait() to return this error.
 			return err
 		}
@@ -324,7 +324,7 @@ func getAdminDashboardData(r *http.Request) (AdminDashboardData, error) {
 	g.Go(func() error {
 		if err := getDashboardGuilds(&stats); err != nil {
 			// Log but don't fail the whole page.
-			log.Printf("⚠️ Could not load dashboard guilds: %v", err)
+			log.Printf("[W] [Admin] Could not load dashboard guilds: %v", err)
 		}
 		return nil // Always return nil so this doesn't fail the group.
 	})
@@ -395,7 +395,7 @@ func adminSaveCacheEntryHandler(w http.ResponseWriter, r *http.Request) {
 	go scrapeAndCacheItemIfNotExists(itemID, itemName)
 
 	msg := fmt.Sprintf("Caching+for+item+%d+(%s)+started+in+background.", itemID, url.QueryEscape(itemName))
-	log.Printf("👤 Admin triggered manual cache for item ID %d (%s).", itemID, itemName)
+	log.Printf("[I] [Admin] Admin triggered manual cache for item ID %d (%s).", itemID, itemName)
 
 	http.Redirect(w, r, "/admin?rms_live_search="+url.QueryEscape(r.FormValue("rms_live_search"))+"&msg="+msg, http.StatusSeeOther)
 }
@@ -431,14 +431,14 @@ func adminDeleteCacheEntryHandler(w http.ResponseWriter, r *http.Request) {
 	// --- END FIX ---
 
 	if err != nil {
-		log.Printf("❌ Failed to delete RMS cache entries: %v", err)
+		log.Printf("[E] [Admin] Failed to delete RMS cache entries: %v", err)
 		http.Redirect(w, r, "/admin?msg=Database+error+while+deleting+entries.", http.StatusSeeOther)
 		return
 	}
 
 	rowsAffected, _ := result.RowsAffected()
 	msg := fmt.Sprintf("Successfully+deleted+%d+cache+entries.", rowsAffected)
-	log.Printf("👤 Admin deleted %d RMS cache entries: %v", rowsAffected, itemIDs)
+	log.Printf("[I] [Admin] Admin deleted %d RMS cache entries: %v", rowsAffected, itemIDs)
 
 	http.Redirect(w, r, "/admin?msg="+msg, http.StatusSeeOther)
 }
@@ -447,14 +447,14 @@ func adminHandler(w http.ResponseWriter, r *http.Request) {
 	stats, err := getAdminDashboardData(r)
 	if err != nil {
 		http.Error(w, "Could not load dashboard data", http.StatusInternalServerError)
-		log.Printf("❌ Failed to get admin dashboard data: %v", err)
+		log.Printf("[E] [Admin] Failed to get admin dashboard data: %v", err)
 		return
 	}
 
 	tmpl, err := template.New("admin.html").Funcs(templateFuncs).ParseFiles("admin.html")
 	if err != nil {
 		http.Error(w, "Could not load admin template", http.StatusInternalServerError)
-		log.Printf("❌ Could not load admin.html template: %v", err)
+		log.Printf("[E] [HTTP] Could not load admin.html template: %v", err)
 		return
 	}
 
@@ -470,7 +470,7 @@ func adminParseTradeHandler(w http.ResponseWriter, r *http.Request) {
 	stats, err := getAdminDashboardData(r)
 	if err != nil {
 		http.Error(w, "Could not load dashboard data", http.StatusInternalServerError)
-		log.Printf("❌ Failed to get admin dashboard data for trade parse: %v", err)
+		log.Printf("[E] [Admin] Failed to get admin dashboard data for trade parse: %v", err)
 		return
 	}
 
@@ -496,7 +496,7 @@ func adminParseTradeHandler(w http.ResponseWriter, r *http.Request) {
 	tmpl, err := template.New("admin.html").Funcs(templateFuncs).ParseFiles("admin.html")
 	if err != nil {
 		http.Error(w, "Could not load admin template", http.StatusInternalServerError)
-		log.Printf("❌ Could not load admin.html template: %v", err)
+		log.Printf("[E] [HTTP] Could not load admin.html template: %v", err)
 		return
 	}
 
@@ -510,7 +510,7 @@ func adminTriggerScrapeHandler(scraperFunc func(), name string) http.HandlerFunc
 			http.Redirect(w, r, "/admin", http.StatusSeeOther)
 			return
 		}
-		log.Printf("👤 Admin triggered '%s' scrape manually.", name)
+		log.Printf("[I] [Admin] Admin triggered '%s' scrape manually.", name)
 		go scraperFunc()
 		http.Redirect(w, r, fmt.Sprintf("/admin?msg=%s+scrape+started.", name), http.StatusSeeOther)
 	}
@@ -532,25 +532,25 @@ func adminCacheActionHandler(w http.ResponseWriter, r *http.Request) {
 
 	switch action {
 	case "clear":
-		log.Println("👤 Admin triggered cache clear.")
+		log.Println("[I] [Admin] Admin triggered cache clear.")
 		_, err := db.Exec("DELETE FROM rms_item_cache")
 		if err != nil {
 			msg = "Error+clearing+cache."
-			log.Printf("❌ Failed to clear RMS cache: %v", err)
+			log.Printf("[E] [Admin] Failed to clear RMS cache: %v", err)
 		} else {
 			msg = "Item+cache+cleared+successfully."
 		}
 	case "drop":
-		log.Println("👤 Admin triggered cache table drop.")
+		log.Println("[I] [Admin] Admin triggered cache table drop.")
 		_, err := db.Exec("DROP TABLE IF EXISTS rms_item_cache")
 		if err != nil {
 			msg = "Error+dropping+cache+table."
-			log.Printf("❌ Failed to drop RMS cache table: %v", err)
+			log.Printf("[E] [Admin] Failed to drop RMS cache table: %v", err)
 		} else {
 			msg = "Item+cache+table+dropped+successfully.+Restart+app+to+recreate."
 		}
 	case "repopulate":
-		log.Println("👤 Admin triggered cache repopulation.")
+		log.Println("[I] [Admin] Admin triggered cache repopulation.")
 		go populateMissingCachesOnStartup()
 		msg = "Cache+repopulation+started+in+background."
 	default:
@@ -587,7 +587,7 @@ func adminUpdateGuildEmblemHandler(w http.ResponseWriter, r *http.Request) {
 
 	result, err := db.Exec("UPDATE guilds SET emblem_url = ? WHERE name = ?", emblemURL, guildName)
 	if err != nil {
-		log.Printf("❌ Failed to update emblem for guild '%s': %v", guildName, err)
+		log.Printf("[E] [Admin] Failed to update emblem for guild '%s': %v", guildName, err)
 		msg = "Database+error+occurred."
 	} else {
 		rowsAffected, _ := result.RowsAffected()
@@ -613,7 +613,7 @@ func adminClearLastActiveHandler(w http.ResponseWriter, r *http.Request) {
 
 	result, err := db.Exec("UPDATE characters SET last_active = ?", zeroTime)
 	if err != nil {
-		log.Printf("❌ Failed to clear last_active times: %v", err)
+		log.Printf("[E] [Admin] Failed to clear last_active times: %v", err)
 		msg = "Database+error+while+clearing+activity+times."
 	} else {
 		rowsAffected, _ := result.RowsAffected()
@@ -632,12 +632,12 @@ func adminClearMvpKillsHandler(w http.ResponseWriter, r *http.Request) {
 	var msg string
 	result, err := db.Exec("DELETE FROM character_mvp_kills")
 	if err != nil {
-		log.Printf("❌ Failed to clear MVP kills table: %v", err)
+		log.Printf("[E] [Admin] Failed to clear MVP kills table: %v", err)
 		msg = "Database+error+while+clearing+MVP+kills."
 	} else {
 		rowsAffected, _ := result.RowsAffected()
 		msg = fmt.Sprintf("Successfully+deleted+%d+MVP+kill+records.", rowsAffected)
-		log.Printf("👤 Admin cleared all MVP kill data (%d records).", rowsAffected)
+		log.Printf("[I] [Admin] Admin cleared all MVP kill data (%d records).", rowsAffected)
 	}
 
 	http.Redirect(w, r, "/admin?msg="+msg, http.StatusSeeOther)
@@ -665,7 +665,7 @@ func adminDeleteVisitorViewsHandler(w http.ResponseWriter, r *http.Request) {
 
 	tx, err := db.Begin()
 	if err != nil {
-		log.Printf("❌ Failed to begin transaction for deleting visitor: %v", err)
+		log.Printf("[E] [Admin] Failed to begin transaction for deleting visitor: %v", err)
 		http.Redirect(w, r, "/admin?msg=Database+error+occurred.", http.StatusSeeOther)
 		return
 	}
@@ -673,7 +673,7 @@ func adminDeleteVisitorViewsHandler(w http.ResponseWriter, r *http.Request) {
 	_, err = tx.Exec("DELETE FROM page_views WHERE visitor_hash = ?", visitorHash)
 	if err != nil {
 		tx.Rollback()
-		log.Printf("❌ Failed to delete from page_views for hash %s: %v", visitorHash, err)
+		log.Printf("[E] [Admin] Failed to delete from page_views for hash %s: %v", visitorHash, err)
 		http.Redirect(w, r, "/admin?msg=Database+error+on+page_views.", http.StatusSeeOther)
 		return
 	}
@@ -681,13 +681,13 @@ func adminDeleteVisitorViewsHandler(w http.ResponseWriter, r *http.Request) {
 	result, err := tx.Exec("DELETE FROM visitors WHERE visitor_hash = ?", visitorHash)
 	if err != nil {
 		tx.Rollback()
-		log.Printf("❌ Failed to delete from visitors for hash %s: %v", visitorHash, err)
+		log.Printf("[ECode] [Admin] Failed to delete from visitors for hash %s: %v", visitorHash, err)
 		http.Redirect(w, r, "/admin?msg=Database+error+on+visitors.", http.StatusSeeOther)
 		return
 	}
 
 	if err := tx.Commit(); err != nil {
-		log.Printf("❌ Failed to commit transaction for deleting visitor: %v", err)
+		log.Printf("[E] [Admin] Failed to commit transaction for deleting visitor: %v", err)
 		http.Redirect(w, r, "/admin?msg=Database+commit+error.", http.StatusSeeOther)
 		return
 	}
@@ -695,7 +695,7 @@ func adminDeleteVisitorViewsHandler(w http.ResponseWriter, r *http.Request) {
 	rowsAffected, _ := result.RowsAffected()
 	if rowsAffected > 0 {
 		msg = "Visitor+records+removed+successfully."
-		log.Printf("👤 Admin removed all data for visitor with hash starting with %s...", visitorHash[:12])
+		log.Printf("[I] [Admin] Admin removed all data for visitor with hash starting with %s...", visitorHash[:12])
 	} else {
 		msg = "Visitor+not+found+or+already+removed."
 	}
@@ -724,12 +724,12 @@ func adminDeleteTradingPostHandler(w http.ResponseWriter, r *http.Request) {
 		result, err := db.Exec("DELETE FROM trading_posts WHERE id = ?", postID)
 		if err != nil {
 			msg = "Database+error+occurred+while+deleting+post."
-			log.Printf("❌ Failed to delete trading post with ID %s: %v", postID, err)
+			log.Printf("[E] [Admin] Failed to delete trading post with ID %s: %v", postID, err)
 		} else {
 			rowsAffected, _ := result.RowsAffected()
 			if rowsAffected > 0 {
 				msg = "Trading+post+deleted+successfully."
-				log.Printf("👤 Admin deleted trading post with ID %s.", postID)
+				log.Printf("[I] [Admin] Admin deleted trading post with ID %s.", postID)
 			} else {
 				msg = "Trading+post+not+found."
 			}
@@ -778,7 +778,7 @@ func reparseTradingPostItems(postID int, itemsToUpdate []GeminiTradeItem) (int, 
 
 		itemID, findErr := findItemIDByName(itemName, true, item.Slots)
 		if findErr != nil {
-			log.Printf("⚠️ Error finding item ID for '%s' during re-parse: %v. Proceeding without ID.", itemName, findErr)
+			log.Printf("[W] [Admin/Reparse] Error finding item ID for '%s' during re-parse: %v. Proceeding without ID.", itemName, findErr)
 		}
 
 		paymentMethods := "zeny"
@@ -834,7 +834,7 @@ func adminReparseTradingPostHandler(w http.ResponseWriter, r *http.Request) {
 			msg = "Error:+Post+not+found."
 		} else {
 			msg = "Error:+Database+query+failed."
-			log.Printf("❌ Failed to fetch post %d for re-parse: %v", postID, err)
+			log.Printf("[E] [Admin/Reparse] Failed to fetch post %d for re-parse: %v", postID, err)
 		}
 		http.Redirect(w, r, "/admin?msg="+msg, http.StatusSeeOther)
 		return
@@ -869,20 +869,20 @@ func adminReparseTradingPostHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if len(itemsToUpdate) == 0 {
-		log.Printf("👤 Admin re-parsed post %d. No items matching type '%s' were found by Gemini. Clearing items.", postID, originalPostType.String)
+		log.Printf("[I] [Admin/Reparse] Admin re-parsed post %d. No items matching type '%s' were found by Gemini. Clearing items.", postID, originalPostType.String)
 	}
 
 	// 5. Execute the database transaction
 	itemsUpdated, err := reparseTradingPostItems(postID, itemsToUpdate)
 	if err != nil {
 		msg = fmt.Sprintf("Error:+Database+update+failed:+%s", url.QueryEscape(err.Error()))
-		log.Printf("❌ Failed to re-parse post %d: %v", postID, err)
+		log.Printf("[E] [Admin/Reparse] Failed to re-parse post %d: %v", postID, err)
 		http.Redirect(w, r, "/admin?msg="+msg, http.StatusSeeOther)
 		return
 	}
 
 	// 6. Success
-	log.Printf("👤 Admin successfully re-parsed trading post %d (%s) with %d items.", postID, characterName.String, itemsUpdated)
+	log.Printf("[I] [Admin] Admin successfully re-parsed trading post %d (%s) with %d items.", postID, characterName.String, itemsUpdated)
 	msg = fmt.Sprintf("Successfully+re-parsed+post+%d.+Found+%d+items.", postID, itemsUpdated)
 	http.Redirect(w, r, "/admin?msg="+msg, http.StatusSeeOther)
 }
@@ -924,7 +924,7 @@ func adminShowEditTradingPostPage(w http.ResponseWriter, r *http.Request, postID
 			&item.ItemName, &item.ItemID, &item.Quantity, &item.PriceZeny, &item.PriceRMT, &item.PaymentMethods,
 			&item.Refinement, &item.Slots, &item.Card1, &item.Card2, &item.Card3, &item.Card4,
 		); err != nil {
-			log.Printf("⚠️ Failed to scan trading post item row for edit: %v", err)
+			log.Printf("[W] [Admin/Edit] Failed to scan trading post item row for edit: %v", err)
 			continue
 		}
 		post.Items = append(post.Items, item)
@@ -933,7 +933,7 @@ func adminShowEditTradingPostPage(w http.ResponseWriter, r *http.Request, postID
 	tmpl, err := template.ParseFiles("admin_edit_post.html")
 	if err != nil {
 		http.Error(w, "Could not load edit template", http.StatusInternalServerError)
-		log.Printf("❌ Could not load admin_edit_post.html: %v", err)
+		log.Printf("[E] [HTTP] Could not load admin_edit_post.html: %v", err)
 		return
 	}
 
@@ -964,7 +964,7 @@ func adminHandleEditTradingPost(w http.ResponseWriter, r *http.Request, postID i
 	`, r.FormValue("post_type"), r.FormValue("character_name"), r.FormValue("contact_info"), r.FormValue("notes"), postID)
 	if err != nil {
 		http.Error(w, "Failed to update post.", http.StatusInternalServerError)
-		log.Printf("❌ Failed to update trading post %d: %v", postID, err)
+		log.Printf("[E] [Admin/Edit] Failed to update trading post %d: %v", postID, err)
 		return
 	}
 
@@ -972,7 +972,7 @@ func adminHandleEditTradingPost(w http.ResponseWriter, r *http.Request, postID i
 	_, err = tx.Exec("DELETE FROM trading_post_items WHERE post_id = ?", postID)
 	if err != nil {
 		http.Error(w, "Failed to clear old items.", http.StatusInternalServerError)
-		log.Printf("❌ Failed to delete old items for post %d: %v", postID, err)
+		log.Printf("[E] [Admin/Edit] Failed to delete old items for post %d: %v", postID, err)
 		return
 	}
 
@@ -982,7 +982,7 @@ func adminHandleEditTradingPost(w http.ResponseWriter, r *http.Request, postID i
 		err := insertTradingPostItemsFromForm(tx, postID, r.Form)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
-			log.Printf("❌ Failed to insert items for post %d: %v", postID, err)
+			log.Printf("[E] [Admin/Edit] Failed to insert items for post %d: %v", postID, err)
 			return
 		}
 	}
@@ -993,72 +993,8 @@ func adminHandleEditTradingPost(w http.ResponseWriter, r *http.Request, postID i
 		return
 	}
 
-	log.Printf("👤 Admin edited trading post with ID %d.", postID)
+	log.Printf("[I] [Admin] Admin edited trading post with ID %d.", postID)
 	http.Redirect(w, r, "/admin?msg=Trading+post+updated+successfully.", http.StatusSeeOther)
-}
-
-// insertTradingPostItemsFromForm is a helper for populating items from a form.
-func insertTradingPostItemsFromForm(tx *sql.Tx, postID int, form url.Values) error {
-	itemNames := form["item_name[]"]
-	itemIDs := form["item_id[]"]
-	quantities := form["quantity[]"]
-	pricesZeny := form["price_zeny[]"]
-	pricesRMT := form["price_rmt[]"]
-	paymentMethodsList := form["payment_methods[]"]
-	refinements := form["refinement[]"]
-	slotsList := form["slots[]"]
-	cards1 := form["card1[]"]
-	cards2 := form["card2[]"]
-	cards3 := form["card3[]"]
-	cards4 := form["card4[]"]
-
-	stmt, err := tx.Prepare(`
-		INSERT INTO trading_post_items 
-		(post_id, item_name, item_id, quantity, price_zeny, price_rmt, payment_methods, refinement, slots, card1, card2, card3, card4) 
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-	`)
-	if err != nil {
-		return fmt.Errorf("database preparation failed")
-	}
-	defer stmt.Close()
-
-	for i, itemName := range itemNames {
-		if strings.TrimSpace(itemName) == "" {
-			continue
-		}
-
-		quantity, _ := strconv.Atoi(quantities[i])
-		priceZeny, _ := strconv.ParseInt(strings.ReplaceAll(pricesZeny[i], ",", ""), 10, 64)
-		priceRMT, _ := strconv.ParseInt(strings.ReplaceAll(pricesRMT[i], ",", ""), 10, 64)
-
-		var itemID sql.NullInt64
-		if id, err := strconv.ParseInt(itemIDs[i], 10, 64); err == nil && id > 0 {
-			itemID = sql.NullInt64{Int64: id, Valid: true}
-		}
-
-		paymentMethods := "zeny"
-		if i < len(paymentMethodsList) && (paymentMethodsList[i] == "rmt" || paymentMethodsList[i] == "both") {
-			paymentMethods = paymentMethodsList[i]
-		}
-
-		refinement, _ := strconv.Atoi(refinements[i])
-		slots, _ := strconv.Atoi(slotsList[i])
-
-		card1 := sql.NullString{String: cards1[i], Valid: strings.TrimSpace(cards1[i]) != ""}
-		card2 := sql.NullString{String: cards2[i], Valid: strings.TrimSpace(cards2[i]) != ""}
-		card3 := sql.NullString{String: cards3[i], Valid: strings.TrimSpace(cards3[i]) != ""}
-		card4 := sql.NullString{String: cards4[i], Valid: strings.TrimSpace(cards4[i]) != ""}
-
-		if quantity <= 0 || priceZeny < 0 || priceRMT < 0 {
-			continue // Skip invalid items
-		}
-
-		_, err := stmt.Exec(postID, itemName, itemID, quantity, priceZeny, priceRMT, paymentMethods, refinement, slots, card1, card2, card3, card4)
-		if err != nil {
-			return fmt.Errorf("failed to save item: %s", itemName)
-		}
-	}
-	return nil
 }
 
 // adminEditTradingPostHandler is now just a router for GET/POST.
@@ -1087,11 +1023,11 @@ func adminClearTradingPostItemsHandler(w http.ResponseWriter, r *http.Request) {
 
 	_, err := db.Exec("DROP TABLE IF EXISTS trading_post_items")
 	if err != nil {
-		log.Printf("❌ Failed to drop trading_post_items table: %v", err)
+		log.Printf("[E] [Admin] Failed to drop trading_post_items table: %v", err)
 		msg = "Database+error+while+dropping+trading+post+items+table."
 	} else {
 		msg = "Successfully+dropped+the+trading_post_items+table."
-		log.Printf("👤 Admin dropped the trading_post_items table.")
+		log.Printf("[I] [Admin] Admin dropped the trading_post_items table.")
 	}
 
 	http.Redirect(w, r, "/admin?msg="+msg, http.StatusSeeOther)
@@ -1108,7 +1044,7 @@ func adminClearTradingPostsHandler(w http.ResponseWriter, r *http.Request) {
 
 	_, err = db.Exec("DROP TABLE IF EXISTS trading_post_items")
 	if err != nil {
-		log.Printf("❌ Failed to drop trading_post_items table (dependency): %v", err)
+		log.Printf("[E] [Admin] Failed to drop trading_post_items table (dependency): %v", err)
 		msg = "Database+error+while+dropping+dependent+items+table."
 		http.Redirect(w, r, "/admin?msg="+msg, http.StatusSeeOther)
 		return
@@ -1116,12 +1052,89 @@ func adminClearTradingPostsHandler(w http.ResponseWriter, r *http.Request) {
 
 	_, err = db.Exec("DROP TABLE IF EXISTS trading_posts")
 	if err != nil {
-		log.Printf("❌ Failed to drop trading_posts table: %v", err)
+		log.Printf("[E... ] [Admin] Failed to drop trading_posts table: %v", err)
 		msg = "Database+error+while+dropping+trading_posts+table."
 	} else {
 		msg = "Successfully+dropped+the+trading_posts+and+trading_post_items+tables."
-		log.Printf("👤 Admin dropped the trading_posts and trading_post_items tables.")
+		log.Printf("[I] [Admin] Admin dropped the trading_posts and trading_post_items tables.")
 	}
 
 	http.Redirect(w, r, "/admin?msg="+msg, http.StatusSeeOther)
+}
+
+// insertTradingPostItemsFromForm processes form data and inserts items into the DB.
+func insertTradingPostItemsFromForm(tx *sql.Tx, postID int, form url.Values) error {
+	itemNames := form["item_name[]"]
+	quantities := form["quantity[]"]
+	pricesZeny := form["price_zeny[]"]
+	pricesRMT := form["price_rmt[]"]
+	paymentMethods := form["payment_methods[]"]
+	refinements := form["refinement[]"]
+	slots := form["slots[]"]
+	cards1 := form["card1[]"]
+	cards2 := form["card2[]"]
+	cards3 := form["card3[]"]
+	cards4 := form["card4[]"]
+
+	// Basic validation: ensure all arrays have the same length
+	numItems := len(itemNames)
+	if len(quantities) != numItems || len(pricesZeny) != numItems || len(pricesRMT) != numItems ||
+		len(paymentMethods) != numItems || len(refinements) != numItems || len(slots) != numItems ||
+		len(cards1) != numItems || len(cards2) != numItems || len(cards3) != numItems || len(cards4) != numItems {
+		return fmt.Errorf("form data mismatch: item arrays have different lengths")
+	}
+
+	stmt, err := tx.Prepare(`
+		INSERT INTO trading_post_items 
+		(post_id, item_name, item_id, quantity, price_zeny, price_rmt, payment_methods, refinement, slots, card1, card2, card3, card4) 
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+	`)
+	if err != nil {
+		return fmt.Errorf("database preparation failed: %w", err)
+	}
+	defer stmt.Close()
+
+	for i := 0; i < numItems; i++ {
+		itemName := sanitizeString(itemNames[i], itemSanitizer)
+		if strings.TrimSpace(itemName) == "" {
+			continue // Skip empty item names
+		}
+
+		qty, _ := strconv.Atoi(quantities[i])
+		priceZ, _ := strconv.ParseInt(pricesZeny[i], 10, 64)
+		priceR, _ := strconv.ParseInt(pricesRMT[i], 10, 64)
+		refine, _ := strconv.Atoi(refinements[i])
+		slotCount, _ := strconv.Atoi(slots[i])
+
+		payment := "zeny" // Default
+		if len(paymentMethods) > i {
+			p := strings.ToLower(paymentMethods[i])
+			if p == "rmt" || p == "both" {
+				payment = p
+			}
+		}
+
+		// Find Item ID (best effort)
+		itemID, findErr := findItemIDByName(itemName, true, slotCount)
+		if findErr != nil {
+			log.Printf("[W] [Admin/Edit] Error finding item ID for '%s': %v. Proceeding without ID.", itemName, findErr)
+		}
+
+		card1 := sql.NullString{String: cards1[i], Valid: cards1[i] != ""}
+		card2 := sql.NullString{String: cards2[i], Valid: cards2[i] != ""}
+		card3 := sql.NullString{String: cards3[i], Valid: cards3[i] != ""}
+		card4 := sql.NullString{String: cards4[i], Valid: cards4[i] != ""}
+
+		_, err := stmt.Exec(
+			postID, itemName, itemID, qty, priceZ, priceR, payment, refine, slotCount,
+			card1, card2, card3, card4,
+		)
+		if err != nil {
+			// Log the specific item that failed, makes debugging easier
+			log.Printf("[E] [Admin/Edit] Failed to save item '%s' (index %d) for post %d: %v", itemName, i, postID, err)
+			return fmt.Errorf("failed to save item '%s': %w", itemName, err)
+		}
+	}
+
+	return nil
 }

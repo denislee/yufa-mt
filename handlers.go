@@ -192,14 +192,14 @@ func renderTemplate(w http.ResponseWriter, tmplFile string, data interface{}) {
 	tmpl, ok := templateCache[tmplFile]
 	if !ok {
 
-		log.Printf("❌ Could not find template '%s' in cache!", tmplFile)
+		log.Printf("[E] [HTTP] Could not find template '%s' in cache!", tmplFile)
 		http.Error(w, "Could not load template", http.StatusInternalServerError)
 		return
 	}
 
 	err := tmpl.Execute(w, data)
 	if err != nil {
-		log.Printf("❌ Could not execute template '%s': %v", tmplFile, err)
+		log.Printf("[E] [HTTP] Could not execute template '%s': %v", tmplFile, err)
 	}
 }
 
@@ -219,7 +219,7 @@ func getCombinedItemIDs(searchQuery string) ([]int, error) {
 
 		results, err := scrapeRODatabaseSearch(searchQuery, 0)
 		if err != nil {
-			log.Printf("⚠️ Concurrent scrape failed for '%s': %v", searchQuery, err)
+			log.Printf("[W] [HTTP] Concurrent scrape failed for '%s': %v", searchQuery, err)
 			scrapedIDsChan <- []int{}
 			return
 		}
@@ -246,7 +246,7 @@ func getCombinedItemIDs(searchQuery string) ([]int, error) {
 
 		rows, err := db.Query(query, "%"+searchQuery+"%", "%"+searchQuery+"%")
 		if err != nil {
-			log.Printf("⚠️ Concurrent local ID search failed for '%s': %v", searchQuery, err)
+			log.Printf("[W] [HTTP] Concurrent local ID search failed for '%s': %v", searchQuery, err)
 			localIDsChan <- []int{}
 			return
 		}
@@ -290,7 +290,7 @@ func getItemTypeTabs() []ItemTypeTab {
 	var itemTypes []ItemTypeTab
 	rows, err := db.Query("SELECT DISTINCT item_type FROM rms_item_cache WHERE item_type IS NOT NULL AND item_type != '' ORDER BY item_type ASC")
 	if err != nil {
-		log.Printf("⚠️ Could not query for item types: %v", err)
+		log.Printf("[W] [HTTP] Could not query for item types: %v", err)
 		return itemTypes
 	}
 	defer rows.Close()
@@ -298,7 +298,7 @@ func getItemTypeTabs() []ItemTypeTab {
 	for rows.Next() {
 		var itemType string
 		if err := rows.Scan(&itemType); err != nil {
-			log.Printf("⚠️ Failed to scan item type: %v", err)
+			log.Printf("[W] [HTTP] Failed to scan item type: %v", err)
 			continue
 		}
 		itemTypes = append(itemTypes, mapItemTypeToTabData(itemType))
@@ -418,7 +418,7 @@ func init() {
 
 	navbarPath := "navbar.html"
 
-	log.Println("Parsing all application templates...")
+	log.Println("[I] [HTTP] Parsing all application templates...")
 	for _, tmplName := range templates {
 
 		tmpl, err := template.New(tmplName).Funcs(templateFuncs).ParseFiles(tmplName, navbarPath)
@@ -428,22 +428,22 @@ func init() {
 
 				tmpl, err = template.New(tmplName).Funcs(templateFuncs).ParseFiles(tmplName)
 				if err != nil {
-					log.Fatalf("❌ FATAL: Could not parse template '%s' (standalone): %v", tmplName, err)
+					log.Fatalf("[F] [HTTP] Could not parse template '%s' (standalone): %v", tmplName, err)
 				}
 			} else if strings.Contains(err.Error(), "no such file or directory") && tmplName == "admin.html" {
 
 				tmpl, err = template.New(tmplName).Funcs(templateFuncs).ParseFiles(tmplName)
 				if err != nil {
-					log.Fatalf("❌ FATAL: Could not parse template '%s' (standalone): %v", tmplName, err)
+					log.Fatalf("[F] [HTTP] Could not parse template '%s' (standalone): %v", tmplName, err)
 				}
 			} else if err != nil {
-				log.Fatalf("❌ FATAL: Could not parse template '%s': %v", tmplName, err)
+				log.Fatalf("[F] [HTTP] Could not parse template '%s': %v", tmplName, err)
 			}
 		}
 
 		templateCache[tmplName] = tmpl
 	}
-	log.Println("✅ All templates parsed and cached successfully.")
+	log.Println("[I] [HTTP] All templates parsed and cached successfully.")
 }
 
 func summaryHandler(w http.ResponseWriter, r *http.Request) {
@@ -506,7 +506,7 @@ func summaryHandler(w http.ResponseWriter, r *http.Request) {
 	var totalUniqueItems int
 	err := db.QueryRow(fmt.Sprintf(countQuery, whereClause, havingClause), params...).Scan(&totalUniqueItems)
 	if err != nil {
-		log.Printf("❌ Summary count query error: %v", err)
+		log.Printf("[E] [HTTP] Summary count query error: %v", err)
 
 		totalUniqueItems = 0
 	}
@@ -538,7 +538,7 @@ func summaryHandler(w http.ResponseWriter, r *http.Request) {
 
 	rows, err := db.Query(query, params...)
 	if err != nil {
-		log.Printf("❌ Summary query error: %v, Query: %s, Params: %v", err, query, params)
+		log.Printf("[E] [HTTP] Summary query error: %v, Query: %s, Params: %v", err, query, params)
 		http.Error(w, "Database query for summary failed", http.StatusInternalServerError)
 		return
 	}
@@ -548,7 +548,7 @@ func summaryHandler(w http.ResponseWriter, r *http.Request) {
 	for rows.Next() {
 		var item ItemSummary
 		if err := rows.Scan(&item.Name, &item.NamePT, &item.ItemID, &item.LowestPrice, &item.HighestPrice, &item.ListingCount); err != nil {
-			log.Printf("⚠️ Failed to scan summary row: %v", err)
+			log.Printf("[W] [HTTP] Failed to scan summary row: %v", err)
 			continue
 		}
 		items = append(items, item)
@@ -592,13 +592,13 @@ func fullListHandler(w http.ResponseWriter, r *http.Request) {
 	var allStoreNames []string
 	storeRows, err := db.Query("SELECT DISTINCT store_name FROM items WHERE is_available = 1 ORDER BY store_name ASC")
 	if err != nil {
-		log.Printf("⚠️ Could not query for store names: %v", err)
+		log.Printf("[W] [HTTP] Could not query for store names: %v", err)
 	} else {
 		defer storeRows.Close()
 		for storeRows.Next() {
 			var storeName string
 			if err := storeRows.Scan(&storeName); err != nil {
-				log.Printf("⚠️ Failed to scan store name: %v", err)
+				log.Printf("[W] [HTTP] Failed to scan store name: %v", err)
 				continue
 			}
 			allStoreNames = append(allStoreNames, storeName)
@@ -670,7 +670,7 @@ func fullListHandler(w http.ResponseWriter, r *http.Request) {
 
 	rows, err := db.Query(query, queryParams...)
 	if err != nil {
-		log.Printf("❌ Database query error: %v", err)
+		log.Printf("[E] [HTTP] Database query error: %v", err)
 		http.Error(w, "Database query failed", http.StatusInternalServerError)
 		return
 	}
@@ -682,7 +682,7 @@ func fullListHandler(w http.ResponseWriter, r *http.Request) {
 		var retrievedTime string
 		err := rows.Scan(&item.ID, &item.Name, &item.NamePT, &item.ItemID, &item.Quantity, &item.Price, &item.StoreName, &item.SellerName, &retrievedTime, &item.MapName, &item.MapCoordinates, &item.IsAvailable)
 		if err != nil {
-			log.Printf("⚠️ Failed to scan row: %v", err)
+			log.Printf("[W] [HTTP] Failed to scan row: %v", err)
 			continue
 		}
 		if parsedTime, err := time.Parse(time.RFC3339, retrievedTime); err == nil {
@@ -735,7 +735,7 @@ func activityHandler(w http.ResponseWriter, r *http.Request) {
 	var totalEvents int
 	countQuery := fmt.Sprintf("SELECT COUNT(*) FROM market_events me LEFT JOIN rms_item_cache rms ON me.item_id = rms.item_id %s", whereClause)
 	if err := db.QueryRow(countQuery, params...).Scan(&totalEvents); err != nil {
-		log.Printf("❌ Could not count market events: %v", err)
+		log.Printf("[E] [HTTP] Could not count market events: %v", err)
 		http.Error(w, "Could not count market events", http.StatusInternalServerError)
 		return
 	}
@@ -750,7 +750,7 @@ func activityHandler(w http.ResponseWriter, r *http.Request) {
 	finalParams := append(params, eventsPerPage, pagination.Offset)
 	eventRows, err := db.Query(query, finalParams...)
 	if err != nil {
-		log.Printf("❌ Could not query for market events: %v", err)
+		log.Printf("[E] [HTTP] Could not query for market events: %v", err)
 		http.Error(w, "Could not query for market events", http.StatusInternalServerError)
 		return
 	}
@@ -761,7 +761,7 @@ func activityHandler(w http.ResponseWriter, r *http.Request) {
 		var event MarketEvent
 		var detailsStr, timestampStr string
 		if err := eventRows.Scan(&timestampStr, &event.EventType, &event.ItemName, &event.NamePT, &event.ItemID, &detailsStr); err != nil {
-			log.Printf("⚠️ Failed to scan market event row: %v", err)
+			log.Printf("[W] [HTTP] Failed to scan market event row: %v", err)
 			continue
 		}
 		if parsedTime, err := time.Parse(time.RFC3339, timestampStr); err == nil {
@@ -794,7 +794,7 @@ func itemHistoryHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Item name is required", http.StatusBadRequest)
 		return
 	}
-	log.Printf("DEBUG [itemHistory] Handling request for item: '%s'", itemName)
+	log.Printf("[D] [HTTP/History] Handling request for item: '%s'", itemName)
 
 	var itemID int
 	var itemNamePT sql.NullString
@@ -805,31 +805,31 @@ func itemHistoryHandler(w http.ResponseWriter, r *http.Request) {
 		WHERE i.name_of_the_item = ? AND i.item_id > 0 
 		LIMIT 1`, itemName).Scan(&itemID, &itemNamePT)
 	if err != nil {
-		log.Printf("DEBUG [itemHistory] Step 1: Initial item ID/NamePT query failed for '%s': %v", itemName, err)
+		log.Printf("[D] [HTTP/History] Step 1: Initial item ID/NamePT query failed for '%s': %v", itemName, err)
 	} else {
-		log.Printf("DEBUG [itemHistory] Step 1: Found ItemID: %d, NamePT: '%s'", itemID, itemNamePT.String)
+		log.Printf("[D] [HTTP/History] Step 1: Found ItemID: %d, NamePT: '%s'", itemID, itemNamePT.String)
 	}
 
 	rmsItemDetails := fetchItemDetails(itemID)
 	if rmsItemDetails != nil {
-		log.Printf("DEBUG [itemHistory] Step 2: Successfully fetched RMS details for ID %d.", itemID)
+		log.Printf("[D] [HTTP/History] Step 2: Successfully fetched RMS details for ID %d.", itemID)
 	} else {
-		log.Printf("DEBUG [itemHistory] Step 2: No RMS details found for ID %d.", itemID)
+		log.Printf("[D] [HTTP/History] Step 2: No RMS details found for ID %d.", itemID)
 	}
 
 	currentListings, err := fetchCurrentListings(itemName)
 	if err != nil {
-		log.Printf("❌ Current listings query error: %v", err)
+		log.Printf("[E] [HTTP/History] Current listings query error: %v", err)
 		http.Error(w, "Database query for current listings failed", http.StatusInternalServerError)
 		return
 	}
-	log.Printf("DEBUG [itemHistory] Step 3: Found %d current (available) listings.", len(currentListings))
+	log.Printf("[D] [HTTP/History] Step 3: Found %d current (available) listings.", len(currentListings))
 
 	var currentLowest, currentHighest *ItemListing
 	if len(currentListings) > 0 {
 		currentLowest = &currentListings[0]
 		currentHighest = &currentListings[len(currentListings)-1]
-		log.Printf("DEBUG [itemHistory]     -> Current Lowest: %d z, Current Highest: %d z", currentLowest.Price, currentHighest.Price)
+		log.Printf("[D] [HTTP/History]     -> Current Lowest: %d z, Current Highest: %d z", currentLowest.Price, currentHighest.Price)
 	}
 
 	// --- FIX IS HERE ---
@@ -851,11 +851,11 @@ func itemHistoryHandler(w http.ResponseWriter, r *http.Request) {
 
 	finalPriceHistory, err := fetchPriceHistory(itemName)
 	if err != nil {
-		log.Printf("❌ History change query error: %v", err)
+		log.Printf("[E] [HTTP/History] History change query error: %v", err)
 		http.Error(w, "Database query for changes failed", http.StatusInternalServerError)
 		return
 	}
-	log.Printf("DEBUG [itemHistory] Step 4: Found %d unique price points for history graph.", len(finalPriceHistory))
+	log.Printf("[D] [HTTP/History] Step 4: Found %d unique price points for history graph.", len(finalPriceHistory))
 	priceHistoryJSON, _ := json.Marshal(finalPriceHistory)
 
 	var overallLowest, overallHighest sql.NullInt64
@@ -864,17 +864,17 @@ func itemHistoryHandler(w http.ResponseWriter, r *http.Request) {
                MAX(CAST(REPLACE(REPLACE(price, ',', ''), 'z', '') AS INTEGER))
         FROM items WHERE name_of_the_item = ?;
     `, itemName).Scan(&overallLowest, &overallHighest)
-	log.Printf("DEBUG [itemHistory] Step 5: Found Overall Lowest: %d z, Overall Highest: %d z", overallLowest.Int64, overallHighest.Int64)
+	log.Printf("[D] [HTTP/History] Step 5: Found Overall Lowest: %d z, Overall Highest: %d z", overallLowest.Int64, overallHighest.Int64)
 
 	const listingsPerPage = 50
 	pagination := newPaginationData(r, 0, listingsPerPage) // Initial
 	allListings, totalListings, err := fetchAllListings(itemName, pagination, listingsPerPage)
 	if err != nil {
-		log.Printf("❌ All listings query error: %v", err)
+		log.Printf("[E] [HTTP/History] All listings query error: %v", err)
 		http.Error(w, "Database query for all listings failed", http.StatusInternalServerError)
 		return
 	}
-	log.Printf("DEBUG [itemHistory] Step 6: Found %d total historical listings. Returning %d for this page.", totalListings, len(allListings))
+	log.Printf("[D] [HTTP/History] Step 6: Found %d total historical listings. Returning %d for this page.", totalListings, len(allListings))
 	pagination = newPaginationData(r, totalListings, listingsPerPage) // Recalculate
 
 	data := HistoryPageData{
@@ -895,7 +895,7 @@ func itemHistoryHandler(w http.ResponseWriter, r *http.Request) {
 		PageTitle:          itemName,
 	}
 
-	log.Printf("DEBUG [itemHistory] Rendering template for '%s' with all data.", itemName)
+	log.Printf("[D] [HTTP/History] Rendering template for '%s' with all data.", itemName)
 	renderTemplate(w, "history.html", data)
 }
 
@@ -910,23 +910,23 @@ func fetchItemDetails(itemID int) *RMSItem {
 
 	cachedItem, err := getItemDetailsFromCache(itemID)
 	if err == nil {
-		log.Printf("DEBUG [fetchItemDetails] Found item %d in cache.", itemID)
+		log.Printf("[D] [RMS] Found item %d in cache.", itemID)
 		return cachedItem // Found in cache
 	}
-	log.Printf("DEBUG [fetchItemDetails] Item %d not in cache, attempting scrape.", itemID)
+	log.Printf("[D] [RMS] Item %d not in cache, attempting scrape.", itemID)
 
 	// Not in cache, try to scrape
 	scrapedItem, scrapeErr := scrapeRMSItemDetails(itemID)
 	if scrapeErr != nil {
-		log.Printf("DEBUG [fetchItemDetails] Scrape failed for item %d: %v", itemID, scrapeErr)
+		log.Printf("[D] [RMS] Scrape failed for item %d: %v", itemID, scrapeErr)
 		return nil // Scrape failed
 	}
-	log.Printf("DEBUG [fetchItemDetails] Scrape successful for item %d.", itemID)
+	log.Printf("[D] [RMS] Scrape successful for item %d.", itemID)
 
 	// Save to cache in the background
 	go func() {
 		if saveErr := saveItemDetailsToCache(scrapedItem); saveErr != nil {
-			log.Printf("⚠️ Failed to save item ID %d to cache: %v", itemID, saveErr)
+			log.Printf("[W] [RMS] Failed to save item ID %d to cache: %v", itemID, saveErr)
 		}
 	}()
 
@@ -952,7 +952,7 @@ func fetchCurrentListings(itemName string) ([]ItemListing, error) {
 		var listing ItemListing
 		var timestampStr string
 		if err := rows.Scan(&listing.Price, &listing.Quantity, &listing.StoreName, &listing.SellerName, &listing.MapName, &listing.MapCoordinates, &timestampStr); err != nil {
-			log.Printf("⚠️ Failed to scan current listing row: %v", err)
+			log.Printf("[W] [HTTP/History] Failed to scan current listing row: %v", err)
 			continue
 		}
 		if parsedTime, err := time.Parse(time.RFC3339, timestampStr); err == nil {
@@ -1042,7 +1042,7 @@ func fetchPriceHistory(itemName string) ([]PricePointDetails, error) {
 		err := rows.Scan(&timestampStr, &p.LowestPrice, &p.LowestQuantity, &p.LowestStoreName, &p.LowestSellerName, &p.LowestMapName, &p.LowestMapCoords,
 			&p.HighestPrice, &p.HighestQuantity, &p.HighestStoreName, &p.HighestSellerName, &p.HighestMapName, &p.HighestMapCoords)
 		if err != nil {
-			log.Printf("⚠️ Failed to scan history row: %v", err)
+			log.Printf("[W] [HTTP/History] Failed to scan history row: %v", err)
 			continue
 		}
 
@@ -1090,7 +1090,7 @@ func fetchAllListings(itemName string, pagination PaginationData, listingsPerPag
 		var listing Item
 		var timestampStr string
 		if err := rows.Scan(&listing.ID, &listing.Name, &listing.NamePT, &listing.ItemID, &listing.Quantity, &listing.Price, &listing.StoreName, &listing.SellerName, &timestampStr, &listing.MapName, &listing.MapCoordinates, &listing.IsAvailable); err != nil {
-			log.Printf("⚠️ Failed to scan all listing row: %v", err)
+			log.Printf("[W] [HTTP/History] Failed to scan all listing row: %v", err)
 			continue
 		}
 		if parsedTime, err := time.Parse(time.RFC3339, timestampStr); err == nil {
@@ -1137,18 +1137,18 @@ func playerCountHandler(w http.ResponseWriter, r *http.Request) {
 		if bucketSizeInSeconds < 60 {
 			bucketSizeInSeconds = 60
 		}
-		log.Printf("📊 Player graph: Downsampling data for '%s' interval. Bucket size: %d seconds.", interval, bucketSizeInSeconds)
+		log.Printf("[D] [HTTP/Player] Player graph: Downsampling data for '%s' interval. Bucket size: %d seconds.", interval, bucketSizeInSeconds)
 		query = fmt.Sprintf(`
 			SELECT MIN(timestamp), CAST(AVG(count) AS INTEGER), CAST(AVG(seller_count) AS INTEGER)
 			FROM player_history %s GROUP BY CAST(unixepoch(timestamp) / %d AS INTEGER) ORDER BY 1 ASC`, whereClause, bucketSizeInSeconds)
 	} else {
-		log.Printf("📊 Player graph: Fetching all data points for '%s' interval.", interval)
+		log.Printf("[D] [HTTP/Player] Player graph: Fetching all data points for '%s' interval.", interval)
 		query = fmt.Sprintf("SELECT timestamp, count, seller_count FROM player_history %s ORDER BY timestamp ASC", whereClause)
 	}
 
 	rows, err := db.Query(query, params...)
 	if err != nil {
-		log.Printf("❌ Could not query for player history: %v", err)
+		log.Printf("[E] [HTTP/Player] Could not query for player history: %v", err)
 		http.Error(w, "Could not query for player history", http.StatusInternalServerError)
 		return
 	}
@@ -1161,7 +1161,7 @@ func playerCountHandler(w http.ResponseWriter, r *http.Request) {
 		var timestampStr string
 		var sellerCount sql.NullInt64
 		if err := rows.Scan(&timestampStr, &point.Count, &sellerCount); err != nil {
-			log.Printf("⚠️ Failed to scan player history row: %v", err)
+			log.Printf("[W] [HTTP/Player] Failed to scan player history row: %v", err)
 			continue
 		}
 		point.SellerCount = int(sellerCount.Int64)
@@ -1356,7 +1356,7 @@ func characterHandler(w http.ResponseWriter, r *http.Request) {
 		var p PlayerCharacter
 		var lastUpdatedStr, lastActiveStr string
 		if err := rows.Scan(&p.Rank, &p.Name, &p.BaseLevel, &p.JobLevel, &p.Experience, &p.Class, &p.GuildName, &p.Zeny, &lastUpdatedStr, &lastActiveStr); err != nil {
-			log.Printf("⚠️ Failed to scan player character row: %v", err)
+			log.Printf("[W] [HTTP/Char] Failed to scan player character row: %v", err)
 			continue
 		}
 		if t, err := time.Parse(time.RFC3339, lastUpdatedStr); err == nil {
@@ -1433,7 +1433,7 @@ func guildHandler(w http.ResponseWriter, r *http.Request) {
 
 	rows, err := db.Query(query, finalParams...)
 	if err != nil {
-		log.Printf("❌ Could not query for guilds: %v", err)
+		log.Printf("[E] [HTTP/Guild] Could not query for guilds: %v", err)
 		http.Error(w, "Could not query for guilds", http.StatusInternalServerError)
 		return
 	}
@@ -1443,7 +1443,7 @@ func guildHandler(w http.ResponseWriter, r *http.Request) {
 	for rows.Next() {
 		var g Guild
 		if err := rows.Scan(&g.Name, &g.Level, &g.Experience, &g.Master, &g.EmblemURL, &g.MemberCount, &g.TotalZeny, &g.AvgBaseLevel); err != nil {
-			log.Printf("⚠️ Failed to scan guild row: %v", err)
+			log.Printf("[W] [HTTP/Guild] Failed to scan guild row: %v", err)
 			continue
 		}
 		guilds = append(guilds, g)
@@ -1482,7 +1482,7 @@ func mvpKillsHandler(w http.ResponseWriter, r *http.Request) {
 	query := fmt.Sprintf("SELECT * FROM character_mvp_kills %s", orderByClause)
 	rows, err := db.Query(query)
 	if err != nil {
-		log.Printf("❌ Could not query for MVP kills: %v", err)
+		log.Printf("[E] [HTTP/MVP] Could not query for MVP kills: %v", err)
 		http.Error(w, "Could not query MVP kills", http.StatusInternalServerError)
 		return
 	}
@@ -1498,7 +1498,7 @@ func mvpKillsHandler(w http.ResponseWriter, r *http.Request) {
 		}
 
 		if err := rows.Scan(columnPointers...); err != nil {
-			log.Printf("⚠️ Failed to scan MVP kill row: %v", err)
+			log.Printf("[W] [HTTP/MVP] Failed to scan MVP kill row: %v", err)
 			continue
 		}
 		player := MvpKillEntry{Kills: make(map[string]int)}
@@ -1558,7 +1558,7 @@ func characterDetailHandler(w http.ResponseWriter, r *http.Request) {
 		if err == sql.ErrNoRows {
 			http.Error(w, "Character not found", http.StatusNotFound)
 		} else {
-			log.Printf("❌ Could not query for character '%s': %v", charName, err)
+			log.Printf("[E] [HTTP/Char] Could not query for character '%s': %v", charName, err)
 			http.Error(w, "Database query for character failed", http.StatusInternalServerError)
 		}
 		return
@@ -1691,7 +1691,7 @@ func characterChangelogHandler(w http.ResponseWriter, r *http.Request) {
 		var entry CharacterChangelog
 		var timestampStr string
 		if err := rows.Scan(&entry.CharacterName, &timestampStr, &entry.ActivityDescription); err != nil {
-			log.Printf("⚠️ Failed to scan character changelog row: %v", err)
+			log.Printf("[W] [HTTP/Changelog] Failed to scan character changelog row: %v", err)
 			continue
 		}
 		if parsedTime, err := time.Parse(time.RFC3339, timestampStr); err == nil {
@@ -1758,7 +1758,7 @@ func guildDetailHandler(w http.ResponseWriter, r *http.Request) {
 		var p PlayerCharacter
 		var lastActiveStr string
 		if err := rows.Scan(&p.Rank, &p.Name, &p.BaseLevel, &p.JobLevel, &p.Experience, &p.Class, &p.Zeny, &lastActiveStr); err != nil {
-			log.Printf("⚠️ Failed to scan guild member row: %v", err)
+			log.Printf("[W] [HTTP/Guild] Failed to scan guild member row: %v", err)
 			continue
 		}
 		classDistribution[p.Class]++
@@ -1979,7 +1979,7 @@ func tradingPostListHandler(w http.ResponseWriter, r *http.Request) {
 
 	rows, err := db.Query(finalQuery, queryParams...)
 	if err != nil {
-		log.Printf("❌ Trading Post flat list query error: %v", err)
+		log.Printf("[E] [HTTP/Trade] Trading Post flat list query error: %v", err)
 		http.Error(w, "Database query failed", http.StatusInternalServerError)
 		return
 	}
@@ -1995,7 +1995,7 @@ func tradingPostListHandler(w http.ResponseWriter, r *http.Request) {
 			&item.Refinement, &item.Card1, &item.Card2, &item.Card3, &item.Card4,
 		)
 		if err != nil {
-			log.Printf("⚠️ Failed to scan flat trading post item: %v", err)
+			log.Printf("[W] [HTTP/Trade] Failed to scan flat trading post item: %v", err)
 			continue
 		}
 		items = append(items, item)
@@ -2033,7 +2033,7 @@ func findItemIDInCache(cleanItemName string) (sql.NullInt64, bool) {
 
 	rows, err := db.Query(query, ftsQuery)
 	if err != nil {
-		log.Printf("⚠️ Error during FTS query for '%s': %v", ftsQuery, err)
+		log.Printf("[W] [ItemID] Error during FTS query for '%s': %v", ftsQuery, err)
 		return sql.NullInt64{Valid: false}, false
 	}
 	defer rows.Close()
@@ -2054,7 +2054,7 @@ func findItemIDInCache(cleanItemName string) (sql.NullInt64, bool) {
 
 	if len(potentialMatches) == 1 {
 		itemID := potentialMatches[0].id
-		log.Printf("   [Item ID Search] Found unique local FTS match for '%s': ID %d", cleanItemName, itemID)
+		log.Printf("[D] [ItemID] Found unique local FTS match for '%s': ID %d", cleanItemName, itemID)
 		return sql.NullInt64{Int64: itemID, Valid: true}, true
 	}
 
@@ -2062,7 +2062,7 @@ func findItemIDInCache(cleanItemName string) (sql.NullInt64, bool) {
 		// Check for a perfect match among ambiguous results
 		for _, match := range potentialMatches {
 			if match.name == cleanItemName || match.namePT == cleanItemName {
-				log.Printf("   [Item ID Search] Found perfect match '%s' (ID %d) within FTS results.", cleanItemName, match.id)
+				log.Printf("[D] [ItemID] Found perfect match '%s' (ID %d) within FTS results.", cleanItemName, match.id)
 				return sql.NullInt64{Int64: match.id, Valid: true}, true
 			}
 		}
@@ -2071,11 +2071,11 @@ func findItemIDInCache(cleanItemName string) (sql.NullInt64, bool) {
 		lowerCleanItemName := strings.ToLower(cleanItemName)
 		if strings.Contains(lowerCleanItemName, "card") || strings.Contains(lowerCleanItemName, "carta") {
 			itemID := potentialMatches[0].id
-			log.Printf("   [Item ID Search] Found %d FTS matches for '%s'. Using first result (ID %d) due to 'card'/'carta' keyword.", len(potentialMatches), cleanItemName, itemID)
+			log.Printf("[D] [ItemID] Found %d FTS matches for '%s'. Using first result (ID %d) due to 'card'/'carta' keyword.", len(potentialMatches), cleanItemName, itemID)
 			return sql.NullInt64{Int64: itemID, Valid: true}, true
 		}
 
-		log.Printf("   [Item ID Search] Found %d ambiguous FTS matches for '%s'. Proceeding to online search.", len(potentialMatches), cleanItemName)
+		log.Printf("[D] [ItemID] Found %d ambiguous FTS matches for '%s'. Proceeding to online search.", len(potentialMatches), cleanItemName)
 	}
 
 	// No matches or ambiguous matches
@@ -2084,7 +2084,7 @@ func findItemIDInCache(cleanItemName string) (sql.NullInt64, bool) {
 
 // findItemIDOnline performs concurrent web scrapes to find an item ID.
 func findItemIDOnline(cleanItemName string, slots int) (sql.NullInt64, bool) {
-	log.Printf("   [Item ID Search] No local FTS match for '%s'. Initiating online search...", cleanItemName)
+	log.Printf("[D] [ItemID] No local FTS match for '%s'. Initiating online search...", cleanItemName)
 
 	var wg sync.WaitGroup
 	var rmsResults, rdbResults []ItemSearchResult
@@ -2095,14 +2095,14 @@ func findItemIDOnline(cleanItemName string, slots int) (sql.NullInt64, bool) {
 		defer wg.Done()
 		rmsResults, rmsErr = scrapeRMSItemSearch(cleanItemName)
 		if rmsErr != nil {
-			log.Printf("   -> [RMS Search] Failed for '%s': %v", cleanItemName, rmsErr)
+			log.Printf("[W] [ItemID] RMS Search failed for '%s': %v", cleanItemName, rmsErr)
 		}
 	}()
 	go func() {
 		defer wg.Done()
 		rdbResults, rodbErr = scrapeRODatabaseSearch(cleanItemName, slots)
 		if rodbErr != nil {
-			log.Printf("   -> [RDB Search] Failed for '%s': %v", cleanItemName, rodbErr)
+			log.Printf("[W] [ItemID] RDB Search failed for '%s': %v", cleanItemName, rodbErr)
 		}
 	}()
 	wg.Wait()
@@ -2128,7 +2128,7 @@ func findItemIDOnline(cleanItemName string, slots int) (sql.NullInt64, bool) {
 			foundID = id
 			foundName = name
 		}
-		log.Printf("   [Item ID Search] Found unique ONLINE match for '%s': ID %d", cleanItemName, foundID)
+		log.Printf("[D] [ItemID] Found unique ONLINE match for '%s': ID %d", cleanItemName, foundID)
 		go scrapeAndCacheItemIfNotExists(foundID, foundName) // Cache in background
 		return sql.NullInt64{Int64: int64(foundID), Valid: true}, true
 	}
@@ -2140,7 +2140,7 @@ func findItemIDOnline(cleanItemName string, slots int) (sql.NullInt64, bool) {
 			nameWithoutSlots = strings.TrimSpace(nameWithoutSlots)
 
 			if name == cleanItemName || (nameWithoutSlots != "" && nameWithoutSlots == cleanItemName) {
-				log.Printf("   [Item ID Search] Found perfect match (exact or slot-stripped) '%s' (ID %d) within ONLINE results.", cleanItemName, id)
+				log.Printf("[D] [ItemID] Found perfect match (exact or slot-stripped) '%s' (ID %d) within ONLINE results.", cleanItemName, id)
 				go scrapeAndCacheItemIfNotExists(id, name) // Cache in background
 				return sql.NullInt64{Int64: int64(id), Valid: true}, true
 			}
@@ -2156,12 +2156,12 @@ func findItemIDOnline(cleanItemName string, slots int) (sql.NullInt64, bool) {
 				foundName = name
 				break // Get the first one
 			}
-			log.Printf("   [Item ID Search] Found %d ONLINE matches for '%s'. Using first result (ID %d) due to 'card'/'carta' keyword.", len(combinedIDs), cleanItemName, foundID)
+			log.Printf("[D] [ItemID] Found %d ONLINE matches for '%s'. Using first result (ID %d) due to 'card'/'carta' keyword.", len(combinedIDs), cleanItemName, foundID)
 			go scrapeAndCacheItemIfNotExists(foundID, foundName) // Cache in background
 			return sql.NullInt64{Int64: int64(foundID), Valid: true}, true
 		}
 
-		log.Printf("   [Item ID Search] Found %d ambiguous ONLINE matches for '%s'. Not selecting.", len(combinedIDs), cleanItemName)
+		log.Printf("[D] [ItemID] Found %d ambiguous ONLINE matches for '%s'. Not selecting.", len(combinedIDs), cleanItemName)
 	}
 
 	// No online matches or ambiguous matches
@@ -2183,7 +2183,7 @@ func findItemIDByName(itemName string, allowRetry bool, slots int) (sql.NullInt6
 
 	// 2. Handle special case: "Zeny"
 	if strings.ToLower(cleanItemName) == "zeny" {
-		log.Printf("   [Item ID Search] Detected special item 'Zeny'. Skipping ID search.")
+		log.Printf("[D] [ItemID] Detected special item 'Zeny'. Skipping ID search.")
 		return sql.NullInt64{Valid: false}, nil
 	}
 
@@ -2206,14 +2206,14 @@ func findItemIDByName(itemName string, allowRetry bool, slots int) (sql.NullInt6
 		newName = strings.TrimSpace(newName)
 
 		if newName != "" && newName != cleanItemName {
-			log.Printf("   [Item ID Search] No results for '%s'. Retrying search without 'card'/'carta' as: '%s'", cleanItemName, newName)
+			log.Printf("[D] [ItemID] No results for '%s'. Retrying search without 'card'/'carta' as: '%s'", cleanItemName, newName)
 			// Call recursively, but with allowRetry=false to prevent infinite loops
 			return findItemIDByName(newName, false, slots)
 		}
 	}
 
 	// 6. All attempts failed
-	log.Printf("   [Item ID Search] All searches for '%s' returned no results or were ambiguous. Storing name only.", cleanItemName)
+	log.Printf("[D] [ItemID] All searches for '%s' returned no results or were ambiguous. Storing name only.", cleanItemName)
 	return sql.NullInt64{Valid: false}, nil
 }
 
@@ -2239,7 +2239,7 @@ func findAndDeleteOldPosts(tx *sql.Tx, characterName, discordContact, postType s
 
 	rows, err := tx.Query(findQuery, findParams...)
 	if err != nil {
-		log.Printf("⚠️ [Discord->DB] Failed to query for old posts to delete for '%s': %v", characterName, err)
+		log.Printf("[W] [Discord] Failed to query for old posts to delete for '%s': %v", characterName, err)
 		return // Don't fail the transaction, just log the error
 	}
 	defer rows.Close()
@@ -2258,9 +2258,9 @@ func findAndDeleteOldPosts(tx *sql.Tx, characterName, discordContact, postType s
 
 		delRes, err := tx.Exec(delQuery, postIDsToDelete...)
 		if err != nil {
-			log.Printf("⚠️ [Discord->DB] Failed to delete old post(s) for '%s': %v", characterName, err)
+			log.Printf("[W] [Discord] Failed to delete old post(s) for '%s': %v", characterName, err)
 		} else if deletedCount, _ := delRes.RowsAffected(); deletedCount > 0 {
-			log.Printf("🧹 [Discord->DB] Deleted %d old '%s' post(s) for user '%s' because they contained matching items.", deletedCount, postType, characterName)
+			log.Printf("[I] [Discord] Deleted %d old '%s' post(s) for user '%s' because they contained matching items.", deletedCount, postType, characterName)
 		}
 	}
 }
@@ -2331,7 +2331,7 @@ func createSingleTradingPost(authorName, originalMessage, postType string, items
 
 		itemID, findErr := findItemIDByName(itemName, true, item.Slots)
 		if findErr != nil {
-			log.Printf("⚠️ Error finding item ID for '%s': %v. Proceeding without ID.", itemName, findErr)
+			log.Printf("[W] [Discord] Error finding item ID for '%s': %v. Proceeding without ID.", itemName, findErr)
 		}
 
 		paymentMethods := "zeny"
@@ -2375,7 +2375,7 @@ func CreateTradingPostFromDiscord(authorName string, originalMessage string, tra
 	if len(buyingItems) > 0 {
 		postID, err := createSingleTradingPost(authorName, originalMessage, "buying", buyingItems)
 		if err != nil {
-			log.Printf("❌ [Discord->DB] Failed to create 'buying' post for '%s': %v", authorName, err)
+			log.Printf("[E] [Discord] Failed to create 'buying' post for '%s': %v", authorName, err)
 			finalError = err
 		} else {
 			postIDs = append(postIDs, postID)
@@ -2385,7 +2385,7 @@ func CreateTradingPostFromDiscord(authorName string, originalMessage string, tra
 	if len(sellingItems) > 0 {
 		postID, err := createSingleTradingPost(authorName, originalMessage, "selling", sellingItems)
 		if err != nil {
-			log.Printf("❌ [Discord->DB] Failed to create 'selling' post for '%s': %v", authorName, err)
+			log.Printf("[E] [Discord] Failed to create 'selling' post for '%s': %v", authorName, err)
 			finalError = err
 		} else {
 			postIDs = append(postIDs, postID)
@@ -2446,3 +2446,4 @@ func levenshtein(s1, s2 string) int {
 	}
 	return v1[m]
 }
+

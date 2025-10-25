@@ -134,7 +134,7 @@ func parseTradeMessageWithGemini(message string) (*GeminiTradeResult, error) {
 
 	prompt := fmt.Sprintf(promptTemplate, message)
 
-	log.Println("🤖 Sending request to Gemini API...")
+	log.Println("[I] [Gemini] Sending request to Gemini API...")
 	resp, err := model.GenerateContent(ctx, genai.Text(prompt))
 	if err != nil {
 		return nil, fmt.Errorf("failed to generate content from Gemini: %w", err)
@@ -162,7 +162,7 @@ func parseTradeMessageWithGemini(message string) (*GeminiTradeResult, error) {
 	}
 	rawJSON = strings.TrimSpace(rawJSON)
 
-	log.Printf("🤖 Received JSON response from Gemini: %s", rawJSON)
+	log.Printf("[D] [Gemini] Received JSON response: %s", rawJSON)
 
 	var result GeminiTradeResult
 	if err := json.Unmarshal([]byte(rawJSON), &result); err != nil {

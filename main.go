@@ -52,7 +52,7 @@ func flushVisitorBatchToDB(batch []pageViewLog) {
 
 	tx, err := db.Begin()
 	if err != nil {
-		log.Printf("❌ Visitor Logger: Failed to begin transaction: %v", err)
+		log.Printf("[E] [Logger] Failed to begin transaction: %v", err)
 		return
 	}
 	defer tx.Rollback() // Rollback on error
@@ -64,7 +64,7 @@ func flushVisitorBatchToDB(batch []pageViewLog) {
 			last_visit = excluded.last_visit;
 	`)
 	if err != nil {
-		log.Printf("❌ Visitor Logger: Failed to prepare visitor statement: %v", err)
+		log.Printf("[E] [Logger] Failed to prepare visitor statement: %v", err)
 		return
 	}
 	defer visitorStmt.Close()
@@ -74,7 +74,7 @@ func flushVisitorBatchToDB(batch []pageViewLog) {
 		VALUES (?, ?, ?);
 	`)
 	if err != nil {
-		log.Printf("❌ Visitor Logger: Failed to prepare page_view statement: %v", err)
+		log.Printf("[E] [Logger] Failed to prepare page_view statement: %v", err)
 		return
 	}
 	defer viewStmt.Close()
@@ -102,10 +102,10 @@ func flushVisitorBatchToDB(batch []pageViewLog) {
 	}
 
 	if err := tx.Commit(); err != nil {
-		log.Printf("❌ Visitor Logger: Failed to commit batch: %v", err)
+		log.Printf("[E] [Logger] Failed to commit batch: %v", err)
 	} else {
 		log.Printf(
-			"📝 Visitor Logger: Flushed %d views. (Visitor upsert errors: %d, View insert errors: %d)",
+			"[I] [Logger] Flushed %d views. (Visitor upsert errors: %d, View insert errors: %d)",
 			len(batch), visitorErrors, viewErrors,
 		)
 	}
@@ -125,7 +125,7 @@ func startVisitorLogger(ctx context.Context) {
 		select {
 		case <-ctx.Done():
 			// Shutdown signal received.
-			log.Println("🔌 Visitor Logger: Shutdown signal received. Draining channel...")
+			log.Println("[I] [Logger] Shutdown signal received. Draining channel...")
 
 			// Stop the ticker immediately
 			ticker.Stop()
@@ -141,9 +141,9 @@ func startVisitorLogger(ctx context.Context) {
 					}
 				default:
 					// Channel is empty
-					log.Println("🔌 Visitor Logger: Flushing final batch...")
+					log.Println("[I] [Logger] Flushing final batch...")
 					flushVisitorBatchToDB(batch) // Flush the final partial batch
-					log.Println("✅ Visitor Logger: Shut down gracefully.")
+					log.Println("[I] [Logger] Shut down gracefully.")
 					return
 				}
 			}
@@ -180,7 +180,7 @@ func visitorTracker(next http.HandlerFunc) http.HandlerFunc {
 			// Successfully queued
 		default:
 			// Channel is full, drop the view to avoid blocking the web request
-			log.Println("⚠️ Page view log channel is full. Dropping a page view.")
+			log.Println("[W] [Logger] Page view log channel is full. Dropping a page view.")
 		}
 
 		next.ServeHTTP(w, r)
@@ -190,13 +190,13 @@ func visitorTracker(next http.HandlerFunc) http.HandlerFunc {
 // main is rewritten to support graceful shutdown and cleaner routing.
 func main() {
 	if err := godotenv.Load(); err != nil {
-		log.Println("ℹ️ No .env file found, relying on system environment variables.")
+		log.Println("[I] [Main] No .env file found, relying on system environment variables.")
 	}
 
 	var err error
 	db, err = initDB("./market_data.db")
 	if err != nil {
-		log.Fatalf("❌ Failed to initialize database: %v", err)
+		log.Fatalf("[F] [DB] Failed to initialize database: %v", err)
 	}
 	defer db.Close()
 
@@ -210,23 +210,23 @@ func main() {
 	// Goroutine to listen for OS signals
 	go func() {
 		<-sigChan
-		log.Println("🔌 Shutdown signal received. Initiating graceful shutdown...")
+		log.Println("[I] [Main] Shutdown signal received. Initiating graceful shutdown...")
 		cancel() // Trigger context cancellation
 	}()
 
 	// Admin Password
 	adminPass = generateRandomPassword(16)
 	if err := os.WriteFile("pwd.txt", []byte(adminPass), 0644); err != nil {
-		log.Printf("⚠️ Could not write admin password to file: %v", err)
+		log.Printf("[W] [Main] Could not write admin password to file: %v", err)
 	} else {
-		log.Println("🔑 Admin password saved to pwd.txt")
+		log.Println("[I] [Main] Admin password saved to pwd.txt")
 	}
 
 	go func() {
 		time.Sleep(5 * time.Second) // Give server time to start
 		log.Println("==================================================")
-		log.Printf("👤 Admin User: %s", adminUser)
-		log.Printf("🔑 Admin Pass: %s", adminPass)
+		log.Printf("[I] [Main] Admin User: %s", adminUser)
+		log.Printf("[I] [Main] Admin Pass: %s", adminPass)
 		log.Println("==================================================")
 	}()
 
@@ -298,23 +298,23 @@ func main() {
 	// Goroutine to handle server shutdown when context is cancelled
 	go func() {
 		<-ctx.Done() // Wait for the cancel() signal
-		log.Println("🔌 Shutting down web server...")
+		log.Println("[I] [HTTP] Shutting down web server...")
 
 		// Create a new context for the shutdown, with a timeout
 		shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer shutdownCancel()
 
 		if err := server.Shutdown(shutdownCtx); err != nil {
-			log.Printf("❌ Web server graceful shutdown failed: %v", err)
+			log.Printf("[E] [HTTP] Web server graceful shutdown failed: %v", err)
 		}
 	}()
 
 	// Start server and block
-	log.Printf("🚀 Web server started. Open http://localhost:%s in your browser.", port)
+	log.Printf("[I] [HTTP] Web server started. Open http://localhost:%s in your browser.", port)
 	if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-		log.Fatalf("❌ Web server failed to start: %v", err)
+		log.Fatalf("[F] [HTTP] Web server failed to start: %v", err)
 	}
 
 	// This line will be reached after server.Shutdown() completes
-	log.Println("✅ All services shut down. Exiting.")
+	log.Println("[I] [Main] All services shut down. Exiting.")
 }

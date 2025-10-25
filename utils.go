@@ -13,7 +13,7 @@ func generateRandomPassword(length int) string {
 	const chars = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
 	b := make([]byte, length)
 	if _, err := io.ReadFull(rand.Reader, b); err != nil {
-		log.Println("❗️ Could not generate secure random password, using fallback.")
+		log.Println("[W] [Util] Could not generate secure random password, using fallback.")
 		// Fallback for environments where /dev/urandom might not be available
 		return "fallback-password-yufa-change-me"
 	}
@@ -29,7 +29,7 @@ func GetLastUpdateTime(columnName, tableName string) string {
 	query := fmt.Sprintf("SELECT MAX(%s) FROM %s", columnName, tableName)
 	err := db.QueryRow(query).Scan(&lastTimestamp)
 	if err != nil {
-		log.Printf("⚠️ Could not get last update time for %s.%s: %v", tableName, columnName, err)
+		log.Printf("[W] [Util] Could not get last update time for %s.%s: %v", tableName, columnName, err)
 	}
 	if lastTimestamp.Valid {
 		parsedTime, err := time.Parse(time.RFC3339, lastTimestamp.String)

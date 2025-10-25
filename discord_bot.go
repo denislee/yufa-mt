@@ -17,11 +17,11 @@ func startDiscordBot(ctx context.Context) {
 	channelIDsStr := os.Getenv("DISCORD_CHANNEL_IDS")
 
 	if botToken == "" {
-		log.Println("⚠️ [Discord Bot] DISCORD_BOT_TOKEN not set. Bot will not start.")
+		log.Println("[W] [Discord] DISCORD_BOT_TOKEN not set. Bot will not start.")
 		return
 	}
 	if channelIDsStr == "" {
-		log.Println("⚠️ [Discord Bot] DISCORD_CHANNEL_IDS not set. Bot will not start.")
+		log.Println("[W] [Discord] DISCORD_CHANNEL_IDS not set. Bot will not start.")
 		return
 	}
 
@@ -34,13 +34,13 @@ func startDiscordBot(ctx context.Context) {
 		}
 	}
 	if len(targetChannelIDs) == 0 {
-		log.Println("⚠️ [Discord Bot] No valid channel IDs found in DISCORD_CHANNEL_IDS. Bot will not start.")
+		log.Println("[W] [Discord] No valid channel IDs found in DISCORD_CHANNEL_IDS. Bot will not start.")
 		return
 	}
 
 	dg, err := discordgo.New("Bot " + botToken)
 	if err != nil {
-		log.Printf("❌ [Discord Bot] Error creating Discord session: %v", err)
+		log.Printf("[E] [Discord] Error creating Discord session: %v", err)
 		return
 	}
 
@@ -50,27 +50,27 @@ func startDiscordBot(ctx context.Context) {
 
 	err = dg.Open()
 	if err != nil {
-		log.Printf("❌ [Discord Bot] Error opening connection: %v", err)
+		log.Printf("[E] [Discord] Error opening connection: %v", err)
 		return
 	}
 
-	log.Println("🤖 [Discord Bot] Bot is running. Waiting for shutdown signal...")
+	log.Println("[I] [Discord] Bot is running. Waiting for shutdown signal...")
 
 	// Wait for the shutdown signal from the main app's context
 	<-ctx.Done()
 
-	log.Println("🔌 [Discord Bot] Shutdown signal received. Closing Discord connection...")
+	log.Println("[I] [Discord] Shutdown signal received. Closing Discord connection...")
 	if err := dg.Close(); err != nil {
-		log.Printf("⚠️ [Discord Bot] Error while closing Discord session: %v", err)
+		log.Printf("[W] [Discord] Error while closing Discord session: %v", err)
 	} else {
-		log.Println("✅ [Discord Bot] Discord connection closed gracefully.")
+		log.Println("[I] [Discord] Discord connection closed gracefully.")
 	}
 }
 
 func ready(s *discordgo.Session, event *discordgo.Ready) {
-	log.Println("✅ [Discord Bot] Bot is connected and ready!")
-	log.Printf("   -> Logged in as: %s", event.User.String())
-	log.Printf("   -> Listening on %d channel(s).", len(targetChannelIDs))
+	log.Println("[I] [Discord] Bot is connected and ready!")
+	log.Printf("[I] [Discord] Logged in as: %s", event.User.String())
+	log.Printf("[I] [Discord] Listening on %d channel(s).", len(targetChannelIDs))
 }
 
 func messageCreate(s *discordgo.Session, m *discordgo.MessageCreate) {
@@ -83,33 +83,33 @@ func messageCreate(s *discordgo.Session, m *discordgo.MessageCreate) {
 		return
 	}
 
-	log.Printf("🗣️  [Discord] Processing message from '%s': \"%s\"", m.Author.Username, m.Content)
+	log.Printf("[I] [Discord] Processing message from '%s': \"%s\"", m.Author.Username, m.Content)
 
 	go func() {
 		tradeResult, err := parseTradeMessageWithGemini(m.Content)
 		if err != nil {
-			log.Printf("❌ [Discord->Gemini] Failed to parse trade message from '%s': %v", m.Author.Username, err)
+			log.Printf("[E] [Gemini] Failed to parse trade message from '%s': %v", m.Author.Username, err)
 
 			return
 		}
 
 		if tradeResult == nil || len(tradeResult.Items) == 0 {
-			log.Printf("⚠️ [Discord->Gemini] Gemini returned no valid items for message from '%s'. Ignoring.", m.Author.Username)
+			log.Printf("[W] [Gemini] Returned no valid items for message from '%s'. Ignoring.", m.Author.Username)
 
 			return
 		}
 
-		log.Printf("✅ [Discord->Gemini] Successfully parsed trade message. Found %d items.", len(tradeResult.Items))
+		log.Printf("[I] [Gemini] Successfully parsed trade message. Found %d items.", len(tradeResult.Items))
 
 		postIDs, err := CreateTradingPostFromDiscord(m.Author.Username, m.Content, tradeResult)
 		if err != nil {
-			log.Printf("❌ [Discord->DB] Failed to create trading post(s) for '%s': %v", m.Author.Username, err)
+			log.Printf("[E] [DB] Failed to create trading post(s) for '%s': %v", m.Author.Username, err)
 
 			return
 		}
 
 		if len(postIDs) == 0 {
-			log.Printf("⚠️ [Discord->DB] No trading posts were created for '%s' (e.g., only empty items).", m.Author.Username)
+			log.Printf("[W] [DB] No trading posts were created for '%s' (e.g., only empty items).", m.Author.Username)
 			return
 		}
 
@@ -117,9 +117,10 @@ func messageCreate(s *discordgo.Session, m *discordgo.MessageCreate) {
 		for _, pid := range postIDs {
 			postIDStrings = append(postIDStrings, fmt.Sprintf("#%d", pid))
 		}
-		log.Printf("✅ [Discord->DB] Successfully created trading post(s) %s for '%s'.", strings.Join(postIDStrings, ", "), m.Author.Username)
+		log.Printf("[I] [DB] Successfully created trading post(s) %s for '%s'.", strings.Join(postIDStrings, ", "), m.Author.Username)
 
 		_ = fmt.Sprintf("✅ Trade post(s) %s created for **%s**.", strings.Join(postIDStrings, ", "), m.Author.Username)
 
 	}()
 }
+

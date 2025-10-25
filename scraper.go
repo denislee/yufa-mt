@@ -15,7 +15,6 @@ import (
 	"time"
 
 	"github.com/PuerkitoBio/goquery"
-	"github.com/chromedp/chromedp"
 )
 
 const enablePlayerCountDebugLogs = false
@@ -70,14 +69,14 @@ func (sc *ScraperClient) getPage(url, logPrefix string) (string, error) {
 		resp, doErr := sc.Client.Do(req)
 		if doErr != nil {
 			err = doErr
-			log.Printf("    -> ❌ %s Error on page (attempt %d/%d): %v", logPrefix, attempt, maxScrapeRetries, doErr)
+			log.Printf("[W] %s Error on page (attempt %d/%d): %v", logPrefix, attempt, maxScrapeRetries, doErr)
 			time.Sleep(retryScrapeDelay)
 			continue
 		}
 
 		if resp.StatusCode != http.StatusOK {
 			err = fmt.Errorf("received non-200 status: %d", resp.StatusCode)
-			log.Printf("    -> ❌ %s Non-200 status (attempt %d/%d): %d", logPrefix, attempt, maxScrapeRetries, resp.StatusCode)
+			log.Printf("[W] %s Non-200 status (attempt %d/%d): %d", logPrefix, attempt, maxScrapeRetries, resp.StatusCode)
 			resp.Body.Close()
 			time.Sleep(retryScrapeDelay)
 			continue
@@ -87,7 +86,7 @@ func (sc *ScraperClient) getPage(url, logPrefix string) (string, error) {
 		resp.Body.Close()
 		if readErr != nil {
 			err = readErr
-			log.Printf("    -> ❌ %s Failed to read body (attempt %d/%d): %v", logPrefix, attempt, maxScrapeRetries, readErr)
+			log.Printf("[E] %s Failed to read body (attempt %d/%d): %v", logPrefix, attempt, maxScrapeRetries, readErr)
 			time.Sleep(retryScrapeDelay)
 			continue
 		}
@@ -103,11 +102,11 @@ func (sc *ScraperClient) getPage(url, logPrefix string) (string, error) {
 
 // findLastPage determines the total number of pages for a paginated ranking.
 func (sc *ScraperClient) findLastPage(firstPageURL, logPrefix string) int {
-	log.Printf(" %s Determining total number of pages...", logPrefix)
+	log.Printf("[I] %s Determining total number of pages...", logPrefix)
 
 	bodyContent, err := sc.getPage(firstPageURL, logPrefix)
 	if err != nil {
-		log.Printf("⚠️ %s Could not fetch page 1 to determine page count. Assuming 1 page. Error: %v", logPrefix, err)
+		log.Printf("[W] %s Could not fetch page 1 to determine page count. Assuming 1 page. Error: %v", logPrefix, err)
 		return 1
 	}
 
@@ -126,20 +125,8 @@ func (sc *ScraperClient) findLastPage(firstPageURL, logPrefix string) int {
 		}
 	}
 
-	log.Printf("✅ %s Found %d total pages to scrape.", logPrefix, lastPage)
+	log.Printf("[I] %s Found %d total pages to scrape.", logPrefix, lastPage)
 	return lastPage
-}
-
-func newOptimizedAllocator() (context.Context, context.CancelFunc) {
-	opts := append(chromedp.DefaultExecAllocatorOptions[:],
-		chromedp.UserAgent(`Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36`),
-		chromedp.Flag("headless", true),
-		chromedp.Flag("disable-gpu", true),
-		chromedp.Flag("no-sandbox", true),
-		chromedp.Flag("disable-extensions", true),
-		chromedp.Flag("blink-settings", "imagesEnabled=false"),
-	)
-	return chromedp.NewExecAllocator(context.Background(), opts...)
 }
 
 func logCharacterActivity(changelogStmt *sql.Stmt, charName string, description string) error {
@@ -149,27 +136,27 @@ func logCharacterActivity(changelogStmt *sql.Stmt, charName string, description 
 
 	_, err := changelogStmt.Exec(charName, time.Now().Format(time.RFC3339), description)
 	if err != nil {
-		log.Printf("    -> ❌ [Changelog] Failed to log activity for %s: %v", charName, err)
+		log.Printf("[E] [Changelog] Failed to log activity for %s: %v", charName, err)
 	}
 	return err
 }
 
 func scrapeAndStorePlayerCount() {
-	log.Println("📊 [Counter] Checking player and seller count...")
+	log.Println("[I] [Scraper/PlayerCount] Checking player and seller count...")
 	const url = "https://projetoyufa.com/info"
 
 	// Use the shared client's getPage method.
 	// This encapsulates the user-agent, timeout, and status check.
 	bodyContent, err := scraperClient.getPage(url, "[Counter]")
 	if err != nil {
-		log.Printf("❌ [Counter] Failed to fetch player info page: %v", err)
+		log.Printf("[E] [Scraper/PlayerCount] Failed to fetch player info page: %v", err)
 		return
 	}
 
 	// Parse the HTML content
 	doc, err := goquery.NewDocumentFromReader(strings.NewReader(bodyContent))
 	if err != nil {
-		log.Printf("❌ [Counter] Failed to parse player info page HTML: %v", err)
+		log.Printf("[E] [Scraper/PlayerCount] Failed to parse player info page HTML: %v", err)
 		return
 	}
 
@@ -188,7 +175,7 @@ func scrapeAndStorePlayerCount() {
 	}
 
 	if !found {
-		log.Println("⚠️ [Counter] Could not find player count on the info page after successful load.")
+		log.Println("[W] [Scraper/PlayerCount] Could not find player count on the info page after successful load.")
 		return
 	}
 
@@ -198,7 +185,7 @@ func scrapeAndStorePlayerCount() {
 	var sellerCount int
 	err = db.QueryRow("SELECT COUNT(DISTINCT seller_name) FROM items WHERE is_available = 1").Scan(&sellerCount)
 	if err != nil {
-		log.Printf("⚠️ [Counter] Could not query for unique seller count: %v", err)
+		log.Printf("[W] [Scraper/PlayerCount] Could not query for unique seller count: %v", err)
 
 		sellerCount = 0
 	}
@@ -207,13 +194,13 @@ func scrapeAndStorePlayerCount() {
 	var lastSellerCount sql.NullInt64
 	err = db.QueryRow("SELECT count, seller_count FROM player_history ORDER BY timestamp DESC LIMIT 1").Scan(&lastPlayerCount, &lastSellerCount)
 	if err != nil && err != sql.ErrNoRows {
-		log.Printf("⚠️ [Counter] Could not query for last player/seller count: %v", err)
+		log.Printf("[W] [Scraper/PlayerCount] Could not query for last player/seller count: %v", err)
 		return
 	}
 
 	if err != sql.ErrNoRows && onlineCount == lastPlayerCount && lastSellerCount.Valid && sellerCount == int(lastSellerCount.Int64) {
 		if enablePlayerCountDebugLogs {
-			log.Printf("[Counter] Player/seller count unchanged (%d players, %d sellers). No update needed.", onlineCount, sellerCount)
+			log.Printf("[D] [Scraper/PlayerCount] Player/seller count unchanged (%d players, %d sellers). No update needed.", onlineCount, sellerCount)
 		}
 		return
 	}
@@ -221,11 +208,11 @@ func scrapeAndStorePlayerCount() {
 	retrievalTime := time.Now().Format(time.RFC3339)
 	_, err = db.Exec("INSERT INTO player_history (timestamp, count, seller_count) VALUES (?, ?, ?)", retrievalTime, onlineCount, sellerCount)
 	if err != nil {
-		log.Printf("❌ [Counter] Failed to insert new player/seller count: %v", err)
+		log.Printf("[E] [Scraper/PlayerCount] Failed to insert new player/seller count: %v", err)
 		return
 	}
 
-	log.Printf("✅ [Counter] Player/seller count updated. New values: %d players, %d sellers", onlineCount, sellerCount)
+	log.Printf("[I] [Scraper/PlayerCount] Player/seller count updated. New values: %d players, %d sellers", onlineCount, sellerCount)
 }
 
 // checkAndLogCharacterActivity contains the logic for detecting and logging player changes.
@@ -264,7 +251,8 @@ func checkAndLogCharacterActivity(changelogStmt *sql.Stmt, p PlayerCharacter, ol
 	}
 
 	if lastActiveTime != p.LastUpdated && enableCharacterScraperDebugLogs {
-		log.Printf("    -> [Activity] Player '%s' showed no change. last_active remains %s.", p.Name, lastActiveTime)
+		log.Printf("[D] [Scraper/Char] Player '%s' showed no change. last_active remains %s.", p.Name, lastActiveTime)
+
 	}
 
 	return lastActiveTime
@@ -273,7 +261,7 @@ func checkAndLogCharacterActivity(changelogStmt *sql.Stmt, p PlayerCharacter, ol
 // fetchExistingPlayers queries the DB for all player data needed for comparison.
 func fetchExistingPlayers() (map[string]PlayerCharacter, error) {
 	if enableCharacterScraperDebugLogs {
-		log.Println("    -> [DB] Fetching existing player data for activity comparison...")
+		log.Println("[D] [Scraper/Char] Fetching existing player data for activity comparison...")
 	}
 	existingPlayers := make(map[string]PlayerCharacter)
 	rowsPre, err := db.Query("SELECT name, base_level, job_level, experience, class, last_active FROM characters")
@@ -285,21 +273,21 @@ func fetchExistingPlayers() (map[string]PlayerCharacter, error) {
 	for rowsPre.Next() {
 		var p PlayerCharacter
 		if err := rowsPre.Scan(&p.Name, &p.BaseLevel, &p.JobLevel, &p.Experience, &p.Class, &p.LastActive); err != nil {
-			log.Printf("    -> [DB] WARN: Failed to scan existing player row: %v", err)
+			log.Printf("[W] [Scraper/Char] Failed to scan existing player row: %v", err)
 			continue
 		}
 		existingPlayers[p.Name] = p
 	}
 
 	if enableCharacterScraperDebugLogs {
-		log.Printf("    -> [DB] Found %d existing player records for comparison.", len(existingPlayers))
+		log.Printf("[D] [Scraper/Char] Found %d existing player records for comparison.", len(existingPlayers))
 	}
 	return existingPlayers, nil
 }
 
 // cleanupStalePlayers removes players from the DB who were not in the latest scrape.
 func cleanupStalePlayers(scrapedPlayerNames map[string]bool, existingPlayers map[string]PlayerCharacter) {
-	log.Println("🧹 [Characters] Cleaning up old player records not found in this scrape...")
+	log.Println("[I] [Scraper/Char] Cleaning up old player records not found in this scrape...")
 	var stalePlayers []interface{}
 	for existingName := range existingPlayers {
 		if !scrapedPlayerNames[existingName] {
@@ -308,7 +296,7 @@ func cleanupStalePlayers(scrapedPlayerNames map[string]bool, existingPlayers map
 	}
 
 	if len(stalePlayers) == 0 {
-		log.Println("✅ [Characters] Cleanup complete. No stale records found.")
+		log.Println("[I] [Scraper/Char] Cleanup complete. No stale records found.")
 		return
 	}
 
@@ -326,15 +314,15 @@ func cleanupStalePlayers(scrapedPlayerNames map[string]bool, existingPlayers map
 
 		result, err := db.Exec(query, batch...)
 		if err != nil {
-			log.Printf("❌ [Characters] Failed to clean up batch of old player records: %v", err)
+			log.Printf("[E] [Scraper/Char] Failed to clean up batch of old player records: %v", err)
 			continue // Continue to next batch
 		}
 		rowsAffected, _ := result.RowsAffected()
 		if enableCharacterScraperDebugLogs {
-			log.Printf("    -> [DB] Cleaned %d stale records in batch.", rowsAffected)
+			log.Printf("[D] [Scraper/Char] Cleaned %d stale records in batch.", rowsAffected)
 		}
 	}
-	log.Printf("✅ [Characters] Cleanup complete. Removed %d stale player records in total.", len(stalePlayers))
+	log.Printf("[I] [Scraper/Char] Cleanup complete. Removed %d stale player records in total.", len(stalePlayers))
 }
 
 // processPlayerData is now a cleaner orchestrator that uses helper functions.
@@ -342,19 +330,19 @@ func processPlayerData(playerChan <-chan PlayerCharacter, updateTime string) {
 	characterMutex.Lock()
 	defer characterMutex.Unlock()
 
-	log.Println("🏆 [Characters] DB worker started. Processing scraped data...")
+	log.Println("[I] [Scraper/Char] DB worker started. Processing scraped data...")
 
 	// 1. Fetch existing player data
 	existingPlayers, err := fetchExistingPlayers()
 	if err != nil {
-		log.Printf("❌ [DB] %v", err)
+		log.Printf("[E] [Scraper/Char] %v", err)
 		// Continue with an empty map, logging will just be incomplete
 	}
 
 	// 2. Prepare database transaction and statements
 	tx, err := db.Begin()
 	if err != nil {
-		log.Printf("❌ [DB] Failed to begin transaction: %v", err)
+		log.Printf("[E] [Scraper/Char] Failed to begin transaction: %v", err)
 		return
 	}
 	defer tx.Rollback() // Rollback on error
@@ -372,7 +360,7 @@ func processPlayerData(playerChan <-chan PlayerCharacter, updateTime string) {
 			last_active=excluded.last_active
 	`)
 	if err != nil {
-		log.Printf("❌ [DB] Failed to prepare characters upsert statement: %v", err)
+		log.Printf("[E] [Scraper/Char] Failed to prepare characters upsert statement: %v", err)
 		return
 	}
 	defer stmt.Close()
@@ -382,7 +370,7 @@ func processPlayerData(playerChan <-chan PlayerCharacter, updateTime string) {
 		VALUES (?, ?, ?)
 	`)
 	if err != nil {
-		log.Printf("❌ [DB] Failed to prepare changelog statement: %v", err)
+		log.Printf("[E] [Scraper/Char] Failed to prepare changelog statement: %v", err)
 		return
 	}
 	defer changelogStmt.Close()
@@ -407,25 +395,25 @@ func processPlayerData(playerChan <-chan PlayerCharacter, updateTime string) {
 
 		// Upsert the player
 		if _, err := stmt.Exec(p.Rank, p.Name, p.BaseLevel, p.JobLevel, p.Experience, p.Class, p.LastUpdated, lastActiveTime); err != nil {
-			log.Printf("    -> [DB] WARN: Failed to upsert character for player %s: %v", p.Name, err)
+			log.Printf("[W] [Scraper/Char] Failed to upsert character for player %s: %v", p.Name, err)
 		}
 	}
 
 	// 4. Commit the transaction
 	if err := tx.Commit(); err != nil {
-		log.Printf("❌ [DB] Failed to commit transaction: %v", err)
+		log.Printf("[E] [Scraper/Char] Failed to commit transaction: %v", err)
 		return
 	}
-	log.Printf("✅ [Characters] Saved/updated %d records.", totalProcessed)
+	log.Printf("[I] [Scraper/Char] Saved/updated %d records.", totalProcessed)
 
 	// 5. Clean up stale records (outside the transaction)
 	cleanupStalePlayers(scrapedPlayerNames, existingPlayers)
 
-	log.Printf("✅ [Characters] Scrape and update process complete.")
+	log.Printf("[I] [Scraper/Char] Scrape and update process complete.")
 }
 
 func scrapePlayerCharacters() {
-	log.Println("🏆 [Characters] Starting player character scrape...")
+	log.Println("[I] [Scraper/Char] Starting player character scrape...")
 
 	// Regex definitions (unchanged)
 	rankRegex := regexp.MustCompile(`p\-1 text\-center font\-medium\\",\\"children\\":(\d+)\}\]`)
@@ -448,9 +436,8 @@ func scrapePlayerCharacters() {
 	// Start the single DB consumer goroutine
 	// It will wait until playerChan is filled and closed.
 	go processPlayerData(playerChan, updateTime)
-	// --------------------------------
 
-	log.Printf("🏆 [Characters] Scraping all %d pages...", lastPage)
+	log.Printf("[I] [Scraper/Char] Scraping all %d pages...", lastPage)
 	for page := 1; page <= lastPage; page++ {
 		wg.Add(1)
 		sem <- struct{}{}
@@ -462,7 +449,7 @@ func scrapePlayerCharacters() {
 
 			bodyContent, err := scraperClient.getPage(url, "[Characters]")
 			if err != nil {
-				log.Printf("    -> ❌ All retries failed for page %d: %v", pageIndex, err)
+				log.Printf("[E] [Scraper/Char] All retries failed for page %d: %v", pageIndex, err)
 				return
 			}
 
@@ -477,7 +464,7 @@ func scrapePlayerCharacters() {
 			numChars := len(nameMatches)
 
 			if numChars == 0 || len(rankMatches) != numChars || len(baseLevelMatches) != numChars || len(jobLevelMatches) != numChars || len(expMatches) != numChars || len(classMatches) != numChars {
-				log.Printf("    -> ⚠️ [Characters] Mismatch in regex match counts on page %d. Skipping page. (Ranks: %d, Names: %d, Classes: %d)", pageIndex, len(rankMatches), len(nameMatches), len(classMatches))
+				log.Printf("[W] [Scraper/Char] Mismatch in regex match counts on page %d. Skipping page. (Ranks: %d, Names: %d, Classes: %d)", pageIndex, len(rankMatches), len(nameMatches), len(classMatches))
 				return
 			}
 
@@ -508,7 +495,7 @@ func scrapePlayerCharacters() {
 					playerChan <- player
 				}
 			}
-			log.Printf("    -> Scraped page %d/%d, sent %d chars to DB worker.", pageIndex, lastPage, len(pagePlayers))
+			log.Printf("[D] [Scraper/Char] Scraped page %d/%d, sent %d chars to DB worker.", pageIndex, lastPage, len(pagePlayers))
 		}(page)
 	}
 
@@ -516,7 +503,7 @@ func scrapePlayerCharacters() {
 	wg.Wait()
 	// Close the channel to signal the *consumer* that no more data is coming
 	close(playerChan)
-	log.Printf("✅ [Characters] Finished scraping all pages. DB worker is now processing data...")
+	log.Printf("[I] [Scraper/Char] Finished scraping all pages. DB worker is now processing data...")
 }
 
 type GuildMemberJSON struct {
@@ -539,7 +526,7 @@ func processGuildData(allGuilds map[string]Guild, allMembers map[string]string) 
 	oldAssociations := make(map[string]string)
 	oldGuildRows, err := db.Query("SELECT name, guild_name FROM characters WHERE guild_name IS NOT NULL")
 	if err != nil {
-		log.Printf("⚠️ [Guilds] Could not fetch old guild associations for comparison: %v", err)
+		log.Printf("[W] [Scraper/Guild] Could not fetch old guild associations for comparison: %v", err)
 	} else {
 		for oldGuildRows.Next() {
 			var charName, guildName string
@@ -553,13 +540,13 @@ func processGuildData(allGuilds map[string]Guild, allMembers map[string]string) 
 	// 2. Start transaction
 	tx, errDb := db.Begin()
 	if errDb != nil {
-		log.Printf("❌ [Guilds][DB] Failed to begin transaction for guilds update: %v", errDb)
+		log.Printf("[E] [Scraper/Guild] Failed to begin transaction for guilds update: %v", errDb)
 		return
 	}
 	defer tx.Rollback()
 
 	// 3. Upsert guild information
-	log.Println("    -> [DB] Upserting guild information into 'guilds' table...")
+	log.Println("[D] [Scraper/Guild] Upserting guild information into 'guilds' table...")
 	guildStmt, err := tx.Prepare(`
 		INSERT INTO guilds (rank, name, level, experience, master, emblem_url, last_updated)
 		VALUES (?, ?, ?, ?, ?, ?, ?)
@@ -569,7 +556,7 @@ func processGuildData(allGuilds map[string]Guild, allMembers map[string]string) 
 			last_updated=excluded.last_updated
 	`)
 	if err != nil {
-		log.Printf("❌ [Guilds][DB] Failed to prepare guilds upsert statement: %v", err)
+		log.Printf("[E] [Scraper/Guild] Failed to prepare guilds upsert statement: %v", err)
 		return
 	}
 	defer guildStmt.Close()
@@ -577,20 +564,20 @@ func processGuildData(allGuilds map[string]Guild, allMembers map[string]string) 
 	updateTime := time.Now().Format(time.RFC3339)
 	for _, g := range allGuilds {
 		if _, err := guildStmt.Exec(0, g.Name, g.Level, g.Experience, g.Master, g.EmblemURL, updateTime); err != nil {
-			log.Printf("    -> [DB] WARN: Failed to upsert guild '%s': %v", g.Name, err)
+			log.Printf("[W] [Scraper/Guild] Failed to upsert guild '%s': %v", g.Name, err)
 		}
 	}
 
 	// 4. Update character associations
-	log.Printf("    -> [DB] Updating 'characters' table with guild associations for %d members...", len(allMembers))
+	log.Printf("[D] [Scraper/Guild] Updating 'characters' table with guild associations for %d members...", len(allMembers))
 	if _, err := tx.Exec("UPDATE characters SET guild_name = NULL"); err != nil {
-		log.Printf("❌ [Guilds][DB] Failed to clear existing guild names from characters table: %v", err)
+		log.Printf("[E] [Scraper/Guild] Failed to clear existing guild names from characters table: %v", err)
 		return
 	}
 
 	charStmt, err := tx.Prepare("UPDATE characters SET guild_name = ? WHERE name = ?")
 	if err != nil {
-		log.Printf("❌ [Guilds][DB] Failed to prepare character guild update statement: %v", err)
+		log.Printf("[E] [Scraper/Guild] Failed to prepare character guild update statement: %v", err)
 		return
 	}
 	defer charStmt.Close()
@@ -599,12 +586,12 @@ func processGuildData(allGuilds map[string]Guild, allMembers map[string]string) 
 	for charName, guildName := range allMembers {
 		res, err := charStmt.Exec(guildName, charName)
 		if err != nil {
-			log.Printf("    -> [DB] WARN: Failed to update guild for character '%s': %v", charName, err)
+			log.Printf("[W] [Scraper/Guild] Failed to update guild for character '%s': %v", charName, err)
 		} else if n, _ := res.RowsAffected(); n > 0 {
 			updateCount++
 		}
 	}
-	log.Printf("    -> [DB] Successfully associated %d characters with their guilds.", updateCount)
+	log.Printf("[D] [Scraper/Guild] Successfully associated %d characters with their guilds.", updateCount)
 
 	// 5. Log guild changes
 	changelogStmt, err := tx.Prepare(`
@@ -612,7 +599,7 @@ func processGuildData(allGuilds map[string]Guild, allMembers map[string]string) 
 		VALUES (?, ?, ?)
 	`)
 	if err != nil {
-		log.Printf("❌ [DB] Failed to prepare changelog statement for guilds: %v", err)
+		log.Printf("[E] [Scraper/Guild] Failed to prepare changelog statement for guilds: %v", err)
 	} else {
 		defer changelogStmt.Close()
 
@@ -647,16 +634,16 @@ func processGuildData(allGuilds map[string]Guild, allMembers map[string]string) 
 
 	// 6. Commit
 	if err := tx.Commit(); err != nil {
-		log.Printf("❌ [Guilds][DB] Failed to commit guilds and characters transaction: %v", err)
+		log.Printf("[E] [Scraper/Guild] Failed to commit guilds and characters transaction: %v", err)
 		return
 	}
 
-	log.Printf("✅ [Guilds] Scrape and update complete. Saved %d guild records and updated character associations.", len(allGuilds))
+	log.Printf("[I] [Scraper/Guild] Scrape and update complete. Saved %d guild records and updated character associations.", len(allGuilds))
 }
 
 // scrapeGuilds is now only responsible for concurrent scraping.
 func scrapeGuilds() {
-	log.Println("🏰 [Guilds] Starting guild and character-guild association scrape...")
+	log.Println("[I] [Scraper/Guild] Starting guild and character-guild association scrape...")
 
 	// Regex definitions
 	nameRegex := regexp.MustCompile(`<span class="font-medium">([^<]+)</span>`)
@@ -674,7 +661,7 @@ func scrapeGuilds() {
 	var wg sync.WaitGroup
 	sem := make(chan struct{}, 5) // Concurrency semaphore
 
-	log.Printf("🏰 [Guilds] Scraping all %d pages...", lastPage)
+	log.Printf("[I] [Scraper/Guild] Scraping all %d pages...", lastPage)
 	for page := 1; page <= lastPage; page++ {
 		wg.Add(1)
 		sem <- struct{}{}
@@ -686,7 +673,7 @@ func scrapeGuilds() {
 
 			bodyContent, err := scraperClient.getPage(url, "[Guilds]")
 			if err != nil {
-				log.Printf("    -> ❌ All retries failed for page %d: %v", pageIndex, err)
+				log.Printf("[E] [Scraper/Guild] All retries failed for page %d: %v", pageIndex, err)
 				return
 			}
 
@@ -698,7 +685,7 @@ func scrapeGuilds() {
 
 			numGuilds := len(nameMatches)
 			if numGuilds == 0 || len(levelMatches) != numGuilds || len(masterMatches) != numGuilds || len(membersMatches) != numGuilds {
-				log.Printf("    -> ⚠️ [Guilds] Mismatch in regex match counts on page %d. Skipping page. (Names: %d, Levels: %d, Masters: %d, Members: %d)",
+				log.Printf("[W] [Scraper/Guild] Mismatch in regex match counts on page %d. Skipping page. (Names: %d, Levels: %d, Masters: %d, Members: %d)",
 					pageIndex, len(nameMatches), len(levelMatches), len(masterMatches), len(membersMatches))
 				return
 			}
@@ -729,16 +716,16 @@ func scrapeGuilds() {
 				}
 				mu.Unlock()
 			}
-			log.Printf("    -> Scraped page %d/%d, found %d guilds.", pageIndex, lastPage, len(pageGuilds))
+			log.Printf("[D] [Scraper/Guild] Scraped page %d/%d, found %d guilds.", pageIndex, lastPage, len(pageGuilds))
 			// --- End of parsing logic ---
 		}(page)
 	}
 	wg.Wait()
 
-	log.Printf("✅ [Guilds] Finished scraping all pages. Found %d unique guilds.", len(allGuilds))
+	log.Printf("[I] [Scraper/Guild] Finished scraping all pages. Found %d unique guilds.", len(allGuilds))
 
 	if len(allGuilds) == 0 {
-		log.Println("⚠️ [Guilds] Scrape finished with 0 total guilds found. Guild/character tables will not be updated.")
+		log.Println("[W] [Scraper/Guild] Scrape finished with 0 total guilds found. Guild/character tables will not be updated.")
 		return
 	}
 
@@ -773,11 +760,11 @@ func processZenyData(allZenyInfo map[string]int64, updateTime string) {
 	characterMutex.Lock()
 	defer characterMutex.Unlock()
 
-	log.Println("    -> [DB] Fetching existing character zeny data for activity comparison...")
+	log.Println("[D] [Scraper/Zeny] Fetching existing character zeny data for activity comparison...")
 	existingCharacters := make(map[string]CharacterZenyInfo)
 	rows, err := db.Query("SELECT name, zeny, last_active FROM characters")
 	if err != nil {
-		log.Printf("❌ [Zeny][DB] Failed to query existing characters for comparison: %v", err)
+		log.Printf("[E] [Scraper/Zeny] Failed to query existing characters for comparison: %v", err)
 		// Continue with an empty map
 	} else {
 		defer rows.Close()
@@ -785,7 +772,7 @@ func processZenyData(allZenyInfo map[string]int64, updateTime string) {
 			var name string
 			var info CharacterZenyInfo
 			if err := rows.Scan(&name, &info.Zeny, &info.LastActive); err != nil {
-				log.Printf("    -> [DB] WARN: Failed to scan existing zeny row: %v", err)
+				log.Printf("[W] [Scraper/Zeny] Failed to scan existing zeny row: %v", err)
 				continue
 			}
 			existingCharacters[name] = info
@@ -794,14 +781,14 @@ func processZenyData(allZenyInfo map[string]int64, updateTime string) {
 
 	tx, err := db.Begin()
 	if err != nil {
-		log.Printf("❌ [Zeny][DB] Failed to begin transaction: %v", err)
+		log.Printf("[E] [Scraper/Zeny] Failed to begin transaction: %v", err)
 		return
 	}
 	defer tx.Rollback()
 
 	stmt, err := tx.Prepare("UPDATE characters SET zeny = ?, last_active = ? WHERE name = ?")
 	if err != nil {
-		log.Printf("❌ [Zeny][DB] Failed to prepare update statement: %v", err)
+		log.Printf("[E] [Scraper/Zeny] Failed to prepare update statement: %v", err)
 		return
 	}
 	defer stmt.Close()
@@ -811,7 +798,7 @@ func processZenyData(allZenyInfo map[string]int64, updateTime string) {
 		VALUES (?, ?, ?)
 	`)
 	if err != nil {
-		log.Printf("❌ [DB] Failed to prepare changelog statement for zeny: %v", err)
+		log.Printf("[E] [Scraper/Zeny] Failed to prepare changelog statement for zeny: %v", err)
 		// Continue without logging if this fails
 	} else {
 		defer changelogStmt.Close()
@@ -849,7 +836,7 @@ func processZenyData(allZenyInfo map[string]int64, updateTime string) {
 		// Update the database
 		res, err := stmt.Exec(newZeny, updateTime, name)
 		if err != nil {
-			log.Printf("    -> ⚠️ [Zeny][DB] Failed to update zeny for '%s': %v", name, err)
+			log.Printf("[W] [Scraper/Zeny] Failed to update zeny for '%s': %v", name, err)
 			continue
 		}
 		if rowsAffected, _ := res.RowsAffected(); rowsAffected > 0 {
@@ -858,19 +845,18 @@ func processZenyData(allZenyInfo map[string]int64, updateTime string) {
 	}
 
 	if err := tx.Commit(); err != nil {
-		log.Printf("❌ [Zeny][DB] Failed to commit transaction: %v", err)
+		log.Printf("[E] [Scraper/Zeny] Failed to commit transaction: %v", err)
 		return
 	}
-
-	log.Printf("✅ [Zeny] Database update complete. Updated activity for %d characters. %d characters were unchanged.", updatedCount, unchangedCount)
+	log.Printf("[I] [Scraper/Zeny] Database update complete. Updated activity for %d characters. %d characters were unchanged.", updatedCount, unchangedCount)
 }
 
 // scrapeZeny is now only responsible for concurrent scraping.
 func scrapeZeny() {
-	log.Println("💰 [Zeny] Starting Zeny ranking scrape...")
+	log.Println("[I] [Scraper/Zeny] Starting Zeny ranking scrape...")
 
 	const firstPageURL = "https://projetoyufa.com/rankings/zeny?page=1"
-	lastPage := scraperClient.findLastPage(firstPageURL, "[Zeny]")
+	lastPage := scraperClient.findLastPage(firstPageURL, "[Scraper/Zeny]")
 
 	updateTime := time.Now().Format(time.RFC3339)
 	allZenyInfo := make(map[string]int64) // Map[characterName]zeny
@@ -878,7 +864,7 @@ func scrapeZeny() {
 	var wg sync.WaitGroup
 	sem := make(chan struct{}, 5) // Concurrency semaphore
 
-	log.Printf("💰 [Zeny] Scraping all %d pages...", lastPage)
+	log.Printf("[I] [Scraper/Zeny] Scraping all %d pages...", lastPage)
 	for page := 1; page <= lastPage; page++ {
 		wg.Add(1)
 		sem <- struct{}{}
@@ -887,15 +873,15 @@ func scrapeZeny() {
 			defer func() { <-sem }()
 
 			url := fmt.Sprintf("https://projetoyufa.com/rankings/zeny?page=%d", pageIndex)
-			bodyContent, err := scraperClient.getPage(url, "[Zeny]")
+			bodyContent, err := scraperClient.getPage(url, "[Scraper/Zeny]")
 			if err != nil {
-				log.Printf("    -> ❌ All retries failed for page %d: %v", pageIndex, err)
+				log.Printf("[E] [Scraper/Zeny] All retries failed for page %d: %v", pageIndex, err)
 				return
 			}
 
 			doc, err := goquery.NewDocumentFromReader(strings.NewReader(bodyContent))
 			if err != nil {
-				log.Printf("    -> ❌ Failed to parse body for page %d: %v", pageIndex, err)
+				log.Printf("[E] [Scraper/Zeny] Failed to parse body for page %d: %v", pageIndex, err)
 				return
 			}
 
@@ -913,7 +899,7 @@ func scrapeZeny() {
 
 				zenyVal, err := strconv.ParseInt(zenyStrClean, 10, 64)
 				if err != nil {
-					log.Printf("    -> ⚠️ [Zeny] Could not parse zeny value '%s' (from raw '%s') for player '%s'", zenyStrClean, zenyStrRaw, nameStr)
+					log.Printf("[W] [Scraper/Zeny] Could not parse zeny value '%s' (from raw '%s') for player '%s'", zenyStrClean, zenyStrRaw, nameStr)
 					return
 				}
 
@@ -921,15 +907,15 @@ func scrapeZeny() {
 				allZenyInfo[nameStr] = zenyVal
 				mu.Unlock()
 			})
-			log.Printf("    -> [Zeny] Scraped page %d/%d successfully.", pageIndex, lastPage)
+			log.Printf("[D] [Scraper/Zeny] Scraped page %d/%d successfully.", pageIndex, lastPage)
 		}(page)
 	}
 
 	wg.Wait()
-	log.Printf("✅ [Zeny] Finished scraping all pages. Found zeny info for %d characters.", len(allZenyInfo))
+	log.Printf("[I] [Scraper/Zeny] Finished scraping all pages. Found zeny info for %d characters.", len(allZenyInfo))
 
 	if len(allZenyInfo) == 0 {
-		log.Println("⚠️ [Zeny] No zeny information was scraped. Skipping database update.")
+		log.Println("[W] [Scraper/Zeny] No zeny information was scraped. Skipping database update.")
 		return
 	}
 
@@ -1019,22 +1005,22 @@ func parseMarketItem(itemSelection *goquery.Selection) (Item, bool) {
 }
 
 func scrapeData() {
-	log.Println("🚀 [Market] Starting scrape...")
+	log.Println("[I] [Scraper/Market] Starting scrape...")
 
 	// --- REMOVED regex definitions here, they are now in parseMarketItem ---
 
 	const requestURL = "https://projetoyufa.com/market"
 
 	// Use the new helper function. All the retry logic is now encapsulated.
-	htmlContent, err := scraperClient.getPage(requestURL, "[Market]")
+	htmlContent, err := scraperClient.getPage(requestURL, "[Scraper/Market]")
 	if err != nil {
-		log.Printf("❌ [Market] Failed to scrape market page after retries: %v. Aborting update.", err)
+		log.Printf("[E] [Scraper/Market] Failed to scrape market page after retries: %v. Aborting update.", err)
 		return
 	}
 
 	doc, err := goquery.NewDocumentFromReader(strings.NewReader(htmlContent))
 	if err != nil {
-		log.Printf("❌ [Market] Failed to parse HTML: %v", err)
+		log.Printf("[E] [Scraper/Market] Failed to parse HTML: %v", err)
 		return
 	}
 
@@ -1053,7 +1039,7 @@ func scrapeData() {
 		activeSellers[sellerName] = true
 
 		if enableMarketScraperDebugLogs == true {
-			log.Printf("[Market] shop name: %s, seller name: %s, map_name: %s, mapcoord: %s", shopName, sellerName, mapName, mapCoordinates)
+			log.Printf("[D] [Scraper/Market] shop name: %s, seller name: %s, map_name: %s, mapcoord: %s", shopName, sellerName, mapName, mapCoordinates)
 		}
 
 		if shopName == "" || sellerName == "" {
@@ -1077,7 +1063,7 @@ func scrapeData() {
 			item.MapCoordinates = mapCoordinates
 
 			if enableMarketScraperDebugLogs == true {
-				log.Printf("🔎 [Market] name: %s, id: %d, qtd: %d price %s store: %s seller: %s map: %s coord %s", item.Name, item.ItemID, item.Quantity, item.Price, shopName, sellerName, mapName, mapCoordinates)
+				log.Printf("[D] [Scraper/Market] name: %s, id: %d, qtd: %d price %s store: %s seller: %s map: %s coord %s", item.Name, item.ItemID, item.Quantity, item.Price, shopName, sellerName, mapName, mapCoordinates)
 			}
 
 			// Add the fully-formed item to our map
@@ -1085,14 +1071,14 @@ func scrapeData() {
 		})
 	})
 
-	log.Printf("🔎 [Market] Scrape parsed. Found %d unique item names.", len(scrapedItemsByName))
+	log.Printf("[I] [Scraper/Market] Scrape parsed. Found %d unique item names.", len(scrapedItemsByName))
 
 	marketMutex.Lock()
 	defer marketMutex.Unlock()
 
 	tx, err := db.Begin()
 	if err != nil {
-		log.Printf("❌ [Market] Failed to begin transaction: %v", err)
+		log.Printf("[E] [Scraper/Market] Failed to begin transaction: %v", err)
 		return
 	}
 	defer tx.Rollback()
@@ -1101,7 +1087,7 @@ func scrapeData() {
 
 	_, err = tx.Exec("INSERT OR IGNORE INTO scrape_history (timestamp) VALUES (?)", retrievalTime)
 	if err != nil {
-		log.Printf("❌ [Market] Failed to log scrape history: %v", err)
+		log.Printf("[E] [Scraper/Market] Failed to log scrape history: %v", err)
 		return
 	}
 
@@ -1109,7 +1095,7 @@ func scrapeData() {
 	sellerItems := make(map[string]map[string]bool)
 	rows, err := tx.Query("SELECT seller_name, name_of_the_item FROM items WHERE is_available = 1")
 	if err != nil {
-		log.Printf("❌ [Market] Could not pre-query seller item counts: %v", err)
+		log.Printf("[E] [Scraper/Market] Could not pre-query seller item counts: %v", err)
 	} else {
 		for rows.Next() {
 			var sellerName, itemName string
@@ -1132,14 +1118,14 @@ func scrapeData() {
 
 	rows, err = tx.Query("SELECT name_of_the_item, item_id, quantity, price, store_name, seller_name, map_name, map_coordinates FROM items WHERE is_available = 1")
 	if err != nil {
-		log.Printf("❌ [Market] Could not get list of all available items: %v", err)
+		log.Printf("[E] [Scraper/Market] Could not get list of all available items: %v", err)
 		return
 	}
 	for rows.Next() {
 		var item Item
 		err := rows.Scan(&item.Name, &item.ItemID, &item.Quantity, &item.Price, &item.StoreName, &item.SellerName, &item.MapName, &item.MapCoordinates)
 		if err != nil {
-			log.Printf("⚠️ [Market] Failed to scan existing item: %v", err)
+			log.Printf("[W] [Scraper/Market] Failed to scan existing item: %v", err)
 			continue
 		}
 		dbAvailableItemsMap[item.Name] = append(dbAvailableItemsMap[item.Name], item)
@@ -1179,7 +1165,7 @@ func scrapeData() {
 					})
 					_, err := tx.Exec(`INSERT INTO market_events (event_timestamp, event_type, item_name, item_id, details) VALUES (?, ?, ?, ?, ?)`, retrievalTime, eventType, lastItem.Name, lastItem.ItemID, string(details))
 					if err != nil {
-						log.Printf("❌ [Market] Failed to log %s event for %s: %v", eventType, lastItem.Name, err)
+						log.Printf("[E] [Scraper/Market] Failed to log %s event for %s: %v", eventType, lastItem.Name, err)
 					}
 				}
 			}
@@ -1191,19 +1177,19 @@ func scrapeData() {
 		}
 
 		if _, err := tx.Exec("UPDATE items SET is_available = 0 WHERE name_of_the_item = ?", itemName); err != nil {
-			log.Printf("❌ [Market] Failed to mark old %s as unavailable: %v", itemName, err)
+			log.Printf("[E] [Scraper/Market] Failed to mark old %s as unavailable: %v", itemName, err)
 			continue
 		}
 
 		insertSQL := `INSERT INTO items(name_of_the_item, item_id, quantity, price, store_name, seller_name, date_and_time_retrieved, map_name, map_coordinates, is_available) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1)`
 		stmt, err := tx.Prepare(insertSQL)
 		if err != nil {
-			log.Printf("⚠️ [Market] Could not prepare insert for %s: %v", itemName, err)
+			log.Printf("[W] [Scraper/Market] Could not prepare insert for %s: %v", itemName, err)
 			continue
 		}
 		for _, item := range currentScrapedItems {
 			if _, err := stmt.Exec(item.Name, item.ItemID, item.Quantity, item.Price, item.StoreName, item.SellerName, retrievalTime, item.MapName, item.MapCoordinates); err != nil {
-				log.Printf("⚠️ [Market] Could not execute insert for %s: %v", item.Name, err)
+				log.Printf("[W] [Scraper/Market] Could not execute insert for %s: %v", item.Name, err)
 			}
 		}
 		stmt.Close()
@@ -1220,7 +1206,7 @@ func scrapeData() {
 				})
 				_, err := tx.Exec(`INSERT INTO market_events (event_timestamp, event_type, item_name, item_id, details) VALUES (?, 'ADDED', ?, ?, ?)`, retrievalTime, itemName, firstItem.ItemID, string(details))
 				if err != nil {
-					log.Printf("❌ [Market] Failed to log ADDED event for %s: %v", itemName, err)
+					log.Printf("[E] [Scraper/Market] Failed to log ADDED event for %s: %v", itemName, err)
 				}
 
 				go scrapeAndCacheItemIfNotExists(firstItem.ItemID, itemName)
@@ -1229,7 +1215,7 @@ func scrapeData() {
 			var historicalLowestPrice sql.NullInt64
 			err := tx.QueryRow(`SELECT MIN(CAST(REPLACE(price, ',', '') AS INTEGER)) FROM items WHERE name_of_the_item = ?`, itemName).Scan(&historicalLowestPrice)
 			if err != nil && err != sql.ErrNoRows {
-				log.Printf("⚠️ [Market] Could not get historical lowest price for %s: %v", itemName, err)
+				log.Printf("[W] [Scraper/Market] Could not get historical lowest price for %s: %v", itemName, err)
 			}
 
 			var lowestPriceListingInBatch Item
@@ -1255,7 +1241,7 @@ func scrapeData() {
 				})
 				_, err := tx.Exec(`INSERT INTO market_events (event_timestamp, event_type, item_name, item_id, details) VALUES (?, 'NEW_LOW', ?, ?, ?)`, retrievalTime, itemName, lowestPriceListingInBatch.ItemID, string(details))
 				if err != nil {
-					log.Printf("❌ [Market] Failed to log NEW_LOW event for %s: %v", itemName, err)
+					log.Printf("[E] [Scraper/Market] Failed to log NEW_LOW event for %s: %v", itemName, err)
 				}
 			}
 		} else {
@@ -1286,12 +1272,12 @@ func scrapeData() {
 				})
 				_, err = tx.Exec(`INSERT INTO market_events (event_timestamp, event_type, item_name, item_id, details) VALUES (?, ?, ?, ?, ?)`, retrievalTime, eventType, name, listing.ItemID, string(details))
 				if err != nil {
-					log.Printf("❌ [Market] Failed to log %s event for removed item %s: %v", eventType, name, err)
+					log.Printf("[E] [Scraper/Market] Failed to log %s event for removed item %s: %v", eventType, name, err)
 				}
 			}
 
 			if _, err := tx.Exec("UPDATE items SET is_available = 0 WHERE name_of_the_item = ?", name); err != nil {
-				log.Printf("❌ [Market] Failed to mark disappeared item %s as unavailable: %v", name, err)
+				log.Printf("[E] [Scraper/Market] Failed to mark disappeared item %s as unavailable: %v", name, err)
 			} else {
 				itemsRemoved++
 			}
@@ -1299,10 +1285,10 @@ func scrapeData() {
 	}
 
 	if err := tx.Commit(); err != nil {
-		log.Printf("❌ [Market] Failed to commit transaction: %v", err)
+		log.Printf("[E] [Scraper/Market] Failed to commit transaction: %v", err)
 		return
 	}
-	log.Printf("✅ [Market] Scrape complete. Unchanged: %d groups. Updated: %d groups. Newly Added: %d groups. Removed: %d groups.", itemsUnchanged, itemsUpdated, itemsAdded, itemsRemoved)
+	log.Printf("[I] [Scraper/Market] Scrape complete. Unchanged: %d groups. Updated: %d groups. Newly Added: %d groups. Removed: %d groups.", itemsUnchanged, itemsUpdated, itemsAdded, itemsRemoved)
 }
 
 func toComparable(item Item) comparableItem {
@@ -1377,7 +1363,7 @@ func fetchExistingMvpKills() (map[string]map[string]int, error) {
 
 	for mvpRows.Next() {
 		if err := mvpRows.Scan(scanDest...); err != nil {
-			log.Printf("    -> [MVP][DB] WARN: Failed to scan existing MVP row: %v", err)
+			log.Printf("[W] [Scraper/MVP] Failed to scan existing MVP row: %v", err)
 			continue
 		}
 		charName := *(scanDest[0].(*string))
@@ -1400,20 +1386,20 @@ func processMvpKills(allMvpKills map[string]map[string]int) {
 	// 1. Fetch prerequisite data
 	allCharacterNames, err := fetchAllCharacterNames()
 	if err != nil {
-		log.Printf("❌ [MVP][DB] %v. Aborting update.", err)
+		log.Printf("[E] [Scraper/MVP] %v. Aborting update.", err)
 		return
 	}
 
 	allExistingKills, err := fetchExistingMvpKills()
 	if err != nil {
-		log.Printf("❌ [MVP][DB] %v. Aborting update.", err)
+		log.Printf("[E] [Scraper/MVP] %v. Aborting update.", err)
 		return
 	}
 
 	// 2. Begin transaction
 	tx, err := db.Begin()
 	if err != nil {
-		log.Printf("❌ [MVP][DB] Failed to begin transaction: %v", err)
+		log.Printf("[E] [Scraper/MVP] Failed to begin transaction: %v", err)
 		return
 	}
 	defer tx.Rollback()
@@ -1437,7 +1423,7 @@ func processMvpKills(allMvpKills map[string]map[string]int) {
 
 	stmt, err := tx.Prepare(queryStr)
 	if err != nil {
-		log.Printf("❌ [MVP][DB] Failed to prepare MVP kills upsert statement: %v", err)
+		log.Printf("[E] [Scraper/MVP] Failed to prepare MVP kills upsert statement: %v", err)
 		return
 	}
 	defer stmt.Close()
@@ -1470,35 +1456,35 @@ func processMvpKills(allMvpKills map[string]map[string]int) {
 		}
 
 		if _, err := stmt.Exec(params...); err != nil {
-			log.Printf("    -> [MVP][DB] WARN: Failed to upsert MVP kills for player %s: %v", charName, err)
+			log.Printf("[W] [Scraper/MVP] Failed to upsert MVP kills for player %s: %v", charName, err)
 		}
 	}
 
 	// 5. Commit
 	if err := tx.Commit(); err != nil {
-		log.Printf("❌ [MVP][DB] Failed to commit transaction: %v", err)
+		log.Printf("[E] [Scraper/MVP] Failed to commit transaction: %v", err)
 		return
 	}
-	log.Printf("✅ [MVP] Saved/updated MVP kill records for %d characters.", updateCount)
-	log.Printf("✅ [MVP] Scrape and update process complete.")
+	log.Printf("[I] [Scraper/MVP] Saved/updated MVP kill records for %d characters.", updateCount)
+	log.Printf("[I] [Scraper/MVP] Scrape and update process complete.")
 }
 
 // scrapeMvpKills is now only responsible for concurrent scraping.
 func scrapeMvpKills() {
-	log.Println("☠️  [MVP] Starting MVP kill count scrape...")
+	log.Println("[I] [Scraper/MVP] Starting MVP kill count scrape...")
 
 	playerBlockRegex := regexp.MustCompile(`\\"name\\":\\"([^"]+)\\",\\"base_level\\".*?\\"mvp_kills\\":\[(.*?)]`)
 	mvpKillsRegex := regexp.MustCompile(`{\\"mob_id\\":(\d+),\\"kills\\":(\d+)}`)
 
 	const firstPageURL = "https://projetoyufa.com/rankings/mvp?page=1"
-	lastPage := scraperClient.findLastPage(firstPageURL, "[MVP]")
+	lastPage := scraperClient.findLastPage(firstPageURL, "[Scraper/MVP]")
 
 	allMvpKills := make(map[string]map[string]int) // Map[characterName]Map[mobID]killCount
 	var mu sync.Mutex
 	var wg sync.WaitGroup
 	sem := make(chan struct{}, 5)
 
-	log.Printf("☠️  [MVP] Scraping all %d pages...", lastPage)
+	log.Printf("[I] [Scraper/MVP] Scraping all %d pages...", lastPage)
 	for page := 1; page <= lastPage; page++ {
 		wg.Add(1)
 		sem <- struct{}{}
@@ -1507,15 +1493,15 @@ func scrapeMvpKills() {
 			defer func() { <-sem }()
 
 			url := fmt.Sprintf("https://projetoyufa.com/rankings/mvp?page=%d", pageIndex)
-			bodyContent, err := scraperClient.getPage(url, "[MVP]")
+			bodyContent, err := scraperClient.getPage(url, "[Scraper/MVP]")
 			if err != nil {
-				log.Printf("    -> ❌ All retries failed for page %d: %v", pageIndex, err)
+				log.Printf("[E] [Scraper/MVP] All retries failed for page %d: %v", pageIndex, err)
 				return
 			}
 
 			playerBlocks := playerBlockRegex.FindAllStringSubmatch(bodyContent, -1)
 			if len(playerBlocks) == 0 {
-				log.Printf("    -> ⚠️ [MVP] No player data blocks found on page %d.", pageIndex)
+				log.Printf("[W] [Scraper/MVP] No player data blocks found on page %d.", pageIndex)
 				return
 			}
 
@@ -1540,15 +1526,15 @@ func scrapeMvpKills() {
 				}
 				mu.Unlock()
 			}
-			log.Printf("    -> [MVP] Scraped page %d/%d, found %d characters with MVP kills.", pageIndex, lastPage, len(pageKills))
+			log.Printf("[D] [Scraper/MVP] Scraped page %d/%d, found %d characters with MVP kills.", pageIndex, lastPage, len(pageKills))
 		}(page)
 	}
 
 	wg.Wait()
-	log.Printf("✅ [MVP] Finished scraping all pages. Found %d unique characters with MVP kills.", len(allMvpKills))
+	log.Printf("[I] [Scraper/MVP] Finished scraping all pages. Found %d unique characters with MVP kills.", len(allMvpKills))
 
 	if len(allMvpKills) == 0 {
-		log.Println("⚠️ [MVP] No MVP kills found after scrape. Skipping database update.")
+		log.Println("[W] [Scraper/MVP] No MVP kills found after scrape. Skipping database update.")
 		return
 	}
 
@@ -1569,16 +1555,16 @@ func runJobOnTicker(ctx context.Context, job Job) {
 	ticker := time.NewTicker(job.Interval)
 	defer ticker.Stop()
 
-	log.Printf("🕒 [Job] Starting initial run for %s job...", job.Name)
+	log.Printf("[I] [Job] Starting initial run for %s job...", job.Name)
 	//job.Func() // Run immediately on start
 
 	for {
 		select {
 		case <-ctx.Done():
-			log.Printf("🔌 [Job] Stopping %s job due to shutdown.", job.Name)
+			log.Printf("[I] [Job] Stopping %s job due to shutdown.", job.Name)
 			return
 		case <-ticker.C:
-			log.Printf("🕒 [Job] Starting scheduled %s scrape...", job.Name)
+			log.Printf("[I] [Job] Starting scheduled %s scrape...", job.Name)
 			job.Func()
 		}
 	}
@@ -1605,17 +1591,17 @@ func startBackgroundJobs(ctx context.Context) {
 		ticker := time.NewTicker(24 * time.Hour)
 		defer ticker.Stop()
 
-		log.Printf("🕒 [Job] Starting initial run for RMS Cache Refresh job...")
+		log.Printf("[I] [Job] Starting initial run for RMS Cache Refresh job...")
 		runFullRMSCacheJob() // Run immediately on start
-		log.Printf("🕒 [Job] RMS Cache Refresh job scheduled. Will run once every 24 hours.")
+		log.Printf("[I] [Job] RMS Cache Refresh job scheduled. Will run once every 24 hours.")
 
 		for {
 			select {
 			case <-ctx.Done():
-				log.Printf("🔌 [Job] Stopping RMS Cache Refresh job due to shutdown.")
+				log.Printf("[I] [Job] Stopping RMS Cache Refresh job due to shutdown.")
 				return
 			case <-ticker.C:
-				log.Printf("🕒 [Job] Starting scheduled 24-hour full RMS cache refresh...")
+				log.Printf("[I] [Job] Starting scheduled 24-hour full RMS cache refresh...")
 				// Run in its own goroutine so it doesn't block the ticker
 				// if the job takes a long time.
 				go runFullRMSCacheJob()
