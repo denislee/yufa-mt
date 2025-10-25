@@ -123,4 +123,3 @@ func messageCreate(s *discordgo.Session, m *discordgo.MessageCreate) {
 
 	}()
 }
-

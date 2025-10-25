@@ -657,4 +657,3 @@ func runFullRMSCacheJob() {
 
 	log.Println("[I] [Job/RMS] Full refresh and discovery job complete.")
 }
-
