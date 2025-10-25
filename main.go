@@ -9,19 +9,21 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"os/signal" // Added for graceful shutdown
 	"strings"
+	"syscall" // Added for graceful shutdown
 	"time"
 
 	"github.com/joho/godotenv"
 )
 
 func getVisitorHash(r *http.Request) string {
-
+	// This function remains unchanged, but is included for context
+	// as it's a small function in the same file.
 	ip := r.Header.Get("X-Forwarded-For")
 	if ip == "" {
 		ip, _, _ = net.SplitHostPort(r.RemoteAddr)
 	} else {
-
 		ip = strings.Split(ip, ",")[0]
 	}
 
@@ -41,6 +43,8 @@ type pageViewLog struct {
 var pageViewChannel = make(chan pageViewLog, 1000)
 
 // flushVisitorBatchToDB commits a batch of page views to the database.
+// This version simplifies logging by batching error counts instead of
+// logging every single failed insert, which is more performant.
 func flushVisitorBatchToDB(batch []pageViewLog) {
 	if len(batch) == 0 {
 		return
@@ -76,13 +80,15 @@ func flushVisitorBatchToDB(batch []pageViewLog) {
 	defer viewStmt.Close()
 
 	visitorsProcessed := make(map[string]bool)
+	var visitorErrors, viewErrors int
 
 	for _, logEntry := range batch {
 		// Only upsert the visitor's 'last_visit' time once per batch
 		if !visitorsProcessed[logEntry.VisitorHash] {
 			_, err := visitorStmt.Exec(logEntry.VisitorHash, logEntry.Timestamp, logEntry.Timestamp)
 			if err != nil {
-				log.Printf("⚠️ Visitor Logger: Failed to exec visitor upsert: %v", err)
+				// Don't log here, just count
+				visitorErrors++
 			}
 			visitorsProcessed[logEntry.VisitorHash] = true
 		}
@@ -90,20 +96,25 @@ func flushVisitorBatchToDB(batch []pageViewLog) {
 		// Log the page view
 		_, err := viewStmt.Exec(logEntry.VisitorHash, logEntry.PageURI, logEntry.Timestamp)
 		if err != nil {
-			log.Printf("⚠️ Visitor Logger: Failed to exec page_view insert: %v", err)
+			// Don't log here, just count
+			viewErrors++
 		}
 	}
 
 	if err := tx.Commit(); err != nil {
 		log.Printf("❌ Visitor Logger: Failed to commit batch: %v", err)
 	} else {
-		log.Printf("📝 Visitor Logger: Flushed %d page views to database.", len(batch))
+		log.Printf(
+			"📝 Visitor Logger: Flushed %d views. (Visitor upsert errors: %d, View insert errors: %d)",
+			len(batch), visitorErrors, viewErrors,
+		)
 	}
 }
 
 // startVisitorLogger runs the main loop for batch-processing page views.
+// This version's 'ctx.Done()' case is now functional and will be
+// triggered by the graceful shutdown in main().
 func startVisitorLogger(ctx context.Context) {
-
 	var batch []pageViewLog
 	ticker := time.NewTicker(10 * time.Second)
 	defer ticker.Stop()
@@ -113,20 +124,29 @@ func startVisitorLogger(ctx context.Context) {
 	for {
 		select {
 		case <-ctx.Done():
-			// This case will no longer be hit, but is harmless
+			// Shutdown signal received.
 			log.Println("🔌 Visitor Logger: Shutdown signal received. Draining channel...")
-			// Drain the channel fully before final flush
-			for logEntry := range pageViewChannel {
-				batch = append(batch, logEntry)
-				if len(batch) >= batchSize {
-					flushVisitorBatchToDB(batch)
-					batch = nil // Clear the batch
+
+			// Stop the ticker immediately
+			ticker.Stop()
+
+			// Drain any remaining items in the channel
+			for {
+				select {
+				case logEntry := <-pageViewChannel:
+					batch = append(batch, logEntry)
+					if len(batch) >= batchSize {
+						flushVisitorBatchToDB(batch)
+						batch = nil // Clear the batch
+					}
+				default:
+					// Channel is empty
+					log.Println("🔌 Visitor Logger: Flushing final batch...")
+					flushVisitorBatchToDB(batch) // Flush the final partial batch
+					log.Println("✅ Visitor Logger: Shut down gracefully.")
+					return
 				}
 			}
-			log.Println("🔌 Visitor Logger: Flushing final batch...")
-			flushVisitorBatchToDB(batch)
-			log.Println("✅ Visitor Logger: Shut down gracefully.")
-			return
 
 		case logEntry := <-pageViewChannel:
 			batch = append(batch, logEntry)
@@ -144,7 +164,7 @@ func startVisitorLogger(ctx context.Context) {
 
 func visitorTracker(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-
+		// This function remains unchanged
 		visitorHash := getVisitorHash(r)
 		now := time.Now().Format(time.RFC3339)
 		pageURI := r.URL.RequestURI()
@@ -157,9 +177,9 @@ func visitorTracker(next http.HandlerFunc) http.HandlerFunc {
 
 		select {
 		case pageViewChannel <- logEntry:
-
+			// Successfully queued
 		default:
-
+			// Channel is full, drop the view to avoid blocking the web request
 			log.Println("⚠️ Page view log channel is full. Dropping a page view.")
 		}
 
@@ -167,6 +187,7 @@ func visitorTracker(next http.HandlerFunc) http.HandlerFunc {
 	}
 }
 
+// main is rewritten to support graceful shutdown.
 func main() {
 	if err := godotenv.Load(); err != nil {
 		log.Println("ℹ️ No .env file found, relying on system environment variables.")
@@ -179,8 +200,19 @@ func main() {
 	}
 	defer db.Close()
 
-	// Use the background context which never cancels.
-	ctx := context.Background()
+	// Create a context that gets cancelled on OS signals (SIGINT, SIGTERM)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	sigChan := make(chan os.Signal, 1)
+	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
+
+	// Goroutine to listen for OS signals
+	go func() {
+		<-sigChan
+		log.Println("🔌 Shutdown signal received. Initiating graceful shutdown...")
+		cancel() // Trigger context cancellation
+	}()
 
 	// Admin Password
 	adminPass = generateRandomPassword(16)
@@ -198,10 +230,9 @@ func main() {
 		log.Println("==================================================")
 	}()
 
-	// Start Background Services
-	go populateMissingCachesOnStartup()
-	go startBackgroundJobs(ctx) // Pass background context
-
+	// Start Background Services with the cancellable context
+	go populateMissingCachesOnStartup() // This is short-lived, fine to run without context
+	go startBackgroundJobs(ctx)
 	go startDiscordBot(ctx)
 	go startVisitorLogger(ctx)
 
@@ -253,10 +284,27 @@ func main() {
 	port := "8080"
 	server := &http.Server{Addr: ":" + port}
 
-	// Start server and block main goroutine.
-	// No graceful shutdown logic.
+	// Goroutine to handle server shutdown when context is cancelled
+	go func() {
+		<-ctx.Done() // Wait for the cancel() signal
+		log.Println("🔌 Shutting down web server...")
+
+		// Create a new context for the shutdown, with a timeout
+		shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer shutdownCancel()
+
+		if err := server.Shutdown(shutdownCtx); err != nil {
+			log.Printf("❌ Web server graceful shutdown failed: %v", err)
+		}
+	}()
+
+	// Start server and block
 	log.Printf("🚀 Web server started. Open http://localhost:%s in your browser.", port)
-	if err := server.ListenAndServe(); err != nil {
-		log.Fatalf("❌ Failed to start web server: %v", err)
+	if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+		log.Fatalf("❌ Web server failed to start: %v", err)
 	}
+
+	// This line will be reached after server.Shutdown() completes
+	log.Println("✅ All services shut down. Exiting.")
 }
+
