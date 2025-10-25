@@ -228,35 +228,127 @@ func scrapeAndStorePlayerCount() {
 	log.Printf("✅ [Counter] Player/seller count updated. New values: %d players, %d sellers", onlineCount, sellerCount)
 }
 
-// processPlayerData is a dedicated consumer goroutine that handles all database
-// interactions for the character scraper. This decouples DB writes from network I/O.
-func processPlayerData(playerChan <-chan PlayerCharacter, updateTime string) {
-	characterMutex.Lock()
-	defer characterMutex.Unlock()
+// checkAndLogCharacterActivity contains the logic for detecting and logging player changes.
+func checkAndLogCharacterActivity(changelogStmt *sql.Stmt, p PlayerCharacter, oldPlayer PlayerCharacter) string {
+	lastActiveTime := oldPlayer.LastActive // Assume inactive unless changed
 
-	log.Println("🏆 [Characters] DB worker started. Processing scraped data...")
+	// --- Activity Logging Logic ---
+	baseLeveledUp := false
+	if p.BaseLevel > oldPlayer.BaseLevel {
+		logCharacterActivity(changelogStmt, p.Name, fmt.Sprintf("Leveled up to Base Level %d!", p.BaseLevel))
+		baseLeveledUp = true
+		lastActiveTime = p.LastUpdated // Active
+	}
+	if p.JobLevel > oldPlayer.JobLevel {
+		logCharacterActivity(changelogStmt, p.Name, fmt.Sprintf("Leveled up to Job Level %d!", p.JobLevel))
+		lastActiveTime = p.LastUpdated // Active
+	}
 
-	// 1. Fetch existing player data for comparison
+	expDelta := p.Experience - oldPlayer.Experience
+	if !baseLeveledUp {
+		if expDelta > 0.001 {
+			logCharacterActivity(changelogStmt, p.Name, fmt.Sprintf("Gained %.2f%% experience (now at %.2f%%).", expDelta, p.Experience))
+			lastActiveTime = p.LastUpdated // Active
+		} else if expDelta < -0.001 {
+			logCharacterActivity(changelogStmt, p.Name, fmt.Sprintf("Lost %.2f%% experience (now at %.2f%%).", -expDelta, p.Experience))
+			lastActiveTime = p.LastUpdated // Active
+		}
+	} else if expDelta > 0.001 {
+		// Log experience gain even on level up, but only if it's positive
+		logCharacterActivity(changelogStmt, p.Name, fmt.Sprintf("Gained %.2f%% experience (now at %.2f%%).", p.Experience, p.Experience))
+	}
+
+	if p.Class != oldPlayer.Class {
+		logCharacterActivity(changelogStmt, p.Name, fmt.Sprintf("Changed class from '%s' to '%s'.", oldPlayer.Class, p.Class))
+		lastActiveTime = p.LastUpdated // Active
+	}
+
+	if lastActiveTime != p.LastUpdated && enableCharacterScraperDebugLogs {
+		log.Printf("    -> [Activity] Player '%s' showed no change. last_active remains %s.", p.Name, lastActiveTime)
+	}
+
+	return lastActiveTime
+}
+
+// fetchExistingPlayers queries the DB for all player data needed for comparison.
+func fetchExistingPlayers() (map[string]PlayerCharacter, error) {
 	if enableCharacterScraperDebugLogs {
 		log.Println("    -> [DB] Fetching existing player data for activity comparison...")
 	}
 	existingPlayers := make(map[string]PlayerCharacter)
 	rowsPre, err := db.Query("SELECT name, base_level, job_level, experience, class, last_active FROM characters")
 	if err != nil {
-		log.Printf("❌ [DB] Failed to query existing characters for comparison: %v", err)
-	} else {
-		for rowsPre.Next() {
-			var p PlayerCharacter
-			if err := rowsPre.Scan(&p.Name, &p.BaseLevel, &p.JobLevel, &p.Experience, &p.Class, &p.LastActive); err != nil {
-				log.Printf("    -> [DB] WARN: Failed to scan existing player row: %v", err)
-				continue
-			}
-			existingPlayers[p.Name] = p
+		return nil, fmt.Errorf("failed to query existing characters for comparison: %w", err)
+	}
+	defer rowsPre.Close()
+
+	for rowsPre.Next() {
+		var p PlayerCharacter
+		if err := rowsPre.Scan(&p.Name, &p.BaseLevel, &p.JobLevel, &p.Experience, &p.Class, &p.LastActive); err != nil {
+			log.Printf("    -> [DB] WARN: Failed to scan existing player row: %v", err)
+			continue
 		}
-		rowsPre.Close() // Close rows immediately
+		existingPlayers[p.Name] = p
+	}
+
+	if enableCharacterScraperDebugLogs {
+		log.Printf("    -> [DB] Found %d existing player records for comparison.", len(existingPlayers))
+	}
+	return existingPlayers, nil
+}
+
+// cleanupStalePlayers removes players from the DB who were not in the latest scrape.
+func cleanupStalePlayers(scrapedPlayerNames map[string]bool, existingPlayers map[string]PlayerCharacter) {
+	log.Println("🧹 [Characters] Cleaning up old player records not found in this scrape...")
+	var stalePlayers []interface{}
+	for existingName := range existingPlayers {
+		if !scrapedPlayerNames[existingName] {
+			stalePlayers = append(stalePlayers, existingName)
+		}
+	}
+
+	if len(stalePlayers) == 0 {
+		log.Println("✅ [Characters] Cleanup complete. No stale records found.")
+		return
+	}
+
+	// Delete in batches to avoid "too many SQL variables" error
+	const batchSize = 100
+	for i := 0; i < len(stalePlayers); i += batchSize {
+		end := i + batchSize
+		if end > len(stalePlayers) {
+			end = len(stalePlayers)
+		}
+		batch := stalePlayers[i:end]
+
+		placeholders := "WHERE name IN (?" + strings.Repeat(",?", len(batch)-1) + ")"
+		query := "DELETE FROM characters " + placeholders
+
+		result, err := db.Exec(query, batch...)
+		if err != nil {
+			log.Printf("❌ [Characters] Failed to clean up batch of old player records: %v", err)
+			continue // Continue to next batch
+		}
+		rowsAffected, _ := result.RowsAffected()
 		if enableCharacterScraperDebugLogs {
-			log.Printf("    -> [DB] Found %d existing player records for comparison.", len(existingPlayers))
+			log.Printf("    -> [DB] Cleaned %d stale records in batch.", rowsAffected)
 		}
+	}
+	log.Printf("✅ [Characters] Cleanup complete. Removed %d stale player records in total.", len(stalePlayers))
+}
+
+// processPlayerData is now a cleaner orchestrator that uses helper functions.
+func processPlayerData(playerChan <-chan PlayerCharacter, updateTime string) {
+	characterMutex.Lock()
+	defer characterMutex.Unlock()
+
+	log.Println("🏆 [Characters] DB worker started. Processing scraped data...")
+
+	// 1. Fetch existing player data
+	existingPlayers, err := fetchExistingPlayers()
+	if err != nil {
+		log.Printf("❌ [DB] %v", err)
+		// Continue with an empty map, logging will just be incomplete
 	}
 
 	// 2. Prepare database transaction and statements
@@ -300,48 +392,21 @@ func processPlayerData(playerChan <-chan PlayerCharacter, updateTime string) {
 
 	// 3. Process all players from the channel
 	for p := range playerChan {
+		p.LastUpdated = updateTime
 		scrapedPlayerNames[p.Name] = true
 		totalProcessed++
 
-		lastActiveTime := updateTime // Assume active unless proven otherwise
+		lastActiveTime := updateTime // Assume active for new players
 		if oldPlayer, exists := existingPlayers[p.Name]; exists {
-			// --- Activity Logging Logic (unchanged) ---
-			baseLeveledUp := false
-			if p.BaseLevel > oldPlayer.BaseLevel {
-				logCharacterActivity(changelogStmt, p.Name, fmt.Sprintf("Leveled up to Base Level %d!", p.BaseLevel))
-				baseLeveledUp = true
-			}
-			if p.JobLevel > oldPlayer.JobLevel {
-				logCharacterActivity(changelogStmt, p.Name, fmt.Sprintf("Leveled up to Job Level %d!", p.JobLevel))
-			}
-
-			if !baseLeveledUp {
-				expDelta := p.Experience - oldPlayer.Experience
-				if expDelta > 0.001 {
-					logCharacterActivity(changelogStmt, p.Name, fmt.Sprintf("Gained %.2f%% experience (now at %.2f%%).", expDelta, p.Experience))
-				} else if expDelta < -0.001 {
-					logCharacterActivity(changelogStmt, p.Name, fmt.Sprintf("Lost %.2f%% experience (now at %.2f%%).", -expDelta, p.Experience))
-				}
-			} else {
-				logCharacterActivity(changelogStmt, p.Name, fmt.Sprintf("Gained %.2f%% experience (now at %.2f%%).", p.Experience, p.Experience))
-			}
-
-			if p.Class != oldPlayer.Class {
-				logCharacterActivity(changelogStmt, p.Name, fmt.Sprintf("Changed class from '%s' to '%s'.", oldPlayer.Class, p.Class))
-			}
-
-			// Check for inactivity
-			if (p.Experience-oldPlayer.Experience) < 0.001 && (p.Experience-oldPlayer.Experience) > -0.001 {
-				lastActiveTime = oldPlayer.LastActive // Carry over old last_active time
-			} else {
-				if enableCharacterScraperDebugLogs {
-					log.Printf("    -> [Activity] Player '%s' experience changed from %.2f%% to %.2f%%. Updating last_active.", p.Name, oldPlayer.Experience, p.Experience)
-				}
-			}
+			// Check for activity changes and get the correct lastActiveTime
+			lastActiveTime = checkAndLogCharacterActivity(changelogStmt, p, oldPlayer)
+		} else {
+			// This is a new player
+			logCharacterActivity(changelogStmt, p.Name, fmt.Sprintf("New character '%s' detected (Class: %s, Level: %d).", p.Name, p.Class, p.BaseLevel))
 		}
 
 		// Upsert the player
-		if _, err := stmt.Exec(p.Rank, p.Name, p.BaseLevel, p.JobLevel, p.Experience, p.Class, updateTime, lastActiveTime); err != nil {
+		if _, err := stmt.Exec(p.Rank, p.Name, p.BaseLevel, p.JobLevel, p.Experience, p.Class, p.LastUpdated, lastActiveTime); err != nil {
 			log.Printf("    -> [DB] WARN: Failed to upsert character for player %s: %v", p.Name, err)
 		}
 	}
@@ -353,43 +418,8 @@ func processPlayerData(playerChan <-chan PlayerCharacter, updateTime string) {
 	}
 	log.Printf("✅ [Characters] Saved/updated %d records.", totalProcessed)
 
-	// 5. Clean up stale records
-	log.Println("🧹 [Characters] Cleaning up old player records not found in this scrape...")
-	var stalePlayers []interface{}
-	for existingName := range existingPlayers {
-		if !scrapedPlayerNames[existingName] {
-			stalePlayers = append(stalePlayers, existingName)
-		}
-	}
-
-	if len(stalePlayers) > 0 {
-		// Delete in batches to avoid "too many SQL variables" error
-		const batchSize = 100
-		for i := 0; i < len(stalePlayers); i += batchSize {
-			end := i + batchSize
-			if end > len(stalePlayers) {
-				end = len(stalePlayers)
-			}
-			batch := stalePlayers[i:end]
-
-			placeholders := "WHERE name IN (?" + strings.Repeat(",?", len(batch)-1) + ")"
-			query := "DELETE FROM characters " + placeholders
-
-			result, err := db.Exec(query, batch...)
-			if err != nil {
-				log.Printf("❌ [Characters] Failed to clean up batch of old player records: %v", err)
-				// Continue to next batch
-			} else {
-				rowsAffected, _ := result.RowsAffected()
-				if enableCharacterScraperDebugLogs {
-					log.Printf("    -> [DB] Cleaned %d stale records in batch.", rowsAffected)
-				}
-			}
-		}
-		log.Printf("✅ [Characters] Cleanup complete. Removed %d stale player records in total.", len(stalePlayers))
-	} else {
-		log.Println("✅ [Characters] Cleanup complete. No stale records found.")
-	}
+	// 5. Clean up stale records (outside the transaction)
+	cleanupStalePlayers(scrapedPlayerNames, existingPlayers)
 
 	log.Printf("✅ [Characters] Scrape and update process complete.")
 }
@@ -500,17 +530,141 @@ type GuildJSON struct {
 	Members []GuildMemberJSON `json:"members"`
 }
 
+// processGuildData handles all database transactions for updating guilds and member associations.
+func processGuildData(allGuilds map[string]Guild, allMembers map[string]string) {
+	characterMutex.Lock()
+	defer characterMutex.Unlock()
+
+	// 1. Fetch old associations for comparison
+	oldAssociations := make(map[string]string)
+	oldGuildRows, err := db.Query("SELECT name, guild_name FROM characters WHERE guild_name IS NOT NULL")
+	if err != nil {
+		log.Printf("⚠️ [Guilds] Could not fetch old guild associations for comparison: %v", err)
+	} else {
+		for oldGuildRows.Next() {
+			var charName, guildName string
+			if err := oldGuildRows.Scan(&charName, &guildName); err == nil {
+				oldAssociations[charName] = guildName
+			}
+		}
+		oldGuildRows.Close()
+	}
+
+	// 2. Start transaction
+	tx, errDb := db.Begin()
+	if errDb != nil {
+		log.Printf("❌ [Guilds][DB] Failed to begin transaction for guilds update: %v", errDb)
+		return
+	}
+	defer tx.Rollback()
+
+	// 3. Upsert guild information
+	log.Println("    -> [DB] Upserting guild information into 'guilds' table...")
+	guildStmt, err := tx.Prepare(`
+		INSERT INTO guilds (rank, name, level, experience, master, emblem_url, last_updated)
+		VALUES (?, ?, ?, ?, ?, ?, ?)
+		ON CONFLICT(name) DO UPDATE SET
+			level=excluded.level,
+			master=excluded.master,
+			last_updated=excluded.last_updated
+	`)
+	if err != nil {
+		log.Printf("❌ [Guilds][DB] Failed to prepare guilds upsert statement: %v", err)
+		return
+	}
+	defer guildStmt.Close()
+
+	updateTime := time.Now().Format(time.RFC3339)
+	for _, g := range allGuilds {
+		if _, err := guildStmt.Exec(0, g.Name, g.Level, g.Experience, g.Master, g.EmblemURL, updateTime); err != nil {
+			log.Printf("    -> [DB] WARN: Failed to upsert guild '%s': %v", g.Name, err)
+		}
+	}
+
+	// 4. Update character associations
+	log.Printf("    -> [DB] Updating 'characters' table with guild associations for %d members...", len(allMembers))
+	if _, err := tx.Exec("UPDATE characters SET guild_name = NULL"); err != nil {
+		log.Printf("❌ [Guilds][DB] Failed to clear existing guild names from characters table: %v", err)
+		return
+	}
+
+	charStmt, err := tx.Prepare("UPDATE characters SET guild_name = ? WHERE name = ?")
+	if err != nil {
+		log.Printf("❌ [Guilds][DB] Failed to prepare character guild update statement: %v", err)
+		return
+	}
+	defer charStmt.Close()
+
+	updateCount := 0
+	for charName, guildName := range allMembers {
+		res, err := charStmt.Exec(guildName, charName)
+		if err != nil {
+			log.Printf("    -> [DB] WARN: Failed to update guild for character '%s': %v", charName, err)
+		} else if n, _ := res.RowsAffected(); n > 0 {
+			updateCount++
+		}
+	}
+	log.Printf("    -> [DB] Successfully associated %d characters with their guilds.", updateCount)
+
+	// 5. Log guild changes
+	changelogStmt, err := tx.Prepare(`
+		INSERT INTO character_changelog (character_name, change_time, activity_description)
+		VALUES (?, ?, ?)
+	`)
+	if err != nil {
+		log.Printf("❌ [DB] Failed to prepare changelog statement for guilds: %v", err)
+	} else {
+		defer changelogStmt.Close()
+
+		allInvolvedChars := make(map[string]bool)
+		for charName := range oldAssociations {
+			allInvolvedChars[charName] = true
+		}
+		for charName := range allMembers {
+			allInvolvedChars[charName] = true
+		}
+
+		for charName := range allInvolvedChars {
+			// Check if character still exists
+			var exists int
+			err := tx.QueryRow("SELECT COUNT(*) FROM characters WHERE name = ?", charName).Scan(&exists)
+			if err != nil || exists == 0 {
+				continue // Skip logging for non-existent char
+			}
+
+			oldGuild, hadOld := oldAssociations[charName]
+			newGuild, hasNew := allMembers[charName]
+
+			if hadOld && !hasNew {
+				logCharacterActivity(changelogStmt, charName, fmt.Sprintf("Left guild '%s'.", oldGuild))
+			} else if !hadOld && hasNew {
+				logCharacterActivity(changelogStmt, charName, fmt.Sprintf("Joined guild '%s'.", newGuild))
+			} else if hadOld && hasNew && oldGuild != newGuild {
+				logCharacterActivity(changelogStmt, charName, fmt.Sprintf("Moved from guild '%s' to '%s'.", oldGuild, newGuild))
+			}
+		}
+	}
+
+	// 6. Commit
+	if err := tx.Commit(); err != nil {
+		log.Printf("❌ [Guilds][DB] Failed to commit guilds and characters transaction: %v", err)
+		return
+	}
+
+	log.Printf("✅ [Guilds] Scrape and update complete. Saved %d guild records and updated character associations.", len(allGuilds))
+}
+
+// scrapeGuilds is now only responsible for concurrent scraping.
 func scrapeGuilds() {
 	log.Println("🏰 [Guilds] Starting guild and character-guild association scrape...")
 
-	// ... (Regex definitions are unchanged) ...
+	// Regex definitions
 	nameRegex := regexp.MustCompile(`<span class="font-medium">([^<]+)</span>`)
 	levelRegex := regexp.MustCompile(`\\"guild_lv\\":(\d+),\\"connect_member\\"`)
 	masterRegex := regexp.MustCompile(`\\"master\\":\\"([^"]+)\\",\\"members\\"`)
 	membersRegex := regexp.MustCompile(`\\"members\\":\[(.*?)\]\}`)
 	memberNameRegex := regexp.MustCompile(`\\"name\\":\\"([^"]+)\\",\\"base_level\\"`)
 
-	// Use the new helper to find the last page
 	const firstPageURL = "https://projetoyufa.com/rankings/guild?page=1"
 	lastPage := scraperClient.findLastPage(firstPageURL, "[Guilds]")
 
@@ -524,29 +678,28 @@ func scrapeGuilds() {
 	for page := 1; page <= lastPage; page++ {
 		wg.Add(1)
 		sem <- struct{}{}
-		go func(pageIndex int) { // <-- Renamed 'p' to 'pageIndex'
+		go func(pageIndex int) {
 			defer wg.Done()
 			defer func() { <-sem }()
 
-			url := fmt.Sprintf("https://projetoyufa.com/rankings/guild?page=%d", pageIndex) // <-- Use 'pageIndex'
+			url := fmt.Sprintf("https://projetoyufa.com/rankings/guild?page=%d", pageIndex)
 
-			// Use the getPage helper, which includes retries
 			bodyContent, err := scraperClient.getPage(url, "[Guilds]")
 			if err != nil {
-				log.Printf("    -> ❌ All retries failed for page %d: %v", pageIndex, err) // <-- Use 'pageIndex'
+				log.Printf("    -> ❌ All retries failed for page %d: %v", pageIndex, err)
 				return
 			}
 
-			// --- Start of parsing logic (largely unchanged) ---
+			// --- Parsing logic ---
 			nameMatches := nameRegex.FindAllStringSubmatch(bodyContent, -1)
 			levelMatches := levelRegex.FindAllStringSubmatch(bodyContent, -1)
 			masterMatches := masterRegex.FindAllStringSubmatch(bodyContent, -1)
 			membersMatches := membersRegex.FindAllStringSubmatch(bodyContent, -1)
 
 			numGuilds := len(nameMatches)
-			if numGuilds == 0 || len(levelMatches) != numGuilds || len(masterMatches) != numGuilds {
-				log.Printf("    -> ⚠️ [Guilds] Mismatch in regex match counts on page %d. Skipping page. (Names: %d, Levels: %d, Masters: %d)",
-					pageIndex, len(nameMatches), len(levelMatches), len(masterMatches)) // <-- Use 'pageIndex'
+			if numGuilds == 0 || len(levelMatches) != numGuilds || len(masterMatches) != numGuilds || len(membersMatches) != numGuilds {
+				log.Printf("    -> ⚠️ [Guilds] Mismatch in regex match counts on page %d. Skipping page. (Names: %d, Levels: %d, Masters: %d, Members: %d)",
+					pageIndex, len(nameMatches), len(levelMatches), len(masterMatches), len(membersMatches))
 				return
 			}
 
@@ -576,7 +729,7 @@ func scrapeGuilds() {
 				}
 				mu.Unlock()
 			}
-			log.Printf("    -> Scraped page %d/%d, found %d guilds.", pageIndex, lastPage, len(pageGuilds)) // <-- Use 'pageIndex'
+			log.Printf("    -> Scraped page %d/%d, found %d guilds.", pageIndex, lastPage, len(pageGuilds))
 			// --- End of parsing logic ---
 		}(page)
 	}
@@ -589,135 +742,8 @@ func scrapeGuilds() {
 		return
 	}
 
-	characterMutex.Lock()
-	defer characterMutex.Unlock()
-
-	oldAssociations := make(map[string]string)
-	oldGuildRows, err := db.Query("SELECT name, guild_name FROM characters WHERE guild_name IS NOT NULL")
-	if err != nil {
-		log.Printf("⚠️ [Guilds] Could not fetch old guild associations for comparison: %v", err)
-	} else {
-		for oldGuildRows.Next() {
-			var charName, guildName string
-			if err := oldGuildRows.Scan(&charName, &guildName); err == nil {
-				oldAssociations[charName] = guildName
-			}
-		}
-		oldGuildRows.Close()
-	}
-
-	tx, errDb := db.Begin()
-	if errDb != nil {
-		log.Printf("❌ [Guilds][DB] Failed to begin transaction for guilds update: %v", errDb)
-		return
-	}
-	defer tx.Rollback()
-
-	log.Println("    -> [DB] Upserting guild information into 'guilds' table...")
-	guildStmt, err := tx.Prepare(`
-		INSERT INTO guilds (rank, name, level, experience, master, emblem_url, last_updated)
-		VALUES (?, ?, ?, ?, ?, ?, ?)
-		ON CONFLICT(name) DO UPDATE SET
-			level=excluded.level,
-			master=excluded.master,
-			last_updated=excluded.last_updated
-	`)
-	if err != nil {
-		log.Printf("❌ [Guilds][DB] Failed to prepare guilds upsert statement: %v", err)
-		return
-	}
-	defer guildStmt.Close()
-
-	updateTime := time.Now().Format(time.RFC3339)
-	for _, g := range allGuilds {
-
-		if _, err := guildStmt.Exec(0, g.Name, g.Level, g.Experience, g.Master, g.EmblemURL, updateTime); err != nil {
-			log.Printf("    -> [DB] WARN: Failed to upsert guild '%s': %v", g.Name, err)
-		}
-	}
-
-	log.Printf("    -> [DB] Updating 'characters' table with guild associations for %d members...", len(allMembers))
-	if _, err := tx.Exec("UPDATE characters SET guild_name = NULL"); err != nil {
-		log.Printf("❌ [Guilds][DB] Failed to clear existing guild names from characters table: %v", err)
-		return
-	}
-
-	charStmt, err := tx.Prepare("UPDATE characters SET guild_name = ? WHERE name = ?")
-	if err != nil {
-		log.Printf("❌ [Guilds][DB] Failed to prepare character guild update statement: %v", err)
-		return
-	}
-	defer charStmt.Close()
-
-	updateCount := 0
-	for charName, guildName := range allMembers {
-		res, err := charStmt.Exec(guildName, charName)
-		if err != nil {
-			log.Printf("    -> [DB] WARN: Failed to update guild for character '%s': %v", charName, err)
-		} else {
-			rowsAffected, _ := res.RowsAffected()
-			if rowsAffected > 0 {
-				updateCount++
-			}
-		}
-	}
-	log.Printf("    -> [DB] Successfully associated %d characters with their guilds.", updateCount)
-
-	allInvolvedChars := make(map[string]bool)
-	for charName := range oldAssociations {
-		allInvolvedChars[charName] = true
-	}
-	for charName := range allMembers {
-		allInvolvedChars[charName] = true
-	}
-
-	changelogStmt, err := tx.Prepare(`
-		INSERT INTO character_changelog (character_name, change_time, activity_description)
-		VALUES (?, ?, ?)
-	`)
-	if err != nil {
-		log.Printf("❌ [DB] Failed to prepare changelog statement for guilds: %v", err)
-
-	} else {
-		defer changelogStmt.Close()
-	}
-
-	for charName := range allInvolvedChars {
-
-		var exists int
-		err := tx.QueryRow("SELECT COUNT(*) FROM characters WHERE name = ?", charName).Scan(&exists)
-		if err != nil {
-			log.Printf("    -> [Guilds][DB] WARN: Could not check for existence of character '%s' before logging guild change: %v. Skipping log.", charName, err)
-			continue
-		}
-		if exists == 0 {
-
-			if enableGuildScraperDebugLogs {
-				log.Printf("    -> [Guilds] Skipping guild change log for non-existent character '%s'.", charName)
-			}
-			continue
-		}
-
-		oldGuild, hadOld := oldAssociations[charName]
-		newGuild, hasNew := allMembers[charName]
-
-		if changelogStmt != nil {
-			if hadOld && !hasNew {
-				logCharacterActivity(changelogStmt, charName, fmt.Sprintf("Left guild '%s'.", oldGuild))
-			} else if !hadOld && hasNew {
-				logCharacterActivity(changelogStmt, charName, fmt.Sprintf("Joined guild '%s'.", newGuild))
-			} else if hadOld && hasNew && oldGuild != newGuild {
-				logCharacterActivity(changelogStmt, charName, fmt.Sprintf("Moved from guild '%s' to '%s'.", oldGuild, newGuild))
-			}
-		}
-	}
-
-	if err := tx.Commit(); err != nil {
-		log.Printf("❌ [Guilds][DB] Failed to commit guilds and characters transaction: %v", err)
-		return
-	}
-
-	log.Printf("✅ [Guilds] Scrape and update complete. Saved %d guild records and updated character associations.", len(allGuilds))
+	// Call the dedicated database function
+	processGuildData(allGuilds, allMembers)
 }
 
 type CharacterZenyInfo struct {
@@ -725,89 +751,25 @@ type CharacterZenyInfo struct {
 	LastActive string
 }
 
-func scrapeZeny() {
-	log.Println("💰 [Zeny] Starting Zeny ranking scrape...")
-
-	// Use the new helper to find the last page
-	const firstPageURL = "https://projetoyufa.com/rankings/zeny?page=1"
-	lastPage := scraperClient.findLastPage(firstPageURL, "[Zeny]")
-
-	updateTime := time.Now().Format(time.RFC3339)
-	allZenyInfo := make(map[string]int64) // Map[characterName]zeny
-	var mu sync.Mutex
-	var wg sync.WaitGroup
-	sem := make(chan struct{}, 5) // Concurrency semaphore
-
-	log.Printf("💰 [Zeny] Scraping all %d pages...", lastPage)
-	for page := 1; page <= lastPage; page++ {
-		wg.Add(1)
-		sem <- struct{}{}
-		go func(pageIndex int) {
-			defer wg.Done()
-			defer func() { <-sem }()
-
-			url := fmt.Sprintf("https://projetoyufa.com/rankings/zeny?page=%d", pageIndex)
-
-			// Use the getPage helper, which includes retries
-			bodyContent, err := scraperClient.getPage(url, "[Zeny]")
-			if err != nil {
-				log.Printf("    -> ❌ All retries failed for page %d: %v", pageIndex, err)
-				return
-			}
-
-			// Parse with goquery
-			doc, err := goquery.NewDocumentFromReader(strings.NewReader(bodyContent))
-			if err != nil {
-				log.Printf("    -> ❌ Failed to parse body for page %d: %v", pageIndex, err)
-				return
-			}
-
-			// --- Start of parsing logic ---
-			doc.Find(`tbody[data-slot="table-body"] tr[data-slot="table-row"]`).Each(func(i int, s *goquery.Selection) {
-				cells := s.Find(`td[data-slot="table-cell"]`)
-				if cells.Length() < 3 {
-					return
-				}
-
-				nameStr := strings.TrimSpace(cells.Eq(1).Text())
-				zenyStrRaw := strings.TrimSpace(cells.Eq(2).Text())
-
-				// --- FIX WAS HERE ---
-				// Clean the zeny string
-				zenyStrClean := strings.ReplaceAll(zenyStrRaw, ",", "")
-				zenyStrClean = strings.TrimSuffix(zenyStrClean, "z")
-				zenyStrClean = strings.TrimSpace(zenyStrClean)
-
-				// Parse the *clean* string, not the raw one
-				zenyVal, err := strconv.ParseInt(zenyStrClean, 10, 64)
-				// --- END FIX ---
-
-				if enableZenyScraperDebugLogs {
-					log.Printf("    -> [Zeny] name: %s, zeny: %s.", nameStr, zenyStrClean)
-				}
-
-				if err != nil {
-					log.Printf("    -> ⚠️ [Zeny] Could not parse zeny value '%s' (from raw '%s') for player '%s'", zenyStrClean, zenyStrRaw, nameStr)
-					return
-				}
-
-				mu.Lock()
-				allZenyInfo[nameStr] = zenyVal
-				mu.Unlock()
-			})
-			log.Printf("    -> [Zeny] Scraped page %d/%d successfully.", pageIndex, lastPage)
-			// --- End of parsing logic ---
-		}(page)
+// formatWithCommas is a small helper for formatting zeny values in logs.
+func formatWithCommas(n int64) string {
+	s := strconv.FormatInt(n, 10)
+	if len(s) <= 3 {
+		return s
 	}
-
-	wg.Wait()
-	log.Printf("✅ [Zeny] Finished scraping all pages. Found zeny info for %d characters.", len(allZenyInfo))
-
-	if len(allZenyInfo) == 0 {
-		log.Println("⚠️ [Zeny] No zeny information was scraped. Skipping database update.")
-		return
+	var result []string
+	for i := len(s); i > 0; i -= 3 {
+		start := i - 3
+		if start < 0 {
+			start = 0
+		}
+		result = append([]string{s[start:i]}, result...)
 	}
+	return strings.Join(result, ",")
+}
 
+// processZenyData handles fetching old zeny data, comparing, and updating the database.
+func processZenyData(allZenyInfo map[string]int64, updateTime string) {
 	characterMutex.Lock()
 	defer characterMutex.Unlock()
 
@@ -816,6 +778,7 @@ func scrapeZeny() {
 	rows, err := db.Query("SELECT name, zeny, last_active FROM characters")
 	if err != nil {
 		log.Printf("❌ [Zeny][DB] Failed to query existing characters for comparison: %v", err)
+		// Continue with an empty map
 	} else {
 		defer rows.Close()
 		for rows.Next() {
@@ -826,9 +789,6 @@ func scrapeZeny() {
 				continue
 			}
 			existingCharacters[name] = info
-		}
-		if enableZenyScraperDebugLogs {
-			log.Printf("    -> [DB] Found %d existing character records for comparison.", len(existingCharacters))
 		}
 	}
 
@@ -852,7 +812,7 @@ func scrapeZeny() {
 	`)
 	if err != nil {
 		log.Printf("❌ [DB] Failed to prepare changelog statement for zeny: %v", err)
-
+		// Continue without logging if this fails
 	} else {
 		defer changelogStmt.Close()
 	}
@@ -862,63 +822,38 @@ func scrapeZeny() {
 	for name, newZeny := range allZenyInfo {
 		oldInfo, exists := existingCharacters[name]
 
-		if !exists || !oldInfo.Zeny.Valid || oldInfo.Zeny.Int64 != newZeny {
+		// Skip update if zeny is unchanged
+		if exists && oldInfo.Zeny.Valid && oldInfo.Zeny.Int64 == newZeny {
+			unchangedCount++
+			continue
+		}
+
+		// Log the change
+		if changelogStmt != nil {
 			var oldZeny int64
 			if exists && oldInfo.Zeny.Valid {
 				oldZeny = oldInfo.Zeny.Int64
 			}
-
 			delta := newZeny - oldZeny
-
-			formatWithCommas := func(n int64) string {
-				s := strconv.FormatInt(n, 10)
-				if len(s) <= 3 {
-					return s
-				}
-				var result []string
-				for i := len(s); i > 0; i -= 3 {
-					start := i - 3
-					if start < 0 {
-						start = 0
-					}
-					result = append([]string{s[start:i]}, result...)
-				}
-				return strings.Join(result, ",")
-			}
-
 			formattedNewZeny := formatWithCommas(newZeny)
 			var description string
 
 			if delta > 0 {
-				formattedDelta := formatWithCommas(delta)
-				description = fmt.Sprintf("Zeny increased by %sz (New total: %sz).", formattedDelta, formattedNewZeny)
+				description = fmt.Sprintf("Zeny increased by %sz (New total: %sz).", formatWithCommas(delta), formattedNewZeny)
 			} else if delta < 0 {
-				formattedDelta := formatWithCommas(-delta)
-				description = fmt.Sprintf("Zeny decreased by %sz (New total: %sz).", formattedDelta, formattedNewZeny)
+				description = fmt.Sprintf("Zeny decreased by %sz (New total: %sz).", formatWithCommas(-delta), formattedNewZeny)
 			}
+			logCharacterActivity(changelogStmt, name, description)
+		}
 
-			if description != "" && changelogStmt != nil {
-				logCharacterActivity(changelogStmt, name, description)
-			}
-
-			res, err := stmt.Exec(newZeny, updateTime, name)
-			if err != nil {
-				log.Printf("    -> ⚠️ [Zeny][DB] Failed to update zeny for '%s': %v", name, err)
-				continue
-			}
-			rowsAffected, _ := res.RowsAffected()
-			if rowsAffected > 0 {
-				if enableZenyScraperDebugLogs {
-					if !exists || !oldInfo.Zeny.Valid {
-						log.Printf("    -> [Activity] Player '%s' zeny recorded for the first time: %d. Updating last_active.", name, newZeny)
-					} else {
-						log.Printf("    -> [Activity] Player '%s' zeny changed from %d to %d. Updating last_active.", name, oldInfo.Zeny.Int64, newZeny)
-					}
-				}
-				updatedCount++
-			}
-		} else {
-			unchangedCount++
+		// Update the database
+		res, err := stmt.Exec(newZeny, updateTime, name)
+		if err != nil {
+			log.Printf("    -> ⚠️ [Zeny][DB] Failed to update zeny for '%s': %v", name, err)
+			continue
+		}
+		if rowsAffected, _ := res.RowsAffected(); rowsAffected > 0 {
+			updatedCount++
 		}
 	}
 
@@ -928,6 +863,78 @@ func scrapeZeny() {
 	}
 
 	log.Printf("✅ [Zeny] Database update complete. Updated activity for %d characters. %d characters were unchanged.", updatedCount, unchangedCount)
+}
+
+// scrapeZeny is now only responsible for concurrent scraping.
+func scrapeZeny() {
+	log.Println("💰 [Zeny] Starting Zeny ranking scrape...")
+
+	const firstPageURL = "https://projetoyufa.com/rankings/zeny?page=1"
+	lastPage := scraperClient.findLastPage(firstPageURL, "[Zeny]")
+
+	updateTime := time.Now().Format(time.RFC3339)
+	allZenyInfo := make(map[string]int64) // Map[characterName]zeny
+	var mu sync.Mutex
+	var wg sync.WaitGroup
+	sem := make(chan struct{}, 5) // Concurrency semaphore
+
+	log.Printf("💰 [Zeny] Scraping all %d pages...", lastPage)
+	for page := 1; page <= lastPage; page++ {
+		wg.Add(1)
+		sem <- struct{}{}
+		go func(pageIndex int) {
+			defer wg.Done()
+			defer func() { <-sem }()
+
+			url := fmt.Sprintf("https://projetoyufa.com/rankings/zeny?page=%d", pageIndex)
+			bodyContent, err := scraperClient.getPage(url, "[Zeny]")
+			if err != nil {
+				log.Printf("    -> ❌ All retries failed for page %d: %v", pageIndex, err)
+				return
+			}
+
+			doc, err := goquery.NewDocumentFromReader(strings.NewReader(bodyContent))
+			if err != nil {
+				log.Printf("    -> ❌ Failed to parse body for page %d: %v", pageIndex, err)
+				return
+			}
+
+			doc.Find(`tbody[data-slot="table-body"] tr[data-slot="table-row"]`).Each(func(i int, s *goquery.Selection) {
+				cells := s.Find(`td[data-slot="table-cell"]`)
+				if cells.Length() < 3 {
+					return
+				}
+
+				nameStr := strings.TrimSpace(cells.Eq(1).Text())
+				zenyStrRaw := strings.TrimSpace(cells.Eq(2).Text())
+				zenyStrClean := strings.ReplaceAll(zenyStrRaw, ",", "")
+				zenyStrClean = strings.TrimSuffix(zenyStrClean, "z")
+				zenyStrClean = strings.TrimSpace(zenyStrClean)
+
+				zenyVal, err := strconv.ParseInt(zenyStrClean, 10, 64)
+				if err != nil {
+					log.Printf("    -> ⚠️ [Zeny] Could not parse zeny value '%s' (from raw '%s') for player '%s'", zenyStrClean, zenyStrRaw, nameStr)
+					return
+				}
+
+				mu.Lock()
+				allZenyInfo[nameStr] = zenyVal
+				mu.Unlock()
+			})
+			log.Printf("    -> [Zeny] Scraped page %d/%d successfully.", pageIndex, lastPage)
+		}(page)
+	}
+
+	wg.Wait()
+	log.Printf("✅ [Zeny] Finished scraping all pages. Found zeny info for %d characters.", len(allZenyInfo))
+
+	if len(allZenyInfo) == 0 {
+		log.Println("⚠️ [Zeny] No zeny information was scraped. Skipping database update.")
+		return
+	}
+
+	// Call the dedicated database function
+	processZenyData(allZenyInfo, updateTime)
 }
 
 // parseMarketItem extracts all item details from a goquery selection.
@@ -1328,105 +1335,28 @@ func areItemSetsIdentical(setA, setB []Item) bool {
 	return true
 }
 
-func scrapeMvpKills() {
-	log.Println("☠️  [MVP] Starting MVP kill count scrape...")
-
-	// ... (Regex definitions are unchanged) ...
-	playerBlockRegex := regexp.MustCompile(`\\"name\\":\\"([^"]+)\\",\\"base_level\\".*?\\"mvp_kills\\":\[(.*?)]`)
-	mvpKillsRegex := regexp.MustCompile(`{\\"mob_id\\":(\d+),\\"kills\\":(\d+)}`)
-
-	// Use the new helper to find the last page
-	const firstPageURL = "https://projetoyufa.com/rankings/mvp?page=1"
-	lastPage := scraperClient.findLastPage(firstPageURL, "[MVP]")
-
-	allMvpKills := make(map[string]map[string]int) // Map[characterName]Map[mobID]killCount
-	var mu sync.Mutex
-	var wg sync.WaitGroup
-	sem := make(chan struct{}, 5) // Concurrency semaphore
-
-	log.Printf("☠️  [MVP] Scraping all %d pages...", lastPage)
-	for page := 1; page <= lastPage; page++ {
-		wg.Add(1)
-		sem <- struct{}{}
-		go func(pageIndex int) { // <-- Renamed 'p' to 'pageIndex'
-			defer wg.Done()
-			defer func() { <-sem }()
-
-			url := fmt.Sprintf("https://projetoyufa.com/rankings/mvp?page=%d", pageIndex) // <-- Use 'pageIndex'
-
-			// Use the getPage helper, which includes retries
-			bodyContent, err := scraperClient.getPage(url, "[MVP]")
-			if err != nil {
-				log.Printf("    -> ❌ All retries failed for page %d: %v", pageIndex, err) // <-- Use 'pageIndex'
-				return
-			}
-
-			// --- Start of parsing logic (largely unchanged) ---
-			playerBlocks := playerBlockRegex.FindAllStringSubmatch(bodyContent, -1)
-			if len(playerBlocks) == 0 {
-				log.Printf("    -> ⚠️ [MVP] No player data blocks found on page %d.", pageIndex) // <-- Use 'pageIndex'
-				return
-			}
-
-			// ... (debug logs) ...
-
-			pageKills := make(map[string]map[string]int)
-			for _, block := range playerBlocks {
-				charName := block[1]
-				mvpsJSON := block[2]
-				// ... (debug logs) ...
-
-				playerKills := make(map[string]int)
-				killMatches := mvpKillsRegex.FindAllStringSubmatch(mvpsJSON, -1)
-				// ... (debug logs) ...
-
-				for _, killMatch := range killMatches {
-					mobID := killMatch[1]
-					killCount, _ := strconv.Atoi(killMatch[2])
-					playerKills[mobID] = killCount
-				}
-				pageKills[charName] = playerKills
-			}
-
-			if len(pageKills) > 0 {
-				mu.Lock()
-				for charName, kills := range pageKills {
-					allMvpKills[charName] = kills
-				}
-				mu.Unlock()
-			}
-			log.Printf("    -> [MVP] Scraped page %d/%d, found %d characters with MVP kills.", pageIndex, lastPage, len(pageKills)) // <-- Use 'pageIndex'
-			// --- End of parsing logic ---
-		}(page)
-	}
-
-	wg.Wait()
-	log.Printf("✅ [MVP] Finished scraping all pages. Found %d unique characters with MVP kills.", len(allMvpKills))
-
-	if len(allMvpKills) == 0 {
-		log.Println("⚠️ [MVP] No MVP kills found after scrape. Skipping database update.")
-		return
-	}
-
-	characterMutex.Lock()
-	defer characterMutex.Unlock()
-
+// fetchAllCharacterNames provides a set of all valid character names.
+func fetchAllCharacterNames() (map[string]bool, error) {
 	allCharacterNames := make(map[string]bool)
 	charRows, err := db.Query("SELECT name FROM characters")
 	if err != nil {
-		log.Printf("❌ [MVP][DB] Failed to pre-fetch character names: %v. Aborting update.", err)
-		return
+		return nil, fmt.Errorf("failed to pre-fetch character names: %w", err)
 	}
+	defer charRows.Close()
 	for charRows.Next() {
 		var name string
 		if err := charRows.Scan(&name); err == nil {
 			allCharacterNames[name] = true
 		}
 	}
-	charRows.Close()
+	return allCharacterNames, nil
+}
 
+// fetchExistingMvpKills retrieves the current kill counts from the database.
+func fetchExistingMvpKills() (map[string]map[string]int, error) {
 	allExistingKills := make(map[string]map[string]int)
 
+	// Build the SELECT query dynamically
 	selectCols := make([]string, 0, len(mvpMobIDs)+1)
 	selectCols = append(selectCols, "character_name")
 	scanDest := make([]interface{}, len(mvpMobIDs)+1)
@@ -1441,9 +1371,9 @@ func scrapeMvpKills() {
 	mvpQuery := fmt.Sprintf("SELECT %s FROM character_mvp_kills", strings.Join(selectCols, ", "))
 	mvpRows, err := db.Query(mvpQuery)
 	if err != nil {
-		log.Printf("❌ [MVP][DB] Failed to pre-fetch MVP kills: %v. Aborting update.", err)
-		return
+		return nil, fmt.Errorf("failed to pre-fetch MVP kills: %w", err)
 	}
+	defer mvpRows.Close()
 
 	for mvpRows.Next() {
 		if err := mvpRows.Scan(scanDest...); err != nil {
@@ -1459,8 +1389,28 @@ func scrapeMvpKills() {
 		}
 		allExistingKills[charName] = playerKills
 	}
-	mvpRows.Close()
+	return allExistingKills, nil
+}
 
+// processMvpKills handles all database logic for the MVP scraper.
+func processMvpKills(allMvpKills map[string]map[string]int) {
+	characterMutex.Lock()
+	defer characterMutex.Unlock()
+
+	// 1. Fetch prerequisite data
+	allCharacterNames, err := fetchAllCharacterNames()
+	if err != nil {
+		log.Printf("❌ [MVP][DB] %v. Aborting update.", err)
+		return
+	}
+
+	allExistingKills, err := fetchExistingMvpKills()
+	if err != nil {
+		log.Printf("❌ [MVP][DB] %v. Aborting update.", err)
+		return
+	}
+
+	// 2. Begin transaction
 	tx, err := db.Begin()
 	if err != nil {
 		log.Printf("❌ [MVP][DB] Failed to begin transaction: %v", err)
@@ -1468,6 +1418,7 @@ func scrapeMvpKills() {
 	}
 	defer tx.Rollback()
 
+	// 3. Build and prepare the dynamic UPSERT statement
 	columnNames := []string{"character_name"}
 	valuePlaceholders := []string{"?"}
 	updateSetters := []string{}
@@ -1491,14 +1442,13 @@ func scrapeMvpKills() {
 	}
 	defer stmt.Close()
 
-	for charName, kills := range allMvpKills {
-
+	// 4. Iterate and execute upserts
+	updateCount := 0
+	for charName, newKills := range allMvpKills {
 		if !allCharacterNames[charName] {
-			if enableMvpScraperDebugLogs {
-				log.Printf("    -> [MVP][DB] Character '%s' not found in main table. Skipping MVP data insert.", charName)
-			}
-			continue
+			continue // Skip characters not in the main 'characters' table
 		}
+		updateCount++
 
 		existingKills := allExistingKills[charName]
 		if existingKills == nil {
@@ -1507,26 +1457,15 @@ func scrapeMvpKills() {
 
 		params := []interface{}{charName}
 		for _, mobID := range mvpMobIDs {
-			newKillCount := 0
-			if count, ok := kills[mobID]; ok {
-				newKillCount = count
-			}
-			existingKillCount := existingKills[mobID]
+			newKillCount := newKills[mobID]           // 0 if not in map
+			existingKillCount := existingKills[mobID] // 0 if not in map
 
+			// This is your stale data protection logic:
+			// Only update if the new count is >= the existing one.
 			finalKillCount := newKillCount
 			if existingKillCount > newKillCount {
 				finalKillCount = existingKillCount
-				if enableMvpScraperDebugLogs {
-					log.Printf("    -> [MVP] Stale data for %s on MVP %s. DB has %d, scrape has %d. Keeping DB value.", charName, mobID, existingKillCount, newKillCount)
-				}
 			}
-
-			if finalKillCount > existingKillCount {
-
-				log.Printf("    -> [MVP] Stale data for %s on MVP %s. DB has %d, scrape has %d. updating DB value.", charName, mobID, existingKillCount, newKillCount)
-
-			}
-
 			params = append(params, finalKillCount)
 		}
 
@@ -1535,12 +1474,86 @@ func scrapeMvpKills() {
 		}
 	}
 
+	// 5. Commit
 	if err := tx.Commit(); err != nil {
 		log.Printf("❌ [MVP][DB] Failed to commit transaction: %v", err)
 		return
 	}
-	log.Printf("✅ [MVP] Saved/updated MVP kill records for %d characters.", len(allMvpKills))
+	log.Printf("✅ [MVP] Saved/updated MVP kill records for %d characters.", updateCount)
 	log.Printf("✅ [MVP] Scrape and update process complete.")
+}
+
+// scrapeMvpKills is now only responsible for concurrent scraping.
+func scrapeMvpKills() {
+	log.Println("☠️  [MVP] Starting MVP kill count scrape...")
+
+	playerBlockRegex := regexp.MustCompile(`\\"name\\":\\"([^"]+)\\",\\"base_level\\".*?\\"mvp_kills\\":\[(.*?)]`)
+	mvpKillsRegex := regexp.MustCompile(`{\\"mob_id\\":(\d+),\\"kills\\":(\d+)}`)
+
+	const firstPageURL = "https://projetoyufa.com/rankings/mvp?page=1"
+	lastPage := scraperClient.findLastPage(firstPageURL, "[MVP]")
+
+	allMvpKills := make(map[string]map[string]int) // Map[characterName]Map[mobID]killCount
+	var mu sync.Mutex
+	var wg sync.WaitGroup
+	sem := make(chan struct{}, 5)
+
+	log.Printf("☠️  [MVP] Scraping all %d pages...", lastPage)
+	for page := 1; page <= lastPage; page++ {
+		wg.Add(1)
+		sem <- struct{}{}
+		go func(pageIndex int) {
+			defer wg.Done()
+			defer func() { <-sem }()
+
+			url := fmt.Sprintf("https://projetoyufa.com/rankings/mvp?page=%d", pageIndex)
+			bodyContent, err := scraperClient.getPage(url, "[MVP]")
+			if err != nil {
+				log.Printf("    -> ❌ All retries failed for page %d: %v", pageIndex, err)
+				return
+			}
+
+			playerBlocks := playerBlockRegex.FindAllStringSubmatch(bodyContent, -1)
+			if len(playerBlocks) == 0 {
+				log.Printf("    -> ⚠️ [MVP] No player data blocks found on page %d.", pageIndex)
+				return
+			}
+
+			pageKills := make(map[string]map[string]int)
+			for _, block := range playerBlocks {
+				charName := block[1]
+				mvpsJSON := block[2]
+				playerKills := make(map[string]int)
+				killMatches := mvpKillsRegex.FindAllStringSubmatch(mvpsJSON, -1)
+				for _, killMatch := range killMatches {
+					mobID := killMatch[1]
+					killCount, _ := strconv.Atoi(killMatch[2])
+					playerKills[mobID] = killCount
+				}
+				pageKills[charName] = playerKills
+			}
+
+			if len(pageKills) > 0 {
+				mu.Lock()
+				for charName, kills := range pageKills {
+					allMvpKills[charName] = kills
+				}
+				mu.Unlock()
+			}
+			log.Printf("    -> [MVP] Scraped page %d/%d, found %d characters with MVP kills.", pageIndex, lastPage, len(pageKills))
+		}(page)
+	}
+
+	wg.Wait()
+	log.Printf("✅ [MVP] Finished scraping all pages. Found %d unique characters with MVP kills.", len(allMvpKills))
+
+	if len(allMvpKills) == 0 {
+		log.Println("⚠️ [MVP] No MVP kills found after scrape. Skipping database update.")
+		return
+	}
+
+	// Call the dedicated database function
+	processMvpKills(allMvpKills)
 }
 
 // Job defines a background task with its function and schedule.
@@ -1557,7 +1570,7 @@ func runJobOnTicker(ctx context.Context, job Job) {
 	defer ticker.Stop()
 
 	log.Printf("🕒 [Job] Starting initial run for %s job...", job.Name)
-	job.Func() // Run immediately on start
+	//job.Func() // Run immediately on start
 
 	for {
 		select {

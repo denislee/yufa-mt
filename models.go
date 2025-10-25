@@ -234,20 +234,23 @@ type ActivityPageData struct {
 }
 
 // In models.go:
+// In models.go:
 type HistoryPageData struct {
-	ItemName       string
-	ItemNamePT     sql.NullString
-	PriceDataJSON  template.JS
-	OverallLowest  int
-	OverallHighest int
-	CurrentLowest  *ItemListing // <-- CHANGED
-	CurrentHighest *ItemListing // <-- CHANGED
-	ItemDetails    *RMSItem
-	AllListings    []Item
-	LastScrapeTime string
-	Pagination     PaginationData
-	TotalListings  int
-	PageTitle      string
+	ItemName           string
+	ItemNamePT         sql.NullString
+	PriceDataJSON      template.JS
+	CurrentLowestJSON  template.JS // <-- ADDED
+	CurrentHighestJSON template.JS // <-- ADDED
+	OverallLowest      int
+	OverallHighest     int
+	CurrentLowest      *ItemListing // Kept for HTML fields
+	CurrentHighest     *ItemListing // Kept for HTML fields
+	ItemDetails        *RMSItem
+	AllListings        []Item
+	LastScrapeTime     string
+	Pagination         PaginationData
+	TotalListings      int
+	PageTitle          string
 }
 
 type PlayerCountPoint struct {

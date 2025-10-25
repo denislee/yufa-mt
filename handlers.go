@@ -794,49 +794,164 @@ func itemHistoryHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Item name is required", http.StatusBadRequest)
 		return
 	}
+	log.Printf("DEBUG [itemHistory] Handling request for item: '%s'", itemName)
 
 	var itemID int
 	var itemNamePT sql.NullString
-	db.QueryRow(`
+	err := db.QueryRow(`
 		SELECT i.item_id, rms.name_pt 
 		FROM items i 
 		LEFT JOIN rms_item_cache rms ON i.item_id = rms.item_id
 		WHERE i.name_of_the_item = ? AND i.item_id > 0 
 		LIMIT 1`, itemName).Scan(&itemID, &itemNamePT)
-
-	var rmsItemDetails *RMSItem
-	if itemID > 0 {
-		cachedItem, err := getItemDetailsFromCache(itemID)
-		if err == nil {
-			rmsItemDetails = cachedItem
-		} else {
-			scrapedItem, scrapeErr := scrapeRMSItemDetails(itemID)
-			if scrapeErr == nil {
-				rmsItemDetails = scrapedItem
-				if saveErr := saveItemDetailsToCache(rmsItemDetails); saveErr != nil {
-					log.Printf("⚠️ Failed to save item ID %d to cache: %v", itemID, saveErr)
-				}
-			}
-		}
+	if err != nil {
+		log.Printf("DEBUG [itemHistory] Step 1: Initial item ID/NamePT query failed for '%s': %v", itemName, err)
+	} else {
+		log.Printf("DEBUG [itemHistory] Step 1: Found ItemID: %d, NamePT: '%s'", itemID, itemNamePT.String)
 	}
 
-	currentListingsQuery := `
-		SELECT CAST(REPLACE(price, ',', '') AS INTEGER) as price_int, quantity, store_name, seller_name, map_name, map_coordinates, date_and_time_retrieved
-		FROM items WHERE name_of_the_item = ? AND is_available = 1 ORDER BY price_int ASC;
-	`
-	rowsCurrent, err := db.Query(currentListingsQuery, itemName)
+	rmsItemDetails := fetchItemDetails(itemID)
+	if rmsItemDetails != nil {
+		log.Printf("DEBUG [itemHistory] Step 2: Successfully fetched RMS details for ID %d.", itemID)
+	} else {
+		log.Printf("DEBUG [itemHistory] Step 2: No RMS details found for ID %d.", itemID)
+	}
+
+	currentListings, err := fetchCurrentListings(itemName)
 	if err != nil {
 		log.Printf("❌ Current listings query error: %v", err)
 		http.Error(w, "Database query for current listings failed", http.StatusInternalServerError)
 		return
 	}
-	defer rowsCurrent.Close()
+	log.Printf("DEBUG [itemHistory] Step 3: Found %d current (available) listings.", len(currentListings))
 
-	var currentListings []ItemListing
-	for rowsCurrent.Next() {
+	var currentLowest, currentHighest *ItemListing
+	if len(currentListings) > 0 {
+		currentLowest = &currentListings[0]
+		currentHighest = &currentListings[len(currentListings)-1]
+		log.Printf("DEBUG [itemHistory]     -> Current Lowest: %d z, Current Highest: %d z", currentLowest.Price, currentHighest.Price)
+	}
+
+	// --- FIX IS HERE ---
+	// Marshal the lowest/highest listings for the script
+	// Use "null" as a default JSON value if no item is found
+	var currentLowestJSON, currentHighestJSON []byte
+	if currentLowest != nil {
+		currentLowestJSON, _ = json.Marshal(currentLowest)
+	} else {
+		currentLowestJSON = []byte("null")
+	}
+
+	if currentHighest != nil {
+		currentHighestJSON, _ = json.Marshal(currentHighest)
+	} else {
+		currentHighestJSON = []byte("null")
+	}
+	// --- END FIX ---
+
+	finalPriceHistory, err := fetchPriceHistory(itemName)
+	if err != nil {
+		log.Printf("❌ History change query error: %v", err)
+		http.Error(w, "Database query for changes failed", http.StatusInternalServerError)
+		return
+	}
+	log.Printf("DEBUG [itemHistory] Step 4: Found %d unique price points for history graph.", len(finalPriceHistory))
+	priceHistoryJSON, _ := json.Marshal(finalPriceHistory)
+
+	var overallLowest, overallHighest sql.NullInt64
+	db.QueryRow(`
+        SELECT MIN(CAST(REPLACE(REPLACE(price, ',', ''), 'z', '') AS INTEGER)), 
+               MAX(CAST(REPLACE(REPLACE(price, ',', ''), 'z', '') AS INTEGER))
+        FROM items WHERE name_of_the_item = ?;
+    `, itemName).Scan(&overallLowest, &overallHighest)
+	log.Printf("DEBUG [itemHistory] Step 5: Found Overall Lowest: %d z, Overall Highest: %d z", overallLowest.Int64, overallHighest.Int64)
+
+	const listingsPerPage = 50
+	pagination := newPaginationData(r, 0, listingsPerPage) // Initial
+	allListings, totalListings, err := fetchAllListings(itemName, pagination, listingsPerPage)
+	if err != nil {
+		log.Printf("❌ All listings query error: %v", err)
+		http.Error(w, "Database query for all listings failed", http.StatusInternalServerError)
+		return
+	}
+	log.Printf("DEBUG [itemHistory] Step 6: Found %d total historical listings. Returning %d for this page.", totalListings, len(allListings))
+	pagination = newPaginationData(r, totalListings, listingsPerPage) // Recalculate
+
+	data := HistoryPageData{
+		ItemName:           itemName,
+		ItemNamePT:         itemNamePT,
+		PriceDataJSON:      template.JS(priceHistoryJSON),
+		CurrentLowestJSON:  template.JS(currentLowestJSON),  // <-- ADDED
+		CurrentHighestJSON: template.JS(currentHighestJSON), // <-- ADDED
+		OverallLowest:      int(overallLowest.Int64),
+		OverallHighest:     int(overallHighest.Int64),
+		CurrentLowest:      currentLowest,
+		CurrentHighest:     currentHighest,
+		ItemDetails:        rmsItemDetails,
+		AllListings:        allListings,
+		LastScrapeTime:     GetLastScrapeTime(),
+		TotalListings:      totalListings,
+		Pagination:         pagination,
+		PageTitle:          itemName,
+	}
+
+	log.Printf("DEBUG [itemHistory] Rendering template for '%s' with all data.", itemName)
+	renderTemplate(w, "history.html", data)
+}
+
+// I am also including the helper functions that were extracted in the refactor,
+// as they are called by the main handler.
+
+// fetchItemDetails attempts to get RMSItem details from cache, falling back to a live scrape.
+func fetchItemDetails(itemID int) *RMSItem {
+	if itemID <= 0 {
+		return nil
+	}
+
+	cachedItem, err := getItemDetailsFromCache(itemID)
+	if err == nil {
+		log.Printf("DEBUG [fetchItemDetails] Found item %d in cache.", itemID)
+		return cachedItem // Found in cache
+	}
+	log.Printf("DEBUG [fetchItemDetails] Item %d not in cache, attempting scrape.", itemID)
+
+	// Not in cache, try to scrape
+	scrapedItem, scrapeErr := scrapeRMSItemDetails(itemID)
+	if scrapeErr != nil {
+		log.Printf("DEBUG [fetchItemDetails] Scrape failed for item %d: %v", itemID, scrapeErr)
+		return nil // Scrape failed
+	}
+	log.Printf("DEBUG [fetchItemDetails] Scrape successful for item %d.", itemID)
+
+	// Save to cache in the background
+	go func() {
+		if saveErr := saveItemDetailsToCache(scrapedItem); saveErr != nil {
+			log.Printf("⚠️ Failed to save item ID %d to cache: %v", itemID, saveErr)
+		}
+	}()
+
+	return scrapedItem
+}
+
+// fetchCurrentListings gets all currently available listings for an item.
+func fetchCurrentListings(itemName string) ([]ItemListing, error) {
+	query := `
+		SELECT CAST(REPLACE(REPLACE(price, ',', ''), 'z', '') AS INTEGER) as price_int, 
+		       quantity, store_name, seller_name, map_name, map_coordinates, date_and_time_retrieved
+		FROM items WHERE name_of_the_item = ? AND is_available = 1 
+		ORDER BY price_int ASC;
+	`
+	rows, err := db.Query(query, itemName)
+	if err != nil {
+		return nil, fmt.Errorf("current listings query error: %w", err)
+	}
+	defer rows.Close()
+
+	var listings []ItemListing
+	for rows.Next() {
 		var listing ItemListing
 		var timestampStr string
-		if err := rowsCurrent.Scan(&listing.Price, &listing.Quantity, &listing.StoreName, &listing.SellerName, &listing.MapName, &listing.MapCoordinates, &timestampStr); err != nil {
+		if err := rows.Scan(&listing.Price, &listing.Quantity, &listing.StoreName, &listing.SellerName, &listing.MapName, &listing.MapCoordinates, &timestampStr); err != nil {
 			log.Printf("⚠️ Failed to scan current listing row: %v", err)
 			continue
 		}
@@ -845,41 +960,78 @@ func itemHistoryHandler(w http.ResponseWriter, r *http.Request) {
 		} else {
 			listing.Timestamp = timestampStr
 		}
-		currentListings = append(currentListings, listing)
+		listings = append(listings, listing)
 	}
+	return listings, nil
+}
 
-	var currentLowest, currentHighest *ItemListing
-	if len(currentListings) > 0 {
-		currentLowest = &currentListings[0]
-		currentHighest = &currentListings[len(currentListings)-1]
-	}
-	// currentLowestJSON, _ := json.Marshal(currentLowest)     <-- REMOVED
-	// currentHighestJSON, _ := json.Marshal(currentHighest)   <-- REMOVED
-
-	var overallLowest, overallHighest sql.NullInt64
-	db.QueryRow(`
-        SELECT MIN(CAST(REPLACE(price, ',', '') AS INTEGER)), MAX(CAST(REPLACE(price, ',', '') AS INTEGER))
-        FROM items WHERE name_of_the_item = ?;
-    `, itemName).Scan(&overallLowest, &overallHighest)
-
+// fetchPriceHistory aggregates the lowest/highest price points over time for the graph.
+func fetchPriceHistory(itemName string) ([]PricePointDetails, error) {
 	priceChangeQuery := `
-		WITH RankedItems AS (
-			SELECT quantity, CAST(REPLACE(price, ',', '') AS INTEGER) as price_int, store_name, seller_name, date_and_time_retrieved, map_name, map_coordinates,
-				ROW_NUMBER() OVER(PARTITION BY date_and_time_retrieved ORDER BY CAST(REPLACE(price, ',', '') AS INTEGER) ASC) as rn_asc,
-				ROW_NUMBER() OVER(PARTITION BY date_and_time_retrieved ORDER BY CAST(REPLACE(price, ',', '') AS INTEGER) DESC) as rn_desc
-			FROM items WHERE name_of_the_item = ?
-		)
-		SELECT t_lowest.date_and_time_retrieved, t_lowest.price_int, t_lowest.quantity, t_lowest.store_name, t_lowest.seller_name, t_lowest.map_name, t_lowest.map_coordinates,
-			t_highest.price_int, t_highest.quantity, t_highest.store_name, t_highest.seller_name, t_highest.map_name, t_highest.map_coordinates
-		FROM (SELECT * FROM RankedItems WHERE rn_asc = 1) AS t_lowest
-		JOIN (SELECT * FROM RankedItems WHERE rn_desc = 1) AS t_highest ON t_lowest.date_and_time_retrieved = t_highest.date_and_time_retrieved
+		SELECT
+			t_lowest.date_and_time_retrieved,
+			t_lowest.price_int,
+			t_lowest.quantity,
+			t_lowest.store_name,
+			t_lowest.seller_name,
+			t_lowest.map_name,
+			t_lowest.map_coordinates,
+			t_highest.price_int,
+			t_highest.quantity,
+			t_highest.store_name,
+			t_highest.seller_name,
+			t_highest.map_name,
+			t_highest.map_coordinates
+		FROM
+			(
+				-- Subquery to find the row with the lowest price for each timestamp
+				SELECT 
+					i1.date_and_time_retrieved,
+					CAST(REPLACE(REPLACE(i1.price, ',', ''), 'z', '') AS INTEGER) as price_int,
+					i1.quantity,
+					i1.store_name,
+					i1.seller_name,
+					i1.map_name,
+					i1.map_coordinates
+				FROM items i1
+				WHERE i1.name_of_the_item = ?
+				AND i1.id = (
+					SELECT i_min.id
+					FROM items i_min
+					WHERE i_min.name_of_the_item = i1.name_of_the_item
+					  AND i_min.date_and_time_retrieved = i1.date_and_time_retrieved
+					ORDER BY CAST(REPLACE(REPLACE(i_min.price, ',', ''), 'z', '') AS INTEGER) ASC, i_min.id DESC
+					LIMIT 1
+				)
+			) AS t_lowest
+		JOIN
+			(
+				-- Subquery to find the row with the highest price for each timestamp
+				SELECT 
+					i2.date_and_time_retrieved,
+					CAST(REPLACE(REPLACE(i2.price, ',', ''), 'z', '') AS INTEGER) as price_int,
+					i2.quantity,
+					i2.store_name,
+					i2.seller_name,
+					i2.map_name,
+					i2.map_coordinates
+				FROM items i2
+				WHERE i2.name_of_the_item = ?
+				AND i2.id = (
+					SELECT i_max.id
+					FROM items i_max
+					WHERE i_max.name_of_the_item = i2.name_of_the_item
+					  AND i_max.date_and_time_retrieved = i2.date_and_time_retrieved
+					ORDER BY CAST(REPLACE(REPLACE(i_max.price, ',', ''), 'z', '') AS INTEGER) DESC, i_max.id DESC
+					LIMIT 1
+				)
+			) AS t_highest 
+		ON t_lowest.date_and_time_retrieved = t_highest.date_and_time_retrieved
 		ORDER BY t_lowest.date_and_time_retrieved ASC;
     `
-	rows, err := db.Query(priceChangeQuery, itemName)
+	rows, err := db.Query(priceChangeQuery, itemName, itemName)
 	if err != nil {
-		log.Printf("❌ History change query error: %v", err)
-		http.Error(w, "Database query for changes failed", http.StatusInternalServerError)
-		return
+		return nil, fmt.Errorf("history change query error: %w", err)
 	}
 	defer rows.Close()
 
@@ -897,38 +1049,47 @@ func itemHistoryHandler(w http.ResponseWriter, r *http.Request) {
 		t, _ := time.Parse(time.RFC3339, timestampStr)
 		p.Timestamp = t.Format("2006-01-02 15:04")
 
+		// This logic de-duplicates consecutive identical price points
 		if len(finalPriceHistory) == 0 ||
 			finalPriceHistory[len(finalPriceHistory)-1].LowestPrice != p.LowestPrice ||
 			finalPriceHistory[len(finalPriceHistory)-1].HighestPrice != p.HighestPrice {
 			finalPriceHistory = append(finalPriceHistory, p)
 		}
 	}
+	return finalPriceHistory, nil
+}
 
-	priceHistoryJSON, _ := json.Marshal(finalPriceHistory)
-
-	const listingsPerPage = 50
+// fetchAllListings retrieves a paginated list of all historical listings for an item.
+// --- FIX IS HERE: Added listingsPerPage parameter ---
+func fetchAllListings(itemName string, pagination PaginationData, listingsPerPage int) ([]Item, int, error) {
 	var totalListings int
-	db.QueryRow("SELECT COUNT(*) FROM items WHERE name_of_the_item = ?", itemName).Scan(&totalListings)
+	err := db.QueryRow("SELECT COUNT(*) FROM items WHERE name_of_the_item = ?", itemName).Scan(&totalListings)
+	if err != nil {
+		return nil, 0, fmt.Errorf("failed to count all listings: %w", err)
+	}
 
-	pagination := newPaginationData(r, totalListings, listingsPerPage)
-	allListingsQuery := `
-		SELECT i.id, i.name_of_the_item, rms.name_pt, i.item_id, i.quantity, i.price, i.store_name, i.seller_name, i.date_and_time_retrieved, i.map_name, i.map_coordinates, i.is_available
+	query := `
+		SELECT i.id, i.name_of_the_item, rms.name_pt, i.item_id, i.quantity, i.price, 
+		       i.store_name, i.seller_name, i.date_and_time_retrieved, i.map_name, 
+			   i.map_coordinates, i.is_available
 		FROM items i 
 		LEFT JOIN rms_item_cache rms ON i.item_id = rms.item_id 
-		WHERE i.name_of_the_item = ? ORDER BY i.is_available DESC, i.date_and_time_retrieved DESC LIMIT ? OFFSET ?;`
-	rowsAll, err := db.Query(allListingsQuery, itemName, listingsPerPage, pagination.Offset)
+		WHERE i.name_of_the_item = ? 
+		ORDER BY i.is_available DESC, i.date_and_time_retrieved DESC 
+		LIMIT ? OFFSET ?;
+	`
+	// --- FIX IS HERE: Use the listingsPerPage parameter ---
+	rows, err := db.Query(query, itemName, listingsPerPage, pagination.Offset)
 	if err != nil {
-		log.Printf("❌ All listings query error: %v", err)
-		http.Error(w, "Database query for all listings failed", http.StatusInternalServerError)
-		return
+		return nil, totalListings, fmt.Errorf("all listings query error: %w", err)
 	}
-	defer rowsAll.Close()
+	defer rows.Close()
 
 	var allListings []Item
-	for rowsAll.Next() {
+	for rows.Next() {
 		var listing Item
 		var timestampStr string
-		if err := rowsAll.Scan(&listing.ID, &listing.Name, &listing.NamePT, &listing.ItemID, &listing.Quantity, &listing.Price, &listing.StoreName, &listing.SellerName, &timestampStr, &listing.MapName, &listing.MapCoordinates, &listing.IsAvailable); err != nil {
+		if err := rows.Scan(&listing.ID, &listing.Name, &listing.NamePT, &listing.ItemID, &listing.Quantity, &listing.Price, &listing.StoreName, &listing.SellerName, &timestampStr, &listing.MapName, &listing.MapCoordinates, &listing.IsAvailable); err != nil {
 			log.Printf("⚠️ Failed to scan all listing row: %v", err)
 			continue
 		}
@@ -939,23 +1100,7 @@ func itemHistoryHandler(w http.ResponseWriter, r *http.Request) {
 		}
 		allListings = append(allListings, listing)
 	}
-
-	data := HistoryPageData{
-		ItemName:       itemName,
-		ItemNamePT:     itemNamePT,
-		PriceDataJSON:  template.JS(priceHistoryJSON),
-		OverallLowest:  int(overallLowest.Int64),
-		OverallHighest: int(overallHighest.Int64),
-		CurrentLowest:  currentLowest,  // <-- CHANGED
-		CurrentHighest: currentHighest, // <-- CHANGED
-		ItemDetails:    rmsItemDetails,
-		AllListings:    allListings,
-		LastScrapeTime: GetLastScrapeTime(),
-		TotalListings:  totalListings,
-		Pagination:     pagination,
-		PageTitle:      itemName,
-	}
-	renderTemplate(w, "history.html", data)
+	return allListings, totalListings, nil
 }
 
 func playerCountHandler(w http.ResponseWriter, r *http.Request) {
@@ -2024,12 +2169,13 @@ func findItemIDOnline(cleanItemName string, slots int) (sql.NullInt64, bool) {
 }
 
 // findItemIDByName orchestrates searching the cache and online for an item ID.
+// This refactored version has a clearer, flatter structure.
 func findItemIDByName(itemName string, allowRetry bool, slots int) (sql.NullInt64, error) {
 	// 1. Clean the name
 	reRefine := regexp.MustCompile(`\s*\+\d+\s*`)
-	itemNameWithoutRefine := reRefine.ReplaceAllString(itemName, "")
-	itemNameWithoutRefine = strings.TrimSpace(itemNameWithoutRefine)
-	cleanItemName := sanitizeString(itemNameWithoutRefine, itemSanitizer)
+	cleanItemName := reRefine.ReplaceAllString(itemName, "")
+	cleanItemName = strings.TrimSpace(cleanItemName)
+	cleanItemName = sanitizeString(cleanItemName, itemSanitizer)
 
 	if strings.TrimSpace(cleanItemName) == "" {
 		return sql.NullInt64{Valid: false}, nil
@@ -2071,22 +2217,72 @@ func findItemIDByName(itemName string, allowRetry bool, slots int) (sql.NullInt6
 	return sql.NullInt64{Valid: false}, nil
 }
 
-func createSingleTradingPost(authorName, originalMessage, postType string, items []GeminiTradeItem) (int64, error) {
+// findAndDeleteOldPosts performs a pre-transaction to clean up duplicate posts.
+func findAndDeleteOldPosts(tx *sql.Tx, characterName, discordContact, postType string, itemNames []string, itemParams []interface{}) {
+	if len(itemNames) == 0 {
+		return
+	}
 
+	placeholders := strings.Repeat("?,", len(itemNames)-1) + "?"
+	findQuery := fmt.Sprintf(`
+		SELECT DISTINCT p.id
+		FROM trading_posts p
+		JOIN trading_post_items i ON p.id = i.post_id
+		WHERE p.character_name = ?
+		  AND p.contact_info = ?
+		  AND p.post_type = ?
+		  AND i.item_name IN (%s)
+	`, placeholders)
+
+	findParams := []interface{}{characterName, discordContact, postType}
+	findParams = append(findParams, itemParams...)
+
+	rows, err := tx.Query(findQuery, findParams...)
+	if err != nil {
+		log.Printf("⚠️ [Discord->DB] Failed to query for old posts to delete for '%s': %v", characterName, err)
+		return // Don't fail the transaction, just log the error
+	}
+	defer rows.Close()
+
+	var postIDsToDelete []interface{}
+	for rows.Next() {
+		var id int64
+		if err := rows.Scan(&id); err == nil {
+			postIDsToDelete = append(postIDsToDelete, id)
+		}
+	}
+
+	if len(postIDsToDelete) > 0 {
+		delPlaceholders := strings.Repeat("?,", len(postIDsToDelete)-1) + "?"
+		delQuery := fmt.Sprintf("DELETE FROM trading_posts WHERE id IN (%s)", delPlaceholders)
+
+		delRes, err := tx.Exec(delQuery, postIDsToDelete...)
+		if err != nil {
+			log.Printf("⚠️ [Discord->DB] Failed to delete old post(s) for '%s': %v", characterName, err)
+		} else if deletedCount, _ := delRes.RowsAffected(); deletedCount > 0 {
+			log.Printf("🧹 [Discord->DB] Deleted %d old '%s' post(s) for user '%s' because they contained matching items.", deletedCount, postType, characterName)
+		}
+	}
+}
+
+// createSingleTradingPost now uses the helper for cleanup.
+func createSingleTradingPost(authorName, originalMessage, postType string, items []GeminiTradeItem) (int64, error) {
 	characterName := sanitizeString(authorName, nameSanitizer)
 	if strings.TrimSpace(characterName) == "" {
 		return 0, fmt.Errorf("author name is empty after sanitization")
 	}
 
 	title := fmt.Sprintf("%s items via Discord", strings.Title(postType))
+	discordContact := fmt.Sprintf("Discord: %s", authorName)
 
+	// Generate token hash
 	token, err := generateSecretToken(16)
 	if err != nil {
-		return 0, fmt.Errorf("could not generate security token for discord post: %w", err)
+		return 0, fmt.Errorf("could not generate security token: %w", err)
 	}
 	tokenHash, err := bcrypt.GenerateFromPassword([]byte(token), bcrypt.DefaultCost)
 	if err != nil {
-		return 0, fmt.Errorf("could not hash token for discord post: %w", err)
+		return 0, fmt.Errorf("could not hash token: %w", err)
 	}
 
 	tx, err := db.Begin()
@@ -2095,6 +2291,8 @@ func createSingleTradingPost(authorName, originalMessage, postType string, items
 	}
 	defer tx.Rollback()
 
+	// --- Refactored Part ---
+	// 1. Find and delete old posts within the transaction
 	var itemNames []string
 	var itemParams []interface{}
 	for _, item := range items {
@@ -2104,72 +2302,21 @@ func createSingleTradingPost(authorName, originalMessage, postType string, items
 			itemParams = append(itemParams, itemName)
 		}
 	}
+	findAndDeleteOldPosts(tx, characterName, discordContact, postType, itemNames, itemParams)
+	// --- End Refactored Part ---
 
-	discordContact := fmt.Sprintf("Discord: %s", authorName)
-
-	if len(itemNames) > 0 {
-
-		placeholders := strings.Repeat("?,", len(itemNames)-1) + "?"
-
-		findQuery := fmt.Sprintf(`
-			SELECT DISTINCT p.id
-			FROM trading_posts p
-			JOIN trading_post_items i ON p.id = i.post_id
-			WHERE p.character_name = ?
-			  AND p.contact_info = ?
-			  AND p.post_type = ?
-			  AND i.item_name IN (%s)
-		`, placeholders)
-
-		findParams := []interface{}{characterName, discordContact, postType}
-		findParams = append(findParams, itemParams...)
-
-		rows, err := tx.Query(findQuery, findParams...)
-		if err != nil {
-
-			log.Printf("⚠️ [Discord->DB] Failed to query for old posts to delete for '%s': %v", characterName, err)
-		} else {
-			var postIDsToDelete []interface{}
-			for rows.Next() {
-				var id int64
-				if err := rows.Scan(&id); err == nil {
-					postIDsToDelete = append(postIDsToDelete, id)
-				}
-			}
-			rows.Close()
-
-			if len(postIDsToDelete) > 0 {
-				delPlaceholders := strings.Repeat("?,", len(postIDsToDelete)-1) + "?"
-				delQuery := fmt.Sprintf("DELETE FROM trading_posts WHERE id IN (%s)", delPlaceholders)
-
-				delRes, err := tx.Exec(delQuery, postIDsToDelete...)
-				if err != nil {
-					log.Printf("⚠️ [Discord->DB] Failed to delete old post(s) for '%s': %v", characterName, err)
-				} else {
-					deletedCount, _ := delRes.RowsAffected()
-					if deletedCount > 0 {
-						log.Printf("🧹 [Discord->DB] Deleted %d old '%s' post(s) for user '%s' because they contained matching items.", deletedCount, postType, characterName)
-					}
-				}
-			}
-		}
-	}
-
+	// 2. Insert the new main post
 	res, err := tx.Exec(`INSERT INTO trading_posts (title, post_type, character_name, contact_info, notes, created_at, edit_token_hash)
             VALUES (?, ?, ?, ?, ?, ?, ?)`,
-		title,
-		postType,
-		characterName,
-		discordContact,
-		originalMessage,
-		time.Now().Format(time.RFC3339),
-		string(tokenHash),
+		title, postType, characterName, discordContact,
+		originalMessage, time.Now().Format(time.RFC3339), string(tokenHash),
 	)
 	if err != nil {
 		return 0, fmt.Errorf("failed to save post from discord: %w", err)
 	}
 	postID, _ := res.LastInsertId()
 
+	// 3. Prepare and insert all items
 	stmt, err := tx.Prepare("INSERT INTO trading_post_items (post_id, item_name, item_id, quantity, price_zeny, price_rmt, payment_methods, refinement, slots, card1, card2, card3, card4) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
 	if err != nil {
 		return 0, fmt.Errorf("database preparation failed for discord post items: %w", err)
@@ -2177,7 +2324,6 @@ func createSingleTradingPost(authorName, originalMessage, postType string, items
 	defer stmt.Close()
 
 	for _, item := range items {
-
 		itemName := sanitizeString(item.Name, itemSanitizer)
 		if strings.TrimSpace(itemName) == "" {
 			continue
@@ -2185,7 +2331,6 @@ func createSingleTradingPost(authorName, originalMessage, postType string, items
 
 		itemID, findErr := findItemIDByName(itemName, true, item.Slots)
 		if findErr != nil {
-
 			log.Printf("⚠️ Error finding item ID for '%s': %v. Proceeding without ID.", itemName, findErr)
 		}
 
@@ -2200,11 +2345,11 @@ func createSingleTradingPost(authorName, originalMessage, postType string, items
 		card4 := sql.NullString{String: item.Card4, Valid: item.Card4 != ""}
 
 		if _, err := stmt.Exec(postID, itemName, itemID, item.Quantity, item.PriceZeny, item.PriceRMT, paymentMethods, item.Refinement, item.Slots, card1, card2, card3, card4); err != nil {
-
 			return 0, fmt.Errorf("failed to save item '%s' for discord post: %w", itemName, err)
 		}
 	}
 
+	// 4. Commit
 	if err := tx.Commit(); err != nil {
 		return 0, fmt.Errorf("failed to finalize discord post transaction: %w", err)
 	}

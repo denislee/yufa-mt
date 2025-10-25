@@ -739,6 +739,73 @@ func adminDeleteTradingPostHandler(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, "/admin?msg="+msg, http.StatusSeeOther)
 }
 
+// reparseTradingPostItems handles the database transaction for updating items.
+func reparseTradingPostItems(postID int, itemsToUpdate []GeminiTradeItem) (int, error) {
+	tx, err := db.Begin()
+	if err != nil {
+		return 0, fmt.Errorf("failed to start database transaction: %w", err)
+	}
+	defer tx.Rollback()
+
+	// 1. Delete all old items
+	_, err = tx.Exec("DELETE FROM trading_post_items WHERE post_id = ?", postID)
+	if err != nil {
+		return 0, fmt.Errorf("failed to clear old items: %w", err)
+	}
+
+	if len(itemsToUpdate) == 0 {
+		// No new items to add, just commit the deletion
+		return 0, tx.Commit()
+	}
+
+	// 2. Prepare statement for new items
+	stmt, err := tx.Prepare(`
+		INSERT INTO trading_post_items 
+		(post_id, item_name, item_id, quantity, price_zeny, price_rmt, payment_methods, refinement, slots, card1, card2, card3, card4) 
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+	`)
+	if err != nil {
+		return 0, fmt.Errorf("database preparation failed: %w", err)
+	}
+	defer stmt.Close()
+
+	// 3. Insert new items
+	for _, item := range itemsToUpdate {
+		itemName := sanitizeString(item.Name, itemSanitizer)
+		if strings.TrimSpace(itemName) == "" {
+			continue
+		}
+
+		itemID, findErr := findItemIDByName(itemName, true, item.Slots)
+		if findErr != nil {
+			log.Printf("⚠️ Error finding item ID for '%s' during re-parse: %v. Proceeding without ID.", itemName, findErr)
+		}
+
+		paymentMethods := "zeny"
+		if item.PaymentMethods == "rmt" || item.PaymentMethods == "both" {
+			paymentMethods = item.PaymentMethods
+		}
+
+		card1 := sql.NullString{String: item.Card1, Valid: item.Card1 != ""}
+		card2 := sql.NullString{String: item.Card2, Valid: item.Card2 != ""}
+		card3 := sql.NullString{String: item.Card3, Valid: item.Card3 != ""}
+		card4 := sql.NullString{String: item.Card4, Valid: item.Card4 != ""}
+
+		_, err := stmt.Exec(postID, itemName, itemID, item.Quantity, item.PriceZeny, item.PriceRMT, paymentMethods, item.Refinement, item.Slots, card1, card2, card3, card4)
+		if err != nil {
+			return 0, fmt.Errorf("failed to save item '%s': %w", itemName, err)
+		}
+	}
+
+	// 4. Commit
+	if err := tx.Commit(); err != nil {
+		return 0, fmt.Errorf("failed to finalize transaction: %w", err)
+	}
+
+	return len(itemsToUpdate), nil
+}
+
+// adminReparseTradingPostHandler now orchestrates the re-parse.
 func adminReparseTradingPostHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Redirect(w, r, "/admin", http.StatusSeeOther)
@@ -760,6 +827,7 @@ func adminReparseTradingPostHandler(w http.ResponseWriter, r *http.Request) {
 	var msg string
 	var originalMessage, originalPostType, characterName sql.NullString
 
+	// 1. Fetch the post to re-parse
 	err = db.QueryRow("SELECT notes, post_type, character_name FROM trading_posts WHERE id = ?", postID).Scan(&originalMessage, &originalPostType, &characterName)
 	if err != nil {
 		if err == sql.ErrNoRows {
@@ -772,18 +840,19 @@ func adminReparseTradingPostHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// 2. Validate the post data
 	if !originalMessage.Valid || originalMessage.String == "" {
 		msg = "Error:+Post+has+no+original+message+(notes)+to+re-parse."
 		http.Redirect(w, r, "/admin?msg="+msg, http.StatusSeeOther)
 		return
 	}
-
 	if !originalPostType.Valid || (originalPostType.String != "buying" && originalPostType.String != "selling") {
 		msg = "Error:+Post+has+an+invalid+type."
 		http.Redirect(w, r, "/admin?msg="+msg, http.StatusSeeOther)
 		return
 	}
 
+	// 3. Parse with Gemini
 	geminiResult, geminiErr := parseTradeMessageWithGemini(originalMessage.String)
 	if geminiErr != nil {
 		msg = fmt.Sprintf("Error:+Gemini+parse+failed:+%s", url.QueryEscape(geminiErr.Error()))
@@ -791,6 +860,7 @@ func adminReparseTradingPostHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// 4. Filter items that match the post type (e.g., only "selling" items for a "selling" post)
 	var itemsToUpdate []GeminiTradeItem
 	for _, item := range geminiResult.Items {
 		if item.Action == originalPostType.String {
@@ -799,83 +869,21 @@ func adminReparseTradingPostHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if len(itemsToUpdate) == 0 {
-
 		log.Printf("👤 Admin re-parsed post %d. No items matching type '%s' were found by Gemini. Clearing items.", postID, originalPostType.String)
 	}
 
-	tx, err := db.Begin()
+	// 5. Execute the database transaction
+	itemsUpdated, err := reparseTradingPostItems(postID, itemsToUpdate)
 	if err != nil {
-		msg = "Error:+Failed+to+start+database+transaction."
-		log.Printf("❌ Failed to begin transaction for re-parsing post %d: %v", postID, err)
+		msg = fmt.Sprintf("Error:+Database+update+failed:+%s", url.QueryEscape(err.Error()))
+		log.Printf("❌ Failed to re-parse post %d: %v", postID, err)
 		http.Redirect(w, r, "/admin?msg="+msg, http.StatusSeeOther)
 		return
 	}
 
-	_, err = tx.Exec("DELETE FROM trading_post_items WHERE post_id = ?", postID)
-	if err != nil {
-		tx.Rollback()
-		msg = "Error:+Failed+to+clear+old+items."
-		log.Printf("❌ Failed to delete old items for post %d during re-parse: %v", postID, err)
-		http.Redirect(w, r, "/admin?msg="+msg, http.StatusSeeOther)
-		return
-	}
-
-	if len(itemsToUpdate) > 0 {
-		stmt, err := tx.Prepare(`
-			INSERT INTO trading_post_items 
-			(post_id, item_name, item_id, quantity, price_zeny, price_rmt, payment_methods, refinement, slots, card1, card2, card3, card4) 
-			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-		`)
-		if err != nil {
-			tx.Rollback()
-			msg = "Error:+Database+preparation+failed."
-			log.Printf("❌ Failed to prepare insert statement for re-parsing post %d: %v", postID, err)
-			http.Redirect(w, r, "/admin?msg="+msg, http.StatusSeeOther)
-			return
-		}
-		defer stmt.Close()
-
-		for _, item := range itemsToUpdate {
-			itemName := sanitizeString(item.Name, itemSanitizer)
-			if strings.TrimSpace(itemName) == "" {
-				continue
-			}
-
-			itemID, findErr := findItemIDByName(itemName, true, item.Slots)
-			if findErr != nil {
-				log.Printf("⚠️ Error finding item ID for '%s' during re-parse: %v. Proceeding without ID.", itemName, findErr)
-			}
-
-			paymentMethods := "zeny"
-			if item.PaymentMethods == "rmt" || item.PaymentMethods == "both" {
-				paymentMethods = item.PaymentMethods
-			}
-
-			card1 := sql.NullString{String: item.Card1, Valid: item.Card1 != ""}
-			card2 := sql.NullString{String: item.Card2, Valid: item.Card2 != ""}
-			card3 := sql.NullString{String: item.Card3, Valid: item.Card3 != ""}
-			card4 := sql.NullString{String: item.Card4, Valid: item.Card4 != ""}
-
-			_, err := stmt.Exec(postID, itemName, itemID, item.Quantity, item.PriceZeny, item.PriceRMT, paymentMethods, item.Refinement, item.Slots, card1, card2, card3, card4)
-			if err != nil {
-				tx.Rollback()
-				msg = "Error:+Failed+to+save+one+of+the+new+items."
-				log.Printf("❌ Failed to insert re-parsed item '%s' for post %d: %v", itemName, postID, err)
-				http.Redirect(w, r, "/admin?msg="+msg, http.StatusSeeOther)
-				return
-			}
-		}
-	}
-
-	if err := tx.Commit(); err != nil {
-		msg = "Error:+Failed+to+finalize+transaction."
-		log.Printf("❌ Failed to commit transaction for re-parsing post %d: %v", postID, err)
-		http.Redirect(w, r, "/admin?msg="+msg, http.StatusSeeOther)
-		return
-	}
-
-	log.Printf("👤 Admin successfully re-parsed trading post %d (%s) with %d items.", postID, characterName.String, len(itemsToUpdate))
-	msg = fmt.Sprintf("Successfully+re-parsed+post+%d.+Found+%d+items.", postID, len(itemsToUpdate))
+	// 6. Success
+	log.Printf("👤 Admin successfully re-parsed trading post %d (%s) with %d items.", postID, characterName.String, itemsUpdated)
+	msg = fmt.Sprintf("Successfully+re-parsed+post+%d.+Found+%d+items.", postID, itemsUpdated)
 	http.Redirect(w, r, "/admin?msg="+msg, http.StatusSeeOther)
 }
 

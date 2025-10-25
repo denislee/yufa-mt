@@ -112,6 +112,8 @@ Here is the message to parse:
 ---`
 )
 
+var jsonRegex = regexp.MustCompile("(?s)```json(.*)```")
+
 func parseTradeMessageWithGemini(message string) (*GeminiTradeResult, error) {
 	apiKey := os.Getenv("GEMINI_API_KEY")
 	if apiKey == "" {
@@ -130,7 +132,6 @@ func parseTradeMessageWithGemini(message string) (*GeminiTradeResult, error) {
 	model := client.GenerativeModel(geminiModelName)
 	model.GenerationConfig.ResponseMIMEType = "application/json"
 
-	// The prompt is now much cleaner, using the constant.
 	prompt := fmt.Sprintf(promptTemplate, message)
 
 	log.Println("🤖 Sending request to Gemini API...")
@@ -143,11 +144,19 @@ func parseTradeMessageWithGemini(message string) (*GeminiTradeResult, error) {
 		return nil, fmt.Errorf("received an empty or invalid response from Gemini API")
 	}
 
-	rawJSON := fmt.Sprintf("%s", resp.Candidates[0].Content.Parts[0])
+	// --- Refactored Part ---
+	// Directly access the text part of the response.
+	// This is cleaner than fmt.Sprintf and relies on the genai type.
+	part := resp.Candidates[0].Content.Parts[0]
+	text, ok := part.(genai.Text)
+	if !ok {
+		return nil, fmt.Errorf("gemini response part was not of type genai.Text, but %T", part)
+	}
+	rawJSON := string(text)
+	// --- End Refactored Part ---
 
-	// This logic to strip markdown backticks is good and remains.
-	re := regexp.MustCompile("(?s)```json(.*)```")
-	matches := re.FindStringSubmatch(rawJSON)
+	// This logic to strip markdown backticks remains, using the package-level regex.
+	matches := jsonRegex.FindStringSubmatch(rawJSON)
 	if len(matches) > 1 {
 		rawJSON = matches[1]
 	}
@@ -162,4 +171,3 @@ func parseTradeMessageWithGemini(message string) (*GeminiTradeResult, error) {
 
 	return &result, nil
 }
-
