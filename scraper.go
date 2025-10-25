@@ -74,14 +74,12 @@ func newOptimizedAllocator() (context.Context, context.CancelFunc) {
 	return chromedp.NewExecAllocator(context.Background(), opts...)
 }
 
-func logCharacterActivity(tx *sql.Tx, charName string, description string) error {
+func logCharacterActivity(changelogStmt *sql.Stmt, charName string, description string) error {
 	if description == "" {
 		return nil
 	}
-	_, err := tx.Exec(`
-		INSERT INTO character_changelog (character_name, change_time, activity_description)
-		VALUES (?, ?, ?)
-	`, charName, time.Now().Format(time.RFC3339), description)
+
+	_, err := changelogStmt.Exec(charName, time.Now().Format(time.RFC3339), description)
 	if err != nil {
 		log.Printf("    -> ❌ [Changelog] Failed to log activity for %s: %v", charName, err)
 	}
@@ -401,32 +399,48 @@ func scrapePlayerCharacters() {
 	}
 	defer stmt.Close()
 
+	changelogStmt, err := tx.Prepare(`
+		INSERT INTO character_changelog (character_name, change_time, activity_description)
+		VALUES (?, ?, ?)
+	`)
+	if err != nil {
+		log.Printf("❌ [DB] Failed to prepare changelog statement: %v", err)
+		return
+	}
+	defer changelogStmt.Close()
+
 	for _, p := range allPlayers {
 		lastActiveTime := updateTime
 		if oldPlayer, exists := existingPlayers[p.Name]; exists {
 			baseLeveledUp := false
 			if p.BaseLevel > oldPlayer.BaseLevel {
-				logCharacterActivity(tx, p.Name, fmt.Sprintf("Leveled up to Base Level %d!", p.BaseLevel))
+
+				logCharacterActivity(changelogStmt, p.Name, fmt.Sprintf("Leveled up to Base Level %d!", p.BaseLevel))
 				baseLeveledUp = true
 			}
 			if p.JobLevel > oldPlayer.JobLevel {
-				logCharacterActivity(tx, p.Name, fmt.Sprintf("Leveled up to Job Level %d!", p.JobLevel))
+
+				logCharacterActivity(changelogStmt, p.Name, fmt.Sprintf("Leveled up to Job Level %d!", p.JobLevel))
 			}
 
 			if !baseLeveledUp {
 				expDelta := p.Experience - oldPlayer.Experience
 
 				if expDelta > 0.001 {
-					logCharacterActivity(tx, p.Name, fmt.Sprintf("Gained %.2f%% experience (now at %.2f%%).", expDelta, p.Experience))
+
+					logCharacterActivity(changelogStmt, p.Name, fmt.Sprintf("Gained %.2f%% experience (now at %.2f%%).", expDelta, p.Experience))
 				} else if expDelta < -0.001 {
-					logCharacterActivity(tx, p.Name, fmt.Sprintf("Lost %.2f%% experience (now at %.2f%%).", -expDelta, p.Experience))
+
+					logCharacterActivity(changelogStmt, p.Name, fmt.Sprintf("Lost %.2f%% experience (now at %.2f%%).", -expDelta, p.Experience))
 				}
 			} else {
-				logCharacterActivity(tx, p.Name, fmt.Sprintf("Gained %.2f%% experience (now at %.2f%%).", p.Experience, p.Experience))
+
+				logCharacterActivity(changelogStmt, p.Name, fmt.Sprintf("Gained %.2f%% experience (now at %.2f%%).", p.Experience, p.Experience))
 			}
 
 			if p.Class != oldPlayer.Class {
-				logCharacterActivity(tx, p.Name, fmt.Sprintf("Changed class from '%s' to '%s'.", oldPlayer.Class, p.Class))
+
+				logCharacterActivity(changelogStmt, p.Name, fmt.Sprintf("Changed class from '%s' to '%s'.", oldPlayer.Class, p.Class))
 			}
 
 			if (p.Experience-oldPlayer.Experience) < 0.001 && (p.Experience-oldPlayer.Experience) > -0.001 {
@@ -705,6 +719,17 @@ func scrapeGuilds() {
 		allInvolvedChars[charName] = true
 	}
 
+	changelogStmt, err := tx.Prepare(`
+		INSERT INTO character_changelog (character_name, change_time, activity_description)
+		VALUES (?, ?, ?)
+	`)
+	if err != nil {
+		log.Printf("❌ [DB] Failed to prepare changelog statement for guilds: %v", err)
+
+	} else {
+		defer changelogStmt.Close()
+	}
+
 	for charName := range allInvolvedChars {
 
 		var exists int
@@ -724,12 +749,14 @@ func scrapeGuilds() {
 		oldGuild, hadOld := oldAssociations[charName]
 		newGuild, hasNew := allMembers[charName]
 
-		if hadOld && !hasNew {
-			logCharacterActivity(tx, charName, fmt.Sprintf("Left guild '%s'.", oldGuild))
-		} else if !hadOld && hasNew {
-			logCharacterActivity(tx, charName, fmt.Sprintf("Joined guild '%s'.", newGuild))
-		} else if hadOld && hasNew && oldGuild != newGuild {
-			logCharacterActivity(tx, charName, fmt.Sprintf("Moved from guild '%s' to '%s'.", oldGuild, newGuild))
+		if changelogStmt != nil {
+			if hadOld && !hasNew {
+				logCharacterActivity(changelogStmt, charName, fmt.Sprintf("Left guild '%s'.", oldGuild))
+			} else if !hadOld && hasNew {
+				logCharacterActivity(changelogStmt, charName, fmt.Sprintf("Joined guild '%s'.", newGuild))
+			} else if hadOld && hasNew && oldGuild != newGuild {
+				logCharacterActivity(changelogStmt, charName, fmt.Sprintf("Moved from guild '%s' to '%s'.", oldGuild, newGuild))
+			}
 		}
 	}
 
@@ -925,6 +952,17 @@ func scrapeZeny() {
 	}
 	defer stmt.Close()
 
+	changelogStmt, err := tx.Prepare(`
+		INSERT INTO character_changelog (character_name, change_time, activity_description)
+		VALUES (?, ?, ?)
+	`)
+	if err != nil {
+		log.Printf("❌ [DB] Failed to prepare changelog statement for zeny: %v", err)
+
+	} else {
+		defer changelogStmt.Close()
+	}
+
 	updatedCount := 0
 	unchangedCount := 0
 	for name, newZeny := range allZenyInfo {
@@ -965,8 +1003,8 @@ func scrapeZeny() {
 				description = fmt.Sprintf("Zeny decreased by %sz (New total: %sz).", formattedDelta, formattedNewZeny)
 			}
 
-			if description != "" {
-				logCharacterActivity(tx, name, description)
+			if description != "" && changelogStmt != nil {
+				logCharacterActivity(changelogStmt, name, description)
 			}
 
 			res, err := stmt.Exec(newZeny, updateTime, name)

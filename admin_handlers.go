@@ -202,12 +202,11 @@ func getAdminDashboardData(r *http.Request) (AdminDashboardData, error) {
 		stats.RecentTradingPosts = posts
 	}
 
-	// Handle RMS Cache Search
 	rmsQuery := r.URL.Query().Get("rms_query")
 	stats.RMSCacheSearchQuery = rmsQuery
 	if rmsQuery != "" {
-		// Use FTS table for searching
-		ftsQuery := rmsQuery + "*" // Append wildcard for prefix matching
+
+		ftsQuery := rmsQuery + "*"
 		searchRows, err := db.Query(`
 			SELECT rowid, name, name_pt 
 			FROM rms_item_cache_fts 
@@ -227,7 +226,6 @@ func getAdminDashboardData(r *http.Request) (AdminDashboardData, error) {
 		}
 	}
 
-	// Handle RMS Cache Live Search
 	rmsLiveSearchQuery := r.URL.Query().Get("rms_live_search")
 	stats.RMSLiveSearchQuery = rmsLiveSearchQuery
 	if rmsLiveSearchQuery != "" {
@@ -249,7 +247,7 @@ func getAdminDashboardData(r *http.Request) (AdminDashboardData, error) {
 		}()
 		go func() {
 			defer wg.Done()
-			// slots=0 for a general search
+
 			results, err := scrapeRODatabaseSearch(rmsLiveSearchQuery, 0)
 			if err != nil {
 				log.Printf("⚠️ Admin RMS Live Search (RODB) query error: %v", err)
@@ -307,7 +305,7 @@ func adminSaveCacheEntryHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	itemIDStr := r.FormValue("item_id")
-	itemName := r.FormValue("item_name") // Pass name for logging
+	itemName := r.FormValue("item_name")
 	itemID, err := strconv.Atoi(itemIDStr)
 	if err != nil {
 		http.Redirect(w, r, "/admin?msg=Error:+Invalid+item+ID.", http.StatusSeeOther)
@@ -319,13 +317,11 @@ func adminSaveCacheEntryHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Run in a goroutine so it doesn't block the admin
 	go scrapeAndCacheItemIfNotExists(itemID, itemName)
 
 	msg := fmt.Sprintf("Caching+for+item+%d+(%s)+started+in+background.", itemID, url.QueryEscape(itemName))
 	log.Printf("👤 Admin triggered manual cache for item ID %d (%s).", itemID, itemName)
 
-	// Redirect back to the search results
 	http.Redirect(w, r, "/admin?rms_live_search="+url.QueryEscape(r.FormValue("rms_live_search"))+"&msg="+msg, http.StatusSeeOther)
 }
 
@@ -346,10 +342,8 @@ func adminDeleteCacheEntryHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Build query with variable placeholders
 	query := "DELETE FROM rms_item_cache WHERE item_id IN (?" + strings.Repeat(",?", len(itemIDs)-1) + ")"
 
-	// Convert string slice to interface slice for Exec
 	args := make([]interface{}, len(itemIDs))
 	for i, idStr := range itemIDs {
 		args[i] = idStr

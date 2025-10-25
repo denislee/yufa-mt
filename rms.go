@@ -13,6 +13,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -257,15 +258,29 @@ func populateMissingCachesOnStartup() {
 		return
 	}
 
-	log.Printf("ℹ️ [Cache Verification] Found %d item(s) missing from the RMS cache. Populating now...", len(itemsToCache))
+	log.Printf("ℹ️ [Cache Verification] Found %d item(s) missing from the RMS cache. Populating concurrently...", len(itemsToCache))
+
+	var wg sync.WaitGroup
+
+	sem := make(chan struct{}, 5)
 
 	for i, item := range itemsToCache {
-		log.Printf("    -> Caching %d/%d: %s (ID: %d)", i+1, len(itemsToCache), item.Name, item.ID)
-		scrapeAndCacheItemIfNotExists(item.ID, item.Name)
+		wg.Add(1)
+		sem <- struct{}{}
 
-		time.Sleep(1 * time.Second)
+		go func(idx int, itm dbItem) {
+			defer wg.Done()
+
+			log.Printf("    -> Caching %d/%d: %s (ID: %d)", idx+1, len(itemsToCache), itm.Name, itm.ID)
+			scrapeAndCacheItemIfNotExists(itm.ID, itm.Name)
+
+			time.Sleep(1 * time.Second)
+
+			<-sem
+		}(i, item)
 	}
 
+	wg.Wait()
 	log.Println("✅ [Cache Verification] Finished populating missing cache entries.")
 }
 

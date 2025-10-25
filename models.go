@@ -449,11 +449,9 @@ type AdminDashboardData struct {
 	OriginalTradeMessage string
 	TradeParseError      string
 
-	// Added fields for RMS cache search
 	RMSCacheSearchQuery   string
 	RMSCacheSearchResults []RMSCacheSearchResult
 
-	// Added fields for RMS live search
 	RMSLiveSearchQuery   string
 	RMSLiveSearchResults []ItemSearchResult
 }
