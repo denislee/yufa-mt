@@ -1722,85 +1722,56 @@ func scrapeMvpKills() {
 	log.Printf("✅ [MVP] Scrape and update process complete.")
 }
 
-func startBackgroundJobs() {
-	go func() {
-		ticker := time.NewTicker(3 * time.Minute)
-		defer ticker.Stop()
-		scrapeData()
+func startBackgroundJobs(ctx context.Context) {
+	// Helper function to run a job immediately and then on a ticker
+	runJobOnTicker := func(jobFunc func(), ticker *time.Ticker, jobName string) {
+		jobFunc() // Run immediately on start
 		for {
-			log.Printf("🕒 [Job] Waiting for the next 5-minute market scrape schedule...")
-			<-ticker.C
-			scrapeData()
+			select {
+			case <-ctx.Done():
+				log.Printf("🔌 [Job] Stopping %s job due to shutdown.", jobName)
+				ticker.Stop()
+				return
+			case <-ticker.C:
+				log.Printf("🕒 [Job] Starting scheduled %s scrape...", jobName)
+				jobFunc()
+			}
 		}
-	}()
+	}
 
+	// --- Market Scraper ---
+	go runJobOnTicker(scrapeData, time.NewTicker(3*time.Minute), "Market")
+
+	// --- Player Count Scraper ---
+	go runJobOnTicker(scrapeAndStorePlayerCount, time.NewTicker(1*time.Minute), "Player Count")
+
+	// --- Player Character Scraper ---
+	go runJobOnTicker(scrapePlayerCharacters, time.NewTicker(30*time.Minute), "Player Character")
+
+	// --- Guild Scraper ---
+	go runJobOnTicker(scrapeGuilds, time.NewTicker(25*time.Minute), "Guild")
+
+	// --- Zeny Scraper ---
+	go runJobOnTicker(scrapeZeny, time.NewTicker(1*time.Hour), "Zeny")
+
+	// --- MVP Kill Scraper ---
+	go runJobOnTicker(scrapeMvpKills, time.NewTicker(5*time.Minute), "MVP Kill")
+
+	// --- RMS Cache Refresh Job ---
 	go func() {
-		ticker := time.NewTicker(1 * time.Minute)
-		defer ticker.Stop()
-		scrapeAndStorePlayerCount()
-		for {
-			log.Printf("🕒 [Job] Waiting for the next 1-minute player count schedule...")
-			<-ticker.C
-			scrapeAndStorePlayerCount()
-		}
-	}()
-
-	go func() {
-
-		ticker := time.NewTicker(30 * time.Minute)
-		defer ticker.Stop()
-		for {
-			log.Printf("🕒 [Job] Waiting for the next 30-minute player character schedule...")
-			<-ticker.C
-			scrapePlayerCharacters()
-		}
-	}()
-
-	go func() {
-		scrapeGuilds()
-		ticker := time.NewTicker(25 * time.Minute)
-		defer ticker.Stop()
-		for {
-			log.Printf("🕒 [Job] Waiting for the next 30-minute guild schedule...")
-			<-ticker.C
-			scrapeGuilds()
-		}
-	}()
-
-	go func() {
-
-		ticker := time.NewTicker(1 * time.Hour)
-		defer ticker.Stop()
-		for {
-			log.Printf("🕒 [Job] Waiting for the next 1-hour Zeny ranking schedule...")
-			<-ticker.C
-			scrapeZeny()
-		}
-	}()
-
-	go func() {
-		scrapeMvpKills()
-		ticker := time.NewTicker(5 * time.Minute)
-		defer ticker.Stop()
-		for {
-			log.Printf("🕒 [Job] Waiting for the next 5-minute MVP kill count schedule...")
-			<-ticker.C
-			scrapeMvpKills()
-		}
-	}()
-
-	go func() {
-		go runFullRMSCacheJob()
 		ticker := time.NewTicker(24 * time.Hour)
-		defer ticker.Stop()
-
+		runFullRMSCacheJob() // Run immediately on start
 		log.Printf("🕒 [Job] RMS Cache Refresh job scheduled. Will run once every 24 hours.")
-
 		for {
-			<-ticker.C
-			log.Printf("🕒 [Job] Starting scheduled 24-hour full RMS cache refresh...")
-
-			go runFullRMSCacheJob()
+			select {
+			case <-ctx.Done():
+				log.Printf("🔌 [Job] Stopping RMS Cache Refresh job due to shutdown.")
+				ticker.Stop()
+				return
+			case <-ticker.C:
+				log.Printf("🕒 [Job] Starting scheduled 24-hour full RMS cache refresh...")
+				go runFullRMSCacheJob() // Run in its own goroutine so it doesn't block the ticker
+			}
 		}
 	}()
 }

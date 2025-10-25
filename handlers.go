@@ -1910,27 +1910,12 @@ func tradingPostListHandler(w http.ResponseWriter, r *http.Request) {
 	renderTemplate(w, "trading_post.html", data)
 }
 
-func findItemIDByName(itemName string, allowRetry bool, slots int) (sql.NullInt64, error) {
-
-	reRefine := regexp.MustCompile(`\s*\+\d+\s*`)
-	itemNameWithoutRefine := reRefine.ReplaceAllString(itemName, "")
-	itemNameWithoutRefine = strings.TrimSpace(itemNameWithoutRefine)
-
-	cleanItemName := sanitizeString(itemNameWithoutRefine, itemSanitizer)
-	if strings.TrimSpace(cleanItemName) == "" {
-		return sql.NullInt64{Valid: false}, nil
-	}
-
-	if strings.ToLower(cleanItemName) == "zeny" {
-		log.Printf("   [Item ID Search] Detected special item 'Zeny'. Skipping ID search.")
-		return sql.NullInt64{Valid: false}, nil
-	}
-
+// findItemIDInCache attempts to find an item ID using the local FTS cache.
+func findItemIDInCache(cleanItemName string) (sql.NullInt64, bool) {
 	terms := strings.Fields(cleanItemName)
 	for i, term := range terms {
-
 		if len(term) > 1 {
-			terms[i] = term + "*"
+			terms[i] = term + "*" // Append wildcard for FTS
 		}
 	}
 	ftsQuery := strings.Join(terms, " ")
@@ -1939,12 +1924,13 @@ func findItemIDByName(itemName string, allowRetry bool, slots int) (sql.NullInt6
 		SELECT rowid, name, name_pt 
 		FROM rms_item_cache_fts 
 		WHERE rms_item_cache_fts MATCH ? 
-		ORDER BY rank  -- FTS5 automatically ranks relevance
+		ORDER BY rank 
 		LIMIT 10`
 
 	rows, err := db.Query(query, ftsQuery)
 	if err != nil {
-		return sql.NullInt64{}, fmt.Errorf("error during FTS query for '%s': %w", ftsQuery, err)
+		log.Printf("⚠️ Error during FTS query for '%s': %v", ftsQuery, err)
+		return sql.NullInt64{Valid: false}, false
 	}
 	defer rows.Close()
 
@@ -1963,64 +1949,59 @@ func findItemIDByName(itemName string, allowRetry bool, slots int) (sql.NullInt6
 	}
 
 	if len(potentialMatches) == 1 {
-
 		itemID := potentialMatches[0].id
 		log.Printf("   [Item ID Search] Found unique local FTS match for '%s': ID %d", cleanItemName, itemID)
-		return sql.NullInt64{Int64: itemID, Valid: true}, nil
+		return sql.NullInt64{Int64: itemID, Valid: true}, true
 	}
 
 	if len(potentialMatches) > 1 {
-
+		// Check for a perfect match among ambiguous results
 		for _, match := range potentialMatches {
 			if match.name == cleanItemName || match.namePT == cleanItemName {
 				log.Printf("   [Item ID Search] Found perfect match '%s' (ID %d) within FTS results.", cleanItemName, match.id)
-				return sql.NullInt64{Int64: match.id, Valid: true}, nil
+				return sql.NullInt64{Int64: match.id, Valid: true}, true
 			}
 		}
 
+		// Fallback for cards: just trust the first result
 		lowerCleanItemName := strings.ToLower(cleanItemName)
 		if strings.Contains(lowerCleanItemName, "card") || strings.Contains(lowerCleanItemName, "carta") {
 			itemID := potentialMatches[0].id
 			log.Printf("   [Item ID Search] Found %d FTS matches for '%s'. Using first result (ID %d) due to 'card'/'carta' keyword.", len(potentialMatches), cleanItemName, itemID)
-			return sql.NullInt64{Int64: itemID, Valid: true}, nil
+			return sql.NullInt64{Int64: itemID, Valid: true}, true
 		}
 
 		log.Printf("   [Item ID Search] Found %d ambiguous FTS matches for '%s'. Proceeding to online search.", len(potentialMatches), cleanItemName)
 	}
 
+	// No matches or ambiguous matches
+	return sql.NullInt64{Valid: false}, false
+}
+
+// findItemIDOnline performs concurrent web scrapes to find an item ID.
+func findItemIDOnline(cleanItemName string, slots int) (sql.NullInt64, bool) {
 	log.Printf("   [Item ID Search] No local FTS match for '%s'. Initiating online search...", cleanItemName)
 
 	var wg sync.WaitGroup
-	rmsChan := make(chan []ItemSearchResult, 1)
-	rdbChan := make(chan []ItemSearchResult, 1)
+	var rmsResults, rdbResults []ItemSearchResult
+	var rmsErr, rodbErr error
 
 	wg.Add(2)
 	go func() {
 		defer wg.Done()
-
-		results, err := scrapeRMSItemSearch(cleanItemName)
-		if err != nil {
-			log.Printf("   -> [RMS Search] Failed for '%s': %v", cleanItemName, err)
-			rmsChan <- nil
-			return
+		rmsResults, rmsErr = scrapeRMSItemSearch(cleanItemName)
+		if rmsErr != nil {
+			log.Printf("   -> [RMS Search] Failed for '%s': %v", cleanItemName, rmsErr)
 		}
-		rmsChan <- results
 	}()
 	go func() {
 		defer wg.Done()
-
-		results, err := scrapeRODatabaseSearch(cleanItemName, slots)
-		if err != nil {
-			log.Printf("   -> [RDB Search] Failed for '%s': %v", cleanItemName, err)
-			rdbChan <- nil
-			return
+		rdbResults, rodbErr = scrapeRODatabaseSearch(cleanItemName, slots)
+		if rodbErr != nil {
+			log.Printf("   -> [RDB Search] Failed for '%s': %v", cleanItemName, rodbErr)
 		}
-		rdbChan <- results
 	}()
 	wg.Wait()
-
-	rmsResults := <-rmsChan
-	rdbResults := <-rdbChan
 
 	combinedIDs := make(map[int]string)
 	if rmsResults != nil {
@@ -2037,7 +2018,6 @@ func findItemIDByName(itemName string, allowRetry bool, slots int) (sql.NullInt6
 	}
 
 	if len(combinedIDs) == 1 {
-
 		var foundID int
 		var foundName string
 		for id, name := range combinedIDs {
@@ -2045,29 +2025,24 @@ func findItemIDByName(itemName string, allowRetry bool, slots int) (sql.NullInt6
 			foundName = name
 		}
 		log.Printf("   [Item ID Search] Found unique ONLINE match for '%s': ID %d", cleanItemName, foundID)
-
-		go scrapeAndCacheItemIfNotExists(foundID, foundName)
-		return sql.NullInt64{Int64: int64(foundID), Valid: true}, nil
+		go scrapeAndCacheItemIfNotExists(foundID, foundName) // Cache in background
+		return sql.NullInt64{Int64: int64(foundID), Valid: true}, true
 	}
 
 	if len(combinedIDs) > 1 {
-
+		// Check for a perfect match among online results
 		for id, name := range combinedIDs {
 			nameWithoutSlots := reSlotRemover.ReplaceAllString(name, " ")
 			nameWithoutSlots = strings.TrimSpace(nameWithoutSlots)
 
 			if name == cleanItemName || (nameWithoutSlots != "" && nameWithoutSlots == cleanItemName) {
-				if name == cleanItemName {
-					log.Printf("   [Item ID Search] Found perfect match (exact) '%s' (ID %d) within ONLINE results.", cleanItemName, id)
-				} else {
-					log.Printf("   [Item ID Search] Found perfect match (slot-stripped) '%s' (ID %d) within ONLINE results (Original: '%s').", cleanItemName, id, name)
-				}
-
-				go scrapeAndCacheItemIfNotExists(id, name)
-				return sql.NullInt64{Int64: int64(id), Valid: true}, nil
+				log.Printf("   [Item ID Search] Found perfect match (exact or slot-stripped) '%s' (ID %d) within ONLINE results.", cleanItemName, id)
+				go scrapeAndCacheItemIfNotExists(id, name) // Cache in background
+				return sql.NullInt64{Int64: int64(id), Valid: true}, true
 			}
 		}
 
+		// Fallback for cards: trust the first result
 		lowerCleanItemName := strings.ToLower(cleanItemName)
 		if strings.Contains(lowerCleanItemName, "card") || strings.Contains(lowerCleanItemName, "carta") {
 			var foundID int
@@ -2075,17 +2050,47 @@ func findItemIDByName(itemName string, allowRetry bool, slots int) (sql.NullInt6
 			for id, name := range combinedIDs {
 				foundID = id
 				foundName = name
-				break
+				break // Get the first one
 			}
 			log.Printf("   [Item ID Search] Found %d ONLINE matches for '%s'. Using first result (ID %d) due to 'card'/'carta' keyword.", len(combinedIDs), cleanItemName, foundID)
-
-			go scrapeAndCacheItemIfNotExists(foundID, foundName)
-			return sql.NullInt64{Int64: int64(foundID), Valid: true}, nil
+			go scrapeAndCacheItemIfNotExists(foundID, foundName) // Cache in background
+			return sql.NullInt64{Int64: int64(foundID), Valid: true}, true
 		}
 
 		log.Printf("   [Item ID Search] Found %d ambiguous ONLINE matches for '%s'. Not selecting.", len(combinedIDs), cleanItemName)
 	}
 
+	// No online matches or ambiguous matches
+	return sql.NullInt64{Valid: false}, false
+}
+
+// findItemIDByName orchestrates searching the cache and online for an item ID.
+func findItemIDByName(itemName string, allowRetry bool, slots int) (sql.NullInt64, error) {
+	// Clean the name
+	reRefine := regexp.MustCompile(`\s*\+\d+\s*`)
+	itemNameWithoutRefine := reRefine.ReplaceAllString(itemName, "")
+	itemNameWithoutRefine = strings.TrimSpace(itemNameWithoutRefine)
+	cleanItemName := sanitizeString(itemNameWithoutRefine, itemSanitizer)
+
+	if strings.TrimSpace(cleanItemName) == "" {
+		return sql.NullInt64{Valid: false}, nil
+	}
+	if strings.ToLower(cleanItemName) == "zeny" {
+		log.Printf("   [Item ID Search] Detected special item 'Zeny'. Skipping ID search.")
+		return sql.NullInt64{Valid: false}, nil
+	}
+
+	// 1. Try local FTS cache first
+	if itemID, found := findItemIDInCache(cleanItemName); found {
+		return itemID, nil
+	}
+
+	// 2. If not found, try online search
+	if itemID, found := findItemIDOnline(cleanItemName, slots); found {
+		return itemID, nil
+	}
+
+	// 3. Handle retry logic for "card" or "carta"
 	lowerCleanItemName := strings.ToLower(cleanItemName)
 	if allowRetry && (strings.Contains(lowerCleanItemName, "card") || strings.Contains(lowerCleanItemName, "carta")) {
 		newName := reCardRemover.ReplaceAllString(itemName, " ")
@@ -2093,12 +2098,12 @@ func findItemIDByName(itemName string, allowRetry bool, slots int) (sql.NullInt6
 
 		if newName != "" && newName != cleanItemName {
 			log.Printf("   [Item ID Search] No results for '%s'. Retrying search without 'card'/'carta' as: '%s'", cleanItemName, newName)
-
+			// Call recursively, but with allowRetry=false to prevent infinite loops
 			return findItemIDByName(newName, false, slots)
 		}
 	}
 
-	log.Printf("   [Item ID Search] Online search for '%s' returned no results or was ambiguous. Storing name only.", cleanItemName)
+	log.Printf("   [Item ID Search] All searches for '%s' returned no results or were ambiguous. Storing name only.", cleanItemName)
 	return sql.NullInt64{Valid: false}, nil
 }
 

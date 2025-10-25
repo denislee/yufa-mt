@@ -9,10 +9,7 @@ import (
 	"net"
 	"net/http"
 	"os"
-	"os/signal"
 	"strings"
-	"sync"
-	"syscall"
 	"time"
 
 	"github.com/joho/godotenv"
@@ -43,8 +40,69 @@ type pageViewLog struct {
 
 var pageViewChannel = make(chan pageViewLog, 1000)
 
-func startVisitorLogger(ctx context.Context, wg *sync.WaitGroup) {
-	defer wg.Done()
+// flushVisitorBatchToDB commits a batch of page views to the database.
+func flushVisitorBatchToDB(batch []pageViewLog) {
+	if len(batch) == 0 {
+		return
+	}
+
+	tx, err := db.Begin()
+	if err != nil {
+		log.Printf("❌ Visitor Logger: Failed to begin transaction: %v", err)
+		return
+	}
+	defer tx.Rollback() // Rollback on error
+
+	visitorStmt, err := tx.Prepare(`
+		INSERT INTO visitors (visitor_hash, first_visit, last_visit)
+		VALUES (?, ?, ?)
+		ON CONFLICT(visitor_hash) DO UPDATE SET
+			last_visit = excluded.last_visit;
+	`)
+	if err != nil {
+		log.Printf("❌ Visitor Logger: Failed to prepare visitor statement: %v", err)
+		return
+	}
+	defer visitorStmt.Close()
+
+	viewStmt, err := tx.Prepare(`
+		INSERT INTO page_views (visitor_hash, page_path, view_timestamp)
+		VALUES (?, ?, ?);
+	`)
+	if err != nil {
+		log.Printf("❌ Visitor Logger: Failed to prepare page_view statement: %v", err)
+		return
+	}
+	defer viewStmt.Close()
+
+	visitorsProcessed := make(map[string]bool)
+
+	for _, logEntry := range batch {
+		// Only upsert the visitor's 'last_visit' time once per batch
+		if !visitorsProcessed[logEntry.VisitorHash] {
+			_, err := visitorStmt.Exec(logEntry.VisitorHash, logEntry.Timestamp, logEntry.Timestamp)
+			if err != nil {
+				log.Printf("⚠️ Visitor Logger: Failed to exec visitor upsert: %v", err)
+			}
+			visitorsProcessed[logEntry.VisitorHash] = true
+		}
+
+		// Log the page view
+		_, err := viewStmt.Exec(logEntry.VisitorHash, logEntry.PageURI, logEntry.Timestamp)
+		if err != nil {
+			log.Printf("⚠️ Visitor Logger: Failed to exec page_view insert: %v", err)
+		}
+	}
+
+	if err := tx.Commit(); err != nil {
+		log.Printf("❌ Visitor Logger: Failed to commit batch: %v", err)
+	} else {
+		log.Printf("📝 Visitor Logger: Flushed %d page views to database.", len(batch))
+	}
+}
+
+// startVisitorLogger runs the main loop for batch-processing page views.
+func startVisitorLogger(ctx context.Context) {
 
 	var batch []pageViewLog
 	ticker := time.NewTicker(10 * time.Second)
@@ -52,91 +110,34 @@ func startVisitorLogger(ctx context.Context, wg *sync.WaitGroup) {
 
 	const batchSize = 100
 
-	flushBatch := func() {
-		if len(batch) == 0 {
-			return
-		}
-
-		tx, err := db.Begin()
-		if err != nil {
-			log.Printf("❌ Visitor Logger: Failed to begin transaction: %v", err)
-			return
-		}
-
-		visitorStmt, err := tx.Prepare(`
-			INSERT INTO visitors (visitor_hash, first_visit, last_visit)
-			VALUES (?, ?, ?)
-			ON CONFLICT(visitor_hash) DO UPDATE SET
-				last_visit = excluded.last_visit;
-		`)
-		if err != nil {
-			log.Printf("❌ Visitor Logger: Failed to prepare visitor statement: %v", err)
-			tx.Rollback()
-			return
-		}
-		defer visitorStmt.Close()
-
-		viewStmt, err := tx.Prepare(`
-			INSERT INTO page_views (visitor_hash, page_path, view_timestamp)
-			VALUES (?, ?, ?);
-		`)
-		if err != nil {
-			log.Printf("❌ Visitor Logger: Failed to prepare page_view statement: %v", err)
-			tx.Rollback()
-			return
-		}
-		defer viewStmt.Close()
-
-		visitorsProcessed := make(map[string]bool)
-
-		for _, logEntry := range batch {
-			if !visitorsProcessed[logEntry.VisitorHash] {
-				_, err := visitorStmt.Exec(logEntry.VisitorHash, logEntry.Timestamp, logEntry.Timestamp)
-				if err != nil {
-					log.Printf("⚠️ Visitor Logger: Failed to exec visitor upsert: %v", err)
-				}
-				visitorsProcessed[logEntry.VisitorHash] = true
-			}
-
-			_, err := viewStmt.Exec(logEntry.VisitorHash, logEntry.PageURI, logEntry.Timestamp)
-			if err != nil {
-				log.Printf("⚠️ Visitor Logger: Failed to exec page_view insert: %v", err)
-			}
-		}
-
-		if err := tx.Commit(); err != nil {
-			log.Printf("❌ Visitor Logger: Failed to commit batch: %v", err)
-
-		} else {
-			log.Printf("📝 Visitor Logger: Flushed %d page views to database.", len(batch))
-			batch = nil
-		}
-	}
-
 	for {
 		select {
 		case <-ctx.Done():
-
+			// This case will no longer be hit, but is harmless
 			log.Println("🔌 Visitor Logger: Shutdown signal received. Draining channel...")
-
+			// Drain the channel fully before final flush
 			for logEntry := range pageViewChannel {
 				batch = append(batch, logEntry)
 				if len(batch) >= batchSize {
-					flushBatch()
+					flushVisitorBatchToDB(batch)
+					batch = nil // Clear the batch
 				}
 			}
 			log.Println("🔌 Visitor Logger: Flushing final batch...")
-			flushBatch()
+			flushVisitorBatchToDB(batch)
 			log.Println("✅ Visitor Logger: Shut down gracefully.")
 			return
+
 		case logEntry := <-pageViewChannel:
 			batch = append(batch, logEntry)
 			if len(batch) >= batchSize {
-				flushBatch()
+				flushVisitorBatchToDB(batch)
+				batch = nil // Clear the batch
 			}
-		case <-ticker.C:
 
-			flushBatch()
+		case <-ticker.C:
+			flushVisitorBatchToDB(batch)
+			batch = nil // Clear the batch
 		}
 	}
 }
@@ -172,57 +173,39 @@ func main() {
 	}
 
 	var err error
-
 	db, err = initDB("./market_data.db")
 	if err != nil {
 		log.Fatalf("❌ Failed to initialize database: %v", err)
 	}
 	defer db.Close()
 
+	// Use the background context which never cancels.
 	ctx := context.Background()
 
-	var wg sync.WaitGroup
-
-	sigChan := make(chan os.Signal, 1)
-	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
-
-	go func() {
-		sig := <-sigChan
-		close(sigChan)
-		switch sig {
-		case syscall.SIGINT:
-			log.Println("🚨 CTRL+C (SIGINT) received. Forcing immediate shutdown...")
-			os.Exit(0)
-		case syscall.SIGTERM:
-			log.Println("🚨 SIGTERM received. Forcing immediate shutdown...")
-			os.Exit(0)
-		}
-	}()
-
+	// Admin Password
 	adminPass = generateRandomPassword(16)
-
-	err = os.WriteFile("pwd.txt", []byte(adminPass), 0644)
-	if err != nil {
+	if err := os.WriteFile("pwd.txt", []byte(adminPass), 0644); err != nil {
 		log.Printf("⚠️ Could not write admin password to file: %v", err)
 	} else {
 		log.Println("🔑 Admin password saved to pwd.txt")
 	}
 
 	go func() {
-		time.Sleep(5 * time.Second)
+		time.Sleep(5 * time.Second) // Give server time to start
 		log.Println("==================================================")
 		log.Printf("👤 Admin User: %s", adminUser)
 		log.Printf("🔑 Admin Pass: %s", adminPass)
 		log.Println("==================================================")
 	}()
 
+	// Start Background Services
 	go populateMissingCachesOnStartup()
-	go startBackgroundJobs()
+	go startBackgroundJobs(ctx) // Pass background context
 
-	wg.Add(2)
-	go startDiscordBot(ctx, &wg)
-	go startVisitorLogger(ctx, &wg)
+	go startDiscordBot(ctx)
+	go startVisitorLogger(ctx)
 
+	// --- Public Routes ---
 	http.HandleFunc("/", visitorTracker(summaryHandler))
 	http.HandleFunc("/full-list", visitorTracker(fullListHandler))
 	http.HandleFunc("/item", visitorTracker(itemHistoryHandler))
@@ -235,26 +218,29 @@ func main() {
 	http.HandleFunc("/character", visitorTracker(characterDetailHandler))
 	http.HandleFunc("/character-changelog", visitorTracker(characterChangelogHandler))
 	http.HandleFunc("/store", visitorTracker(storeDetailHandler))
-
 	http.HandleFunc("/discord", visitorTracker(tradingPostListHandler))
 
+	// --- Admin Dashboard & Tools ---
 	http.HandleFunc("/admin", basicAuth(adminHandler))
 	http.HandleFunc("/admin/parse-trade", basicAuth(adminParseTradeHandler))
 	http.HandleFunc("/admin/views/delete-visitor", basicAuth(adminDeleteVisitorViewsHandler))
+	http.HandleFunc("/admin/guild/update-emblem", basicAuth(adminUpdateGuildEmblemHandler))
+	http.HandleFunc("/admin/character/clear-last-active", basicAuth(adminClearLastActiveHandler))
+	http.HandleFunc("/admin/character/clear-mvp-kills", basicAuth(adminClearMvpKillsHandler))
+
+	// --- Admin RMS Cache Management ---
 	http.HandleFunc("/admin/cache", basicAuth(adminCacheActionHandler))
 	http.HandleFunc("/admin/cache/delete-entry", basicAuth(adminDeleteCacheEntryHandler))
 	http.HandleFunc("/admin/cache/save-entry", basicAuth(adminSaveCacheEntryHandler))
 
-	http.HandleFunc("/admin/guild/update-emblem", basicAuth(adminUpdateGuildEmblemHandler))
-	http.HandleFunc("/admin/character/clear-last-active", basicAuth(adminClearLastActiveHandler))
-	http.HandleFunc("/admin/character/clear-mvp-kills", basicAuth(adminClearMvpKillsHandler))
+	// --- Admin Trading Post Management ---
 	http.HandleFunc("/admin/trading-post/delete", basicAuth(adminDeleteTradingPostHandler))
 	http.HandleFunc("/admin/trading-post/edit", basicAuth(adminEditTradingPostHandler))
-
 	http.HandleFunc("/admin/trading-post/reparse", basicAuth(adminReparseTradingPostHandler))
 	http.HandleFunc("/admin/trading/clear-items", basicAuth(adminClearTradingPostItemsHandler))
 	http.HandleFunc("/admin/trading/clear-posts", basicAuth(adminClearTradingPostsHandler))
 
+	// --- Admin Manual Scrape Triggers ---
 	http.HandleFunc("/admin/scrape/market", basicAuth(adminTriggerScrapeHandler(scrapeData, "Market")))
 	http.HandleFunc("/admin/scrape/players", basicAuth(adminTriggerScrapeHandler(scrapeAndStorePlayerCount, "Player-Count")))
 	http.HandleFunc("/admin/scrape/characters", basicAuth(adminTriggerScrapeHandler(scrapePlayerCharacters, "Character")))
@@ -263,30 +249,14 @@ func main() {
 	http.HandleFunc("/admin/scrape/mvp", basicAuth(adminTriggerScrapeHandler(scrapeMvpKills, "MVP")))
 	http.HandleFunc("/admin/scrape/rms-cache", basicAuth(adminTriggerScrapeHandler(runFullRMSCacheJob, "RMS-Cache-Refresh")))
 
+	// --- Server Start and Shutdown ---
 	port := "8080"
 	server := &http.Server{Addr: ":" + port}
 
-	go func() {
-		log.Printf("🚀 Web server started. Open http://localhost:%s in your browser.", port)
-		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			log.Fatalf("❌ Failed to start web server: %v", err)
-		}
-	}()
-
-	<-ctx.Done()
-
-	log.Println("🔌 Shutting down HTTP server...")
-
-	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer shutdownCancel()
-
-	if err := server.Shutdown(shutdownCtx); err != nil {
-		log.Printf("⚠️ HTTP server shutdown error: %v", err)
-	} else {
-		log.Println("✅ HTTP server shut down gracefully.")
+	// Start server and block main goroutine.
+	// No graceful shutdown logic.
+	log.Printf("🚀 Web server started. Open http://localhost:%s in your browser.", port)
+	if err := server.ListenAndServe(); err != nil {
+		log.Fatalf("❌ Failed to start web server: %v", err)
 	}
-
-	log.Println("⏳ Waiting for background processes to shut down...")
-	wg.Wait()
-	log.Println("✅ All processes shut down cleanly. Exiting.")
 }

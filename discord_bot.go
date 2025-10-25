@@ -6,16 +6,13 @@ import (
 	"log"
 	"os"
 	"strings"
-	"sync"
 
 	"github.com/bwmarrin/discordgo"
 )
 
 var targetChannelIDs = make(map[string]struct{})
 
-func startDiscordBot(ctx context.Context, wg *sync.WaitGroup) {
-
-	defer wg.Done()
+func startDiscordBot(ctx context.Context) {
 
 	botToken := os.Getenv("DISCORD_BOT_TOKEN")
 
@@ -63,6 +60,8 @@ func startDiscordBot(ctx context.Context, wg *sync.WaitGroup) {
 
 	log.Println("🤖 [Discord Bot] Bot is running. Waiting for shutdown signal from main app...")
 
+	// Block forever, as the context will never be canceled.
+	// This keeps the goroutine alive and the bot connected.
 	<-ctx.Done()
 
 	log.Println("🔌 [Discord Bot] Shutdown signal received. Closing Discord connection...")
