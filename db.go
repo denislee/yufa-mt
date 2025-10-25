@@ -10,6 +10,184 @@ import (
 
 var db *sql.DB
 
+const (
+	createItemsTableSQL = `
+	CREATE TABLE IF NOT EXISTS items (
+		"id" INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+		"name_of_the_item" TEXT,
+		"item_id" INTEGER,
+		"quantity" INTEGER,
+		"price" TEXT,
+		"store_name" TEXT,
+		"seller_name" TEXT,
+		"date_and_time_retrieved" TEXT,
+		"map_name" TEXT,
+		"map_coordinates" TEXT,
+		"is_available" INTEGER DEFAULT 1
+	);`
+
+	createEventsTableSQL = `
+	CREATE TABLE IF NOT EXISTS market_events (
+		"id" INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+		"event_timestamp" TEXT NOT NULL,
+		"event_type" TEXT NOT NULL,
+		"item_name" TEXT NOT NULL,
+		"item_id" INTEGER,
+		"details" TEXT
+	);`
+
+	createHistoryTableSQL = `
+	CREATE TABLE IF NOT EXISTS scrape_history (
+		"timestamp" TEXT NOT NULL PRIMARY KEY
+	);`
+
+	createRMSCacheTableSQL = `
+	CREATE TABLE IF NOT EXISTS rms_item_cache (
+		"item_id" INTEGER NOT NULL PRIMARY KEY,
+		"name" TEXT,
+		"name_pt" TEXT,
+		"image_url" TEXT,
+		"item_type" TEXT,
+		"item_class" TEXT,
+		"buy" TEXT,
+		"sell" TEXT,
+		"weight" TEXT,
+		"prefix" TEXT,
+		"description" TEXT,
+		"script" TEXT,
+		"dropped_by_json" TEXT,
+		"obtainable_from_json" TEXT,
+		"last_checked" TEXT
+	);`
+
+	createRMSFTSSTableSQL = `
+	CREATE VIRTUAL TABLE IF NOT EXISTS rms_item_cache_fts USING fts5(
+		name, 
+		name_pt, 
+		content='rms_item_cache', 
+		content_rowid='item_id'
+	);`
+
+	createTriggersSQL = `
+	CREATE TRIGGER IF NOT EXISTS rms_item_cache_ai AFTER INSERT ON rms_item_cache BEGIN
+		INSERT INTO rms_item_cache_fts(rowid, name, name_pt) 
+		VALUES (new.item_id, new.name, new.name_pt);
+	END;
+	CREATE TRIGGER IF NOT EXISTS rms_item_cache_ad AFTER DELETE ON rms_item_cache BEGIN
+		INSERT INTO rms_item_cache_fts(rms_item_cache_fts, rowid, name, name_pt) 
+		VALUES ('delete', old.item_id, old.name, old.name_pt);
+	END;
+	CREATE TRIGGER IF NOT EXISTS rms_item_cache_au AFTER UPDATE ON rms_item_cache BEGIN
+		INSERT INTO rms_item_cache_fts(rms_item_cache_fts, rowid, name, name_pt) 
+		VALUES ('delete', old.item_id, old.name, old.name_pt);
+		INSERT INTO rms_item_cache_fts(rowid, name, name_pt) 
+		VALUES (new.item_id, new.name, new.name_pt);
+	END;
+	`
+
+	createPlayerHistoryTableSQL = `
+	CREATE TABLE IF NOT EXISTS player_history (
+		"timestamp" TEXT NOT NULL PRIMARY KEY,
+		"count" INTEGER NOT NULL,
+		"seller_count" INTEGER
+	);`
+
+	createGuildsTableSQL = `
+	CREATE TABLE IF NOT EXISTS guilds (
+		"rank" INTEGER NOT NULL,
+		"name" TEXT NOT NULL PRIMARY KEY,
+		"level" INTEGER NOT NULL,
+		"experience" INTEGER NOT NULL,
+		"master" TEXT NOT NULL,
+		"emblem_url" TEXT,
+		"last_updated" TEXT NOT NULL
+	);`
+
+	createCharactersTableSQL = `
+	CREATE TABLE IF NOT EXISTS characters (
+		"rank" INTEGER NOT NULL,
+		"name" TEXT NOT NULL PRIMARY KEY,
+		"base_level" INTEGER NOT NULL,
+		"job_level" INTEGER NOT NULL,
+		"experience" REAL NOT NULL,
+		"class" TEXT NOT NULL,
+		"guild_name" TEXT,
+		"last_updated" TEXT NOT NULL,
+		"last_active" TEXT NOT NULL,
+		FOREIGN KEY(guild_name) REFERENCES guilds(name) ON DELETE SET NULL ON UPDATE CASCADE
+	);`
+
+	createChangelogTableSQL = `
+	CREATE TABLE IF NOT EXISTS character_changelog (
+		"id" INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+		"character_name" TEXT NOT NULL,
+		"change_time" TEXT NOT NULL,
+		"activity_description" TEXT NOT NULL,
+		FOREIGN KEY(character_name) REFERENCES characters(name) ON DELETE CASCADE ON UPDATE CASCADE
+	);`
+
+	createChangelogViewSQL = `
+	CREATE VIEW IF NOT EXISTS v_character_changelog AS
+		SELECT
+			id,
+			character_name,
+			change_time,
+			activity_description
+		FROM
+			character_changelog
+		ORDER BY
+			change_time DESC;`
+
+	createVisitorsTableSQL = `
+	CREATE TABLE IF NOT EXISTS visitors (
+		"visitor_hash" TEXT NOT NULL PRIMARY KEY,
+		"first_visit" TEXT NOT NULL,
+		"last_visit" TEXT NOT NULL
+	);`
+
+	createPageViewsTableSQL = `
+	CREATE TABLE IF NOT EXISTS page_views (
+		"id" INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+		"visitor_hash" TEXT NOT NULL,
+		"page_path" TEXT NOT NULL,
+		"view_timestamp" TEXT NOT NULL
+	);`
+
+	createPageIndexSQL = `
+	CREATE INDEX IF NOT EXISTS idx_page_path ON page_views (page_path);`
+
+	createTradingPostsTableSQL = `
+	CREATE TABLE IF NOT EXISTS trading_posts (
+		"id" INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+		"title" TEXT NOT NULL,
+		"post_type" TEXT NOT NULL, -- 'buying' or 'selling'
+		"character_name" TEXT NOT NULL,
+		"contact_info" TEXT,
+		"notes" TEXT,
+		"created_at" TEXT NOT NULL,
+		"edit_token_hash" TEXT NOT NULL
+	);`
+
+	createTradingPostItemsTableSQL = `
+	CREATE TABLE IF NOT EXISTS trading_post_items (
+		"id" INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+		"post_id" INTEGER NOT NULL,
+		"item_name" TEXT NOT NULL,
+		"item_id" INTEGER,
+		"quantity" INTEGER NOT NULL,
+		"price_zeny" INTEGER NOT NULL DEFAULT 0,
+		"price_rmt" INTEGER NOT NULL DEFAULT 0,
+		"payment_methods" TEXT NOT NULL DEFAULT 'zeny',
+		"refinement" INTEGER NOT NULL DEFAULT 0,
+		"slots" INTEGER NOT NULL DEFAULT 0,
+		"card1" TEXT,
+		"card2" TEXT,
+		"card3" TEXT,
+		"card4" TEXT,
+		FOREIGN KEY(post_id) REFERENCES trading_posts(id) ON DELETE CASCADE
+	);`
+)
+
 func applyMigrations(db *sql.DB) error {
 
 	rows, err := db.Query("PRAGMA table_info(characters);")
@@ -55,147 +233,37 @@ func initDB(filepath string) (*sql.DB, error) {
 		return nil, err
 	}
 
-	createItemsTableSQL := `
-	CREATE TABLE IF NOT EXISTS items (
-		"id" INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
-		"name_of_the_item" TEXT,
-		"item_id" INTEGER,
-		"quantity" INTEGER,
-		"price" TEXT,
-		"store_name" TEXT,
-		"seller_name" TEXT,
-		"date_and_time_retrieved" TEXT,
-		"map_name" TEXT,
-		"map_coordinates" TEXT,
-		"is_available" INTEGER DEFAULT 1
-	);`
-	if _, err = db.Exec(createItemsTableSQL); err != nil {
-		return nil, fmt.Errorf("could not create items table: %w", err)
+	// Sequentially execute all table creation queries
+	queries := map[string]string{
+		"items":                 createItemsTableSQL,
+		"market_events":         createEventsTableSQL,
+		"scrape_history":        createHistoryTableSQL,
+		"rms_item_cache":        createRMSCacheTableSQL,
+		"rms_item_cache_fts":    createRMSFTSSTableSQL,
+		"FTS triggers":          createTriggersSQL,
+		"player_history":        createPlayerHistoryTableSQL,
+		"guilds":                createGuildsTableSQL,
+		"characters":            createCharactersTableSQL,
+		"character_changelog":   createChangelogTableSQL,
+		"v_character_changelog": createChangelogViewSQL,
+		"visitors":              createVisitorsTableSQL,
+		"page_views":            createPageViewsTableSQL,
+		"idx_page_path":         createPageIndexSQL,
+		"trading_posts":         createTradingPostsTableSQL,
+		"trading_post_items":    createTradingPostItemsTableSQL,
 	}
 
-	createEventsTableSQL := `
-	CREATE TABLE IF NOT EXISTS market_events (
-		"id" INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
-		"event_timestamp" TEXT NOT NULL,
-		"event_type" TEXT NOT NULL,
-		"item_name" TEXT NOT NULL,
-		"item_id" INTEGER,
-		"details" TEXT
-	);`
-	if _, err = db.Exec(createEventsTableSQL); err != nil {
-		return nil, fmt.Errorf("could not create market_events table: %w", err)
+	for name, query := range queries {
+		if _, err = db.Exec(query); err != nil {
+			return nil, fmt.Errorf("could not create table/view '%s': %w", name, err)
+		}
 	}
 
-	createHistoryTableSQL := `
-	CREATE TABLE IF NOT EXISTS scrape_history (
-		"timestamp" TEXT NOT NULL PRIMARY KEY
-	);`
-	if _, err = db.Exec(createHistoryTableSQL); err != nil {
-		return nil, fmt.Errorf("could not create scrape_history table: %w", err)
-	}
-
-	createRMSCacheTableSQL := `
-	CREATE TABLE IF NOT EXISTS rms_item_cache (
-		"item_id" INTEGER NOT NULL PRIMARY KEY,
-		"name" TEXT,
-		"name_pt" TEXT,
-		"image_url" TEXT,
-		"item_type" TEXT,
-		"item_class" TEXT,
-		"buy" TEXT,
-		"sell" TEXT,
-		"weight" TEXT,
-		"prefix" TEXT,
-		"description" TEXT,
-		"script" TEXT,
-		"dropped_by_json" TEXT,
-		"obtainable_from_json" TEXT,
-		"last_checked" TEXT
-	);`
-	if _, err = db.Exec(createRMSCacheTableSQL); err != nil {
-		return nil, fmt.Errorf("could not create rms_item_cache table: %w", err)
-	}
-
-	createRMSFTSSTableSQL := `
-	CREATE VIRTUAL TABLE IF NOT EXISTS rms_item_cache_fts USING fts5(
-		name, 
-		name_pt, 
-		content='rms_item_cache', 
-		content_rowid='item_id'
-	);`
-	if _, err = db.Exec(createRMSFTSSTableSQL); err != nil {
-		return nil, fmt.Errorf("could not create rms_item_cache_fts table: %w", err)
-	}
-
-	createTriggersSQL := `
-	CREATE TRIGGER IF NOT EXISTS rms_item_cache_ai AFTER INSERT ON rms_item_cache BEGIN
-		INSERT INTO rms_item_cache_fts(rowid, name, name_pt) 
-		VALUES (new.item_id, new.name, new.name_pt);
-	END;
-	CREATE TRIGGER IF NOT EXISTS rms_item_cache_ad AFTER DELETE ON rms_item_cache BEGIN
-		INSERT INTO rms_item_cache_fts(rms_item_cache_fts, rowid, name, name_pt) 
-		VALUES ('delete', old.item_id, old.name, old.name_pt);
-	END;
-	CREATE TRIGGER IF NOT EXISTS rms_item_cache_au AFTER UPDATE ON rms_item_cache BEGIN
-		INSERT INTO rms_item_cache_fts(rms_item_cache_fts, rowid, name, name_pt) 
-		VALUES ('delete', old.item_id, old.name, old.name_pt);
-		INSERT INTO rms_item_cache_fts(rowid, name, name_pt) 
-		VALUES (new.item_id, new.name, new.name_pt);
-	END;
-	`
-	if _, err = db.Exec(createTriggersSQL); err != nil {
-		return nil, fmt.Errorf("could not create FTS triggers: %w", err)
-	}
-
-	createPlayerHistoryTableSQL := `
-	CREATE TABLE IF NOT EXISTS player_history (
-		"timestamp" TEXT NOT NULL PRIMARY KEY,
-		"count" INTEGER NOT NULL,
-		"seller_count" INTEGER
-	);`
-	if _, err = db.Exec(createPlayerHistoryTableSQL); err != nil {
-		return nil, fmt.Errorf("could not create player_history table: %w", err)
-	}
-
-	createGuildsTableSQL := `
-	CREATE TABLE IF NOT EXISTS guilds (
-		"rank" INTEGER NOT NULL,
-		"name" TEXT NOT NULL PRIMARY KEY,
-		"level" INTEGER NOT NULL,
-		"experience" INTEGER NOT NULL,
-		"master" TEXT NOT NULL,
-		"emblem_url" TEXT,
-		"last_updated" TEXT NOT NULL
-	);`
-	if _, err = db.Exec(createGuildsTableSQL); err != nil {
-		return nil, fmt.Errorf("could not create guilds table: %w", err)
-	}
-
-	createCharactersTableSQL := `
-	CREATE TABLE IF NOT EXISTS characters (
-		"rank" INTEGER NOT NULL,
-		"name" TEXT NOT NULL PRIMARY KEY,
-		"base_level" INTEGER NOT NULL,
-		"job_level" INTEGER NOT NULL,
-		"experience" REAL NOT NULL,
-		"class" TEXT NOT NULL,
-		"guild_name" TEXT,
-		"last_updated" TEXT NOT NULL,
-		"last_active" TEXT NOT NULL,
-		FOREIGN KEY(guild_name) REFERENCES guilds(name) ON DELETE SET NULL ON UPDATE CASCADE
-	);`
-	if _, err = db.Exec(createCharactersTableSQL); err != nil {
-		return nil, fmt.Errorf("could not create characters table: %w", err)
-	}
-
-	mvpMobIDsDb := []string{
-		"1038", "1039", "1046", "1059", "1086", "1087", "1112", "1115", "1147",
-		"1150", "1157", "1159", "1190", "1251", "1252", "1272", "1312", "1373",
-		"1389", "1418", "1492", "1511",
-	}
+	// --- Dynamic Table Creation (MVP Kills) ---
+	// Use the new centralized mvpMobIDs variable from models.go
 	var mvpColumns []string
 	mvpColumns = append(mvpColumns, `"character_name" TEXT NOT NULL PRIMARY KEY`)
-	for _, mobID := range mvpMobIDsDb {
+	for _, mobID := range mvpMobIDs {
 		mvpColumns = append(mvpColumns, fmt.Sprintf(`"mvp_%s" INTEGER NOT NULL DEFAULT 0`, mobID))
 	}
 
@@ -209,94 +277,7 @@ func initDB(filepath string) (*sql.DB, error) {
 		return nil, fmt.Errorf("could not create character_mvp_kills table: %w", err)
 	}
 
-	createChangelogTableSQL := `CREATE TABLE IF NOT EXISTS character_changelog (
-		"id" INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
-		"character_name" TEXT NOT NULL,
-		"change_time" TEXT NOT NULL,
-		"activity_description" TEXT NOT NULL,
-		FOREIGN KEY(character_name) REFERENCES characters(name) ON DELETE CASCADE ON UPDATE CASCADE
-	);`
-	if _, err = db.Exec(createChangelogTableSQL); err != nil {
-		return nil, fmt.Errorf("could not create character_changelog table: %w", err)
-	}
-
-	createChangelogViewSQL := `CREATE VIEW IF NOT EXISTS v_character_changelog AS
-		SELECT
-			id,
-			character_name,
-			change_time,
-			activity_description
-		FROM
-			character_changelog
-		ORDER BY
-			change_time DESC;`
-	if _, err = db.Exec(createChangelogViewSQL); err != nil {
-		return nil, fmt.Errorf("could not create v_character_changelog view: %w", err)
-	}
-
-	createVisitorsTableSQL := `
-	CREATE TABLE IF NOT EXISTS visitors (
-		"visitor_hash" TEXT NOT NULL PRIMARY KEY,
-		"first_visit" TEXT NOT NULL,
-		"last_visit" TEXT NOT NULL
-	);`
-	if _, err = db.Exec(createVisitorsTableSQL); err != nil {
-		return nil, fmt.Errorf("could not create visitors table: %w", err)
-	}
-
-	createPageViewsTableSQL := `
-	CREATE TABLE IF NOT EXISTS page_views (
-		"id" INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
-		"visitor_hash" TEXT NOT NULL,
-		"page_path" TEXT NOT NULL,
-		"view_timestamp" TEXT NOT NULL
-	);`
-	if _, err = db.Exec(createPageViewsTableSQL); err != nil {
-		return nil, fmt.Errorf("could not create page_views table: %w", err)
-	}
-
-	createPageIndexSQL := `CREATE INDEX IF NOT EXISTS idx_page_path ON page_views (page_path);`
-	if _, err = db.Exec(createPageIndexSQL); err != nil {
-		return nil, fmt.Errorf("could not create index on page_views: %w", err)
-	}
-
-	createTradingPostsTableSQL := `
-CREATE TABLE IF NOT EXISTS trading_posts (
-    "id" INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
-    "title" TEXT NOT NULL,
-    "post_type" TEXT NOT NULL, -- 'buying' or 'selling'
-    "character_name" TEXT NOT NULL,
-    "contact_info" TEXT,
-    "notes" TEXT,
-    "created_at" TEXT NOT NULL,
-    "edit_token_hash" TEXT NOT NULL
-);`
-	if _, err = db.Exec(createTradingPostsTableSQL); err != nil {
-		return nil, fmt.Errorf("could not create trading_posts table: %w", err)
-	}
-
-	createTradingPostItemsTableSQL := `
-CREATE TABLE IF NOT EXISTS trading_post_items (
-    "id" INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
-    "post_id" INTEGER NOT NULL,
-    "item_name" TEXT NOT NULL,
-    "item_id" INTEGER,
-    "quantity" INTEGER NOT NULL,
-    "price_zeny" INTEGER NOT NULL DEFAULT 0,
-    "price_rmt" INTEGER NOT NULL DEFAULT 0,
-    "payment_methods" TEXT NOT NULL DEFAULT 'zeny',
-    "refinement" INTEGER NOT NULL DEFAULT 0,
-    "slots" INTEGER NOT NULL DEFAULT 0,
-    "card1" TEXT,
-    "card2" TEXT,
-    "card3" TEXT,
-    "card4" TEXT,
-    FOREIGN KEY(post_id) REFERENCES trading_posts(id) ON DELETE CASCADE
-);`
-	if _, err = db.Exec(createTradingPostItemsTableSQL); err != nil {
-		return nil, fmt.Errorf("could not create trading_post_items table: %w", err)
-	}
-
+	// --- Migrations ---
 	if err := applyMigrations(db); err != nil {
 		return nil, err
 	}

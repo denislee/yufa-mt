@@ -13,9 +13,7 @@ import (
 var targetChannelIDs = make(map[string]struct{})
 
 func startDiscordBot(ctx context.Context) {
-
 	botToken := os.Getenv("DISCORD_BOT_TOKEN")
-
 	channelIDsStr := os.Getenv("DISCORD_CHANNEL_IDS")
 
 	if botToken == "" {
@@ -27,15 +25,14 @@ func startDiscordBot(ctx context.Context) {
 		return
 	}
 
+	// ... (channel ID parsing is unchanged) ...
 	channelIDs := strings.Split(channelIDsStr, ",")
-
 	for _, id := range channelIDs {
 		trimmedID := strings.TrimSpace(id)
 		if trimmedID != "" {
 			targetChannelIDs[trimmedID] = struct{}{}
 		}
 	}
-
 	if len(targetChannelIDs) == 0 {
 		log.Println("⚠️ [Discord Bot] No valid channel IDs found in DISCORD_CHANNEL_IDS. Bot will not start.")
 		return
@@ -46,7 +43,6 @@ func startDiscordBot(ctx context.Context) {
 		log.Printf("❌ [Discord Bot] Error creating Discord session: %v", err)
 		return
 	}
-	defer dg.Close()
 
 	dg.AddHandler(ready)
 	dg.AddHandler(messageCreate)
@@ -58,25 +54,23 @@ func startDiscordBot(ctx context.Context) {
 		return
 	}
 
-	log.Println("🤖 [Discord Bot] Bot is running. Waiting for shutdown signal from main app...")
+	log.Println("🤖 [Discord Bot] Bot is running. Waiting for shutdown signal...")
 
-	// Block forever, as the context will never be canceled.
-	// This keeps the goroutine alive and the bot connected.
+	// Wait for the shutdown signal from the main app's context
 	<-ctx.Done()
 
 	log.Println("🔌 [Discord Bot] Shutdown signal received. Closing Discord connection...")
+	if err := dg.Close(); err != nil {
+		log.Printf("⚠️ [Discord Bot] Error while closing Discord session: %v", err)
+	} else {
+		log.Println("✅ [Discord Bot] Discord connection closed gracefully.")
+	}
 }
 
 func ready(s *discordgo.Session, event *discordgo.Ready) {
 	log.Println("✅ [Discord Bot] Bot is connected and ready!")
-	log.Printf("   -> Logged in as: %v#%v", s.State.User.Username, s.State.User.Discriminator)
-	log.Printf("   -> Bot User ID: %s", s.State.User.ID)
-
-	var listeningIDs []string
-	for id := range targetChannelIDs {
-		listeningIDs = append(listeningIDs, id)
-	}
-	log.Printf("   -> Listening on %d Channel(s): %s", len(targetChannelIDs), strings.Join(listeningIDs, ", "))
+	log.Printf("   -> Logged in as: %s", event.User.String())
+	log.Printf("   -> Listening on %d channel(s).", len(targetChannelIDs))
 }
 
 func messageCreate(s *discordgo.Session, m *discordgo.MessageCreate) {

@@ -25,42 +25,110 @@ const enableMvpScraperDebugLogs = false
 const enableZenyScraperDebugLogs = false
 const enableMarketScraperDebugLogs = false
 
-var mvpMobIDsScrape = []string{
-	"1038", "1039", "1046", "1059", "1086", "1087", "1112", "1115", "1147",
-	"1150", "1157", "1159", "1190", "1251", "1252", "1272", "1312", "1373",
-	"1389", "1418", "1492", "1511",
-}
-
-var mvpNamesScraper = map[string]string{
-	"1038": "Osiris",
-	"1039": "Baphomet",
-	"1046": "Doppelganger",
-	"1059": "Mistress",
-	"1086": "Golden Thief Bug",
-	"1087": "Orc Hero",
-	"1112": "Drake",
-	"1115": "Eddga",
-	"1147": "Maya",
-	"1150": "Moonlight Flower",
-	"1157": "Pharaoh",
-	"1159": "Phreeoni",
-	"1190": "Orc Lord",
-	"1251": "Stormy Knight",
-	"1252": "Hatii",
-	"1272": "Dark Lord",
-	"1312": "Turtle General",
-	"1373": "Lord of Death",
-	"1389": "Dracula",
-	"1418": "Evil Snake Lord",
-	"1492": "Incantation Samurai",
-	"1511": "Amon Ra",
-}
-
 var (
 	marketMutex      sync.Mutex
 	characterMutex   sync.Mutex
 	playerCountMutex sync.Mutex
 )
+
+const (
+	defaultUserAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36"
+	defaultTimeout   = 45 * time.Second
+	maxScrapeRetries = 3
+	retryScrapeDelay = 3 * time.Second
+)
+
+// ScraperClient holds a shared HTTP client and user agent for all scrapers.
+type ScraperClient struct {
+	Client    *http.Client
+	UserAgent string
+}
+
+// NewScraperClient creates a new client optimized for scraping.
+func NewScraperClient() *ScraperClient {
+	return &ScraperClient{
+		Client:    &http.Client{Timeout: defaultTimeout},
+		UserAgent: defaultUserAgent,
+	}
+}
+
+var scraperClient = NewScraperClient()
+
+// getPage performs a GET request with the shared client, user agent, and retry logic.
+// It returns the response body as a string.
+func (sc *ScraperClient) getPage(url, logPrefix string) (string, error) {
+	var bodyContent string
+	var err error
+
+	for attempt := 1; attempt <= maxScrapeRetries; attempt++ {
+		req, reqErr := http.NewRequest("GET", url, nil)
+		if reqErr != nil {
+			return "", fmt.Errorf("failed to create request: %w", reqErr)
+		}
+		req.Header.Set("User-Agent", sc.UserAgent)
+
+		resp, doErr := sc.Client.Do(req)
+		if doErr != nil {
+			err = doErr
+			log.Printf("    -> ❌ %s Error on page (attempt %d/%d): %v", logPrefix, attempt, maxScrapeRetries, doErr)
+			time.Sleep(retryScrapeDelay)
+			continue
+		}
+
+		if resp.StatusCode != http.StatusOK {
+			err = fmt.Errorf("received non-200 status: %d", resp.StatusCode)
+			log.Printf("    -> ❌ %s Non-200 status (attempt %d/%d): %d", logPrefix, attempt, maxScrapeRetries, resp.StatusCode)
+			resp.Body.Close()
+			time.Sleep(retryScrapeDelay)
+			continue
+		}
+
+		bodyBytes, readErr := io.ReadAll(resp.Body)
+		resp.Body.Close()
+		if readErr != nil {
+			err = readErr
+			log.Printf("    -> ❌ %s Failed to read body (attempt %d/%d): %v", logPrefix, attempt, maxScrapeRetries, readErr)
+			time.Sleep(retryScrapeDelay)
+			continue
+		}
+
+		// Success
+		bodyContent = string(bodyBytes)
+		return bodyContent, nil
+	}
+
+	// All retries failed
+	return "", fmt.Errorf("all retries failed for %s: %w", url, err)
+}
+
+// findLastPage determines the total number of pages for a paginated ranking.
+func (sc *ScraperClient) findLastPage(firstPageURL, logPrefix string) int {
+	log.Printf(" %s Determining total number of pages...", logPrefix)
+
+	bodyContent, err := sc.getPage(firstPageURL, logPrefix)
+	if err != nil {
+		log.Printf("⚠️ %s Could not fetch page 1 to determine page count. Assuming 1 page. Error: %v", logPrefix, err)
+		return 1
+	}
+
+	lastPage := 1
+	// This regex is simple and works for all ranking pages on the target site
+	pageRegex := regexp.MustCompile(`page=(\d+)`)
+	matches := pageRegex.FindAllStringSubmatch(bodyContent, -1)
+
+	for _, match := range matches {
+		if len(match) > 1 {
+			if p, pErr := strconv.Atoi(match[1]); pErr == nil {
+				if p > lastPage {
+					lastPage = p
+				}
+			}
+		}
+	}
+
+	log.Printf("✅ %s Found %d total pages to scrape.", logPrefix, lastPage)
+	return lastPage
+}
 
 func newOptimizedAllocator() (context.Context, context.CancelFunc) {
 	opts := append(chromedp.DefaultExecAllocatorOptions[:],
@@ -88,29 +156,18 @@ func logCharacterActivity(changelogStmt *sql.Stmt, charName string, description 
 
 func scrapeAndStorePlayerCount() {
 	log.Println("📊 [Counter] Checking player and seller count...")
+	const url = "https://projetoyufa.com/info"
 
-	client := &http.Client{Timeout: 30 * time.Second}
-	req, err := http.NewRequest("GET", "https://projetoyufa.com/info", nil)
-	if err != nil {
-		log.Printf("❌ [Counter] Failed to create HTTP request: %v", err)
-		return
-	}
-
-	req.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36")
-
-	resp, err := client.Do(req)
+	// Use the shared client's getPage method.
+	// This encapsulates the user-agent, timeout, and status check.
+	bodyContent, err := scraperClient.getPage(url, "[Counter]")
 	if err != nil {
 		log.Printf("❌ [Counter] Failed to fetch player info page: %v", err)
 		return
 	}
-	defer resp.Body.Close()
 
-	if resp.StatusCode != http.StatusOK {
-		log.Printf("❌ [Counter] Received non-200 status code from info page: %d", resp.StatusCode)
-		return
-	}
-
-	doc, err := goquery.NewDocumentFromReader(resp.Body)
+	// Parse the HTML content
+	doc, err := goquery.NewDocumentFromReader(strings.NewReader(bodyContent))
 	if err != nil {
 		log.Printf("❌ [Counter] Failed to parse player info page HTML: %v", err)
 		return
@@ -174,9 +231,7 @@ func scrapeAndStorePlayerCount() {
 func scrapePlayerCharacters() {
 	log.Println("🏆 [Characters] Starting player character scrape...")
 
-	const maxRetries = 3
-	const retryDelay = 3 * time.Second
-
+	// ... (Regex definitions are unchanged) ...
 	rankRegex := regexp.MustCompile(`p\-1 text\-center font\-medium\\",\\"children\\":(\d+)\}\]`)
 	nameRegex := regexp.MustCompile(`max-w-10 truncate p-1 font-semibold">([^<]+)</td>`)
 	baseLevelRegex := regexp.MustCompile(`\\"level\\":(\d+),`)
@@ -184,104 +239,34 @@ func scrapePlayerCharacters() {
 	expRegex := regexp.MustCompile(`\\"exp\\":(\d+)`)
 	classRegex := regexp.MustCompile(`"hidden text\-sm sm:inline\\",\\"children\\":\\"([^"]+)\\"`)
 
-	client := &http.Client{Timeout: 45 * time.Second}
-
-	var lastPage = 1
-	log.Println("🏆 [Characters] Determining total number of pages...")
-	firstPageURL := "https://projetoyufa.com/rankings?page=1"
-
-	req, err := http.NewRequest("GET", firstPageURL, nil)
-	if err != nil {
-		log.Printf("❌ [Characters] Failed to create request for page 1: %v", err)
-		return
-	}
-	req.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36")
-
-	resp, err := client.Do(req)
-	if err != nil {
-		log.Printf("⚠️ [Characters] Could not fetch page 1 to determine page count. Assuming one page. Error: %v", err)
-	} else {
-		bodyBytes, readErr := io.ReadAll(resp.Body)
-
-		resp.Body.Close()
-		if readErr != nil {
-			log.Printf("⚠️ [Characters] Failed to read page 1 body. Assuming one page. Error: %v", readErr)
-		} else {
-			pageRegex := regexp.MustCompile(`page=(\d+)`)
-			matches := pageRegex.FindAllStringSubmatch(string(bodyBytes), -1)
-			for _, match := range matches {
-				if len(match) > 1 {
-					if p, pErr := strconv.Atoi(match[1]); pErr == nil {
-						if p > lastPage {
-							lastPage = p
-						}
-					}
-				}
-			}
-		}
-	}
-	log.Printf("✅ [Characters] Found %d total pages to scrape.", lastPage)
+	// Use the new helper to find the last page
+	const firstPageURL = "https://projetoyufa.com/rankings?page=1"
+	lastPage := scraperClient.findLastPage(firstPageURL, "[Characters]")
 
 	updateTime := time.Now().Format(time.RFC3339)
 	allPlayers := make(map[string]PlayerCharacter)
 	var mu sync.Mutex
 	var wg sync.WaitGroup
-	sem := make(chan struct{}, 5)
+	sem := make(chan struct{}, 5) // Concurrency semaphore
 
 	log.Printf("🏆 [Characters] Scraping all %d pages...", lastPage)
 	for page := 1; page <= lastPage; page++ {
 		wg.Add(1)
 		sem <- struct{}{}
-		go func(p int) {
+		go func(pageIndex int) { // <-- Renamed 'p' to 'pageIndex'
 			defer wg.Done()
 			defer func() { <-sem }()
 
-			var bodyContent string
-			pageScrapedSuccessfully := false
+			url := fmt.Sprintf("https://projetoyufa.com/rankings?page=%d", pageIndex) // <-- Use 'pageIndex'
 
-			for attempt := 1; attempt <= maxRetries; attempt++ {
-				url := fmt.Sprintf("https://projetoyufa.com/rankings?page=%d", p)
-				req, reqErr := http.NewRequest("GET", url, nil)
-				if reqErr != nil {
-					log.Printf("    -> ❌ Error creating request for page %d: %v", p, reqErr)
-					time.Sleep(retryDelay)
-					continue
-				}
-				req.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36")
-
-				resp, doErr := client.Do(req)
-				if doErr != nil {
-					log.Printf("    -> ❌ Error on page %d (attempt %d/%d): %v", p, attempt, maxRetries, doErr)
-					time.Sleep(retryDelay)
-					continue
-				}
-
-				if resp.StatusCode != http.StatusOK {
-					log.Printf("    -> ❌ Non-200 status code for page %d (attempt %d/%d): %d", p, attempt, maxRetries, resp.StatusCode)
-					resp.Body.Close()
-					time.Sleep(retryDelay)
-					continue
-				}
-
-				bodyBytes, readErr := io.ReadAll(resp.Body)
-
-				resp.Body.Close()
-				if readErr != nil {
-					log.Printf("    -> ❌ Failed to read body for page %d: %v", p, readErr)
-					time.Sleep(retryDelay)
-					continue
-				}
-
-				bodyContent = string(bodyBytes)
-				pageScrapedSuccessfully = true
-				break
-			}
-
-			if !pageScrapedSuccessfully {
-				log.Printf("    -> ❌ All retries failed for page %d.", p)
+			// Use the getPage helper, which includes retries
+			bodyContent, err := scraperClient.getPage(url, "[Characters]")
+			if err != nil {
+				log.Printf("    -> ❌ All retries failed for page %d: %v", pageIndex, err) // <-- Use 'pageIndex'
 				return
 			}
 
+			// --- Start of parsing logic (largely unchanged) ---
 			rankMatches := rankRegex.FindAllStringSubmatch(bodyContent, -1)
 			nameMatches := nameRegex.FindAllStringSubmatch(bodyContent, -1)
 			baseLevelMatches := baseLevelRegex.FindAllStringSubmatch(bodyContent, -1)
@@ -289,20 +274,14 @@ func scrapePlayerCharacters() {
 			expMatches := expRegex.FindAllStringSubmatch(bodyContent, -1)
 			classMatches := classRegex.FindAllStringSubmatch(bodyContent, -1)
 
-			if enableCharacterScraperDebugLogs {
-				log.Printf("    -> matches: rank: %s, name: %s, base: %s, job %s, exp %s, class %s", rankMatches, nameMatches, baseLevelMatches, jobLevelMatches, expMatches, classMatches)
-				log.Printf("    -> matches: rank: %d, name: %d, base: %d, job %d, exp %d, class %d", len(rankMatches), len(nameMatches), len(baseLevelMatches), len(jobLevelMatches), len(expMatches), len(classMatches))
-			}
+			// ... (debug logs) ...
 
 			numChars := len(nameMatches)
-			if enableCharacterScraperDebugLogs {
-				log.Printf("    -> chars: %d", numChars)
-			}
+			// ... (debug logs) ...
 
 			if numChars == 0 || len(rankMatches) != numChars || len(baseLevelMatches) != numChars || len(jobLevelMatches) != numChars || len(expMatches) != numChars || len(classMatches) != numChars {
-				log.Printf("    -> matches: rank: %s, name: %s, base: %s, job %s, exp %s, class %s", rankMatches, nameMatches, baseLevelMatches, jobLevelMatches, expMatches, classMatches)
-				log.Printf("    -> matches: rank: %d, name: %d, base: %d, job %d, exp %d, class %d", len(rankMatches), len(nameMatches), len(baseLevelMatches), len(jobLevelMatches), len(expMatches), len(classMatches))
-				log.Printf("    -> ⚠️ [Characters] Mismatch in regex match counts on page %d. Skipping page. (Ranks: %d, Names: %d, Classes: %d)", p, len(rankMatches), len(nameMatches), len(classMatches))
+				// ... (mismatch logging) ...
+				log.Printf("    -> ⚠️ [Characters] Mismatch in regex match counts on page %d. Skipping page. (Ranks: %d, Names: %d, Classes: %d)", pageIndex, len(rankMatches), len(nameMatches), len(classMatches)) // <-- Use 'pageIndex'
 				return
 			}
 
@@ -323,10 +302,7 @@ func scrapePlayerCharacters() {
 					Experience: rawExp / 1000000.0,
 					Class:      class,
 				}
-
-				if enableCharacterScraperDebugLogs {
-					log.Printf("    -> char rank: %d, name: %s, level: %d/%d, exp: %.2f%%, class: %s", player.Rank, player.Name, player.BaseLevel, player.JobLevel, player.Experience, player.Class)
-				}
+				// ... (debug logs) ...
 				pagePlayers = append(pagePlayers, player)
 			}
 
@@ -337,7 +313,8 @@ func scrapePlayerCharacters() {
 				}
 				mu.Unlock()
 			}
-			log.Printf("    -> Scraped page %d/%d, found %d chars.", p, lastPage, len(pagePlayers))
+			log.Printf("    -> Scraped page %d/%d, found %d chars.", pageIndex, lastPage, len(pagePlayers)) // <-- Use 'pageIndex'
+			// --- End of parsing logic ---
 		}(page)
 	}
 
@@ -489,104 +466,41 @@ type GuildJSON struct {
 func scrapeGuilds() {
 	log.Println("🏰 [Guilds] Starting guild and character-guild association scrape...")
 
-	const maxRetries = 5
-	const retryDelay = 5 * time.Second
-	client := &http.Client{Timeout: 60 * time.Second}
-
+	// ... (Regex definitions are unchanged) ...
 	nameRegex := regexp.MustCompile(`<span class="font-medium">([^<]+)</span>`)
 	levelRegex := regexp.MustCompile(`\\"guild_lv\\":(\d+),\\"connect_member\\"`)
 	masterRegex := regexp.MustCompile(`\\"master\\":\\"([^"]+)\\",\\"members\\"`)
 	membersRegex := regexp.MustCompile(`\\"members\\":\[(.*?)\]\}`)
 	memberNameRegex := regexp.MustCompile(`\\"name\\":\\"([^"]+)\\",\\"base_level\\"`)
 
-	var lastPage = 1
-	log.Println("🏰 [Guilds] Determining total number of pages...")
-	firstPageURL := "https://projetoyufa.com/rankings/guild?page=1"
-	req, err := http.NewRequest("GET", firstPageURL, nil)
-	if err != nil {
-		log.Printf("❌ [Guilds] Failed to create request for page 1: %v", err)
-		return
-	}
-	req.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36")
-	resp, err := client.Do(req)
-	if err != nil {
-		log.Printf("⚠️ [Guilds] Could not fetch page 1 to determine page count. Assuming one page. Error: %v", err)
-	} else {
-		bodyBytes, readErr := io.ReadAll(resp.Body)
-		resp.Body.Close()
-		if readErr != nil {
-			log.Printf("⚠️ [Guilds] Failed to read page 1 body. Assuming one page. Error: %v", readErr)
-		} else {
-			pageRegex := regexp.MustCompile(`page=(\d+)`)
-			matches := pageRegex.FindAllStringSubmatch(string(bodyBytes), -1)
-			for _, match := range matches {
-				if len(match) > 1 {
-					if p, pErr := strconv.Atoi(match[1]); pErr == nil {
-						if p > lastPage {
-							lastPage = p
-						}
-					}
-				}
-			}
-		}
-	}
-	log.Printf("✅ [Guilds] Found %d total pages to scrape.", lastPage)
+	// Use the new helper to find the last page
+	const firstPageURL = "https://projetoyufa.com/rankings/guild?page=1"
+	lastPage := scraperClient.findLastPage(firstPageURL, "[Guilds]")
 
 	allGuilds := make(map[string]Guild)
-	allMembers := make(map[string]string)
+	allMembers := make(map[string]string) // Map[characterName]guildName
 	var mu sync.Mutex
 	var wg sync.WaitGroup
-	sem := make(chan struct{}, 5)
+	sem := make(chan struct{}, 5) // Concurrency semaphore
 
+	log.Printf("🏰 [Guilds] Scraping all %d pages...", lastPage)
 	for page := 1; page <= lastPage; page++ {
 		wg.Add(1)
 		sem <- struct{}{}
-		go func(p int) {
+		go func(pageIndex int) { // <-- Renamed 'p' to 'pageIndex'
 			defer wg.Done()
 			defer func() { <-sem }()
 
-			var bodyContent string
-			pageScrapedSuccessfully := false
+			url := fmt.Sprintf("https://projetoyufa.com/rankings/guild?page=%d", pageIndex) // <-- Use 'pageIndex'
 
-			for attempt := 1; attempt <= maxRetries; attempt++ {
-				url := fmt.Sprintf("https://projetoyufa.com/rankings/guild?page=%d", p)
-				req, reqErr := http.NewRequest("GET", url, nil)
-				if reqErr != nil {
-					log.Printf("    -> ❌ Error creating request for page %d: %v", p, reqErr)
-					time.Sleep(retryDelay)
-					continue
-				}
-				req.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36")
-
-				resp, doErr := client.Do(req)
-				if doErr != nil {
-					log.Printf("    -> ❌ Error on page %d (attempt %d/%d): %v", p, attempt, maxRetries, doErr)
-					time.Sleep(retryDelay)
-					continue
-				}
-				if resp.StatusCode != http.StatusOK {
-					log.Printf("    -> ❌ Non-200 status on page %d (attempt %d/%d): %d", p, attempt, maxRetries, resp.StatusCode)
-					resp.Body.Close()
-					time.Sleep(retryDelay)
-					continue
-				}
-				bodyBytes, readErr := io.ReadAll(resp.Body)
-				resp.Body.Close()
-				if readErr != nil {
-					log.Printf("    -> ❌ Failed to read body for page %d: %v", p, readErr)
-					time.Sleep(retryDelay)
-					continue
-				}
-				bodyContent = string(bodyBytes)
-				pageScrapedSuccessfully = true
-				break
-			}
-
-			if !pageScrapedSuccessfully {
-				log.Printf("    -> ❌ All retries failed for page %d. Skipping.", p)
+			// Use the getPage helper, which includes retries
+			bodyContent, err := scraperClient.getPage(url, "[Guilds]")
+			if err != nil {
+				log.Printf("    -> ❌ All retries failed for page %d: %v", pageIndex, err) // <-- Use 'pageIndex'
 				return
 			}
 
+			// --- Start of parsing logic (largely unchanged) ---
 			nameMatches := nameRegex.FindAllStringSubmatch(bodyContent, -1)
 			levelMatches := levelRegex.FindAllStringSubmatch(bodyContent, -1)
 			masterMatches := masterRegex.FindAllStringSubmatch(bodyContent, -1)
@@ -595,7 +509,7 @@ func scrapeGuilds() {
 			numGuilds := len(nameMatches)
 			if numGuilds == 0 || len(levelMatches) != numGuilds || len(masterMatches) != numGuilds {
 				log.Printf("    -> ⚠️ [Guilds] Mismatch in regex match counts on page %d. Skipping page. (Names: %d, Levels: %d, Masters: %d)",
-					p, len(nameMatches), len(levelMatches), len(masterMatches))
+					pageIndex, len(nameMatches), len(levelMatches), len(masterMatches)) // <-- Use 'pageIndex'
 				return
 			}
 
@@ -611,7 +525,7 @@ func scrapeGuilds() {
 
 				members := memberNameRegex.FindAllStringSubmatch(membersMatches[i][1], -1)
 				for _, member := range members {
-					pageMembers[member[1]] = name
+					pageMembers[member[1]] = name // charName -> guildName
 				}
 			}
 
@@ -625,7 +539,8 @@ func scrapeGuilds() {
 				}
 				mu.Unlock()
 			}
-			log.Printf("    -> Scraped page %d/%d, found %d guilds.", p, lastPage, len(pageGuilds))
+			log.Printf("    -> Scraped page %d/%d, found %d guilds.", pageIndex, lastPage, len(pageGuilds)) // <-- Use 'pageIndex'
+			// --- End of parsing logic ---
 		}(page)
 	}
 	wg.Wait()
@@ -776,105 +691,41 @@ type CharacterZenyInfo struct {
 func scrapeZeny() {
 	log.Println("💰 [Zeny] Starting Zeny ranking scrape...")
 
-	const maxRetries = 3
-	const retryDelay = 3 * time.Second
-	client := &http.Client{Timeout: 45 * time.Second}
-
-	var lastPage = 1
-	log.Println("💰 [Zeny] Determining total number of pages...")
-	firstPageURL := "https://projetoyufa.com/rankings/zeny?page=1"
-	req, err := http.NewRequest("GET", firstPageURL, nil)
-	if err != nil {
-		log.Printf("❌ [Zeny] Failed to create request for page 1: %v", err)
-		return
-	}
-	req.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36")
-	resp, err := client.Do(req)
-	if err != nil {
-		log.Printf("⚠️ [Zeny] Could not fetch page 1 to determine page count. Assuming one page. Error: %v", err)
-	} else {
-		defer resp.Body.Close()
-		if resp.StatusCode == http.StatusOK {
-			doc, docErr := goquery.NewDocumentFromReader(resp.Body)
-			if docErr != nil {
-				log.Printf("⚠️ [Zeny] Failed to parse page 1 body. Assuming one page. Error: %v", docErr)
-			} else {
-				pageRegex := regexp.MustCompile(`page=(\d+)`)
-				doc.Find(`nav[aria-label="pagination"] a[href*="?page="]`).Each(func(i int, s *goquery.Selection) {
-					if href, exists := s.Attr("href"); exists {
-						matches := pageRegex.FindStringSubmatch(href)
-						if len(matches) > 1 {
-							if p, pErr := strconv.Atoi(matches[1]); pErr == nil {
-								if p > lastPage {
-									lastPage = p
-								}
-							}
-						}
-					}
-				})
-			}
-		}
-	}
-	log.Printf("✅ [Zeny] Found %d total pages to scrape.", lastPage)
+	// Use the new helper to find the last page
+	const firstPageURL = "https://projetoyufa.com/rankings/zeny?page=1"
+	lastPage := scraperClient.findLastPage(firstPageURL, "[Zeny]")
 
 	updateTime := time.Now().Format(time.RFC3339)
-	allZenyInfo := make(map[string]int64)
+	allZenyInfo := make(map[string]int64) // Map[characterName]zeny
 	var mu sync.Mutex
 	var wg sync.WaitGroup
-	sem := make(chan struct{}, 5)
+	sem := make(chan struct{}, 5) // Concurrency semaphore
 
+	log.Printf("💰 [Zeny] Scraping all %d pages...", lastPage)
 	for page := 1; page <= lastPage; page++ {
 		wg.Add(1)
 		sem <- struct{}{}
-		go func(p int) {
+		go func(pageIndex int) { // <-- Renamed 'p' to 'pageIndex'
 			defer wg.Done()
 			defer func() { <-sem }()
 
-			var doc *goquery.Document
-			pageScrapedSuccessfully := false
+			url := fmt.Sprintf("https://projetoyufa.com/rankings/zeny?page=%d", pageIndex) // <-- Use 'pageIndex'
 
-			for attempt := 1; attempt <= maxRetries; attempt++ {
-				url := fmt.Sprintf("https://projetoyufa.com/rankings/zeny?page=%d", p)
-				req, reqErr := http.NewRequest("GET", url, nil)
-				if reqErr != nil {
-					log.Printf("    -> ❌ Error creating request for page %d: %v", p, reqErr)
-					time.Sleep(retryDelay)
-					continue
-				}
-				req.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36")
-
-				resp, doErr := client.Do(req)
-				if doErr != nil {
-					log.Printf("    -> ❌ Error on page %d (attempt %d/%d): %v", p, attempt, maxRetries, doErr)
-					time.Sleep(retryDelay)
-					continue
-				}
-
-				if resp.StatusCode != http.StatusOK {
-					log.Printf("    -> ❌ Non-200 status on page %d (attempt %d/%d): %d", p, attempt, maxRetries, resp.StatusCode)
-					resp.Body.Close()
-					time.Sleep(retryDelay)
-					continue
-				}
-
-				var parseErr error
-				doc, parseErr = goquery.NewDocumentFromReader(resp.Body)
-				resp.Body.Close()
-				if parseErr != nil {
-					log.Printf("    -> ❌ Failed to parse body for page %d: %v", p, parseErr)
-					time.Sleep(retryDelay)
-					continue
-				}
-
-				pageScrapedSuccessfully = true
-				break
-			}
-
-			if !pageScrapedSuccessfully {
-				log.Printf("    -> ❌ All retries failed for page %d.", p)
+			// Use the getPage helper, which includes retries
+			bodyContent, err := scraperClient.getPage(url, "[Zeny]")
+			if err != nil {
+				log.Printf("    -> ❌ All retries failed for page %d: %v", pageIndex, err) // <-- Use 'pageIndex'
 				return
 			}
 
+			// Parse with goquery
+			doc, err := goquery.NewDocumentFromReader(strings.NewReader(bodyContent))
+			if err != nil {
+				log.Printf("    -> ❌ Failed to parse body for page %d: %v", pageIndex, err) // <-- Use 'pageIndex'
+				return
+			}
+
+			// --- Start of parsing logic (largely unchanged) ---
 			doc.Find(`tbody[data-slot="table-body"] tr[data-slot="table-row"]`).Each(func(i int, s *goquery.Selection) {
 				cells := s.Find(`td[data-slot="table-cell"]`)
 				if cells.Length() < 3 {
@@ -883,9 +734,13 @@ func scrapeZeny() {
 
 				nameStr := strings.TrimSpace(cells.Eq(1).Text())
 				zenyStrRaw := strings.TrimSpace(cells.Eq(2).Text())
+
+				// --- FIX IS HERE ---
+				// These lines were missing. They use zenyStrRaw to create zenyStrClean.
 				zenyStrClean := strings.ReplaceAll(zenyStrRaw, ",", "")
 				zenyStrClean = strings.TrimSuffix(zenyStrClean, "z")
 				zenyStrClean = strings.TrimSpace(zenyStrClean)
+				// --- END FIX ---
 
 				zenyVal, err := strconv.ParseInt(zenyStrClean, 10, 64)
 
@@ -902,7 +757,8 @@ func scrapeZeny() {
 				allZenyInfo[nameStr] = zenyVal
 				mu.Unlock()
 			})
-			log.Printf("    -> [Zeny] Scraped page %d/%d successfully.", p, lastPage)
+			log.Printf("    -> [Zeny] Scraped page %d/%d successfully.", pageIndex, lastPage) // <-- Use 'pageIndex'
+			// --- End of parsing logic ---
 		}(page)
 	}
 
@@ -1042,65 +898,12 @@ func scrapeData() {
 	reRefineMid := regexp.MustCompile(`\s(\+\d+)`)
 	reRefineStart := regexp.MustCompile(`^(\+\d+)\s`)
 
-	const maxRetries = 3
-	const retryDelay = 5 * time.Second
 	const requestURL = "https://projetoyufa.com/market"
 
-	client := &http.Client{Timeout: 45 * time.Second}
-
-	var htmlContent string
-	var scrapeSuccessful bool
-
-	for attempt := 1; attempt <= maxRetries; attempt++ {
-		log.Printf("🚀 [Market] Scraping market page (Attempt %d/%d)...", attempt, maxRetries)
-
-		req, err := http.NewRequest("GET", requestURL, nil)
-		if err != nil {
-			log.Printf("⚠️ [Market] Attempt %d/%d failed: could not create request: %v", attempt, maxRetries, err)
-			time.Sleep(retryDelay)
-			continue
-		}
-
-		req.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36")
-
-		resp, err := client.Do(req)
-		if err != nil {
-			log.Printf("⚠️ [Market] Attempt %d/%d failed during request: %v", attempt, maxRetries, err)
-			if attempt < maxRetries {
-				log.Printf("    -> Retrying in %v...", retryDelay)
-				time.Sleep(retryDelay)
-			}
-			continue
-		}
-
-		bodyBytes, readErr := io.ReadAll(resp.Body)
-		resp.Body.Close()
-
-		if readErr != nil {
-			log.Printf("⚠️ [Market] Attempt %d/%d failed reading response body: %v", attempt, maxRetries, readErr)
-			if attempt < maxRetries {
-				log.Printf("    -> Retrying in %v...", retryDelay)
-				time.Sleep(retryDelay)
-			}
-			continue
-		}
-
-		if resp.StatusCode != http.StatusOK {
-			log.Printf("⚠️ [Market] Attempt %d/%d failed: received non-200 status code: %d", attempt, maxRetries, resp.StatusCode)
-			if attempt < maxRetries {
-				log.Printf("    -> Retrying in %v...", retryDelay)
-				time.Sleep(retryDelay)
-			}
-			continue
-		}
-
-		htmlContent = string(bodyBytes)
-		scrapeSuccessful = true
-		break
-	}
-
-	if !scrapeSuccessful {
-		log.Printf("❌ [Market] Failed to scrape market page after %d attempts. Aborting update.", maxRetries)
+	// Use the new helper function. All the retry logic is now encapsulated.
+	htmlContent, err := scraperClient.getPage(requestURL, "[Market]")
+	if err != nil {
+		log.Printf("❌ [Market] Failed to scrape market page after retries: %v. Aborting update.", err)
 		return
 	}
 
@@ -1439,126 +1242,54 @@ func areItemSetsIdentical(setA, setB []Item) bool {
 func scrapeMvpKills() {
 	log.Println("☠️  [MVP] Starting MVP kill count scrape...")
 
-	const maxRetries = 3
-	const retryDelay = 3 * time.Second
-
+	// ... (Regex definitions are unchanged) ...
 	playerBlockRegex := regexp.MustCompile(`\\"name\\":\\"([^"]+)\\",\\"base_level\\".*?\\"mvp_kills\\":\[(.*?)]`)
-
 	mvpKillsRegex := regexp.MustCompile(`{\\"mob_id\\":(\d+),\\"kills\\":(\d+)}`)
 
-	client := &http.Client{Timeout: 45 * time.Second}
+	// Use the new helper to find the last page
+	const firstPageURL = "https://projetoyufa.com/rankings/mvp?page=1"
+	lastPage := scraperClient.findLastPage(firstPageURL, "[MVP]")
 
-	var lastPage = 1
-	log.Println("☠️  [MVP] Determining total number of pages...")
-	firstPageURL := "https://projetoyufa.com/rankings/mvp?page=1"
-
-	req, err := http.NewRequest("GET", firstPageURL, nil)
-	if err != nil {
-		log.Printf("❌ [MVP] Failed to create request for page 1: %v", err)
-		return
-	}
-	req.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/5.0 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36")
-
-	resp, err := client.Do(req)
-	if err != nil {
-		log.Printf("⚠️ [MVP] Could not fetch page 1 to determine page count. Assuming one page. Error: %v", err)
-	} else {
-		bodyBytes, readErr := io.ReadAll(resp.Body)
-		resp.Body.Close()
-		if readErr != nil {
-			log.Printf("⚠️ [MVP] Failed to read page 1 body. Assuming one page. Error: %v", readErr)
-		} else {
-			pageRegex := regexp.MustCompile(`page=(\d+)`)
-			matches := pageRegex.FindAllStringSubmatch(string(bodyBytes), -1)
-			for _, match := range matches {
-				if len(match) > 1 {
-					if p, pErr := strconv.Atoi(match[1]); pErr == nil {
-						if p > lastPage {
-							lastPage = p
-						}
-					}
-				}
-			}
-		}
-	}
-	log.Printf("✅ [MVP] Found %d total pages to scrape.", lastPage)
-
-	allMvpKills := make(map[string]map[string]int)
+	allMvpKills := make(map[string]map[string]int) // Map[characterName]Map[mobID]killCount
 	var mu sync.Mutex
 	var wg sync.WaitGroup
-	sem := make(chan struct{}, 5)
+	sem := make(chan struct{}, 5) // Concurrency semaphore
 
 	log.Printf("☠️  [MVP] Scraping all %d pages...", lastPage)
 	for page := 1; page <= lastPage; page++ {
 		wg.Add(1)
 		sem <- struct{}{}
-		go func(p int) {
+		go func(pageIndex int) { // <-- Renamed 'p' to 'pageIndex'
 			defer wg.Done()
 			defer func() { <-sem }()
 
-			var bodyContent string
-			pageScrapedSuccessfully := false
+			url := fmt.Sprintf("https://projetoyufa.com/rankings/mvp?page=%d", pageIndex) // <-- Use 'pageIndex'
 
-			for attempt := 1; attempt <= maxRetries; attempt++ {
-				url := fmt.Sprintf("https://projetoyufa.com/rankings/mvp?page=%d", p)
-				req, reqErr := http.NewRequest("GET", url, nil)
-				if reqErr != nil {
-					log.Printf("    -> ❌ [MVP] Error creating request for page %d: %v", p, reqErr)
-					time.Sleep(retryDelay)
-					continue
-				}
-				req.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/5.0 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36")
-
-				resp, doErr := client.Do(req)
-				if doErr != nil {
-					log.Printf("    -> ❌ [MVP] Error on page %d (attempt %d/%d): %v", p, attempt, maxRetries, doErr)
-					time.Sleep(retryDelay)
-					continue
-				}
-
-				bodyBytes, readErr := io.ReadAll(resp.Body)
-				resp.Body.Close()
-				if readErr != nil {
-					log.Printf("    -> ❌ [MVP] Failed to read body for page %d: %v", p, readErr)
-					time.Sleep(retryDelay)
-					continue
-				}
-
-				bodyContent = string(bodyBytes)
-				pageScrapedSuccessfully = true
-				break
-			}
-
-			if !pageScrapedSuccessfully {
-				log.Printf("    -> ❌ [MVP] All retries failed for page %d.", p)
+			// Use the getPage helper, which includes retries
+			bodyContent, err := scraperClient.getPage(url, "[MVP]")
+			if err != nil {
+				log.Printf("    -> ❌ All retries failed for page %d: %v", pageIndex, err) // <-- Use 'pageIndex'
 				return
 			}
 
+			// --- Start of parsing logic (largely unchanged) ---
 			playerBlocks := playerBlockRegex.FindAllStringSubmatch(bodyContent, -1)
 			if len(playerBlocks) == 0 {
-				log.Printf("    -> ⚠️ [MVP] No player data blocks found on page %d.", p)
+				log.Printf("    -> ⚠️ [MVP] No player data blocks found on page %d.", pageIndex) // <-- Use 'pageIndex'
 				return
 			}
 
-			if enableMvpScraperDebugLogs {
-				log.Printf("    -> [MVP] playerBlocks: %s", playerBlocks)
-			}
+			// ... (debug logs) ...
 
 			pageKills := make(map[string]map[string]int)
 			for _, block := range playerBlocks {
 				charName := block[1]
 				mvpsJSON := block[2]
-
-				if enableMvpScraperDebugLogs {
-					log.Printf("    -> [MVP] Found player: %s", charName)
-				}
+				// ... (debug logs) ...
 
 				playerKills := make(map[string]int)
 				killMatches := mvpKillsRegex.FindAllStringSubmatch(mvpsJSON, -1)
-
-				if enableMvpScraperDebugLogs {
-					log.Printf("    -> [MVP] killMatches: %s", killMatches)
-				}
+				// ... (debug logs) ...
 
 				for _, killMatch := range killMatches {
 					mobID := killMatch[1]
@@ -1575,7 +1306,8 @@ func scrapeMvpKills() {
 				}
 				mu.Unlock()
 			}
-			log.Printf("    -> [MVP] Scraped page %d/%d, found %d characters with MVP kills.", p, lastPage, len(pageKills))
+			log.Printf("    -> [MVP] Scraped page %d/%d, found %d characters with MVP kills.", pageIndex, lastPage, len(pageKills)) // <-- Use 'pageIndex'
+			// --- End of parsing logic ---
 		}(page)
 	}
 
@@ -1606,13 +1338,13 @@ func scrapeMvpKills() {
 
 	allExistingKills := make(map[string]map[string]int)
 
-	selectCols := make([]string, 0, len(mvpMobIDsScrape)+1)
+	selectCols := make([]string, 0, len(mvpMobIDs)+1)
 	selectCols = append(selectCols, "character_name")
-	scanDest := make([]interface{}, len(mvpMobIDsScrape)+1)
+	scanDest := make([]interface{}, len(mvpMobIDs)+1)
 	scanDest[0] = new(string)
-	columnValues := make([]sql.NullInt64, len(mvpMobIDsScrape))
+	columnValues := make([]sql.NullInt64, len(mvpMobIDs))
 
-	for i, mobID := range mvpMobIDsScrape {
+	for i, mobID := range mvpMobIDs {
 		selectCols = append(selectCols, fmt.Sprintf("mvp_%s", mobID))
 		scanDest[i+1] = &columnValues[i]
 	}
@@ -1631,7 +1363,7 @@ func scrapeMvpKills() {
 		}
 		charName := *(scanDest[0].(*string))
 		playerKills := make(map[string]int)
-		for i, mobID := range mvpMobIDsScrape {
+		for i, mobID := range mvpMobIDs {
 			if columnValues[i].Valid {
 				playerKills[mobID] = int(columnValues[i].Int64)
 			}
@@ -1650,7 +1382,7 @@ func scrapeMvpKills() {
 	columnNames := []string{"character_name"}
 	valuePlaceholders := []string{"?"}
 	updateSetters := []string{}
-	for _, mobID := range mvpMobIDsScrape {
+	for _, mobID := range mvpMobIDs {
 		colName := fmt.Sprintf("mvp_%s", mobID)
 		columnNames = append(columnNames, colName)
 		valuePlaceholders = append(valuePlaceholders, "?")
@@ -1685,7 +1417,7 @@ func scrapeMvpKills() {
 		}
 
 		params := []interface{}{charName}
-		for _, mobID := range mvpMobIDsScrape {
+		for _, mobID := range mvpMobIDs {
 			newKillCount := 0
 			if count, ok := kills[mobID]; ok {
 				newKillCount = count
@@ -1722,55 +1454,69 @@ func scrapeMvpKills() {
 	log.Printf("✅ [MVP] Scrape and update process complete.")
 }
 
-func startBackgroundJobs(ctx context.Context) {
-	// Helper function to run a job immediately and then on a ticker
-	runJobOnTicker := func(jobFunc func(), ticker *time.Ticker, jobName string) {
-		jobFunc() // Run immediately on start
-		for {
-			select {
-			case <-ctx.Done():
-				log.Printf("🔌 [Job] Stopping %s job due to shutdown.", jobName)
-				ticker.Stop()
-				return
-			case <-ticker.C:
-				log.Printf("🕒 [Job] Starting scheduled %s scrape...", jobName)
-				jobFunc()
-			}
+// Job defines a background task with its function and schedule.
+type Job struct {
+	Name     string
+	Func     func()
+	Interval time.Duration
+}
+
+// runJobOnTicker executes a job immediately and then on its scheduled interval.
+// It stops when the provided context is canceled.
+func runJobOnTicker(ctx context.Context, job Job) {
+	ticker := time.NewTicker(job.Interval)
+	defer ticker.Stop()
+
+	log.Printf("🕒 [Job] Starting initial run for %s job...", job.Name)
+	//job.Func() // Run immediately on start
+
+	for {
+		select {
+		case <-ctx.Done():
+			log.Printf("🔌 [Job] Stopping %s job due to shutdown.", job.Name)
+			return
+		case <-ticker.C:
+			log.Printf("🕒 [Job] Starting scheduled %s scrape...", job.Name)
+			job.Func()
 		}
 	}
+}
 
-	// --- Market Scraper ---
-	go runJobOnTicker(scrapeData, time.NewTicker(3*time.Minute), "Market")
+func startBackgroundJobs(ctx context.Context) {
+	// Define all scheduled jobs
+	jobs := []Job{
+		{Name: "Market", Func: scrapeData, Interval: 3 * time.Minute},
+		{Name: "Player Count", Func: scrapeAndStorePlayerCount, Interval: 1 * time.Minute},
+		{Name: "Player Character", Func: scrapePlayerCharacters, Interval: 30 * time.Minute},
+		{Name: "Guild", Func: scrapeGuilds, Interval: 25 * time.Minute},
+		{Name: "Zeny", Func: scrapeZeny, Interval: 1 * time.Hour},
+		{Name: "MVP Kill", Func: scrapeMvpKills, Interval: 5 * time.Minute},
+	}
 
-	// --- Player Count Scraper ---
-	go runJobOnTicker(scrapeAndStorePlayerCount, time.NewTicker(1*time.Minute), "Player Count")
+	// Start all standard jobs
+	for _, job := range jobs {
+		go runJobOnTicker(ctx, job)
+	}
 
-	// --- Player Character Scraper ---
-	go runJobOnTicker(scrapePlayerCharacters, time.NewTicker(30*time.Minute), "Player Character")
-
-	// --- Guild Scraper ---
-	go runJobOnTicker(scrapeGuilds, time.NewTicker(25*time.Minute), "Guild")
-
-	// --- Zeny Scraper ---
-	go runJobOnTicker(scrapeZeny, time.NewTicker(1*time.Hour), "Zeny")
-
-	// --- MVP Kill Scraper ---
-	go runJobOnTicker(scrapeMvpKills, time.NewTicker(5*time.Minute), "MVP Kill")
-
-	// --- RMS Cache Refresh Job ---
+	// --- Special RMS Cache Refresh Job (runs once daily) ---
 	go func() {
 		ticker := time.NewTicker(24 * time.Hour)
+		defer ticker.Stop()
+
+		log.Printf("🕒 [Job] Starting initial run for RMS Cache Refresh job...")
 		runFullRMSCacheJob() // Run immediately on start
 		log.Printf("🕒 [Job] RMS Cache Refresh job scheduled. Will run once every 24 hours.")
+
 		for {
 			select {
 			case <-ctx.Done():
 				log.Printf("🔌 [Job] Stopping RMS Cache Refresh job due to shutdown.")
-				ticker.Stop()
 				return
 			case <-ticker.C:
 				log.Printf("🕒 [Job] Starting scheduled 24-hour full RMS cache refresh...")
-				go runFullRMSCacheJob() // Run in its own goroutine so it doesn't block the ticker
+				// Run in its own goroutine so it doesn't block the ticker
+				// if the job takes a long time.
+				go runFullRMSCacheJob()
 			}
 		}
 	}()

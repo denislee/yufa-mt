@@ -14,6 +14,10 @@ import (
 	"google.golang.org/api/option"
 )
 
+const (
+	geminiModelName = "gemini-flash-latest"
+)
+
 func parseTradeMessageWithGemini(message string) (*GeminiTradeResult, error) {
 	apiKey := os.Getenv("GEMINI_API_KEY")
 	if apiKey == "" {
@@ -29,7 +33,7 @@ func parseTradeMessageWithGemini(message string) (*GeminiTradeResult, error) {
 	}
 	defer client.Close()
 
-	model := client.GenerativeModel("gemini-flash-latest")
+	model := client.GenerativeModel(geminiModelName)
 
 	model.GenerationConfig.ResponseMIMEType = "application/json"
 

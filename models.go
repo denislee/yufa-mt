@@ -7,6 +7,41 @@ import (
 	"time"
 )
 
+var (
+	// mvpMobIDs is the central list of MVP mob IDs used across the application.
+	mvpMobIDs = []string{
+		"1038", "1039", "1046", "1059", "1086", "1087", "1112", "1115", "1147",
+		"1150", "1157", "1159", "1190", "1251", "1252", "1272", "1312", "1373",
+		"1389", "1418", "1492", "1511",
+	}
+
+	// mvpNames is the central map of MVP mob IDs to their names.
+	mvpNames = map[string]string{
+		"1038": "Osiris",
+		"1039": "Baphomet",
+		"1046": "Doppelganger",
+		"1059": "Mistress",
+		"1086": "Golden Thief Bug",
+		"1087": "Orc Hero",
+		"1112": "Drake",
+		"1115": "Eddga",
+		"1147": "Maya",
+		"1150": "Moonlight Flower",
+		"1157": "Pharaoh",
+		"1159": "Phreeoni",
+		"1190": "Orc Lord",
+		"1251": "Stormy Knight",
+		"1252": "Hatii",
+		"1272": "Dark Lord",
+		"1312": "Turtle General",
+		"1373": "Lord of Death",
+		"1389": "Dracula",
+		"1418": "Evil Snake Lord",
+		"1492": "Incantation Samurai",
+		"1511": "Amon Ra",
+	}
+)
+
 type Item struct {
 	ID             int
 	Name           string
