@@ -20,6 +20,28 @@ import (
 // rmsCacheMutex protects the rms_item_cache table from concurrent write operations.
 var rmsCacheMutex sync.Mutex
 
+// CachedItemName holds the minimal data needed for in-memory name searching.
+type CachedItemName struct {
+	ID         int
+	Name       string         // Normalized (lowercase) English name
+	NamePT     string         // Normalized (lowercase) Portuguese name
+	OrigName   string         // Original display name
+	OrigNamePT sql.NullString // Original display name (PT)
+}
+
+// LocalItemSearchResult defines the result of a local cache search.
+type LocalItemSearchResult struct {
+	ID             int
+	Name           string
+	IsPerfectMatch bool
+}
+
+// itemNameCache holds an in-memory copy of all item names for fast searching.
+var itemNameCache struct {
+	sync.RWMutex
+	items []CachedItemName
+}
+
 func scrapeRMSItemDetails(itemID int) (*RMSItem, error) {
 	log.Printf("[I] [RMS] Starting detailed scrape for Item ID: %d", itemID)
 
@@ -573,4 +595,51 @@ func runFullRMSCacheJob() {
 	}
 
 	log.Println("[I] [Job/RMS] Full refresh and discovery job complete.")
+}
+
+// LoadItemNameCache queries the DB and populates the in-memory item name cache.
+// This should be called ONCE on application startup after the DB is initialized.
+func LoadItemNameCache() error {
+	log.Println("[I] [Cache] Loading all item names into memory for fuzzy search...")
+
+	// Query for all distinct items from the cache table
+	rows, err := db.Query(`
+		SELECT item_id, name, name_pt 
+		FROM rms_item_cache 
+		WHERE item_id > 0 AND name IS NOT NULL AND name != ''
+	`)
+	if err != nil {
+		return fmt.Errorf("failed to query rms_item_cache for populating name cache: %w", err)
+	}
+	defer rows.Close()
+
+	var newCache []CachedItemName
+	var count int
+	for rows.Next() {
+		var item CachedItemName
+		var namePT sql.NullString
+
+		if err := rows.Scan(&item.ID, &item.OrigName, &namePT); err != nil {
+			log.Printf("[W] [Cache] Failed to scan item name: %v", err)
+			continue
+		}
+
+		// Store original and normalized (lowercase) names
+		item.Name = strings.ToLower(item.OrigName)
+		item.OrigNamePT = namePT // Keep original for result
+		if namePT.Valid {
+			item.NamePT = strings.ToLower(namePT.String)
+		}
+
+		newCache = append(newCache, item)
+		count++
+	}
+
+	// Atomically update the global cache
+	itemNameCache.Lock()
+	itemNameCache.items = newCache
+	itemNameCache.Unlock()
+
+	log.Printf("[I] [Cache] Successfully loaded %d item names into memory.", count)
+	return nil
 }

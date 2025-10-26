@@ -17,6 +17,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/agnivade/levenshtein" // <-- ADD THIS IMPORT
 )
 
 type ItemSearchResult struct {
@@ -2058,6 +2060,7 @@ func tradingPostListHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 // findItemIDInCache attempts to find an item ID using the local FTS cache.
+// This version includes Levenshtein distance for proximity matching.
 func findItemIDInCache(cleanItemName string) (sql.NullInt64, bool) {
 	terms := strings.Fields(cleanItemName)
 	for i, term := range terms {
@@ -2083,17 +2086,26 @@ func findItemIDInCache(cleanItemName string) (sql.NullInt64, bool) {
 
 	type potentialMatch struct {
 		id     int64
-		name   string
-		namePT string
+		name   string // This is the original name from the DB (e.g., "Jur")
+		namePT string // This is the original PT name (e.g., "Jur")
 	}
 	var potentialMatches []potentialMatch
 
 	for rows.Next() {
 		var match potentialMatch
-		if err := rows.Scan(&match.id, &match.name, &match.namePT); err == nil {
+		var namePT sql.NullString // FTS table stores original name_pt
+		if err := rows.Scan(&match.id, &match.name, &namePT); err == nil {
+			if namePT.Valid {
+				match.namePT = namePT.String
+			}
 			potentialMatches = append(potentialMatches, match)
 		}
 	}
+
+	// if len(potentialMatches) == 0 {
+	// 	// No FTS matches at all
+	// 	return sql.NullInt64{Valid: false}, false
+	// }
 
 	if len(potentialMatches) == 1 {
 		itemID := potentialMatches[0].id
@@ -2101,27 +2113,78 @@ func findItemIDInCache(cleanItemName string) (sql.NullInt64, bool) {
 		return sql.NullInt64{Int64: itemID, Valid: true}, true
 	}
 
-	if len(potentialMatches) > 1 {
-		// Check for a perfect match among ambiguous results
-		for _, match := range potentialMatches {
-			if match.name == cleanItemName || match.namePT == cleanItemName {
-				log.Printf("[D] [ItemID] Found perfect match '%s' (ID %d) within FTS results.", cleanItemName, match.id)
-				return sql.NullInt64{Int64: match.id, Valid: true}, true
+	// FTS returned multiple results (len > 1), so we need to disambiguate.
+	// We will normalize the search query and match names to lowercase for comparison.
+	lowerCleanItemName := strings.ToLower(cleanItemName)
+
+	// 1. Check for a perfect match first (fastest)
+	for _, match := range potentialMatches {
+		// Compare against lowercase, normalized names
+		if strings.ToLower(match.name) == lowerCleanItemName || strings.ToLower(match.namePT) == lowerCleanItemName {
+			log.Printf("[D] [ItemID] Found perfect match '%s' (ID %d) within %d FTS results.", cleanItemName, match.id, len(potentialMatches))
+			return sql.NullInt64{Int64: match.id, Valid: true}, true
+		}
+	}
+
+	// 2. No perfect match, find the closest Levenshtein distance.
+	// Only accept matches with a distance <= maxLevenshteinDistance.
+	const maxLevenshteinDistance = 2
+
+	bestMatchID := int64(-1)
+	bestMatchName := ""
+	minDistance := 100 // Initialize with a high number
+
+	// --- ADDED LOGS ---
+	log.Printf("[D] [ItemID/Levenshtein] No perfect match for '%s'. Calculating proximity for %d candidates.", cleanItemName, len(potentialMatches))
+
+	for _, match := range potentialMatches {
+		lowerNameEN := strings.ToLower(match.name)
+		distEN := levenshtein.ComputeDistance(lowerCleanItemName, lowerNameEN)
+
+		currentBestName := match.name
+		currentMinDist := distEN
+
+		logMsg := fmt.Sprintf("[D] [ItemID/Levenshtein] ...vs EN '%s' (ID %d): dist %d.", lowerNameEN, match.id, distEN)
+
+		if match.namePT != "" {
+			lowerNamePT := strings.ToLower(match.namePT)
+			distPT := levenshtein.ComputeDistance(lowerCleanItemName, lowerNamePT)
+			logMsg += fmt.Sprintf(" vs PT '%s': dist %d.", lowerNamePT, distPT)
+
+			if distPT < currentMinDist {
+				currentMinDist = distPT
+				currentBestName = match.namePT
 			}
 		}
 
-		// Fallback for cards: just trust the first result
-		lowerCleanItemName := strings.ToLower(cleanItemName)
-		if strings.Contains(lowerCleanItemName, "card") || strings.Contains(lowerCleanItemName, "carta") {
-			itemID := potentialMatches[0].id
-			log.Printf("[D] [ItemID] Found %d FTS matches for '%s'. Using first result (ID %d) due to 'card'/'carta' keyword.", len(potentialMatches), cleanItemName, itemID)
-			return sql.NullInt64{Int64: itemID, Valid: true}, true
-		}
+		log.Print(logMsg) // Print the comparison log
 
-		log.Printf("[D] [ItemID] Found %d ambiguous FTS matches for '%s'. Proceeding to online search.", len(potentialMatches), cleanItemName)
+		// Check if this is the new best match
+		if currentMinDist < minDistance {
+			minDistance = currentMinDist
+			bestMatchID = match.id
+			bestMatchName = currentBestName // Store the name that matched
+		}
 	}
 
-	// No matches or ambiguous matches
+	log.Printf("[DF] [ItemID/Levenshtein] Best proximity match for '%s' is '%s' (ID %d) with distance %d.", cleanItemName, bestMatchName, bestMatchID, minDistance)
+	// --- END ADDED LOGS ---
+
+	// 3. Check if the best match is within our acceptable threshold
+	if bestMatchID != -1 && minDistance <= maxLevenshteinDistance {
+		log.Printf("[D] [ItemID] Accepting proximity match for '%s' (ID %d). Distance %d is <= %d.", cleanItemName, bestMatchID, minDistance, maxLevenshteinDistance)
+		return sql.NullInt64{Int64: bestMatchID, Valid: true}, true
+	}
+
+	// 4. No close proximity match, fall back to "card" logic
+	if strings.Contains(lowerCleanItemName, "card") || strings.Contains(lowerCleanItemName, "carta") {
+		itemID := potentialMatches[0].id // Trust the first result from FTS rank
+		log.Printf("[D] [ItemID] Found %d FTS matches for '%s'. Proximity match rejected (dist %d > %d). Using first result (ID %d) due to 'card'/'carta' keyword.", len(potentialMatches), cleanItemName, minDistance, maxLevenshteinDistance, itemID)
+		return sql.NullInt64{Int64: itemID, Valid: true}, true
+	}
+
+	// 5. All ambiguity checks failed.
+	log.Printf("[D] [ItemID] Found %d ambiguous FTS matches for '%s'. Proximity match rejected (dist %d > %d). Proceeding to online search.", len(potentialMatches), cleanItemName, minDistance, maxLevenshteinDistance)
 	return sql.NullInt64{Valid: false}, false
 }
 
@@ -2212,7 +2275,7 @@ func findItemIDOnline(cleanItemName string, slots int) (sql.NullInt64, bool) {
 }
 
 // findItemIDByName orchestrates searching the cache and online for an item ID.
-// This refactored version has a clearer, flatter structure.
+// This function remains unchanged but is shown for context.
 func findItemIDByName(itemName string, allowRetry bool, slots int) (sql.NullInt64, error) {
 	// 1. Clean the name
 	reRefine := regexp.MustCompile(`\s*\+\d+\s*`)
@@ -2230,7 +2293,7 @@ func findItemIDByName(itemName string, allowRetry bool, slots int) (sql.NullInt6
 		return sql.NullInt64{Valid: false}, nil
 	}
 
-	// 3. Try local FTS cache first
+	// 3. Try local FTS cache first (This is the modified function)
 	if itemID, found := findItemIDInCache(cleanItemName); found {
 		return itemID, nil
 	}

@@ -4,6 +4,7 @@ go 1.24.4
 
 require (
 	github.com/PuerkitoBio/goquery v1.10.3
+	github.com/agnivade/levenshtein v1.2.1
 	github.com/bwmarrin/discordgo v0.29.0
 	github.com/google/generative-ai-go v0.20.1
 	github.com/joho/godotenv v1.5.1
