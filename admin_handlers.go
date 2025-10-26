@@ -35,45 +35,42 @@ func basicAuth(handler http.Handler) http.Handler {
 	})
 }
 
+// in admin_handlers.go
+
 // getDashboardStats populates the main database statistics concurrently.
 func getDashboardStats(stats *AdminDashboardData) error {
-	var wg sync.WaitGroup
-	var queryErr error
-	var mu sync.Mutex // To protect queryErr
+	// Use an errgroup for cleaner concurrent error handling
+	var g errgroup.Group
 
 	// Helper function to run a query and assign the result
-	runQuery := func(query string, target *int) {
-		defer wg.Done()
-		var count sql.NullInt64
-		err := db.QueryRow(query).Scan(&count)
-		if err != nil {
-			log.Printf("[W] [Admin/Stats] Dashboard stats query failed (%s): %v", query, err)
-			mu.Lock()
-			if queryErr == nil { // Store only the first error
-				queryErr = err
+	runQuery := func(query string, target *int) func() error {
+		return func() error {
+			var count sql.NullInt64
+			err := db.QueryRow(query).Scan(&count)
+			if err != nil {
+				log.Printf("[W] [Admin/Stats] Dashboard stats query failed (%s): %v", query, err)
+				return err // Return the error to the group
 			}
-			mu.Unlock()
+			*target = int(count.Int64)
+			return nil
 		}
-		*target = int(count.Int64)
 	}
 
-	wg.Add(11)
-	go runQuery("SELECT COUNT(*) FROM items", &stats.TotalItems)
-	go runQuery("SELECT COUNT(*) FROM items WHERE is_available = 1", &stats.AvailableItems)
-	go runQuery("SELECT COUNT(DISTINCT name_of_the_item) FROM items", &stats.UniqueItems)
-	go runQuery("SELECT COUNT(*) FROM rms_item_cache", &stats.CachedItems)
-	go runQuery("SELECT COUNT(*) FROM characters", &stats.TotalCharacters)
-	go runQuery("SELECT COUNT(*) FROM guilds", &stats.TotalGuilds)
-	go runQuery("SELECT COUNT(*) FROM player_history", &stats.PlayerHistoryEntries)
-	go runQuery("SELECT COUNT(*) FROM market_events", &stats.MarketEvents)
-	go runQuery("SELECT COUNT(*) FROM character_changelog", &stats.ChangelogEntries)
-	go runQuery("SELECT COUNT(*) FROM visitors", &stats.TotalVisitors)
-	go runQuery("SELECT COUNT(*) FROM visitors WHERE date(last_visit) = date('now', 'localtime')", &stats.VisitorsToday)
+	g.Go(runQuery("SELECT COUNT(*) FROM items", &stats.TotalItems))
+	g.Go(runQuery("SELECT COUNT(*) FROM items WHERE is_available = 1", &stats.AvailableItems))
+	g.Go(runQuery("SELECT COUNT(DISTINCT name_of_the_item) FROM items", &stats.UniqueItems))
+	g.Go(runQuery("SELECT COUNT(*) FROM rms_item_cache", &stats.CachedItems))
+	g.Go(runQuery("SELECT COUNT(*) FROM characters", &stats.TotalCharacters))
+	g.Go(runQuery("SELECT COUNT(*) FROM guilds", &stats.TotalGuilds))
+	g.Go(runQuery("SELECT COUNT(*) FROM player_history", &stats.PlayerHistoryEntries))
+	g.Go(runQuery("SELECT COUNT(*) FROM market_events", &stats.MarketEvents))
+	g.Go(runQuery("SELECT COUNT(*) FROM character_changelog", &stats.ChangelogEntries))
+	g.Go(runQuery("SELECT COUNT(*) FROM visitors", &stats.TotalVisitors))
+	g.Go(runQuery("SELECT COUNT(*) FROM visitors WHERE date(last_visit) = date('now', 'localtime')", &stats.VisitorsToday))
 
-	wg.Wait()
-
-	if queryErr != nil {
-		return fmt.Errorf("could not query for one or more dashboard stats: %w", queryErr)
+	// Wait for all queries to finish and return the first error, if any
+	if err := g.Wait(); err != nil {
+		return fmt.Errorf("could not query for one or more dashboard stats: %w", err)
 	}
 	return nil
 }
@@ -886,8 +883,6 @@ func adminReparseTradingPostHandler(w http.ResponseWriter, r *http.Request) {
 	msg = fmt.Sprintf("Successfully+re-parsed+post+%d.+Found+%d+items.", postID, itemsUpdated)
 	http.Redirect(w, r, "/admin?msg="+msg, http.StatusSeeOther)
 }
-
-// --- Refactored AdminEditTradingPostHandler ---
 
 // adminShowEditTradingPostPage handles the GET request to show the edit form.
 func adminShowEditTradingPostPage(w http.ResponseWriter, r *http.Request, postID int) {

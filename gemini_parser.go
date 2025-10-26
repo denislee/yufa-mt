@@ -6,8 +6,6 @@ import (
 	"fmt"
 	"log"
 	"os"
-	"regexp"
-	"strings"
 	"time"
 
 	"github.com/google/generative-ai-go/genai"
@@ -114,7 +112,10 @@ Here is the message to parse:
 ---`
 )
 
-var jsonRegex = regexp.MustCompile("(?s)```json(.*)```")
+// in gemini_parser.go
+
+// This regex is no longer needed, as we are forcing a JSON response type.
+// var jsonRegex = regexp.MustCompile("(?s)```json(.*)```")
 
 func parseTradeMessageWithGemini(message string) (*GeminiTradeResult, error) {
 	apiKey := os.Getenv("GEMINI_API_KEY")
@@ -132,6 +133,7 @@ func parseTradeMessageWithGemini(message string) (*GeminiTradeResult, error) {
 	defer client.Close()
 
 	model := client.GenerativeModel(geminiModelName)
+	// This line ensures the API *only* returns JSON, no markdown.
 	model.GenerationConfig.ResponseMIMEType = "application/json"
 
 	prompt := fmt.Sprintf(promptTemplate, message)
@@ -146,28 +148,22 @@ func parseTradeMessageWithGemini(message string) (*GeminiTradeResult, error) {
 		return nil, fmt.Errorf("received an empty or invalid response from Gemini API")
 	}
 
-	// --- Refactored Part ---
+	// --- REFACTORED PART ---
 	// Directly access the text part of the response.
-	// This is cleaner than fmt.Sprintf and relies on the genai type.
 	part := resp.Candidates[0].Content.Parts[0]
 	text, ok := part.(genai.Text)
 	if !ok {
 		return nil, fmt.Errorf("gemini response part was not of type genai.Text, but %T", part)
 	}
+	// The response is raw JSON, no stripping needed.
 	rawJSON := string(text)
-	// --- End Refactored Part ---
-
-	// This logic to strip markdown backticks remains, using the package-level regex.
-	matches := jsonRegex.FindStringSubmatch(rawJSON)
-	if len(matches) > 1 {
-		rawJSON = matches[1]
-	}
-	rawJSON = strings.TrimSpace(rawJSON)
+	// --- END REFACTORED PART ---
 
 	log.Printf("[D] [Gemini] Received JSON response: %s", rawJSON)
 
 	var result GeminiTradeResult
 	if err := json.Unmarshal([]byte(rawJSON), &result); err != nil {
+		// We still include the raw response in the error, as it could be malformed JSON.
 		return nil, fmt.Errorf("failed to unmarshal JSON from Gemini: %w. Raw response: %s", err, rawJSON)
 	}
 

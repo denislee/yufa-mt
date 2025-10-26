@@ -993,6 +993,24 @@ func parseMarketItem(itemSelection *goquery.Selection) (Item, bool) {
 	}, true
 }
 
+// in scraper.go
+
+// determineRemovalType encapsulates the logic for deciding if an item was sold or just removed.
+func determineRemovalType(listing Item, activeSellers map[string]bool, dbStoreSizes map[string]int) string {
+	// If the seller is still online, assume the item was sold.
+	if _, sellerIsActive := activeSellers[listing.SellerName]; sellerIsActive {
+		return "SOLD"
+	}
+	// If the seller is offline, but this was the only item in their store,
+	// assume they just closed the store (REMOVED_SINGLE).
+	if dbStoreSizes[listing.SellerName] == 1 {
+		return "REMOVED_SINGLE"
+	}
+	// Otherwise, the seller is offline and had other items, so we assume
+	// they just removed this one item from their store before logging off.
+	return "REMOVED"
+}
+
 func scrapeData() {
 	log.Println("[I] [Scraper/Market] Starting scrape...")
 
@@ -1139,12 +1157,10 @@ func scrapeData() {
 			for _, lastItem := range lastAvailableItems {
 				if _, found := currentSet[toComparable(lastItem)]; !found {
 
-					eventType := "REMOVED"
-					if _, sellerIsActive := activeSellers[lastItem.SellerName]; sellerIsActive {
-						eventType = "SOLD"
-					} else if dbStoreSizes[lastItem.SellerName] == 1 {
-						eventType = "REMOVED_SINGLE"
-					}
+					// --- REFACTOR ---
+					// Use the new helper function
+					eventType := determineRemovalType(lastItem, activeSellers, dbStoreSizes)
+					// --- END REFACTOR ---
 
 					details, _ := json.Marshal(map[string]interface{}{
 						"price":      lastItem.Price,
@@ -1195,7 +1211,7 @@ func scrapeData() {
 				})
 				_, err := tx.Exec(`INSERT INTO market_events (event_timestamp, event_type, item_name, item_id, details) VALUES (?, 'ADDED', ?, ?, ?)`, retrievalTime, itemName, firstItem.ItemID, string(details))
 				if err != nil {
-					log.Printf("[E] [Scraper/Market] Failed to log ADDED event for %s: %v", itemName, err)
+					log.Printf("[ECode] [Scraper/Market] Failed to log ADDED event for %s: %v", itemName, err)
 				}
 
 				go scrapeAndCacheItemIfNotExists(firstItem.ItemID, itemName)
@@ -1246,12 +1262,10 @@ func scrapeData() {
 
 			for _, listing := range removedListings {
 
-				eventType := "REMOVED"
-				if _, sellerIsActive := activeSellers[listing.SellerName]; sellerIsActive {
-					eventType = "SOLD"
-				} else if dbStoreSizes[listing.SellerName] == 1 {
-					eventType = "REMOVED_SINGLE"
-				}
+				// --- REFACTOR ---
+				// Use the new helper function
+				eventType := determineRemovalType(listing, activeSellers, dbStoreSizes)
+				// --- END REFACTOR ---
 
 				details, _ := json.Marshal(map[string]interface{}{
 					"price":      listing.Price,

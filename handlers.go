@@ -396,6 +396,8 @@ func mapItemTypeToTabData(typeName string) ItemTypeTab {
 	return tab
 }
 
+// in handlers.go
+
 var templateCache = make(map[string]*template.Template)
 
 func init() {
@@ -423,22 +425,17 @@ func init() {
 
 		tmpl, err := template.New(tmplName).Funcs(templateFuncs).ParseFiles(tmplName, navbarPath)
 		if err != nil {
-
-			if strings.Contains(err.Error(), "no such file or directory") && tmplName == "admin_edit_post.html" {
-
-				tmpl, err = template.New(tmplName).Funcs(templateFuncs).ParseFiles(tmplName)
-				if err != nil {
-					log.Fatalf("[F] [HTTP] Could not parse template '%s' (standalone): %v", tmplName, err)
-				}
-			} else if strings.Contains(err.Error(), "no such file or directory") && tmplName == "admin.html" {
-
-				tmpl, err = template.New(tmplName).Funcs(templateFuncs).ParseFiles(tmplName)
-				if err != nil {
-					log.Fatalf("[F] [HTTP] Could not parse template '%s' (standalone): %v", tmplName, err)
-				}
-			} else if err != nil {
-				log.Fatalf("[F] [HTTP] Could not parse template '%s': %v", tmplName, err)
-			}
+			// --- REFACTOR ---
+			// The old code had a complex if/else if block here to check for
+			// "admin_edit_post.html" and "admin.html".
+			//
+			// Those files are NOT in the 'templates' list above, so that
+			// error-handling code was unreachable dead code.
+			//
+			// We can safely remove it, leaving only the fatal error check.
+			// Admin templates are parsed on-demand in their own handlers.
+			log.Fatalf("[F] [HTTP] Could not parse template '%s': %v", tmplName, err)
+			// --- END REFACTOR ---
 		}
 
 		templateCache[tmplName] = tmpl
