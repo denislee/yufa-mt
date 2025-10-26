@@ -42,6 +42,33 @@ var (
 	}
 )
 
+// --- NEW STRUCTS FOR YAML ITEM DB ---
+
+// ItemDBEntry represents a single item entry in the YAML 'Body'.
+type ItemDBEntry struct {
+	ID            int             `yaml:"Id"`
+	AegisName     string          `yaml:"AegisName"`
+	Name          string          `yaml:"Name"`
+	Type          string          `yaml:"Type"`
+	Buy           *int64          `yaml:"Buy"`    // Changed from sql.NullInt64 to *int64
+	Sell          *int64          `yaml:"Sell"`   // Changed from sql.NullInt64 to *int64
+	Weight        *int64          `yaml:"Weight"` // Changed from sql.NullInt64 to *int64
+	Slots         *int64          `yaml:"Slots"`  // Changed from sql.NullInt64 to *int64
+	Jobs          map[string]bool `yaml:"Jobs"`
+	Locations     map[string]bool `yaml:"Locations"`
+	Script        string          `yaml:"Script"`
+	EquipScript   string          `yaml:"EquipScript"`
+	UnEquipScript string          `yaml:"UnEquipScript"`
+}
+
+// ItemDBFile represents the top-level structure of an item_db YAML file.
+type ItemDBFile struct {
+	Header map[string]interface{} `yaml:"Header"`
+	Body   []ItemDBEntry          `yaml:"Body"`
+}
+
+// --- END NEW STRUCTS ---
+
 type Item struct {
 	ID             int
 	Name           string
@@ -127,6 +154,7 @@ type RMSItem struct {
 	Buy            string
 	Sell           string
 	Weight         string
+	Slots          int // <-- ADDED
 	Prefix         string
 	Description    string
 	Script         string

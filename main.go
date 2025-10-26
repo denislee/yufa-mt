@@ -200,6 +200,12 @@ func main() {
 	}
 	defer db.Close()
 
+	// --- NEW: Populate Item DB from YAMLs ---
+	// Run this synchronously on startup before starting other services
+	// It's critical data and should be loaded before the app is "ready"
+	populateItemDBOnStartup()
+	// --- END NEW ---
+
 	// Create a context that gets cancelled on OS signals (SIGINT, SIGTERM)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()

@@ -83,7 +83,7 @@ func scrapeRMSItemDetails(itemID int) (*RMSItem, error) {
 	doc.Find(".info_grid_item").Each(func(i int, s *goquery.Selection) {
 		label := strings.TrimSpace(s.Text())
 		var value string
-		if next := s.Next(); next.Length() > 0 {
+		if next := s.Next(); next.Length() > 0 && next.HasClass("info_grid_item") {
 			value = strings.TrimSpace(next.Text())
 		}
 
@@ -100,6 +100,12 @@ func scrapeRMSItemDetails(itemID int) (*RMSItem, error) {
 			item.Weight = value
 		case "Pre/Suffix":
 			item.Prefix = value
+		case "Slot":
+			if intVal, err := strconv.Atoi(value); err == nil {
+				item.Slots = intVal
+			} else {
+				item.Slots = 0
+			}
 		}
 	})
 
@@ -144,8 +150,19 @@ func scrapeRMSItemDetails(itemID int) (*RMSItem, error) {
 			reNamePT := regexp.MustCompile(`<h1 class="item-title-db">([^<]+)</h1>`)
 			matches := reNamePT.FindStringSubmatch(string(body))
 			if len(matches) > 1 {
-				item.NamePT = strings.TrimSpace(matches[1])
-				log.Printf("[D] [RDB] Found Portuguese name: '%s'", item.NamePT)
+				// --- MODIFICATION IS HERE ---
+				// Extract the raw name
+				rawNamePT := strings.TrimSpace(matches[1])
+
+				// Use the existing package-level regex from handlers.go to remove slots
+				// (e.g., reSlotRemover = regexp.MustCompile(`\s*\[\d+\]\s*`))
+				cleanNamePT := reSlotRemover.ReplaceAllString(rawNamePT, " ")
+
+				// Assign the cleaned and trimmed name
+				item.NamePT = strings.TrimSpace(cleanNamePT)
+				// --- END MODIFICATION ---
+
+				log.Printf("[D] [RDB] Found Portuguese name: '%s' (Cleaned from: '%s')", item.NamePT, rawNamePT)
 			} else {
 				log.Printf("[W] [RDB] Could not find Portuguese name with regex on page.")
 			}
@@ -159,19 +176,23 @@ func scrapeRMSItemDetails(itemID int) (*RMSItem, error) {
 }
 
 func getItemDetailsFromCache(itemID int) (*RMSItem, error) {
+	// --- MODIFICATION IS HERE (added slots) ---
 	row := db.QueryRow(`
-		SELECT name, name_pt, image_url, item_type, item_class, buy, sell, weight, prefix, description, script, dropped_by_json, obtainable_from_json
+		SELECT name, name_pt, image_url, item_type, item_class, buy, sell, weight, slots, prefix, description, script, dropped_by_json, obtainable_from_json
 		FROM rms_item_cache WHERE item_id = ?`, itemID)
+	// --- END MODIFICATION ---
 
 	var item RMSItem
 	item.ID = itemID
 	var droppedByJSON, obtainableFromJSON string
 
+	// --- MODIFICATION IS HERE (added &item.Slots) ---
 	err := row.Scan(
 		&item.Name, &item.NamePT, &item.ImageURL, &item.Type, &item.Class, &item.Buy, &item.Sell,
-		&item.Weight, &item.Prefix, &item.Description, &item.Script,
+		&item.Weight, &item.Slots, &item.Prefix, &item.Description, &item.Script,
 		&droppedByJSON, &obtainableFromJSON,
 	)
+	// --- END MODIFICATION ---
 	if err != nil {
 
 		if err == sql.ErrNoRows {
@@ -201,20 +222,19 @@ func saveItemDetailsToCache(item *RMSItem) error {
 		return fmt.Errorf("failed to marshal ObtainableFrom for caching item %d: %w", item.ID, err)
 	}
 
-	// --- THE FIX IS HERE ---
-	// Lock the mutex to ensure only one goroutine writes to this table at a time.
 	rmsCacheMutex.Lock()
 	defer rmsCacheMutex.Unlock()
 
+	// --- MODIFICATION IS HERE (added slots column and item.Slots value) ---
 	_, err = db.Exec(`
 		INSERT OR REPLACE INTO rms_item_cache
-		(item_id, name, name_pt, image_url, item_type, item_class, buy, sell, weight, prefix, description, script, dropped_by_json, obtainable_from_json, last_checked)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		(item_id, name, name_pt, image_url, item_type, item_class, buy, sell, weight, slots, prefix, description, script, dropped_by_json, obtainable_from_json, last_checked)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		item.ID, item.Name, item.NamePT, item.ImageURL, item.Type, item.Class, item.Buy, item.Sell,
-		item.Weight, item.Prefix, item.Description, item.Script,
+		item.Weight, item.Slots, item.Prefix, item.Description, item.Script,
 		string(droppedByJSON), string(obtainableFromJSON), time.Now().Format(time.RFC3339),
 	)
-	// --- END FIX ---
+	// --- END MODIFICATION ---
 
 	if err != nil {
 		return fmt.Errorf("failed to execute insert/replace for item %d in cache: %w", item.ID, err)

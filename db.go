@@ -52,6 +52,7 @@ const (
 		"buy" TEXT,
 		"sell" TEXT,
 		"weight" TEXT,
+		"slots" INTEGER,
 		"prefix" TEXT,
 		"description" TEXT,
 		"script" TEXT,
@@ -186,6 +187,25 @@ const (
 		"card4" TEXT,
 		FOREIGN KEY(post_id) REFERENCES trading_posts(id) ON DELETE CASCADE
 	);`
+
+	// --- NEW TABLE for YAML Item DB ---
+	createInternalItemDBTableSQL = `
+	CREATE TABLE IF NOT EXISTS internal_item_db (
+		"item_id" INTEGER NOT NULL PRIMARY KEY,
+		"aegis_name" TEXT,
+		"name" TEXT,
+		"name_pt" TEXT,
+		"type" TEXT,
+		"buy" INTEGER,
+		"sell" INTEGER,
+		"weight" INTEGER,
+		"slots" INTEGER,
+		"jobs" TEXT,
+		"locations" TEXT,
+		"script" TEXT,
+		"equip_script" TEXT,
+		"unequip_script" TEXT
+	);`
 )
 
 func applyMigrations(db *sql.DB) error {
@@ -250,6 +270,7 @@ func initDB(filepath string) (*sql.DB, error) {
 		"idx_page_path":         createPageIndexSQL,
 		"trading_posts":         createTradingPostsTableSQL,
 		"trading_post_items":    createTradingPostItemsTableSQL,
+		"internal_item_db":      createInternalItemDBTableSQL, // <-- ADDED
 	}
 
 	for name, query := range queries {
