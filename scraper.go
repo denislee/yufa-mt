@@ -506,17 +506,6 @@ func scrapePlayerCharacters() {
 	log.Printf("[I] [Scraper/Char] Finished scraping all pages. DB worker is now processing data...")
 }
 
-type GuildMemberJSON struct {
-	Name string `json:"name"`
-}
-
-type GuildJSON struct {
-	Name    string            `json:"name"`
-	Level   int               `json:"guild_lv"`
-	Master  string            `json:"master"`
-	Members []GuildMemberJSON `json:"members"`
-}
-
 // processGuildData handles all database transactions for updating guilds and member associations.
 func processGuildData(allGuilds map[string]Guild, allMembers map[string]string) {
 	characterMutex.Lock()
