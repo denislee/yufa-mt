@@ -68,7 +68,7 @@ func storeItemsInDB(items []ItemDBEntry) error {
 	defer tx.Rollback() // Rollback on error
 
 	stmt, err := tx.Prepare(`
-		INSERT OR REPLACE INTO internal_item_db (
+		INSERT OR IGNORE INTO internal_item_db (
 			item_id, aegis_name, name, type, buy, sell, weight, slots,
 			jobs, locations, script, equip_script, unequip_script, name_pt
 		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -108,7 +108,7 @@ func storeItemsInDB(items []ItemDBEntry) error {
 		nullWeight := toNullInt64(item.Weight)
 		nullSlots := toNullInt64(item.Slots)
 
-		_, err = stmt.Exec(
+		res, err := stmt.Exec(
 			item.ID,
 			item.AegisName,
 			item.Name,
@@ -130,10 +130,14 @@ func storeItemsInDB(items []ItemDBEntry) error {
 			log.Printf("[W] [ItemDB] Failed to insert item %d (%s): %v", item.ID, item.Name, err)
 			continue
 		}
-		successCount++
+
+		rowsAffected, _ := res.RowsAffected()
+		if rowsAffected > 0 {
+			successCount++
+		}
 	}
 
-	log.Printf("[I] [ItemDB] Successfully inserted/replaced %d items.", successCount)
+	log.Printf("[I] [ItemDB] Successfully inserted %d new items (skipped duplicates).", successCount)
 	return tx.Commit()
 }
 
