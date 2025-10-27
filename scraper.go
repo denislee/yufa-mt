@@ -28,6 +28,9 @@ var (
 	marketMutex      sync.Mutex
 	characterMutex   sync.Mutex
 	playerCountMutex sync.Mutex
+	ptNameMutex      sync.Mutex
+	ptNameRegex      = regexp.MustCompile(`<h1 class="item-title-db">([^<]+)</h1>`)
+	slotRemoverRegex = regexp.MustCompile(`\s*\[\d+\]\s*`)
 )
 
 const (
@@ -1664,6 +1667,110 @@ func scrapeMvpKills() {
 	processMvpKills(allMvpKills)
 }
 
+const ptNameDelay = 3 * time.Second // Delay between requests
+
+// fetchPortugueseName fetches a single item's PT name from RagnarokDatabase
+func fetchPortugueseName(itemID int) (string, error) {
+	rdbURL := fmt.Sprintf("https://ragnarokdatabase.com/item/%d", itemID)
+
+	// Use the shared scraperClient's HTTP client
+	req, err := http.NewRequest("GET", rdbURL, nil)
+	if err != nil {
+		return "", err
+	}
+	req.Header.Set("User-Agent", scraperClient.UserAgent)
+
+	rdbRes, err := scraperClient.Client.Do(req)
+	if err != nil {
+		return "", fmt.Errorf("failed to get URL from RDB: %w", err)
+	}
+	defer rdbRes.Body.Close()
+
+	if rdbRes.StatusCode != 200 {
+		if rdbRes.StatusCode == 404 {
+			return "", fmt.Errorf("item not found on RDB (404)")
+		}
+		return "", fmt.Errorf("RDB status code error: %d %s", rdbRes.StatusCode, rdbRes.Status)
+	}
+
+	body, readErr := io.ReadAll(rdbRes.Body)
+	if readErr != nil {
+		return "", fmt.Errorf("could not read body from RDB: %w", readErr)
+	}
+
+	// Parse the name from the H1 tag
+	matches := ptNameRegex.FindStringSubmatch(string(body))
+	if len(matches) > 1 {
+		rawNamePT := strings.TrimSpace(matches[1])
+		// Clean the name (e.g., remove "[1]")
+		cleanNamePT := slotRemoverRegex.ReplaceAllString(rawNamePT, " ")
+		return strings.TrimSpace(cleanNamePT), nil
+	}
+
+	return "", fmt.Errorf("could not find name regex on page")
+}
+
+// populateMissingPortugueseNames is the background job function
+func populateMissingPortugueseNames() {
+	if !ptNameMutex.TryLock() {
+		log.Println("[I] [Scraper/PT-Name] Portuguese name population job is already running. Skipping.")
+		return
+	}
+	defer ptNameMutex.Unlock()
+
+	log.Println("[I] [Scraper/PT-Name] Starting job to populate missing Portuguese names...")
+
+	// 1. Get all item IDs that need a PT name
+	rows, err := db.Query("SELECT item_id FROM internal_item_db WHERE name_pt IS NULL OR name_pt = ''")
+	if err != nil {
+		log.Printf("[E] [Scraper/PT-Name] Failed to query for items: %v", err)
+		return
+	}
+	defer rows.Close()
+
+	var itemIDs []int
+	for rows.Next() {
+		var id int
+		if err := rows.Scan(&id); err == nil {
+			itemIDs = append(itemIDs, id)
+		}
+	}
+
+	if len(itemIDs) == 0 {
+		log.Println("[I] [Scraper/PT-Name] No items need Portuguese names. Job complete.")
+		return
+	}
+
+	log.Printf("[I] [Scraper/PT-Name] Found %d items to update.", len(itemIDs))
+
+	// 2. Loop, fetch, update, and sleep
+	var successCount, failCount int
+	for i, itemID := range itemIDs {
+		ptName, err := fetchPortugueseName(itemID)
+		if err != nil {
+			log.Printf("[W] [Scraper/PT-Name] [%d/%d] Failed to fetch name for item %d: %v", i+1, len(itemIDs), itemID, err)
+			failCount++
+		} else {
+			// Update the DB
+			_, err := db.Exec("UPDATE internal_item_db SET name_pt = ? WHERE item_id = ?", ptName, itemID)
+			if err != nil {
+				log.Printf("[E] [Scraper/PT-Name] [%d/%d] Failed to update DB for item %d: %v", i+1, len(itemIDs), itemID, err)
+				failCount++
+			} else {
+				log.Printf("[I] [Scraper/PT-Name] [%d/%d] Updated item %d with name: %s", i+1, len(itemIDs), itemID, ptName)
+				successCount++
+			}
+		}
+
+		// 3. Add the requested delay to avoid being blocked
+		if i < len(itemIDs)-1 { // Don't sleep after the last item
+			time.Sleep(ptNameDelay)
+		}
+	}
+
+	log.Printf("[I] [Scraper/PT-Name] Job finished. Successfully updated: %d, Failed: %d", successCount, failCount)
+}
+
 // Job defines a background task with its function and schedule.
 type Job struct {
 	Name     string
@@ -1701,6 +1808,7 @@ func startBackgroundJobs(ctx context.Context) {
 		{Name: "Guild", Func: scrapeGuilds, Interval: 25 * time.Minute},
 		{Name: "Zeny", Func: scrapeZeny, Interval: 1 * time.Hour},
 		{Name: "MVP Kill", Func: scrapeMvpKills, Interval: 5 * time.Minute},
+		{Name: "PT-Name-Populator", Func: populateMissingPortugueseNames, Interval: 6 * time.Hour},
 	}
 
 	// Start all standard jobs
