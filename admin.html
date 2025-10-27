@@ -28,501 +28,537 @@
         </div>
         {{end}}
 
-        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-            <div class="bg-white p-6 rounded-lg shadow">
-                <h3 class="text-gray-500 text-sm font-medium uppercase">Market Items</h3>
-                <p class="text-3xl font-bold">{{.TotalItems}} <span class="text-lg font-normal">Total</span></p>
-                <p class="text-xl font-semibold">{{.AvailableItems}} <span class="text-base font-normal">Available</span></p>
-                <p class="text-xl font-semibold">{{.UniqueItems}} <span class="text-base font-normal">Unique</span></p>
-            </div>
-            <div class="bg-white p-6 rounded-lg shadow">
-                <h3 class="text-gray-500 text-sm font-medium uppercase">Player & Guilds</h3>
-                <p class="text-3xl font-bold">{{.TotalCharacters}} <span class="text-lg font-normal">Characters</span></p>
-                <p class="text-xl font-semibold">{{.TotalGuilds}} <span class="text-base font-normal">Guilds</span></p>
-                 <p class="text-xl font-semibold">{{.ChangelogEntries}} <span class="text-base font-normal">Changelog Events</span></p>
-            </div>
-            <div class="bg-white p-6 rounded-lg shadow">
-                <h3 class="text-gray-500 text-sm font-medium uppercase">Site Traffic & System</h3>
-                <p class="text-3xl font-bold">{{.TotalVisitors}} <span class="text-lg font-normal">Total Visitors</span></p>
-                <p class="text-xl font-semibold">{{.VisitorsToday}} <span class="text-base font-normal">Visitors Today</span></p>
-                <p class="text-sm mt-1"><strong>Top Page:</strong> {{.MostVisitedPage}} ({{.MostVisitedPageCount}} views)</p>
-                <hr class="my-2 border-gray-200">
-                <p class="text-sm mt-1"><strong>Cached Items:</strong> {{.CachedItems}}</p>
-                <p class="text-sm"><strong>Player Samples:</strong> {{.PlayerHistoryEntries}}</p>
-                <p class="text-sm"><strong>Market Events:</strong> {{.MarketEvents}}</p>
-            </div>
-            <div class="bg-white p-6 rounded-lg shadow">
-                <h3 class="text-gray-500 text-sm font-medium uppercase">Last Scrape Times</h3>
-                <p class="text-sm"><strong>Market:</strong> {{.LastMarketScrape}}</p>
-                <p class="text-sm"><strong>Player Count:</strong> {{.LastPlayerCountScrape}}</p>
-                <p class="text-sm"><strong>Characters/MVP:</strong> {{.LastCharacterScrape}}</p>
-                <p class="text-sm"><strong>Guilds:</strong> {{.LastGuildScrape}}</p>
-            </div>
+        <div class="mb-6 border-b border-gray-300">
+            <nav class="-mb-px flex space-x-8" aria-label="Tabs">
+                <a href="#" class="tab-button border-blue-500 text-blue-600 whitespace-nowrap py-3 px-1 border-b-2 font-medium text-sm" data-tab="overview">
+                    Overview
+                </a>
+                <a href="#" class="tab-button border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 whitespace-nowrap py-3 px-1 border-b-2 font-medium text-sm" data-tab="manage">
+                    General Management
+                </a>
+                <a href="#" class="tab-button border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 whitespace-nowrap py-3 px-1 border-b-2 font-medium text-sm" data-tab="trading">
+                    Trading Post
+                </a>
+                <a href="#" class="tab-button border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 whitespace-nowrap py-3 px-1 border-b-2 font-medium text-sm" data-tab="cache">
+                    RMS Item Cache
+                </a>
+            </nav>
         </div>
 
-        <div class="grid grid-cols-1 xl:grid-cols-2 gap-8">
-            <div>
-                <div class="bg-white p-6 rounded-lg shadow mb-8">
-                    <h2 class="text-xl font-bold mb-4">Manual Scrapers</h2>
-                    <div class="grid grid-cols-2 md:grid-cols-3 gap-4">
-                        <form action="/admin/scrape/market" method="POST">
-                            <button type="submit" class="w-full bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded">Market Scrape</button>
-                        </form>
-                         <form action="/admin/scrape/players" method="POST">
-                            <button type="submit" class="w-full bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded">Player Count</button>
-                        </form>
-                        <form action="/admin/scrape/characters" method="POST">
-                            <button type="submit" class="w-full bg-green-500 hover:bg-green-700 text-white font-bold py-2 px-4 rounded">Character Scrape</button>
+        <div class="tab-panels">
 
-                        </form>
-                        <form action="/admin/scrape/guilds" method="POST">
-                            <button type="submit" class="w-full bg-green-500 hover:bg-green-700 text-white font-bold py-2 px-4 rounded">Guild Scrape</button>
-                        </form>
-                        <form action="/admin/scrape/zeny" method="POST">
-                            <button type="submit" class="w-full bg-green-500 hover:bg-green-700 text-white font-bold py-2 px-4 rounded">Zeny Scrape</button>
-                        </form>
-                        <form action="/admin/scrape/mvp" method="POST">
-                            <button type="submit" class="w-full bg-green-500 hover:bg-green-700 text-white font-bold py-2 px-4 rounded">MVP Scrape</button>
-                        </form>
-                        <form action="/admin/scrape/woe" method="POST">
-                            <button type="submit" class="w-full bg-purple-500 hover:bg-purple-700 text-white font-bold py-2 px-4 rounded">WoE Scrape</button>
-                        </form>
-                        <form action="/admin/scrape/pt-names" method="POST">
-                            <button type="submit" class="w-full bg-indigo-500 hover:bg-indigo-700 text-white font-bold py-2 px-4 rounded">PT Name Populator</button>
-                        </form>
-                        </div>
-                </div>
-
-                <div class="bg-white p-6 rounded-lg shadow mb-8">
-                    <h2 class="text-xl font-bold mb-4">Guild Emblem Management</h2>
-                    <form action="/admin/guild/update-emblem" method="POST" class="flex flex-col md:flex-row items-end gap-4">
-                        <div class="flex-grow w-full">
-                            <label for="guild_select" class="block text-sm font-medium text-gray-700">Guild Name</label>
-                            <select name="guild_name" id="guild_select" required
-                                   class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm">
-                                <option value="">-- Select a Guild --</option>
-                                {{range .AllGuilds}}
-                                <option value="{{.Name}}" data-emblem="{{.EmblemURL}}">{{.Name}}</option>
-                                {{end}}
-                            </select>
-                        </div>
-                        <div class="flex-grow w-full">
-                            <label for="emblem_url" class="block text-sm font-medium text-gray-700">New Emblem URL</label>
-                            <input type="url" name="emblem_url" id="emblem_url" required placeholder="https://..."
-                                   class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm">
-                        </div>
-                        <button type="submit" class="w-full md:w-auto bg-purple-500 hover:bg-purple-700 text-white font-bold py-2 px-4 rounded">Update Emblem</button>
-                    </form>
-                    <div id="emblem-preview-container" class="mt-4" style="display: none;">
-                        <h4 class="text-sm font-medium text-gray-700">Current Emblem:</h4>
-                        <div class="flex items-center gap-4 mt-2">
-                            <img id="emblem_preview_image" src="" alt="Emblem Preview" class="h-10 w-10 bg-gray-200 rounded">
-                            <p id="current_emblem_url" class="text-sm text-gray-500 break-all"></p>
-                        </div>
+            <div id="tab-overview" class="tab-panel">
+                <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+                    <div class="bg-white p-6 rounded-lg shadow">
+                        <h3 class="text-gray-500 text-sm font-medium uppercase">Market Items</h3>
+                        <p class="text-3xl font-bold">{{.TotalItems}} <span class="text-lg font-normal">Total</span></p>
+                        <p class="text-xl font-semibold">{{.AvailableItems}} <span class="text-base font-normal">Available</span></p>
+                        <p class="text-xl font-semibold">{{.UniqueItems}} <span class="text-base font-normal">Unique</span></p>
+                    </div>
+                    <div class="bg-white p-6 rounded-lg shadow">
+                        <h3 class="text-gray-500 text-sm font-medium uppercase">Player & Guilds</h3>
+                        <p class="text-3xl font-bold">{{.TotalCharacters}} <span class="text-lg font-normal">Characters</span></p>
+                        <p class="text-xl font-semibold">{{.TotalGuilds}} <span class="text-base font-normal">Guilds</span></p>
+                        <p class="text-xl font-semibold">{{.ChangelogEntries}} <span class="text-base font-normal">Changelog Events</span></p>
+                    </div>
+                    <div class="bg-white p-6 rounded-lg shadow">
+                        <h3 class="text-gray-500 text-sm font-medium uppercase">Site Traffic & System</h3>
+                        <p class="text-3xl font-bold">{{.TotalVisitors}} <span class="text-lg font-normal">Total Visitors</span></p>
+                        <p class="text-xl font-semibold">{{.VisitorsToday}} <span class="text-base font-normal">Visitors Today</span></p>
+                        <p class="text-sm mt-1"><strong>Top Page:</strong> {{.MostVisitedPage}} ({{.MostVisitedPageCount}} views)</p>
+                        <hr class="my-2 border-gray-200">
+                        <p class="text-sm mt-1"><strong>Cached Items:</strong> {{.CachedItems}}</p>
+                        <p class="text-sm"><strong>Player Samples:</strong> {{.PlayerHistoryEntries}}</p>
+                        <p class="text-sm"><strong>Market Events:</strong> {{.MarketEvents}}</p>
+                    </div>
+                    <div class="bg-white p-6 rounded-lg shadow">
+                        <h3 class="text-gray-500 text-sm font-medium uppercase">Last Scrape Times</h3>
+                        <p class="text-sm"><strong>Market:</strong> {{.LastMarketScrape}}</p>
+                        <p class="text-sm"><strong>Player Count:</strong> {{.LastPlayerCountScrape}}</p>
+                        <p class="text-sm"><strong>Characters/MVP:</strong> {{.LastCharacterScrape}}</p>
+                        <p class="text-sm"><strong>Guilds:</strong> {{.LastGuildScrape}}</p>
                     </div>
                 </div>
+            </div>
 
-                <div class="bg-white p-6 rounded-lg shadow mb-8">
-                    <h2 class="text-xl font-bold mb-4">Character Data Management</h2>
-                    <p class="text-sm text-gray-600 mb-4">This action will reset the "Last Active" time for ALL characters. This is useful for clearing activity data before a server event or maintenance.</p>
-                    <form action="/admin/character/clear-last-active" method="POST" onsubmit="return confirm('DANGER: Are you sure you want to reset all character last active times? This cannot be undone.');">
-                        <button type="submit" class="bg-orange-500 hover:bg-orange-700 text-white font-bold py-2 px-4 rounded">Reset All Last Active Times</button>
-                    </form>
-                    <hr class="my-4 border-gray-200">
-                    <p class="text-sm text-gray-600 mb-4">This action will delete ALL MVP kill records from the database. This is useful if the server's rankings have been reset or are bugged.</p>
-                    <form action="/admin/character/clear-mvp-kills" method="POST" onsubmit="return confirm('DANGER: Are you sure you want to delete all MVP kill data? This cannot be undone.');">
-                        <button type="submit" class="bg-red-600 hover:bg-red-800 text-white font-bold py-2 px-4 rounded">Clear All MVP Kills</button>
-                    </form>
-                </div>
-
-                <div class="bg-white p-6 rounded-lg shadow mb-8">
-                    <h2 class="text-xl font-bold mb-4 text-red-700">Trading Post Data Management (DANGER)</h2>
-                    <p class="text-sm text-gray-600 mb-4">These actions permanently drop tables from the database. They will be recreated on application restart, but all data will be lost.</p>
-                    <div class="space-y-4">
-                        <form action="/admin/trading/clear-items" method="POST" onsubmit="return confirm('DANGER: Are you sure you want to completely DROP the `trading_post_items` table? The table will be gone until the application is restarted.');">
-                            <button type="submit" class="w-full bg-orange-500 hover:bg-orange-700 text-white font-bold py-2 px-4 rounded">Drop Trading Post Items Table</button>
-                        </form>
-                        <form action="/admin/trading/clear-posts" method="POST" onsubmit="return confirm('DANGER: Are you sure you want to completely DROP both the `trading_posts` and `trading_post_items` tables? This is a complete wipe and the tables will be gone until the application is restarted.');">
-                            <button type="submit" class="w-full bg-red-600 hover:bg-red-800 text-white font-bold py-2 px-4 rounded">Drop All Trading Post Tables</button>
-                        </form>
-                    </div>
-                </div>
-
-                <div class="bg-white p-6 rounded-lg shadow">
-                    <h2 class="text-xl font-bold mb-4">Item Cache Management (RMS)</h2>
-                    <p class="text-sm text-gray-600 mb-4">The table will be recreated on application restart, but all data will be lost until then.</p>
-                    <div class="flex flex-wrap items-start gap-4">
-                         <form action="/admin/cache" method="POST">
-                            <input type="hidden" name="action" value="repopulate">
-                            <button type="submit" class="bg-indigo-500 hover:bg-indigo-700 text-white font-bold py-2 px-4 rounded">Repopulate Missing Items</button>
-                        </form>
-                        <form action="/admin/cache" method="POST" onsubmit="return confirm('Are you sure you want to DELETE all cached item data? This keeps the table structure.');">
-                            <input type="hidden" name="action" value="clear">
-                            <button type="submit" class="bg-orange-500 hover:bg-orange-700 text-white font-bold py-2 px-4 rounded">Clear All Cached Data</button>
-                        </form>
-                        <form action="/admin/cache" method="POST" onsubmit="return confirm('DANGER: Are you sure you want to completely DROP the `rms_item_cache` table? The table will be gone until the application is restarted.');">
-                            <input type="hidden" name="action" value="drop">
-                            <button type="submit" class="bg-red-700 hover:bg-red-900 text-white font-bold py-2 px-4 rounded">Drop Cache Table</button>
-                        </form>
-                    </div>
-                </div>
-
-                <div class="bg-white p-6 rounded-lg shadow mt-8">
-                    <h2 class="text-xl font-bold mb-4">Search & Delete RMS Cache Entries</h2>
-                    <form action="/admin" method="GET" class="flex flex-col md:flex-row items-end gap-4 mb-4">
-                        <div class="flex-grow w-full">
-                            <label for="rms_query" class="block text-sm font-medium text-gray-700">Search Item Name</label>
-                            <input type="search" name="rms_query" id="rms_query" value="{{.RMSCacheSearchQuery}}"
-                                   class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm">
+            <div id="tab-manage" class="tab-panel" style="display: none;">
+                <div class="grid grid-cols-1 xl:grid-cols-2 gap-8">
+                    <div>
+                        <div class="bg-white p-6 rounded-lg shadow mb-8">
+                            <h2 class="text-xl font-bold mb-4">Manual Scrapers</h2>
+                            <div class="grid grid-cols-2 md:grid-cols-3 gap-4">
+                                <form action="/admin/scrape/market" method="POST">
+                                    <button type="submit" class="w-full bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded">Market Scrape</button>
+                                </form>
+                                <form action="/admin/scrape/players" method="POST">
+                                    <button type="submit" class="w-full bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded">Player Count</button>
+                                </form>
+                                <form action="/admin/scrape/characters" method="POST">
+                                    <button type="submit" class="w-full bg-green-500 hover:bg-green-700 text-white font-bold py-2 px-4 rounded">Character Scrape</button>
+                                </form>
+                                <form action="/admin/scrape/guilds" method="POST">
+                                    <button type="submit" class="w-full bg-green-500 hover:bg-green-700 text-white font-bold py-2 px-4 rounded">Guild Scrape</button>
+                                </form>
+                                <form action="/admin/scrape/zeny" method="POST">
+                                    <button type="submit" class="w-full bg-green-500 hover:bg-green-700 text-white font-bold py-2 px-4 rounded">Zeny Scrape</button>
+                                </form>
+                                <form action="/admin/scrape/mvp" method="POST">
+                                    <button type="submit" class="w-full bg-green-500 hover:bg-green-700 text-white font-bold py-2 px-4 rounded">MVP Scrape</button>
+                                </form>
+                                <form action="/admin/scrape/woe" method="POST">
+                                    <button type="submit" class="w-full bg-purple-500 hover:bg-purple-700 text-white font-bold py-2 px-4 rounded">WoE Scrape</button>
+                                </form>
+                                <form action="/admin/scrape/pt-names" method="POST">
+                                    <button type="submit" class="w-full bg-indigo-500 hover:bg-indigo-700 text-white font-bold py-2 px-4 rounded">PT Name Populator</button>
+                                </form>
+                            </div>
                         </div>
-                        <button type="submit" class="w-full md:w-auto bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded">Search</button>
-                    </form>
 
-                    {{if .RMSCacheSearchResults}}
-                    <form action="/admin/cache/delete-entry" method="POST" onsubmit="return confirm('Are you sure you want to delete the selected cache entries? This cannot be undone.');">
-                        <div class="overflow-x-auto border rounded-lg">
-                            <table class="min-w-full text-sm">
-                                <thead>
-                                    <tr class="border-b-2 border-gray-200">
-                                        <th class="py-2 px-3 text-left w-12"></th>
-                                        <th class="py-2 px-3 text-left font-semibold text-gray-600 uppercase tracking-wider w-20">ID</th>
-                                        <th class="py-2 px-3 text-left font-semibold text-gray-600 uppercase tracking-wider">Name</th>
-                                        <th class="py-2 px-3 text-left font-semibold text-gray-600 uppercase tracking-wider">Name (PT)</th>
-                                    </tr>
-                                </thead>
-                                <tbody class="divide-y divide-gray-200">
-                                    {{range .RMSCacheSearchResults}}
-                                    <tr>
-                                        <td class="py-2 px-3 text-center">
-                                            <input type="checkbox" name="item_id[]" value="{{.ItemID}}" class="rounded border-gray-300 text-red-600 focus:ring-red-500">
-                                        </td>
-                                        <td class="py-2 px-3 font-mono">{{.ItemID}}</td>
-                                        <td class="py-2 px-3">{{.Name}}</td>
-                                        <td class="py-2 px-3">{{if .NamePT.Valid}}{{.NamePT.String}}{{else}}-{{end}}</td>
-                                    </tr>
-                                    {{end}}
-                                </tbody>
-                            </table>
-                        </div>
-                        <button type="submit" class="mt-4 bg-red-600 hover:bg-red-800 text-white font-bold py-2 px-4 rounded">Delete Selected Entries</button>
-                    </form>
-                    {{else}}
-                        {{if .RMSCacheSearchQuery}}
-                        <p class="text-gray-500">No results found for "{{.RMSCacheSearchQuery}}".</p>
-                        {{else}}
-                        <p class="text-gray-500">Enter a search term to find RMS cache entries.</p>
-                        {{end}}
-                    {{end}}
-                </div>
-
-                <div class="bg-white p-6 rounded-lg shadow mt-8">
-                    <h2 class="text-xl font-bold mb-4">Live RMS Item Search &amp; Cache</h2>
-                    <p class="text-sm text-gray-600 mb-4">Search RateMyServer.net for an item and manually add it to the local cache. This is useful for new items not yet seen in the market.</p>
-                    <form action="/admin" method="GET" class="flex flex-col md:flex-row items-end gap-4 mb-4">
-                        <div class="flex-grow w-full">
-                            <label for="rms_live_search" class="block text-sm font-medium text-gray-700">Search Item Name (Live)</label>
-                            <input type="search" name="rms_live_search" id="rms_live_search" value="{{.RMSLiveSearchQuery}}"
-                                   class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
-                                   placeholder="e.g., Jellopy, Knife [4], Poring Card">
-                        </div>
-                        <button type="submit" class="w-full md:w-auto bg-indigo-500 hover:bg-indigo-700 text-white font-bold py-2 px-4 rounded">Search RMS</button>
-                    </form>
-
-                    {{if .RMSLiveSearchResults}}
-                    <div class="overflow-x-auto border rounded-lg mt-4">
-                        <table class="min-w-full text-sm">
-                            <thead>
-                                <tr class="border-b-2 border-gray-200">
-                                    <th class="py-2 px-3 text-left font-semibold text-gray-600 uppercase tracking-wider w-20">ID</th>
-                                    <th class="py-2 px-3 text-left font-semibold text-gray-600 uppercase tracking-wider">Name</th>
-                                    <th class="py-2 px-3 text-left font-semibold text-gray-600 uppercase tracking-wider w-24">Action</th>
-                                </tr>
-                            </thead>
-                            <tbody class="divide-y divide-gray-200">
-                                {{range .RMSLiveSearchResults}}
-                                <tr>
-                                    <td class="py-2 px-3 font-mono">{{.ID}}</td>
-                                    <td class="py-2 px-3">
-                                        <img src="{{.ImageURL}}" alt="item" class="h-6 w-6 inline-block mr-2 bg-gray-100 rounded-sm">
-                                        {{.Name}}
-                                    </td>
-                                    <td class="py-2 px-3 text-center">
-                                        <form action="/admin/cache/save-entry" method="POST" class="inline">
-                                            <input type="hidden" name="item_id" value="{{.ID}}">
-                                            <input type="hidden" name="item_name" value="{{.Name}}">
-                                            <input type="hidden" name="rms_live_search" value="{{$.RMSLiveSearchQuery}}">
-                                            <button type="submit" class="text-xs bg-green-500 hover:bg-green-700 text-white font-bold py-1 px-2 rounded">
-                                                Save
-                                            </button>
-                                        </form>
-                                    </td>
-                                </tr>
-                                {{end}}
-                            </tbody>
-                        </table>
-                    </div>
-                    {{else}}
-                        {{if .RMSLiveSearchQuery}}
-                        <p class="text-gray-500">No live results found for "{{.RMSLiveSearchQuery}}".</p>
-                        {{else}}
-                        <p class="text-gray-500">Enter a search term to find items on RMS.</p>
-                        {{end}}
-                    {{end}}
-                </div>
-
-                <div class="bg-white p-6 rounded-lg shadow mt-8">
-                    <h2 class="text-xl font-bold mb-4">Trade Message Parser (AI)</h2>
-                    <p class="text-sm text-gray-600 mb-4">Paste a trade message (e.g., from a Discord channel or in-game chat) to extract items and prices using Gemini AI.</p>
-                    <form action="/admin/parse-trade" method="POST">
-                        <div class="mb-4">
-                            <label for="trade_message" class="block text-sm font-medium text-gray-700">Trade Message</label>
-                            <textarea name="message" id="trade_message" rows="6" required class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm">{{.OriginalTradeMessage}}</textarea>
-                        </div>
-                        <button type="submit" class="bg-teal-500 hover:bg-teal-700 text-white font-bold py-2 px-4 rounded">Parse Message</button>
-                    </form>
-
-                    {{if .TradeParseError}}
-                    <div class="mt-6 bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded relative" role="alert">
-                        <strong class="font-bold">Error:</strong>
-                        <span class="block sm:inline">{{.TradeParseError}}</span>
-                    </div>
-                    {{end}}
-
-                    {{if .TradeParseResult}}
-                    <div class="mt-6">
-                        <h3 class="text-lg font-semibold">Parsed Results</h3>
-                        
-                        <div class="overflow-x-auto mt-4 border-t border-gray-200">
-                            <table class="min-w-full text-sm">
-                                <thead>
-                                    <tr class="border-b-2 border-gray-200">
-                                        <th class="text-left font-semibold text-gray-600 uppercase tracking-wider py-2 px-2">Action</th>
-                                        <th class="text-left font-semibold text-gray-600 uppercase tracking-wider py-2 px-2">Item Name</th>
-                                        <th class="text-center font-semibold text-gray-600 uppercase tracking-wider py-2 px-2">Qty</th>
-                                        <th class="text-right font-semibold text-gray-600 uppercase tracking-wider py-2 px-2">Price (Zeny)</th>
-                                        <th class="text-right font-semibold text-gray-600 uppercase tracking-wider py-2 px-2">Price (RMT)</th>
-                                        <th class="text-left font-semibold text-gray-600 uppercase tracking-wider py-2 px-2">Payment</th>
-                                    </tr>
-                                </thead>
-                                <tbody class="divide-y divide-gray-200">
-                                    {{range .TradeParseResult.Items}}
-                                    <tr>
-                                        <td class="py-2 pr-2 capitalize {{if eq .Action "selling"}}text-green-600{{else}}text-blue-600{{end}}">{{.Action}}</td>
-                                        <td class="py-2 pr-2">{{.Name}} {{if gt .Refinement 0}}+{{.Refinement}}{{end}} {{if .Card1}} [c]{{end}}</td>
-                                        <td class="py-2 px-2 text-center">{{.Quantity}}</td>
-                                        <td class="py-2 pl-2 text-right font-mono">{{if gt .PriceZeny 0}}{{formatZeny .PriceZeny}}z{{else}}-{{end}}</td>
-                                        <td class="py-2 pl-2 text-right font-mono">{{if gt .PriceRMT 0}}{{formatRMT .PriceRMT}}{{else}}-{{end}}</td>
-                                        <td class="py-2 px-2 capitalize">{{.PaymentMethods}}</td>
-                                    </tr>
-                                    {{else}}
-                                    <tr>
-                                        <td colspan="6" class="py-4 text-center text-gray-500">No items were extracted from the message.</td>
-                                    </tr>
-                                    {{end}}
-                                </tbody>
-                            </table>
-                        </div>
-                    </div>
-                    {{end}}
-                </div>
-
-                <div class="bg-white p-6 rounded-lg shadow mt-8">
-                    <h2 class="text-xl font-bold mb-4">Trading Post Management</h2>
-                    <div class="overflow-x-auto">
-                        <table class="min-w-full text-sm">
-                            <thead>
-                                <tr class="border-b-2 border-gray-200">
-                                    <th class="text-left font-semibold text-gray-600 uppercase tracking-wider py-2">Post</th>
-                                    <th class="text-left font-semibold text-gray-600 uppercase tracking-wider py-2">Items</th>
-                                    <th class="text-left font-semibold text-gray-600 uppercase tracking-wider py-2">Actions</th>
-                                </tr>
-                            </thead>
-                            <tbody class="divide-y divide-gray-200">
-                                {{range .RecentTradingPosts}}
-                                <tr>
-                                    <td class="py-3 pr-3 align-top">
-                                        <p class="font-semibold">{{.CharacterName}}</p>
-                                        <p class="text-xs uppercase font-bold {{if eq .PostType "selling"}}text-green-600{{else}}text-blue-600{{end}}">{{.PostType}}</p>
-                                        <p class="text-gray-500 text-xs mt-1">{{.CreatedAgo}}</p>
-                                        {{if .ContactInfo.Valid}}<p class="text-xs text-gray-600 mt-1" title="Contact">Contact: {{.ContactInfo.String}}</p>{{end}}
-                                        {{if .Notes.Valid}}<p class="text-xs text-gray-600 mt-1 italic" title="Notes">"{{.Notes.String}}"</p>{{end}}
-                                    </td>
-                                    <td class="py-3 pr-3 align-top">
-                                        <ul class="space-y-1">
-                                        {{range .Items}}
-                                            <li>
-                                                <span class="font-medium">{{if gt .Refinement 0}}+{{.Refinement}} {{end}}{{.ItemName}}</span>
-                                                <span class="text-gray-600">{{if .Card1.Valid}} [c]{{end}}</span>
-                                                <span class="text-gray-800">({{.Quantity}}x)</span>
-                                                
-                                                {{if gt .PriceZeny 0}}
-                                                <span class="font-mono text-green-700 ml-2" title="{{.PriceZeny}} Zeny">{{formatZeny .PriceZeny}}z</span>
-                                                {{end}}
-                                                {{if gt .PriceRMT 0}}
-                                                <span class="font-mono text-blue-600 ml-2" title="{{.PriceRMT}} RMT">{{formatRMT .PriceRMT}}</span>
-                                                {{end}}
-                                                {{if and (eq .PriceZeny 0) (eq .PriceRMT 0)}}
-                                                <span class="font-mono text-gray-500 italic ml-2">N/A</span>
-                                                {{end}}
-                                            </li>
+                        <div class="bg-white p-6 rounded-lg shadow mb-8">
+                            <h2 class="text-xl font-bold mb-4">Guild Emblem Management</h2>
+                            <form action="/admin/guild/update-emblem" method="POST" class="flex flex-col md:flex-row items-end gap-4">
+                                <div class="flex-grow w-full">
+                                    <label for="guild_select" class="block text-sm font-medium text-gray-700">Guild Name</label>
+                                    <select name="guild_name" id="guild_select" required
+                                           class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm">
+                                        <option value="">-- Select a Guild --</option>
+                                        {{range .AllGuilds}}
+                                        <option value="{{.Name}}" data-emblem="{{.EmblemURL}}">{{.Name}}</option>
                                         {{end}}
-                                        </ul>
-                                    </td>
-                                    <td class="py-3 pr-3 align-top">
-                                        <div class="flex items-center space-x-2">
-                                            <a href="/admin/trading-post/edit?id={{.ID}}" class="text-xs bg-blue-500 hover:bg-blue-700 text-white font-bold py-1 px-2 rounded">
-                                                Edit
+                                    </select>
+                                </div>
+                                <div class="flex-grow w-full">
+                                    <label for="emblem_url" class="block text-sm font-medium text-gray-700">New Emblem URL</label>
+                                    <input type="url" name="emblem_url" id="emblem_url" required placeholder="https://..."
+                                           class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm">
+                                </div>
+                                <button type="submit" class="w-full md:w-auto bg-purple-500 hover:bg-purple-700 text-white font-bold py-2 px-4 rounded">Update Emblem</button>
+                            </form>
+                            <div id="emblem-preview-container" class="mt-4" style="display: none;">
+                                <h4 class="text-sm font-medium text-gray-700">Current Emblem:</h4>
+                                <div class="flex items-center gap-4 mt-2">
+                                    <img id="emblem_preview_image" src="" alt="Emblem Preview" class="h-10 w-10 bg-gray-200 rounded">
+                                    <p id="current_emblem_url" class="text-sm text-gray-500 break-all"></p>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="bg-white p-6 rounded-lg shadow mb-8">
+                            <h2 class="text-xl font-bold mb-4">Character Data Management</h2>
+                            <p class="text-sm text-gray-600 mb-4">This action will reset the "Last Active" time for ALL characters. This is useful for clearing activity data before a server event or maintenance.</p>
+                            <form action="/admin/character/clear-last-active" method="POST" onsubmit="return confirm('DANGER: Are you sure you want to reset all character last active times? This cannot be undone.');">
+                                <button type="submit" class="bg-orange-500 hover:bg-orange-700 text-white font-bold py-2 px-4 rounded">Reset All Last Active Times</button>
+                            </form>
+                            <hr class="my-4 border-gray-200">
+                            <p class="text-sm text-gray-600 mb-4">This action will delete ALL MVP kill records from the database. This is useful if the server's rankings have been reset or are bugged.</p>
+                            <form action="/admin/character/clear-mvp-kills" method="POST" onsubmit="return confirm('DANGER: Are you sure you want to delete all MVP kill data? This cannot be undone.');">
+                                <button type="submit" class="bg-red-600 hover:bg-red-800 text-white font-bold py-2 px-4 rounded">Clear All MVP Kills</button>
+                            </form>
+                        </div>
+                    </div>
+                    <div>
+                        <div class="bg-white p-6 rounded-lg shadow">
+                            <h2 class="text-xl font-bold mb-4">Recent Page Views</h2>
+                            <div class="overflow-x-auto">
+                                <table class="min-w-full text-sm table-fixed">
+                                    <thead>
+                                        <tr class="border-b-2 border-gray-200">
+                                            <th class="text-left font-semibold text-gray-600 uppercase tracking-wider py-2 w-5/12">Page</th>
+                                            <th class="text-left font-semibold text-gray-600 uppercase tracking-wider py-2 w-2/12">Time</th>
+                                            <th class="text-left font-semibold text-gray-600 uppercase tracking-wider py-2 w-3/12">Visitor ID</th>
+                                            <th class="text-left font-semibold text-gray-600 uppercase tracking-wider py-2 w-2/12">Action</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody class="divide-y divide-gray-200">
+                                        {{range .RecentPageViews}}
+                                        <tr>
+                                            <td class="py-2 pr-2 font-mono truncate" title="{{.Path}}">{{.Path}}</td>
+                                            <td class="py-2 pr-2 text-gray-500 whitespace-nowrap">{{.Timestamp}}</td>
+                                            <td class="py-2 pr-2 text-gray-500 font-mono" title="{{.VisitorHash}}">{{.ShortHash}}...</td>
+                                            <td class="py-2 pr-2">
+                                                <form action="/admin/views/delete-visitor" method="POST" onsubmit="return confirm('Are you sure you want to remove ALL records for this visitor? This cannot be undone.');">
+                                                    <input type="hidden" name="visitor_hash" value="{{.VisitorHash}}">
+                                                    <button type="submit" class="text-xs bg-red-500 hover:bg-red-700 text-white font-bold py-1 px-2 rounded">
+                                                        Remove
+                                                    </button>
+                                                </form>
+                                            </td>
+                                        </tr>
+                                        {{else}}
+                                        <tr>
+                                            <td colspan="4" class="py-4 text-center text-gray-500">No recent page views found.</td>
+                                        </tr>
+                                        {{end}}
+                                    </tbody>
+                                </table>
+                            </div>
+                            {{if gt .PageViewsTotalPages 1}}
+                            <div class="flex items-center justify-between border-t border-gray-200 bg-white px-4 py-3 sm:px-6 -mx-6 -mb-6 mt-4">
+                                <div class="hidden sm:flex sm:flex-1 sm:items-center sm:justify-between">
+                                    <div>
+                                        <p class="text-sm text-gray-700">
+                                            Page
+                                            <span class="font-medium">{{.PageViewsCurrentPage}}</span>
+                                            of
+                                            <span class="font-medium">{{.PageViewsTotalPages}}</span>
+                                            <span class="text-gray-500"> ({{.PageViewsTotal}} total views)</span>
+                                        </p>
+                                    </div>
+                                    <div>
+                                        <nav class="isolate inline-flex -space-x-px rounded-md shadow-sm" aria-label="Pagination">
+                                            {{if .PageViewsHasPrevPage}}
+                                            <a href="/admin?page={{.PageViewsPrevPage}}" class="relative inline-flex items-center rounded-l-md px-2 py-2 text-gray-400 ring-1 ring-inset ring-gray-300 hover:bg-gray-50 focus:z-20 focus:outline-offset-0">
+                                                <span class="sr-only">Previous</span>
+                                                <svg class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"><path fill-rule="evenodd" d="M12.79 5.23a.75.75 0 01-.02 1.06L8.832 10l3.938 3.71a.75.75 0 11-1.04 1.08l-4.5-4.25a.75.75 0 010-1.08l4.5-4.25a.75.75 0 011.06.02z" clip-rule="evenodd" /></svg>
                                             </a>
-                                            <form action="/admin/trading-post/reparse" method="POST" onsubmit="return confirm('Are you sure you want to re-parse this post with the AI? This will replace all its items.');">
-                                                <input type="hidden" name="post_id" value="{{.ID}}">
-                                                <button type="submit" class="text-xs bg-yellow-500 hover:bg-yellow-700 text-white font-bold py-1 px-2 rounded">
-                                                    Re-parse
-                                                </button>
-                                            </form>
-                                            <form action="/admin/trading-post/delete" method="POST" onsubmit="return confirm('Are you sure you want to delete this post? This cannot be undone.');">
-                                                <input type="hidden" name="post_id" value="{{.ID}}">
-                                                <button type="submit" class="text-xs bg-red-500 hover:bg-red-700 text-white font-bold py-1 px-2 rounded">
-                                                    Delete
-                                                </button>
-                                            </form>
-                                        </div>
-                                    </td>
-                                </tr>
-                                {{else}}
-                                <tr>
-                                    <td colspan="3" class="py-4 text-center text-gray-500">No trading posts found.</td>
-                                </tr>
-                                {{end}}
-                            </tbody>
-                        </table>
-                    </div>
-                    {{if gt .TradingPostTotalPages 1}}
-                    <div class="flex items-center justify-between border-t border-gray-200 bg-white px-4 py-3 sm:px-6 -mx-6 -mb-6 mt-4">
-                        <div class="hidden sm:flex sm:flex-1 sm:items-center sm:justify-between">
-                            <div>
-                                <p class="text-sm text-gray-700">
-                                    Page
-                                    <span class="font-medium">{{.TradingPostCurrentPage}}</span>
-                                    of
-                                    <span class="font-medium">{{.TradingPostTotalPages}}</span>
-                                    <span class="text-gray-500"> ({{.TradingPostTotal}} total posts)</span>
-                                </p>
-                            </div>
-                            <div>
-                                <nav class="isolate inline-flex -space-x-px rounded-md shadow-sm" aria-label="Pagination">
-                                    {{if .TradingPostHasPrevPage}}
-                                    <a href="/admin?tp_page={{.TradingPostPrevPage}}" class="relative inline-flex items-center rounded-l-md px-2 py-2 text-gray-400 ring-1 ring-inset ring-gray-300 hover:bg-gray-50 focus:z-20 focus:outline-offset-0">
-                                        <span class="sr-only">Previous</span>
-                                        <svg class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"><path fill-rule="evenodd" d="M12.79 5.23a.75.75 0 01-.02 1.06L8.832 10l3.938 3.71a.75.75 0 11-1.04 1.08l-4.5-4.25a.75.75 0 010-1.08l4.5-4.25a.75.75 0 011.06.02z" clip-rule="evenodd" /></svg>
-                                    </a>
-                                    {{else}}
-                                    <span class="relative inline-flex items-center rounded-l-md px-2 py-2 text-gray-300 ring-1 ring-inset ring-gray-300">
-                                        <svg class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"><path fill-rule="evenodd" d="M12.79 5.23a.75.75 0 01-.02 1.06L8.832 10l3.938 3.71a.75.75 0 11-1.04 1.08l-4.5-4.25a.75.75 0 010-1.08l4.5-4.25a.75.75 0 011.06.02z" clip-rule="evenodd" /></svg>
-                                    </span>
-                                    {{end}}
+                                            {{else}}
+                                            <span class="relative inline-flex items-center rounded-l-md px-2 py-2 text-gray-300 ring-1 ring-inset ring-gray-300">
+                                                <svg class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"><path fill-rule="evenodd" d="M12.79 5.23a.75.75 0 01-.02 1.06L8.832 10l3.938 3.71a.75.75 0 11-1.04 1.08l-4.5-4.25a.75.75 0 010-1.08l4.5-4.25a.75.75 0 011.06.02z" clip-rule="evenodd" /></svg>
+                                            </span>
+                                            {{end}}
 
-                                    {{if .TradingPostHasNextPage}}
-                                    <a href="/admin?tp_page={{.TradingPostNextPage}}" class="relative inline-flex items-center rounded-r-md px-2 py-2 text-gray-400 ring-1 ring-inset ring-gray-300 hover:bg-gray-50 focus:z-20 focus:outline-offset-0">
-                                        <span class="sr-only">Next</span>
-                                        <svg class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"><path fill-rule="evenodd" d="M7.21 14.77a.75.75 0 01.02-1.06L11.168 10 7.23 6.29a.75.75 0 111.04-1.08l4.5 4.25a.75.75 0 010-1.08l-4.5 4.25a.75.75 0 01-1.06-.02z" clip-rule="evenodd" /></svg>
-                                    </a>
-                                    {{else}}
-                                    <span class="relative inline-flex items-center rounded-r-md px-2 py-2 text-gray-300 ring-1 ring-inset ring-gray-300">
-                                        <svg class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"><path fill-rule="evenodd" d="M7.21 14.77a.75.75 0 01.02-1.06L11.168 10 7.23 6.29a.75.75 0 111.04-1.08l4.5 4.25a.75.75 0 010-1.08l-4.5 4.25a.75.75 0 01-1.06-.02z" clip-rule="evenodd" /></svg>
-                                    </span>
-                                    {{end}}
-                                </nav>
+                                            {{if .PageViewsHasNextPage}}
+                                            <a href="/admin?page={{.PageViewsNextPage}}" class="relative inline-flex items-center rounded-r-md px-2 py-2 text-gray-400 ring-1 ring-inset ring-gray-300 hover:bg-gray-50 focus:z-20 focus:outline-offset-0">
+                                                <span class="sr-only">Next</span>
+                                                <svg class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"><path fill-rule="evenodd" d="M7.21 14.77a.75.75 0 01.02-1.06L11.168 10 7.23 6.29a.75.75 0 111.04-1.08l4.5 4.25a.75.75 0 010-1.08l-4.5 4.25a.75.75 0 01-1.06-.02z" clip-rule="evenodd" /></svg>
+                                            </a>
+                                            {{else}}
+                                            <span class="relative inline-flex items-center rounded-r-md px-2 py-2 text-gray-300 ring-1 ring-inset ring-gray-300">
+                                                <svg class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"><path fill-rule="evenodd" d="M7.21 14.77a.75.75 0 01.02-1.06L11.168 10 7.23 6.29a.75.75 0 111.04-1.08l4.5 4.25a.75.75 0 010-1.08l-4.5 4.25a.75.75 0 01-1.06-.02z" clip-rule="evenodd" /></svg>
+                                            </span>
+                                            {{end}}
+                                        </nav>
+                                    </div>
+                                </div>
+                            </div>
+                            {{end}}
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div id="tab-trading" class="tab-panel" style="display: none;">
+                <div class="grid grid-cols-1 xl:grid-cols-2 gap-8">
+                    <div>
+                        <div class="bg-white p-6 rounded-lg shadow mt-8">
+                            <h2 class="text-xl font-bold mb-4">Trade Message Parser (AI)</h2>
+                            <p class="text-sm text-gray-600 mb-4">Paste a trade message (e.g., from a Discord channel or in-game chat) to extract items and prices using Gemini AI.</p>
+                            <form action="/admin/parse-trade" method="POST">
+                                <div class="mb-4">
+                                    <label for="trade_message" class="block text-sm font-medium text-gray-700">Trade Message</label>
+                                    <textarea name="message" id="trade_message" rows="6" required class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm">{{.OriginalTradeMessage}}</textarea>
+                                </div>
+                                <button type="submit" class="bg-teal-500 hover:bg-teal-700 text-white font-bold py-2 px-4 rounded">Parse Message</button>
+                            </form>
+
+                            {{if .TradeParseError}}
+                            <div class="mt-6 bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded relative" role="alert">
+                                <strong class="font-bold">Error:</strong>
+                                <span class="block sm:inline">{{.TradeParseError}}</span>
+                            </div>
+                            {{end}}
+
+                            {{if .TradeParseResult}}
+                            <div class="mt-6">
+                                <h3 class="text-lg font-semibold">Parsed Results</h3>
+                                
+                                <div class="overflow-x-auto mt-4 border-t border-gray-200">
+                                    <table class="min-w-full text-sm">
+                                        <thead>
+                                            <tr class="border-b-2 border-gray-200">
+                                                <th class="text-left font-semibold text-gray-600 uppercase tracking-wider py-2 px-2">Action</th>
+                                                <th class="text-left font-semibold text-gray-600 uppercase tracking-wider py-2 px-2">Item Name</th>
+                                                <th class="text-center font-semibold text-gray-600 uppercase tracking-wider py-2 px-2">Qty</th>
+                                                <th class="text-right font-semibold text-gray-600 uppercase tracking-wider py-2 px-2">Price (Zeny)</th>
+                                                <th class="text-right font-semibold text-gray-600 uppercase tracking-wider py-2 px-2">Price (RMT)</th>
+                                                <th class="text-left font-semibold text-gray-600 uppercase tracking-wider py-2 px-2">Payment</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody class="divide-y divide-gray-200">
+                                            {{range .TradeParseResult.Items}}
+                                            <tr>
+                                                <td class="py-2 pr-2 capitalize {{if eq .Action "selling"}}text-green-600{{else}}text-blue-600{{end}}">{{.Action}}</td>
+                                                <td class="py-2 pr-2">{{.Name}} {{if gt .Refinement 0}}+{{.Refinement}}{{end}} {{if .Card1}} [c]{{end}}</td>
+                                                <td class="py-2 px-2 text-center">{{.Quantity}}</td>
+                                                <td class="py-2 pl-2 text-right font-mono">{{if gt .PriceZeny 0}}{{formatZeny .PriceZeny}}z{{else}}-{{end}}</td>
+                                                <td class="py-2 pl-2 text-right font-mono">{{if gt .PriceRMT 0}}{{formatRMT .PriceRMT}}{{else}}-{{end}}</td>
+                                                <td class="py-2 px-2 capitalize">{{.PaymentMethods}}</td>
+                                            </tr>
+                                            {{else}}
+                                            <tr>
+                                                <td colspan="6" class="py-4 text-center text-gray-500">No items were extracted from the message.</td>
+                                            </tr>
+                                            {{end}}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                            {{end}}
+                        </div>
+
+                        <div class="bg-white p-6 rounded-lg shadow mt-8">
+                            <h2 class="text-xl font-bold mb-4">Trading Post Management</h2>
+                            <div class="overflow-x-auto">
+                                <table class="min-w-full text-sm">
+                                    <thead>
+                                        <tr class="border-b-2 border-gray-200">
+                                            <th class="text-left font-semibold text-gray-600 uppercase tracking-wider py-2">Post</th>
+                                            <th class="text-left font-semibold text-gray-600 uppercase tracking-wider py-2">Items</th>
+                                            <th class="text-left font-semibold text-gray-600 uppercase tracking-wider py-2">Actions</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody class="divide-y divide-gray-200">
+                                        {{range .RecentTradingPosts}}
+                                        <tr>
+                                            <td class="py-3 pr-3 align-top">
+                                                <p class="font-semibold">{{.CharacterName}}</p>
+                                                <p class="text-xs uppercase font-bold {{if eq .PostType "selling"}}text-green-600{{else}}text-blue-600{{end}}">{{.PostType}}</p>
+                                                <p class="text-gray-500 text-xs mt-1">{{.CreatedAgo}}</p>
+                                                {{if .ContactInfo.Valid}}<p class="text-xs text-gray-600 mt-1" title="Contact">Contact: {{.ContactInfo.String}}</p>{{end}}
+                                                {{if .Notes.Valid}}<p class="text-xs text-gray-600 mt-1 italic" title="Notes">"{{.Notes.String}}"</p>{{end}}
+                                            </td>
+                                            <td class="py-3 pr-3 align-top">
+                                                <ul class="space-y-1">
+                                                {{range .Items}}
+                                                    <li>
+                                                        <span class="font-medium">{{if gt .Refinement 0}}+{{.Refinement}} {{end}}{{.ItemName}}</span>
+                                                        <span class="text-gray-600">{{if .Card1.Valid}} [c]{{end}}</span>
+                                                        <span class="text-gray-800">({{.Quantity}}x)</span>
+                                                        
+                                                        {{if gt .PriceZeny 0}}
+                                                        <span class="font-mono text-green-700 ml-2" title="{{.PriceZeny}} Zeny">{{formatZeny .PriceZeny}}z</span>
+                                                        {{end}}
+                                                        {{if gt .PriceRMT 0}}
+                                                        <span class="font-mono text-blue-600 ml-2" title="{{.PriceRMT}} RMT">{{formatRMT .PriceRMT}}</span>
+                                                        {{end}}
+                                                        {{if and (eq .PriceZeny 0) (eq .PriceRMT 0)}}
+                                                        <span class="font-mono text-gray-500 italic ml-2">N/A</span>
+                                                        {{end}}
+                                                    </li>
+                                                {{end}}
+                                                </ul>
+                                            </td>
+                                            <td class="py-3 pr-3 align-top">
+                                                <div class="flex items-center space-x-2">
+                                                    <a href="/admin/trading-post/edit?id={{.ID}}" class="text-xs bg-blue-500 hover:bg-blue-700 text-white font-bold py-1 px-2 rounded">
+                                                        Edit
+                                                    </a>
+                                                    <form action="/admin/trading-post/reparse" method="POST" onsubmit="return confirm('Are you sure you want to re-parse this post with the AI? This will replace all its items.');">
+                                                        <input type="hidden" name="post_id" value="{{.ID}}">
+                                                        <button type="submit" class="text-xs bg-yellow-500 hover:bg-yellow-700 text-white font-bold py-1 px-2 rounded">
+                                                            Re-parse
+                                                        </button>
+                                                    </form>
+                                                    <form action="/admin/trading-post/delete" method="POST" onsubmit="return confirm('Are you sure you want to delete this post? This cannot be undone.');">
+                                                        <input type="hidden" name="post_id" value="{{.ID}}">
+                                                        <button type="submit" class="text-xs bg-red-500 hover:bg-red-700 text-white font-bold py-1 px-2 rounded">
+                                                            Delete
+                                                        </button>
+                                                    </form>
+                                                </div>
+                                            </td>
+                                        </tr>
+                                        {{else}}
+                                        <tr>
+                                            <td colspan="3" class="py-4 text-center text-gray-500">No trading posts found.</td>
+                                        </tr>
+                                        {{end}}
+                                    </tbody>
+                                </table>
+                            </div>
+                            {{if gt .TradingPostTotalPages 1}}
+                            <div class="flex items-center justify-between border-t border-gray-200 bg-white px-4 py-3 sm:px-6 -mx-6 -mb-6 mt-4">
+                                <div class="hidden sm:flex sm:flex-1 sm:items-center sm:justify-between">
+                                    <div>
+                                        <p class="text-sm text-gray-700">
+                                            Page
+                                            <span class="font-medium">{{.TradingPostCurrentPage}}</span>
+                                            of
+                                            <span class="font-medium">{{.TradingPostTotalPages}}</span>
+                                            <span class="text-gray-500"> ({{.TradingPostTotal}} total posts)</span>
+                                        </p>
+                                    </div>
+                                    <div>
+                                        <nav class="isolate inline-flex -space-x-px rounded-md shadow-sm" aria-label="Pagination">
+                                            {{if .TradingPostHasPrevPage}}
+                                            <a href="/admin?tp_page={{.TradingPostPrevPage}}" class="relative inline-flex items-center rounded-l-md px-2 py-2 text-gray-400 ring-1 ring-inset ring-gray-300 hover:bg-gray-50 focus:z-20 focus:outline-offset-0">
+                                                <span class="sr-only">Previous</span>
+                                                <svg class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"><path fill-rule="evenodd" d="M12.79 5.23a.75.75 0 01-.02 1.06L8.832 10l3.938 3.71a.75.75 0 11-1.04 1.08l-4.5-4.25a.75.75 0 010-1.08l4.5-4.25a.75.75 0 011.06.02z" clip-rule="evenodd" /></svg>
+                                            </a>
+                                            {{else}}
+                                            <span class="relative inline-flex items-center rounded-l-md px-2 py-2 text-gray-300 ring-1 ring-inset ring-gray-300">
+                                                <svg class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"><path fill-rule="evenodd" d="M12.79 5.23a.75.75 0 01-.02 1.06L8.832 10l3.938 3.71a.75.75 0 11-1.04 1.08l-4.5-4.25a.75.75 0 010-1.08l4.5-4.25a.75.75 0 011.06.02z" clip-rule="evenodd" /></svg>
+                                            </span>
+                                            {{end}}
+
+                                            {{if .TradingPostHasNextPage}}
+                                            <a href="/admin?tp_page={{.TradingPostNextPage}}" class="relative inline-flex items-center rounded-r-md px-2 py-2 text-gray-400 ring-1 ring-inset ring-gray-300 hover:bg-gray-50 focus:z-20 focus:outline-offset-0">
+                                                <span class="sr-only">Next</span>
+                                                <svg class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"><path fill-rule="evenodd" d="M7.21 14.77a.75.75 0 01.02-1.06L11.168 10 7.23 6.29a.75.75 0 111.04-1.08l4.5 4.25a.75.75 0 010-1.08l-4.5 4.25a.75.75 0 01-1.06-.02z" clip-rule="evenodd" /></svg>
+                                            </a>
+                                            {{else}}
+                                            <span class="relative inline-flex items-center rounded-r-md px-2 py-2 text-gray-300 ring-1 ring-inset ring-gray-300">
+                                                <svg class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"><path fill-rule="evenodd" d="M7.21 14.77a.75.75 0 01.02-1.06L11.168 10 7.23 6.29a.75.75 0 111.04-1.08l4.5 4.25a.75.75 0 010-1.08l-4.5 4.25a.75.75 0 01-1.06-.02z" clip-rule="evenodd" /></svg>
+                                            </span>
+                                            {{end}}
+                                        </nav>
+                                    </div>
+                                </div>
+                            </div>
+                            {{end}}
+                        </div>
+                    </div>
+                    <div>
+                        <div class="bg-white p-6 rounded-lg shadow mb-8 mt-8 xl:mt-0">
+                            <h2 class="text-xl font-bold mb-4 text-red-700">Trading Post Data Management (DANGER)</h2>
+                            <p class="text-sm text-gray-600 mb-4">These actions permanently drop tables from the database. They will be recreated on application restart, but all data will be lost.</p>
+                            <div class="space-y-4">
+                                <form action="/admin/trading/clear-items" method="POST" onsubmit="return confirm('DANGER: Are you sure you want to completely DROP the `trading_post_items` table? The table will be gone until the application is restarted.');">
+                                    <button type="submit" class="w-full bg-orange-500 hover:bg-orange-700 text-white font-bold py-2 px-4 rounded">Drop Trading Post Items Table</button>
+                                </form>
+                                <form action="/admin/trading/clear-posts" method="POST" onsubmit="return confirm('DANGER: Are you sure you want to completely DROP both the `trading_posts` and `trading_post_items` tables? This is a complete wipe and the tables will be gone until the application is restarted.');">
+                                    <button type="submit" class="w-full bg-red-600 hover:bg-red-800 text-white font-bold py-2 px-4 rounded">Drop All Trading Post Tables</button>
+                                </form>
                             </div>
                         </div>
                     </div>
-                    {{end}}
                 </div>
-
             </div>
 
-            <div>
-                <div class="bg-white p-6 rounded-lg shadow">
-                    <h2 class="text-xl font-bold mb-4">Recent Page Views</h2>
-                    <div class="overflow-x-auto">
-                        <table class="min-w-full text-sm table-fixed">
-                            <thead>
-                                <tr class="border-b-2 border-gray-200">
-                                    <th class="text-left font-semibold text-gray-600 uppercase tracking-wider py-2 w-5/12">Page</th>
-                                    <th class="text-left font-semibold text-gray-600 uppercase tracking-wider py-2 w-2/12">Time</th>
-                                    <th class="text-left font-semibold text-gray-600 uppercase tracking-wider py-2 w-3/12">Visitor ID</th>
-                                    <th class="text-left font-semibold text-gray-600 uppercase tracking-wider py-2 w-2/12">Action</th>
-                                </tr>
-                            </thead>
-                            <tbody class="divide-y divide-gray-200">
-                                {{range .RecentPageViews}}
-                                <tr>
-                                    <td class="py-2 pr-2 font-mono truncate" title="{{.Path}}">{{.Path}}</td>
-                                    <td class="py-2 pr-2 text-gray-500 whitespace-nowrap">{{.Timestamp}}</td>
-                                    <td class="py-2 pr-2 text-gray-500 font-mono" title="{{.VisitorHash}}">{{.ShortHash}}...</td>
-                                    <td class="py-2 pr-2">
-                                        <form action="/admin/views/delete-visitor" method="POST" onsubmit="return confirm('Are you sure you want to remove ALL records for this visitor? This cannot be undone.');">
-                                            <input type="hidden" name="visitor_hash" value="{{.VisitorHash}}">
-                                            <button type="submit" class="text-xs bg-red-500 hover:bg-red-700 text-white font-bold py-1 px-2 rounded">
-                                                Remove
-                                            </button>
-                                        </form>
-                                    </td>
-                                </tr>
-                                {{else}}
-                                <tr>
-                                    <td colspan="4" class="py-4 text-center text-gray-500">No recent page views found.</td>
-                                </tr>
-                                {{end}}
-                            </tbody>
-                        </table>
-                    </div>
-                    {{if gt .PageViewsTotalPages 1}}
-                    <div class="flex items-center justify-between border-t border-gray-200 bg-white px-4 py-3 sm:px-6 -mx-6 -mb-6 mt-4">
-                        <div class="hidden sm:flex sm:flex-1 sm:items-center sm:justify-between">
-                            <div>
-                                <p class="text-sm text-gray-700">
-                                    Page
-                                    <span class="font-medium">{{.PageViewsCurrentPage}}</span>
-                                    of
-                                    <span class="font-medium">{{.PageViewsTotalPages}}</span>
-                                    <span class="text-gray-500"> ({{.PageViewsTotal}} total views)</span>
-                                </p>
-                            </div>
-                            <div>
-                                <nav class="isolate inline-flex -space-x-px rounded-md shadow-sm" aria-label="Pagination">
-                                    {{if .PageViewsHasPrevPage}}
-                                    <a href="/admin?page={{.PageViewsPrevPage}}" class="relative inline-flex items-center rounded-l-md px-2 py-2 text-gray-400 ring-1 ring-inset ring-gray-300 hover:bg-gray-50 focus:z-20 focus:outline-offset-0">
-                                        <span class="sr-only">Previous</span>
-                                        <svg class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"><path fill-rule="evenodd" d="M12.79 5.23a.75.75 0 01-.02 1.06L8.832 10l3.938 3.71a.75.75 0 11-1.04 1.08l-4.5-4.25a.75.75 0 010-1.08l4.5-4.25a.75.75 0 011.06.02z" clip-rule="evenodd" /></svg>
-                                    </a>
-                                    {{else}}
-                                    <span class="relative inline-flex items-center rounded-l-md px-2 py-2 text-gray-300 ring-1 ring-inset ring-gray-300">
-                                        <svg class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"><path fill-rule="evenodd" d="M12.79 5.23a.75.75 0 01-.02 1.06L8.832 10l3.938 3.71a.75.75 0 11-1.04 1.08l-4.5-4.25a.75.75 0 010-1.08l4.5-4.25a.75.75 0 011.06.02z" clip-rule="evenodd" /></svg>
-                                    </span>
-                                    {{end}}
+            <div id="tab-cache" class="tab-panel" style="display: none;">
+                <div class="grid grid-cols-1 xl:grid-cols-2 gap-8">
+                    <div>
+                        <div class="bg-white p-6 rounded-lg shadow mt-8">
+                            <h2 class="text-xl font-bold mb-4">Search & Delete RMS Cache Entries</h2>
+                            <form action="/admin" method="GET" class="flex flex-col md:flex-row items-end gap-4 mb-4">
+                                <input type="hidden" name="tab" value="cache"> <div class="flex-grow w-full">
+                                    <label for="rms_query" class="block text-sm font-medium text-gray-700">Search Item Name</label>
+                                    <input type="search" name="rms_query" id="rms_query" value="{{.RMSCacheSearchQuery}}"
+                                           class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm">
+                                </div>
+                                <button type="submit" class="w-full md:w-auto bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded">Search</button>
+                            </form>
 
-                                    {{if .PageViewsHasNextPage}}
-                                    <a href="/admin?page={{.PageViewsNextPage}}" class="relative inline-flex items-center rounded-r-md px-2 py-2 text-gray-400 ring-1 ring-inset ring-gray-300 hover:bg-gray-50 focus:z-20 focus:outline-offset-0">
-                                        <span class="sr-only">Next</span>
-                                        <svg class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"><path fill-rule="evenodd" d="M7.21 14.77a.75.75 0 01.02-1.06L11.168 10 7.23 6.29a.75.75 0 111.04-1.08l4.5 4.25a.75.75 0 010-1.08l-4.5 4.25a.75.75 0 01-1.06-.02z" clip-rule="evenodd" /></svg>
-                                    </a>
-                                    {{else}}
-                                    <span class="relative inline-flex items-center rounded-r-md px-2 py-2 text-gray-300 ring-1 ring-inset ring-gray-300">
-                                        <svg class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"><path fill-rule="evenodd" d="M7.21 14.77a.75.75 0 01.02-1.06L11.168 10 7.23 6.29a.75.75 0 111.04-1.08l4.5 4.25a.75.75 0 010-1.08l-4.5 4.25a.75.75 0 01-1.06-.02z" clip-rule="evenodd" /></svg>
-                                    </span>
-                                    {{end}}
-                                </nav>
+                            {{if .RMSCacheSearchResults}}
+                            <form action="/admin/cache/delete-entry" method="POST" onsubmit="return confirm('Are you sure you want to delete the selected cache entries? This cannot be undone.');">
+                                <div class="overflow-x-auto border rounded-lg">
+                                    <table class="min-w-full text-sm">
+                                        <thead>
+                                            <tr class="border-b-2 border-gray-200">
+                                                <th class="py-2 px-3 text-left w-12"></th>
+                                                <th class="py-2 px-3 text-left font-semibold text-gray-600 uppercase tracking-wider w-20">ID</th>
+                                                <th class="py-2 px-3 text-left font-semibold text-gray-600 uppercase tracking-wider">Name</th>
+                                                <th class="py-2 px-3 text-left font-semibold text-gray-600 uppercase tracking-wider">Name (PT)</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody class="divide-y divide-gray-200">
+                                            {{range .RMSCacheSearchResults}}
+                                            <tr>
+                                                <td class="py-2 px-3 text-center">
+                                                    <input type="checkbox" name="item_id[]" value="{{.ItemID}}" class="rounded border-gray-300 text-red-600 focus:ring-red-500">
+                                                </td>
+                                                <td class="py-2 px-3 font-mono">{{.ItemID}}</td>
+                                                <td class="py-2 px-3">{{.Name}}</td>
+                                                <td class="py-2 px-3">{{if .NamePT.Valid}}{{.NamePT.String}}{{else}}-{{end}}</td>
+                                            </tr>
+                                            {{end}}
+                                        </tbody>
+                                    </table>
+                                </div>
+                                <button type="submit" class="mt-4 bg-red-600 hover:bg-red-800 text-white font-bold py-2 px-4 rounded">Delete Selected Entries</button>
+                            </form>
+                            {{else}}
+                                {{if .RMSCacheSearchQuery}}
+                                <p class="text-gray-500">No results found for "{{.RMSCacheSearchQuery}}".</p>
+                                {{else}}
+                                <p class="text-gray-500">Enter a search term to find RMS cache entries.</p>
+                                {{end}}
+                            {{end}}
+                        </div>
+
+                        <div class="bg-white p-6 rounded-lg shadow mt-8">
+                            <h2 class="text-xl font-bold mb-4">Live RMS Item Search &amp; Cache</h2>
+                            <p class="text-sm text-gray-600 mb-4">Search RateMyServer.net for an item and manually add it to the local cache. This is useful for new items not yet seen in the market.</p>
+                            <form action="/admin" method="GET" class="flex flex-col md:flex-row items-end gap-4 mb-4">
+                                <input type="hidden" name="tab" value="cache"> <div class="flex-grow w-full">
+                                    <label for="rms_live_search" class="block text-sm font-medium text-gray-700">Search Item Name (Live)</label>
+                                    <input type="search" name="rms_live_search" id="rms_live_search" value="{{.RMSLiveSearchQuery}}"
+                                           class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
+                                           placeholder="e.g., Jellopy, Knife [4], Poring Card">
+                                </div>
+                                <button type="submit" class="w-full md:w-auto bg-indigo-500 hover:bg-indigo-700 text-white font-bold py-2 px-4 rounded">Search RMS</button>
+                            </form>
+
+                            {{if .RMSLiveSearchResults}}
+                            <div class="overflow-x-auto border rounded-lg mt-4">
+                                <table class="min-w-full text-sm">
+                                    <thead>
+                                        <tr class="border-b-2 border-gray-200">
+                                            <th class="py-2 px-3 text-left font-semibold text-gray-600 uppercase tracking-wider w-20">ID</th>
+                                            <th class="py-2 px-3 text-left font-semibold text-gray-600 uppercase tracking-wider">Name</th>
+                                            <th class="py-2 px-3 text-left font-semibold text-gray-600 uppercase tracking-wider w-24">Action</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody class="divide-y divide-gray-200">
+                                        {{range .RMSLiveSearchResults}}
+                                        <tr>
+                                            <td class="py-2 px-3 font-mono">{{.ID}}</td>
+                                            <td class="py-2 px-3">
+                                                <img src="{{.ImageURL}}" alt="item" class="h-6 w-6 inline-block mr-2 bg-gray-100 rounded-sm">
+                                                {{.Name}}
+                                            </td>
+                                            <td class="py-2 px-3 text-center">
+                                                <form action="/admin/cache/save-entry" method="POST" class="inline">
+                                                    <input type="hidden" name="item_id" value="{{.ID}}">
+                                                    <input type="hidden" name="item_name" value="{{.Name}}">
+                                                    <input type="hidden" name="rms_live_search" value="{{$.RMSLiveSearchQuery}}">
+                                                    <button type="submit" class="text-xs bg-green-500 hover:bg-green-700 text-white font-bold py-1 px-2 rounded">
+                                                        Save
+                                                    </button>
+                                                </form>
+                                            </td>
+                                        </tr>
+                                        {{end}}
+                                    </tbody>
+                                </table>
+                            </div>
+                            {{else}}
+                                {{if .RMSLiveSearchQuery}}
+                                <p class="text-gray-500">No live results found for "{{.RMSLiveSearchQuery}}".</p>
+                                {{else}}
+                                <p class="text-gray-500">Enter a search term to find items on RMS.</p>
+                                {{end}}
+                            {{end}}
+                        </div>
+                    </div>
+                    <div>
+                        <div class="bg-white p-6 rounded-lg shadow mt-8">
+                            <h2 class="text-xl font-bold mb-4">Item Cache Management (RMS)</h2>
+                            <p class="text-sm text-gray-600 mb-4">The table will be recreated on application restart, but all data will be lost until then.</p>
+                            <div class="flex flex-wrap items-start gap-4">
+                                <form action="/admin/cache" method="POST">
+                                    <input type="hidden" name="action" value="repopulate">
+                                    <button type="submit" class="bg-indigo-500 hover:bg-indigo-700 text-white font-bold py-2 px-4 rounded">Repopulate Missing Items</button>
+                                </form>
+                                <form action="/admin/cache" method="POST" onsubmit="return confirm('Are you sure you want to DELETE all cached item data? This keeps the table structure.');">
+                                    <input type="hidden" name="action" value="clear">
+                                    <button type="submit" class="bg-orange-500 hover:bg-orange-700 text-white font-bold py-2 px-4 rounded">Clear All Cached Data</button>
+                                </form>
+                                <form action="/admin/cache" method="POST" onsubmit="return confirm('DANGER: Are you sure you want to completely DROP the `rms_item_cache` table? The table will be gone until the application is restarted.');">
+                                    <input type="hidden" name="action" value="drop">
+                                    <button type="submit" class="bg-red-700 hover:bg-red-900 text-white font-bold py-2 px-4 rounded">Drop Cache Table</button>
+                                </form>
                             </div>
                         </div>
                     </div>
-                    {{end}}
                 </div>
             </div>
-        </div>
-    </div>
+
+        </div> </div>
 
     <script>
         document.addEventListener('DOMContentLoaded', function () {
+            // --- Guild Emblem Preview Script ---
             const guildSelect = document.getElementById('guild_select');
             const previewContainer = document.getElementById('emblem-preview-container');
             const previewImage = document.getElementById('emblem_preview_image');
@@ -530,6 +566,8 @@
             const newUrlInput = document.getElementById('emblem_url');
 
             function updatePreview() {
+                if (!guildSelect) return; // In case this script runs on a page without the element
+                
                 const selectedOption = guildSelect.options[guildSelect.selectedIndex];
 
                 if (!selectedOption || !selectedOption.value) {
@@ -553,7 +591,71 @@
                 }
             }
 
-            guildSelect.addEventListener('change', updatePreview);
+            if (guildSelect) {
+                guildSelect.addEventListener('change', updatePreview);
+            }
+            // --- End Guild Emblem Script ---
+
+
+            // --- Tab Switching Script ---
+            const tabButtons = document.querySelectorAll('.tab-button');
+            const tabPanels = document.querySelectorAll('.tab-panel');
+            const activeTabClasses = ['border-blue-500', 'text-blue-600'];
+            const inactiveTabClasses = ['border-transparent', 'text-gray-500', 'hover:text-gray-700', 'hover:border-gray-300'];
+
+            function switchTab(targetTab) {
+                // Update button styles
+                tabButtons.forEach(btn => {
+                    if (btn.dataset.tab === targetTab) {
+                        btn.classList.add(...activeTabClasses);
+                        btn.classList.remove(...inactiveTabClasses);
+                    } else {
+                        btn.classList.remove(...activeTabClasses);
+                        btn.classList.add(...inactiveTabClasses);
+                    }
+                });
+
+                // Update panel visibility
+                tabPanels.forEach(panel => {
+                    if (panel.id === 'tab-' + targetTab) {
+                        panel.style.display = 'block';
+                    } else {
+                        panel.style.display = 'none';
+                    }
+                });
+
+                // Update URL hash
+                window.location.hash = targetTab;
+            }
+
+            tabButtons.forEach(button => {
+                button.addEventListener('click', function (e) {
+                    e.preventDefault();
+                    const targetTab = this.dataset.tab;
+                    switchTab(targetTab);
+                });
+            });
+
+            // Check for tab in URL hash on page load
+            const currentHash = window.location.hash.replace('#', '');
+            if (currentHash) {
+                const targetPanel = document.getElementById('tab-' + currentHash);
+                if (targetPanel) {
+                    switchTab(currentHash);
+                }
+            }
+
+            // Check for tab in URL query parameter (for form submissions)
+            const urlParams = new URLSearchParams(window.location.search);
+            const queryTab = urlParams.get('tab');
+            if (queryTab) {
+                const targetPanel = document.getElementById('tab-' + queryTab);
+                if (targetPanel) {
+                    switchTab(queryTab);
+                }
+            }
+            // --- End Tab Switching Script ---
+
         });
     </script>
 </body>
