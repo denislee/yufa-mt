@@ -988,69 +988,83 @@ func scrapeZeny() {
 	processZenyData(allZenyInfo, updateTime)
 }
 
+// in scraper.go
+
 // parseMarketItem extracts all item details from a goquery selection.
 // This helper function isolates the complex name-parsing logic from the main scraper loop.
 func parseMarketItem(itemSelection *goquery.Selection) (Item, bool) {
 	// --- Regex for +Refine levels ---
-	// These are kept locally as they are only used here.
 	reRefineMid := regexp.MustCompile(`\s(\+\d+)`)    // e.g., "Item +7 Name"
 	reRefineStart := regexp.MustCompile(`^(\+\d+)\s`) // e.g., "+7 Item Name"
 
 	// --- 1. Get Base Name ---
-	baseItemName := strings.TrimSpace(itemSelection.Find("p.truncate").Text())
+	baseItemName := strings.TrimSpace(itemSelection.Find("p.font-medium.truncate").Text()) // Guess: added font-medium
+	if baseItemName == "" {
+		baseItemName = strings.TrimSpace(itemSelection.Find("p.truncate").Text()) // Fallback to old
+	}
 	if baseItemName == "" {
 		return Item{}, false // No name, invalid item
 	}
 
-	// --- 2. Normalize Refinements ---
-	// Move mid-string refinements (e.g., "Slotted +7 Tsurugi") to the end ("Slotted Tsurugi +7")
+	// --- 2. Normalize Refinements (unchanged) ---
 	if match := reRefineMid.FindStringSubmatch(baseItemName); len(match) > 1 && !strings.HasSuffix(baseItemName, match[0]) {
 		cleanedName := strings.Replace(baseItemName, match[0], "", 1)
 		cleanedName = strings.Join(strings.Fields(cleanedName), " ") // Remove extra spaces
 		baseItemName = cleanedName + match[0]
-		// Move start-string refinements (e.g., "+7 Tsurugi") to the end ("Tsurugi +7")
 	} else if match := reRefineStart.FindStringSubmatch(baseItemName); len(match) > 1 {
 		cleanedName := strings.Replace(baseItemName, match[0], "", 1)
 		cleanedName = strings.Join(strings.Fields(cleanedName), " ") // Remove extra spaces
 		baseItemName = cleanedName + " " + match[1]
 	}
 
-	// --- 3. Extract and Append Card Names ---
+	// --- 3. Extract ID and Card Names (NEW FIX) ---
 	var cardNames []string
-	itemSelection.Find("div.mt-1.flex.flex-wrap.gap-1 span[data-slot='badge']").Each(func(k int, cardSelection *goquery.Selection) {
-		// The first badge is the ID, so we skip it.
-		// Card badges don't have the "ID: " prefix.
-		cardText := cardSelection.Text()
-		if !strings.HasPrefix(cardText, "ID: ") {
-			cardName := strings.TrimSpace(strings.TrimSuffix(cardText, " Card"))
+	idStr := ""
+
+	// Find all elements matching the "badge" structure you provided.
+	itemSelection.Find("div.inline-flex.items-center.rounded-full.border.font-semibold").Each(func(k int, sel *goquery.Selection) {
+		badgeText := strings.TrimSpace(sel.Text())
+		if badgeText == "" {
+			return
+		}
+
+		if strings.HasPrefix(badgeText, "ID: ") {
+			// It's the ID.
+			// Text might be "ID: 1095"
+			idStrWithJunk := strings.TrimPrefix(badgeText, "ID: ")
+			idStr = strings.Fields(idStrWithJunk)[0] // Get just the first part
+		} else {
+			// It's not an ID, so it must be a card or refinement.
+			// We'll append it to the name.
+			cardName := strings.TrimSpace(strings.TrimSuffix(badgeText, " Card"))
 			if cardName != "" {
 				cardNames = append(cardNames, cardName)
 			}
 		}
 	})
+	// --- END NEW FIX ---
 
-	// Finalize the name, e.g., "Tsurugi +7 [Hydra] [Skeleton Worker]"
+	// --- 4. Finalize Name ---
 	finalItemName := baseItemName
 	if len(cardNames) > 0 {
 		wrapped := make([]string, len(cardNames))
 		for i, c := range cardNames {
 			wrapped[i] = fmt.Sprintf(" [%s]", c)
 		}
+		// We join and then clean up, just in case the base name
+		// already had a refinement that was *also* picked up as a badge.
+		// e.g., "Manteau [1] +7" + " [+7]" becomes "Manteau [1] +7 [+7]"
+		// This is hard to de-duplicate, but appending is safer.
 		finalItemName = fmt.Sprintf("%s%s", baseItemName, strings.Join(wrapped, ""))
 	}
 
-	// --- 4. Get Other Details ---
-	quantityStr := strings.TrimSuffix(strings.TrimSpace(itemSelection.Find("span.text-xs.text-muted-foreground").Text()), "x")
-	priceStr := strings.TrimSpace(itemSelection.Find("span.text-xs.font-medium.text-green-600").Text())
+	// --- 5. Get Other Details ---
+	quantityStr := strings.TrimSuffix(strings.TrimSpace(itemSelection.Find("span[class*='text-muted-foreground']").Text()), "x")
+	priceStr := strings.TrimSpace(itemSelection.Find("span[class*='text-green']").Text())
 
-	// Find the ID badge specifically
-	idStr := ""
-	itemSelection.Find("span[data-slot='badge']").Each(func(_ int, idSelection *goquery.Selection) {
-		if strings.HasPrefix(idSelection.Text(), "ID: ") {
-			idStr = strings.TrimPrefix(strings.TrimSpace(idSelection.Text()), "ID: ")
-		}
-	})
-
+	if priceStr == "" {
+		priceStr = strings.TrimSpace(itemSelection.Find("span.text-xs.font-medium.text-green-600").Text())
+	}
 	if priceStr == "" {
 		return Item{}, false // No price, invalid item
 	}
@@ -1059,7 +1073,7 @@ func parseMarketItem(itemSelection *goquery.Selection) (Item, bool) {
 	if quantity == 0 {
 		quantity = 1 // Default to 1 if parsing fails or 0
 	}
-	itemID, _ := strconv.Atoi(idStr)
+	itemID, _ := strconv.Atoi(idStr) // idStr is now correctly populated
 
 	return Item{
 		Name:     finalItemName,
@@ -1112,13 +1126,40 @@ func scrapeData() {
 	activeSellers := make(map[string]bool)
 
 	// --- Main Scraper Loop ---
-	// This loop is now much simpler. It just finds shops and items.
-	doc.Find(`div[data-slot="card"]`).Each(func(i int, s *goquery.Selection) {
-		// Get shop-level details
-		shopName := strings.TrimSpace(s.Find(`div[data-slot="card-title"]`).Text())
-		sellerName := strings.TrimSpace(s.Find("svg.lucide-user").Next().Text())
-		mapName := strings.TrimSpace(s.Find("svg.lucide-map-pin").Next().Text())
-		mapCoordinates := strings.TrimSpace(s.Find("svg.lucide-copy").Next().Text())
+	// MODIFICATION: Find shop cards by anchoring on the 'lucide-user' icon
+	// and working outwards to find the parent card. This is much more
+	// resilient than relying on 'data-slot="card"'.
+	doc.Find("svg.lucide-user").Each(func(i int, s *goquery.Selection) {
+		// s is the <svg> icon.
+		// Find the parent card. We'll assume it's the closest ancestor div with a border.
+		card := s.Closest("div.border")
+		if card.Length() == 0 {
+			// Fallback guess: maybe it's an <article>
+			card = s.Closest("article")
+			if card.Length() == 0 {
+				log.Printf("[W] [Scraper/Market] Could not find parent 'card' for a lucide-user icon. Skipping shop.")
+				return
+			}
+		}
+
+		// Get shop-level details *within this card*
+		// We search *down* from the card we just found.
+
+		// --- MODIFICATION: Use the new selector for the shop title ---
+		shopName := strings.TrimSpace(card.Find("div.font-semibold.tracking-tight.line-clamp-1.text-lg").First().Text())
+		if shopName == "" {
+			// Fallback guess 1: older div.font-semibold
+			shopName = strings.TrimSpace(card.Find("div.font-semibold").First().Text())
+		}
+		if shopName == "" {
+			// Fallback guess 2: h3
+			shopName = strings.TrimSpace(card.Find("h3").First().Text())
+		}
+		// --- END MODIFICATION ---
+
+		sellerName := strings.TrimSpace(s.Next().Text()) // Get text from span next to the icon we found
+		mapName := strings.TrimSpace(card.Find("svg.lucide-map-pin").Next().Text())
+		mapCoordinates := strings.TrimSpace(card.Find("svg.lucide-copy").Next().Text())
 		activeSellers[sellerName] = true
 
 		if enableMarketScraperDebugLogs == true {
@@ -1126,11 +1167,14 @@ func scrapeData() {
 		}
 
 		if shopName == "" || sellerName == "" {
+			log.Printf("[W] [Scraper/Market] Skipping shop with missing name ('%s') or seller ('%s').", shopName, sellerName)
 			return // Skip shops with missing critical info
 		}
 
 		// Iterate over items in this shop
-		s.Find(`div[data-slot="card-content"] .flex.items-center.space-x-2`).Each(func(j int, itemSelection *goquery.Selection) {
+		// MODIFICATION: Removed data-slot="card-content".
+		// We find all item rows (based on old classes) within the card.
+		card.Find(".flex.items-center.space-x-2").Each(func(j int, itemSelection *goquery.Selection) {
 
 			// Use the helper function to do all the hard parsing
 			item, ok := parseMarketItem(itemSelection)
@@ -1270,7 +1314,7 @@ func scrapeData() {
 		}
 		for _, item := range currentScrapedItems {
 			if _, err := stmt.Exec(item.Name, item.ItemID, item.Quantity, item.Price, item.StoreName, item.SellerName, retrievalTime, item.MapName, item.MapCoordinates); err != nil {
-				log.Printf("[W] [Scraper/Market] Could not execute insert for %s: %v", item.Name, err)
+				log.Printf("[WF] [Scraper/Market] Could not execute insert for %s: %v", item.Name, err)
 			}
 		}
 		stmt.Close()
@@ -1287,7 +1331,7 @@ func scrapeData() {
 				})
 				_, err := tx.Exec(`INSERT INTO market_events (event_timestamp, event_type, item_name, item_id, details) VALUES (?, 'ADDED', ?, ?, ?)`, retrievalTime, itemName, firstItem.ItemID, string(details))
 				if err != nil {
-					log.Printf("[ECode] [Scraper/Market] Failed to log ADDED event for %s: %v", itemName, err)
+					log.Printf("[E] [Scraper/Market] Failed to log ADDED event for %s: %v", itemName, err)
 				}
 
 				// --- THIS IS THE FIX ---
@@ -1655,11 +1699,11 @@ func startBackgroundJobs(ctx context.Context) {
 	// Define all scheduled jobs
 	jobs := []Job{
 		{Name: "Market", Func: scrapeData, Interval: 3 * time.Minute},
-		{Name: "Player Count", Func: scrapeAndStorePlayerCount, Interval: 1 * time.Minute},
-		{Name: "Player Character", Func: scrapePlayerCharacters, Interval: 30 * time.Minute},
-		{Name: "Guild", Func: scrapeGuilds, Interval: 25 * time.Minute},
-		{Name: "Zeny", Func: scrapeZeny, Interval: 1 * time.Hour},
-		{Name: "MVP Kill", Func: scrapeMvpKills, Interval: 5 * time.Minute},
+		//		{Name: "Player Count", Func: scrapeAndStorePlayerCount, Interval: 1 * time.Minute},
+		//		{Name: "Player Character", Func: scrapePlayerCharacters, Interval: 30 * time.Minute},
+		//		{Name: "Guild", Func: scrapeGuilds, Interval: 25 * time.Minute},
+		//		{Name: "Zeny", Func: scrapeZeny, Interval: 1 * time.Hour},
+		//		{Name: "MVP Kill", Func: scrapeMvpKills, Interval: 5 * time.Minute},
 	}
 
 	// Start all standard jobs

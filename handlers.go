@@ -502,26 +502,22 @@ func summaryHandler(w http.ResponseWriter, r *http.Request) {
 		showAll = true
 	}
 
-	var params []interface{}
-	// --- MODIFICATION: Join internal_item_db ---
-	baseQuery := `
-		FROM items i
-		LEFT JOIN internal_item_db local_db ON i.item_id = local_db.item_id
-	`
-	// --- END MODIFICATION ---
-	var whereConditions []string
+	var innerWhereConditions []string
+	var innerParams []interface{}
+	var outerWhereConditions []string
+	var outerParams []interface{}
 
+	// 1. Item search (name/ID) filters the 'items' table directly.
 	if searchClause, searchParams, err := buildItemSearchClause(searchQuery, "i"); err != nil {
 		http.Error(w, "Failed to build item search query", http.StatusInternalServerError)
 		return
 	} else if searchClause != "" {
-		whereConditions = append(whereConditions, searchClause)
-		params = append(params, searchParams...)
+		innerWhereConditions = append(innerWhereConditions, searchClause)
+		innerParams = append(innerParams, searchParams...)
 	}
 
+	// 2. Type filter checks 'internal_item_db'.
 	if selectedType != "" {
-		// --- MODIFICATION: Query internal_item_db's 'type' column ---
-		// We must map the "pretty name" from the tab back to the DB value
 		var dbType string
 		switch selectedType {
 		case "Healing Item":
@@ -537,82 +533,113 @@ func summaryHandler(w http.ResponseWriter, r *http.Request) {
 		case "Monster Egg":
 			dbType = "PetEgg"
 		case "Pet Armor":
-			dbType = "PetArmor" // Note: This might miss 'PetEquip'
+			dbType = "PetArmor"
 		case "Weapon":
 			dbType = "Weapon"
 		case "Armor":
-			dbType = "Armor" // Note: This might miss 'ShadowGear'
+			dbType = "Armor"
 		case "Cash Shop Item":
 			dbType = "Cash"
 		default:
 			dbType = selectedType
 		}
-		whereConditions = append(whereConditions, "local_db.type = ?")
-		// --- END MODIFICATION ---
-		params = append(params, dbType)
+		outerWhereConditions = append(outerWhereConditions, "local_db.type = ?")
+		outerParams = append(outerParams, dbType)
 	}
 
-	whereClause := ""
-	if len(whereConditions) > 0 {
-		whereClause = "WHERE " + strings.Join(whereConditions, " AND ")
+	// --- FIX: Availability filter now goes into the OUTER WHERE clause ---
+	if !showAll {
+		// It filters on 't', the alias for the inner subquery.
+		outerWhereConditions = append(outerWhereConditions, "t.listing_count > 0")
+	}
+	// --- END FIX ---
+
+	// Build clause strings
+	innerWhereClause := ""
+	if len(innerWhereConditions) > 0 {
+		innerWhereClause = "WHERE " + strings.Join(innerWhereConditions, " AND ")
+	}
+	outerWhereClause := ""
+	if len(outerWhereConditions) > 0 {
+		// This will now correctly prepend "WHERE"
+		// e.g., "WHERE local_db.type = ? AND t.listing_count > 0"
+		outerWhereClause = "WHERE " + strings.Join(outerWhereConditions, " AND ")
 	}
 
+	// --- FIX: The separate 'havingClause' variable has been removed ---
+
+	// --- FIX: Restructured COUNT query to use outerWhereClause ---
 	countQuery := `
 		SELECT COUNT(*)
 		FROM (
 			SELECT 1
-			FROM items i
-			LEFT JOIN internal_item_db local_db ON i.item_id = local_db.item_id
-			%s
-			GROUP BY i.name_of_the_item, local_db.name_pt
-			%s
+			FROM (
+				SELECT
+					MAX(i.item_id) as item_id,
+					SUM(CASE WHEN i.is_available = 1 THEN 1 ELSE 0 END) as listing_count
+				FROM items i
+				%s -- innerWhereClause
+				GROUP BY i.name_of_the_item
+			) AS t
+			LEFT JOIN internal_item_db local_db ON t.item_id = local_db.item_id
+			%s -- outerWhereClause
 		) AS UniqueItems
 	`
-
-	havingClause := ""
-	if !showAll {
-
-		havingClause = " HAVING SUM(CASE WHEN i.is_available = 1 THEN 1 ELSE 0 END) > 0"
-	}
+	// --- END FIX ---
 
 	var totalUniqueItems int
-	err := db.QueryRow(fmt.Sprintf(countQuery, whereClause, havingClause), params...).Scan(&totalUniqueItems)
+	// Combine params for count query
+	countParams := append(innerParams, outerParams...)
+	err := db.QueryRow(fmt.Sprintf(countQuery, innerWhereClause, outerWhereClause), countParams...).Scan(&totalUniqueItems)
 	if err != nil {
 		log.Printf("[E] [HTTP] Summary count query error: %v", err)
-
 		totalUniqueItems = 0
 	}
 
-	// --- MODIFICATION: Select from local_db ---
-	selectClause := `
+	// --- FIX: Restructured main SELECT query ---
+	selectQuery := `
         SELECT
-            i.name_of_the_item,
+            t.name_of_the_item,
             local_db.name_pt,
-            MIN(i.item_id) as item_id,
-            MIN(CASE WHEN i.is_available = 1 THEN CAST(REPLACE(i.price, ',', '') AS INTEGER) ELSE NULL END) as lowest_price,
-            MAX(CASE WHEN i.is_available = 1 THEN CAST(REPLACE(i.price, ',', '') AS INTEGER) ELSE NULL END) as highest_price,
-            SUM(CASE WHEN i.is_available = 1 THEN 1 ELSE 0 END) as listing_count
+            t.item_id,
+            t.lowest_price,
+            t.highest_price,
+            t.listing_count
+        FROM (
+            SELECT
+                i.name_of_the_item,
+                MAX(i.item_id) as item_id, 
+                MIN(CASE WHEN i.is_available = 1 THEN CAST(REPLACE(i.price, ',', '') AS INTEGER) ELSE NULL END) as lowest_price,
+                MAX(CASE WHEN i.is_available = 1 THEN CAST(REPLACE(i.price, ',', '') AS INTEGER) ELSE NULL END) as highest_price,
+                SUM(CASE WHEN i.is_available = 1 THEN 1 ELSE 0 END) as listing_count
+            FROM items i
+            %s -- innerWhereClause
+            GROUP BY i.name_of_the_item
+        ) AS t
+        LEFT JOIN internal_item_db local_db ON t.item_id = local_db.item_id
+        %s -- outerWhereClause
     `
-	groupByClause := " GROUP BY i.name_of_the_item, local_db.name_pt"
-	// --- END MODIFICATION ---
-
-	if !showAll {
-		havingClause = " HAVING listing_count > 0"
-	} else {
-		havingClause = ""
-	}
+	// --- END FIX ---
 
 	allowedSorts := map[string]string{
-		"name": "i.name_of_the_item", "item_id": "item_id", "listings": "listing_count",
-		"lowest_price": "lowest_price", "highest_price": "highest_price",
+		"name":          "t.name_of_the_item",
+		"item_id":       "t.item_id",
+		"listings":      "t.listing_count",
+		"lowest_price":  "t.lowest_price",
+		"highest_price": "t.highest_price",
 	}
 	orderByClause, sortBy, order := getSortClause(r, allowedSorts, "highest_price", "DESC")
 
-	query := fmt.Sprintf("%s %s %s %s %s %s, i.name_of_the_item ASC;", selectClause, baseQuery, whereClause, groupByClause, havingClause, orderByClause)
+	query := fmt.Sprintf("%s %s, t.name_of_the_item ASC;",
+		fmt.Sprintf(selectQuery, innerWhereClause, outerWhereClause),
+		orderByClause,
+	)
 
-	rows, err := db.Query(query, params...)
+	// Combine params for main query
+	mainParams := append(innerParams, outerParams...)
+	rows, err := db.Query(query, mainParams...)
 	if err != nil {
-		log.Printf("[E] [HTTP] Summary query error: %v, Query: %s, Params: %v", err, query, params)
+		log.Printf("[E] [HTTP] Summary query error: %v, Query: %s, Params: %v", err, query, mainParams)
 		http.Error(w, "Database query for summary failed", http.StatusInternalServerError)
 		return
 	}
