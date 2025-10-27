@@ -237,7 +237,6 @@ func scrapeAndStorePlayerCount() {
 	const url = "https://projetoyufa.com/info"
 
 	// Use the shared client's getPage method.
-	// This encapsulates the user-agent, timeout, and status check.
 	bodyContent, err := scraperClient.getPage(url, "[Counter]")
 	if err != nil {
 		log.Printf("[E] [Scraper/PlayerCount] Failed to fetch player info page: %v", err)
@@ -251,12 +250,24 @@ func scrapeAndStorePlayerCount() {
 		return
 	}
 
-	playerCountText := doc.Find(`span[data-slot="badge"] p`).Text()
+	// --- THIS IS THE UPDATED SECTION ---
+	// Based on your HTML snippet, we now find all <p> tags and check
+	// their text content to find the one starting with "Online".
+	var playerCountText string
+	doc.Find("p").Each(func(i int, s *goquery.Selection) {
+		text := s.Text()
+		// Check if the text is like "Online 100"
+		if strings.HasPrefix(text, "Online") {
+			playerCountText = text
+		}
+	})
+	// --- END OF UPDATE ---
 
 	var onlineCount int
 	var found bool
 
 	if playerCountText != "" {
+		// This regex correctly extracts the number from a string like "Online 100"
 		re := regexp.MustCompile(`\d+`)
 		numStr := re.FindString(playerCountText)
 		if num, err := strconv.Atoi(numStr); err == nil {
@@ -266,7 +277,7 @@ func scrapeAndStorePlayerCount() {
 	}
 
 	if !found {
-		log.Println("[W] [Scraper/PlayerCount] Could not find player count on the info page after successful load.")
+		log.Println("[W] [Scraper/PlayerCount] Could not find player count on the info page after successful load. The selector `p` with text 'Online' may need updating.")
 		return
 	}
 
@@ -277,7 +288,6 @@ func scrapeAndStorePlayerCount() {
 	err = db.QueryRow("SELECT COUNT(DISTINCT seller_name) FROM items WHERE is_available = 1").Scan(&sellerCount)
 	if err != nil {
 		log.Printf("[W] [Scraper/PlayerCount] Could not query for unique seller count: %v", err)
-
 		sellerCount = 0
 	}
 
@@ -2158,7 +2168,7 @@ func runJobOnTicker(ctx context.Context, job Job) {
 	defer ticker.Stop()
 
 	log.Printf("[I] [Job] Starting initial run for %s job...", job.Name)
-	//job.Func() // Run immediately on start
+	job.Func() // Run immediately on start
 
 	for {
 		select {
