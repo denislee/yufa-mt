@@ -457,8 +457,10 @@ func cleanupStalePlayers(scrapedPlayerNames map[string]bool, existingPlayers map
 	log.Printf("[I] [Scraper/Char] Cleanup complete. Removed %d stale player records in total.", len(stalePlayers))
 }
 
-// processPlayerData is now a cleaner orchestrator that uses helper functions.
-func processPlayerData(playerChan <-chan PlayerCharacter, updateTime string) {
+// processPlayerData is the modified "consumer" function.
+// --- MODIFICATION ---
+func processPlayerData(playerChan <-chan PlayerCharacter) {
+	// --- END MODIFICATION ---
 	characterMutex.Lock()
 	defer characterMutex.Unlock()
 
@@ -470,6 +472,12 @@ func processPlayerData(playerChan <-chan PlayerCharacter, updateTime string) {
 		log.Printf("[E] [Scraper/Char] %v", err)
 		// Continue with an empty map, logging will just be incomplete
 	}
+
+	// --- MODIFICATION ---
+	// Generate the timestamp *after* data is confirmed to be ready for processing
+	// and *before* the transaction begins.
+	updateTime := time.Now().Format(time.RFC3339)
+	// --- END MODIFICATION ---
 
 	// 2. Prepare database transaction and statements
 	tx, err := db.Begin()
@@ -512,7 +520,7 @@ func processPlayerData(playerChan <-chan PlayerCharacter, updateTime string) {
 
 	// 3. Process all players from the channel
 	for p := range playerChan {
-		p.LastUpdated = updateTime
+		p.LastUpdated = updateTime // Use the new timestamp
 		scrapedPlayerNames[p.Name] = true
 		totalProcessed++
 
@@ -549,6 +557,7 @@ func processPlayerData(playerChan <-chan PlayerCharacter, updateTime string) {
 	log.Printf("[I] [Scraper/Char] Scrape and update process complete.")
 }
 
+// scrapePlayerCharacters is the modified "producer" function.
 func scrapePlayerCharacters() {
 	log.Println("[I] [Scraper/Char] Starting player character scrape...")
 
@@ -563,7 +572,9 @@ func scrapePlayerCharacters() {
 	// Use the helper to find the last page
 	const firstPageURL = "https://projetoyufa.com/rankings?page=1"
 	lastPage := scraperClient.findLastPage(firstPageURL, "[Characters]")
-	updateTime := time.Now().Format(time.RFC3339)
+	// --- MODIFICATION ---
+	// updateTime has been removed from here.
+	// --- END MODIFICATION ---
 
 	// --- Producer-Consumer setup ---
 	playerChan := make(chan PlayerCharacter, 100) // Buffered channel
@@ -572,7 +583,9 @@ func scrapePlayerCharacters() {
 
 	// Start the single DB consumer goroutine
 	// It will wait until playerChan is filled and closed.
-	go processPlayerData(playerChan, updateTime)
+	// --- MODIFICATION ---
+	go processPlayerData(playerChan) // Pass only the channel
+	// --- END MODIFICATION ---
 
 	log.Printf("[I] [Scraper/Char] Scraping all %d pages...", lastPage)
 	for page := 1; page <= lastPage; page++ {
@@ -882,9 +895,16 @@ func formatWithCommas(n int64) string {
 }
 
 // processZenyData handles fetching old zeny data, comparing, and updating the database.
-func processZenyData(allZenyInfo map[string]int64, updateTime string) {
+// --- MODIFICATION ---
+func processZenyData(allZenyInfo map[string]int64) {
+	// --- END MODIFICATION ---
 	characterMutex.Lock()
 	defer characterMutex.Unlock()
+
+	// --- MODIFICATION ---
+	// Timestamp is generated *after* scraping is complete.
+	updateTime := time.Now().Format(time.RFC3339)
+	// --- END MODIFICATION ---
 
 	log.Println("[D] [Scraper/Zeny] Fetching existing character zeny data for activity comparison...")
 	existingCharacters := make(map[string]CharacterZenyInfo)
@@ -914,7 +934,7 @@ func processZenyData(allZenyInfo map[string]int64, updateTime string) {
 
 	stmt, err := tx.Prepare("UPDATE characters SET zeny = ?, last_active = ? WHERE name = ?")
 	if err != nil {
-		log.Printf("[E] [Scraper/Zeny] Failed to prepare update statement: %v", err)
+		log.Printf("[E... ] [Scraper/Zeny] Failed to prepare update statement: %v", err)
 		return
 	}
 	defer stmt.Close()
@@ -986,7 +1006,9 @@ func scrapeZeny() {
 	const firstPageURL = "https://projetoyufa.com/rankings/zeny?page=1"
 	lastPage := scraperClient.findLastPage(firstPageURL, "[Scraper/Zeny]")
 
-	updateTime := time.Now().Format(time.RFC3339)
+	// --- MODIFICATION ---
+	// updateTime removed from here.
+	// --- END MODIFICATION ---
 	allZenyInfo := make(map[string]int64) // Map[characterName]zeny
 	var mu sync.Mutex
 	var wg sync.WaitGroup
@@ -1063,7 +1085,9 @@ func scrapeZeny() {
 	}
 
 	// Call the dedicated database function
-	processZenyData(allZenyInfo, updateTime)
+	// --- MODIFICATION ---
+	processZenyData(allZenyInfo) // updateTime no longer passed
+	// --- END MODIFICATION ---
 }
 
 // in scraper.go
@@ -1676,12 +1700,17 @@ func processMvpKills(allMvpKills map[string]map[string]int) {
 
 // in scraper.go
 
-// --- REPLACE THIS FUNCTION ---
-// --- REPLACE THIS FUNCTION ---
 // processWoeCharacterData handles saving the scraped WoE rankings to the database.
-func processWoeCharacterData(allWoeChars map[string]WoeCharacterRank, updateTime string) {
+// --- MODIFICATION ---
+func processWoeCharacterData(allWoeChars map[string]WoeCharacterRank) {
+	// --- END MODIFICATION ---
 	characterMutex.Lock() // Using characterMutex as WoE data relates to characters
 	defer characterMutex.Unlock()
+
+	// --- MODIFICATION ---
+	// Timestamp is generated *after* scraping is complete.
+	updateTime := time.Now().Format(time.RFC3339)
+	// --- END MODIFICATION ---
 
 	log.Println("[D] [Scraper/WoE] Starting database update for WoE Character rankings...")
 
@@ -1725,7 +1754,7 @@ func processWoeCharacterData(allWoeChars map[string]WoeCharacterRank, updateTime
 
 	updateCount := 0
 	for name, char := range allWoeChars { // Iterate using name as key
-		char.LastUpdated = updateTime
+		char.LastUpdated = updateTime // Use the new timestamp
 		// *** MODIFIED EXEC PARAMETERS (removed CharID) ***
 		_, err := stmt.Exec(
 			name, char.Class, char.GuildID, char.GuildName, // Use name from map key
@@ -1746,14 +1775,14 @@ func processWoeCharacterData(allWoeChars map[string]WoeCharacterRank, updateTime
 	log.Printf("[I] [Scraper/WoE] Database update complete. Upserted %d WoE character records.", updateCount)
 }
 
-// --- REPLACE THIS ENTIRE FUNCTION ---
 // scrapeWoeCharacterRankings scrapes the WoE character rankings from the website using goquery, handling pagination.
 func scrapeWoeCharacterRankings() {
 	log.Println("[I] [Scraper/WoE] Starting WoE character ranking scrape...")
 
 	const firstPageURL = "https://projetoyufa.com/rankings/woe?page=1" // Base URL for finding last page
-	updateTime := time.Now().Format(time.RFC3339)
-	// Use Name as the key for processing, consistent with DB primary key
+	// --- MODIFICATION ---
+	// updateTime removed from here.
+	// --- END MODIFICATION ---
 	allWoeChars := make(map[string]WoeCharacterRank) // Map[characterName]WoeCharacterRank
 
 	// --- Step 1: Find the last page ---
@@ -1921,92 +1950,10 @@ func scrapeWoeCharacterRankings() {
 		return
 	}
 
-	processWoeCharacterData(allWoeChars, updateTime)
+	// --- MODIFICATION ---
+	processWoeCharacterData(allWoeChars) // updateTime no longer passed
+	// --- END MODIFICATION ---
 }
-
-func oscrapeWoeCharacterRankings() {
-	log.Println("[I] [Scraper/WoE] Starting WoE character ranking scrape...")
-
-	const woeURL = "https://projetoyufa.com/rankings/woe"
-	updateTime := time.Now().Format(time.RFC3339)
-	allWoeChars := make(map[string]WoeCharacterRank) // Map[characterName]WoeCharacterRank
-
-	// Regex to parse each player object.
-	// This regex is updated to no longer capture the "rank" field.
-	playerRegex := regexp.MustCompile(
-		`\{\\"char_id\\":(\d+),` +
-			`\\"name\\":\\"([^"]+)\\",` +
-			`\\"class\\":(\d+),` +
-			`\\"guild_id":(\d+),` +
-			`\\"guild_name\\":\\"([^"]+)\\",` +
-			`\\"kill_count\\":(\d+),` +
-			`\\"death_count\\":(\d+),` +
-			`\\"damage_done\\":(\d+),` +
-			`\\"emperium_kill\\":(\d+),` +
-			`\\"healing_done\\":(\d+),` +
-			`\\"score\\":(\d+),` +
-			`\\"points\\":(\d+)\}`)
-
-	log.Printf("[D] [Scraper/WoE] Fetching page: %s", woeURL)
-	// Scrape the main page
-	bodyContent, err := scraperClient.getPage(woeURL, "[Scraper/WoE]")
-	if err != nil {
-		log.Printf("[E] [Scraper/WoE] Failed to get WoE page: %v", err)
-		return
-	}
-	log.Printf("[D] [Scraper/WoE] Page fetched successfully. Body: %s", bodyContent)
-
-	// Parse all players found in the page body
-	playerMatches := playerRegex.FindAllStringSubmatch(bodyContent, -1)
-	if len(playerMatches) == 0 {
-		log.Printf("[W] [Scraper/WoE] No players matched regex in page body. The page structure might have changed.")
-		return
-	}
-	log.Printf("[D] [Scraper/WoE] Regex found %d potential character matches.", len(playerMatches))
-
-	for _, match := range playerMatches {
-		var c WoeCharacterRank
-
-		// Regex group indexes are now offset by -1 (since rank is no longer captured)
-		//		c.CharID, _ = strconv.Atoi(match[1])
-		c.Name = match[2]
-		c.Class = match[3]
-
-		// match[4] is guild_id, match[5] is guild_name.
-		if match[4] != "" && match[5] != "" {
-			if guildID, err := strconv.ParseInt(match[4], 10, 64); err == nil {
-				c.GuildID = sql.NullInt64{Int64: guildID, Valid: true}
-				c.GuildName = sql.NullString{String: match[5], Valid: true}
-			}
-		}
-
-		c.KillCount, _ = strconv.Atoi(match[6])
-		c.DeathCount, _ = strconv.Atoi(match[7])
-		c.DamageDone, _ = strconv.ParseInt(match[8], 10, 64)
-		c.EmperiumKill, _ = strconv.Atoi(match[9])
-		c.HealingDone, _ = strconv.ParseInt(match[10], 10, 64)
-		c.Score, _ = strconv.Atoi(match[11])
-		c.Points, _ = strconv.Atoi(match[12])
-
-		allWoeChars[c.Name] = c
-	}
-
-	log.Printf("[I] [Scraper/WoE] Finished scraping. Found info for %d characters.", len(allWoeChars))
-
-	if len(allWoeChars) == 0 {
-		log.Println("[W] [Scraper/WoE] No WoE character information was scraped. Skipping database update.")
-		return
-	}
-
-	// Call the dedicated database function (this function is already correct)
-	processWoeCharacterData(allWoeChars, updateTime)
-}
-
-// --- END REPLACEMENT ---
-
-// --- END REPLACEMENT ---
-
-// --- END REPLACEMENT ---
 
 // scrapeMvpKills is now only responsible for concurrent scraping.
 func scrapeMvpKills() {
