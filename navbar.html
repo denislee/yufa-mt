@@ -1,13 +1,13 @@
-<nav class="bg-white shadow-sm sticky top-0 z-10">
+
+<nav class="bg-white shadow-sm sticky top-0 z-10 font-sans">
     <div class="container mx-auto px-4">
         <div class="flex justify-between items-center py-2">
             <div class="text-xl font-semibold text-gray-700">Yufa Market Tracker</div>
             
             {{/* Define a variable to check if the current page is a ranking page */}}
-            {{/* --- MODIFICATION --- */}}
             {{ $isRankingPage := (or (eq .PageTitle "Characters") (eq .PageTitle "Guilds") (eq .PageTitle "MVP Kills") (eq .PageTitle "WoE Rankings")) }}
-            {{/* --- END MODIFICATION --- */}}
 
+            <!-- Desktop Menu -->
             <div class="hidden md:flex items-center space-x-1">
                 <a href="/" class="text-sm px-3 py-2 rounded-md {{if eq .PageTitle "Summary"}}font-semibold text-blue-600 bg-blue-50{{else}}text-gray-600 hover:bg-gray-100{{end}}">Summary</a>
                 <a href="/full-list" class="text-sm px-3 py-2 rounded-md {{if eq .PageTitle "Full List"}}font-semibold text-blue-600 bg-blue-50{{else}}text-gray-600 hover:bg-gray-100{{end}}">Full List</a>
@@ -24,15 +24,31 @@
                         <a href="/characters" class="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">Characters</a>
                         <a href="/guilds" class="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">Guilds</a>
                         <a href="/mvp-kills" class="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">MVP Kills</a>
-                        <a href="/woe" class="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">WoE Rankings</a> {{/* --- ADD THIS LINE --- */}}
+                        <a href="/woe" class="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">WoE Rankings</a>
                     </div>
                 </div>
             </div>
+
+            <!-- Mobile Menu Button -->
             <div class="md:hidden flex items-center">
-                {{/* ... (mobile menu button unchanged) ... */}}
+                <!-- START: ADDED HAMBURGER BUTTON -->
+                <button id="mobile-menu-button" class="p-2 rounded-md text-gray-600 hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-blue-500" aria-label="Main menu" aria-expanded="false">
+                    <span class="sr-only">Open main menu</span>
+                    <!-- Icon when menu is closed (hamburger) -->
+                    <svg id="open-icon" class="block h-6 w-6" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16" />
+                    </svg>
+                    <!-- Icon when menu is open (X) -->
+                    <svg id="close-icon" class="hidden h-6 w-6" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                </button>
+                <!-- END: ADDED HAMBURGER BUTTON -->
             </div>
         </div>
     </div>
+
+    <!-- Mobile Menu Content -->
     <div id="mobile-menu" class="hidden md:hidden border-t border-gray-200">
         <a href="/" class="block py-2 px-4 text-sm {{if eq .PageTitle "Summary"}}bg-blue-50 text-blue-600 font-semibold{{else}}text-gray-600 hover:bg-gray-50{{end}}">Summary</a>
         <a href="/full-list" class="block py-2 px-4 text-sm {{if eq .PageTitle "Full List"}}bg-blue-50 text-blue-600 font-semibold{{else}}text-gray-600 hover:bg-gray-50{{end}}">Full List</a>
@@ -48,8 +64,10 @@
                 <a href="/characters" class="block py-2 px-4 text-sm {{if eq .PageTitle "Characters"}}bg-blue-50 text-blue-600 font-semibold{{else}}text-gray-600 hover:bg-gray-50{{end}}">Characters</a>
                 <a href="/guilds" class="block py-2 px-4 text-sm {{if eq .PageTitle "Guilds"}}bg-blue-50 text-blue-600 font-semibold{{else}}text-gray-600 hover:bg-gray-50{{end}}">Guilds</a>
                 <a href="/mvp-kills" class="block py-2 px-4 text-sm {{if eq .PageTitle "MVP Kills"}}bg-blue-50 text-blue-600 font-semibold{{else}}text-gray-600 hover:bg-gray-50{{end}}">MVP Kills</a>
-                <a href="/woe" class="block py-2 px-4 text-sm {{if eq .PageTitle "WoE Rankings"}}bg-blue-50 text-blue-600 font-semibold{{else}}text-gray-600 hover:bg-gray-50{{end}}">WoE Rankings</a> {{/* --- ADD THIS LINE --- */}}
+                <a href="/woe" class="block py-2 px-4 text-sm {{if eq .PageTitle "WoE Rankings"}}bg-blue-50 text-blue-600 font-semibold{{else}}text-gray-600 hover:bg-gray-50{{end}}">WoE Rankings</a>
             </div>
         </details>
     </div>
 </nav>
+
+
