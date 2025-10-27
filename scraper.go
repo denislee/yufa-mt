@@ -12,6 +12,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic" // --- ADDED THIS IMPORT ---
 	"time"
 
 	"github.com/PuerkitoBio/goquery"
@@ -1817,6 +1818,10 @@ func scrapeWoeCharacterRankings() {
 	var wg sync.WaitGroup
 	sem := make(chan struct{}, 5)                 // Concurrency semaphore
 	var totalParsedCount, totalMatchedCount int32 // Use atomic or mutex for shared counters if needed, simple int32 for now
+	// --- START NEW ---
+	var emptyPageEncountered atomic.Bool // Flag for an empty page
+	emptyPageEncountered.Store(false)    // Initialize to false
+	// --- END NEW ---
 
 	log.Printf("[I] [Scraper/WoE] Scraping all %d pages...", lastPage)
 	for page := 1; page <= lastPage; page++ {
@@ -1827,6 +1832,7 @@ func scrapeWoeCharacterRankings() {
 			defer func() { <-sem }() // Release semaphore when done
 
 			pageURL := fmt.Sprintf("https://projetoyufa.com/rankings/woe?page=%d", pageIndex)
+			// --- FIX TYPO ---
 			if enableWoeScraperDebugLogs {
 				log.Printf("[D] [Scraper/WoE] Fetching page: %s", pageURL)
 			}
@@ -1842,8 +1848,18 @@ func scrapeWoeCharacterRankings() {
 				return
 			}
 
+			// --- START NEW LOGIC ---
+			// Check if the page is empty (no table rows)
+			rows := doc.Find("table tbody tr")
+			if rows.Length() == 0 {
+				log.Printf("[W] [Scraper/WoE] Page %d was fetched successfully but contained 0 character rows. This may indicate a scraper issue.", pageIndex)
+				emptyPageEncountered.Store(true) // Set the shared flag
+				return                           // Stop processing this page
+			}
+			// --- END NEW LOGIC ---
+
 			var pageParsedCount, pageMatchedCount int
-			doc.Find("table tbody tr").Each(func(i int, s *goquery.Selection) {
+			rows.Each(func(i int, s *goquery.Selection) { // Use the 'rows' variable
 				cells := s.Find("td")
 				if cells.Length() < 8 {
 					// Log only if debug enabled to reduce noise
@@ -1942,6 +1958,14 @@ func scrapeWoeCharacterRankings() {
 
 	wg.Wait() // Wait for all page scraping goroutines to finish
 	// --- End Step 3 ---
+
+	// --- START NEW CHECK ---
+	// Check the flag after all scraping is done
+	if emptyPageEncountered.Load() {
+		log.Println("[W] [Scraper/WoE] Aborting database update because at least one page was found to be empty. Selectors may be broken.")
+		return
+	}
+	// --- END NEW CHECK ---
 
 	log.Printf("[I] [Scraper/WoE] Finished scraping all pages. Total Matched from DB: %d. Total Parsed Details: %d.", totalMatchedCount, totalParsedCount)
 
