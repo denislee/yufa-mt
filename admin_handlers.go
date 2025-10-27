@@ -7,7 +7,7 @@ import (
 	"html/template"
 	"log"
 	"net/http"
-	"net/url"
+	"net/url" // <-- IMPORTED
 	"strconv"
 	"strings"
 	"sync"
@@ -34,6 +34,20 @@ func basicAuth(handler http.Handler) http.Handler {
 		handler.ServeHTTP(w, r)
 	})
 }
+
+// --- NEW HELPER FUNCTION ---
+// adminRedirectURL builds an admin redirect URL that includes the active tab.
+func adminRedirectURL(r *http.Request, msg string) string {
+	// PostFormValue ensures the form is parsed and reads from the body
+	tab := r.PostFormValue("tab")
+	redirectURL := "/admin?msg=" + url.QueryEscape(msg)
+	if tab != "" {
+		redirectURL += "&tab=" + url.QueryEscape(tab)
+	}
+	return redirectURL
+}
+
+// --- END NEW HELPER FUNCTION ---
 
 // in admin_handlers.go
 
@@ -370,8 +384,8 @@ func adminSaveCacheEntryHandler(w http.ResponseWriter, r *http.Request) {
 
 	// --- MODIFICATION: This action is no longer supported ---
 	log.Printf("[W] [Admin] Admin attempted to use 'Save Cache Entry', which is disabled (internal_item_db is YAML-based).")
-	msg := "Error:+Cannot+manually+save+entry.+Item+database+is+now+populated+from+YAML+files."
-	http.Redirect(w, r, "/admin?msg="+msg, http.StatusSeeOther)
+	msg := "Error: Cannot manually save entry. Item database is now populated from YAML files."
+	http.Redirect(w, r, adminRedirectURL(r, msg), http.StatusSeeOther)
 	// --- END MODIFICATION ---
 }
 
@@ -383,8 +397,8 @@ func adminDeleteCacheEntryHandler(w http.ResponseWriter, r *http.Request) {
 
 	// --- MODIFICATION: This action is no longer supported ---
 	log.Printf("[WW] [Admin] Admin attempted to use 'Delete Cache Entry', which is disabled (internal_item_db is YAML-based).")
-	msg := "Error:+Cannot+manually+delete+entry.+Item+database+is+now+populated+from+YAML+files."
-	http.Redirect(w, r, "/admin?msg="+msg, http.StatusSeeOther)
+	msg := "Error: Cannot manually delete entry. Item database is now populated from YAML files."
+	http.Redirect(w, r, adminRedirectURL(r, msg), http.StatusSeeOther)
 	// --- END MODIFICATION ---
 }
 
@@ -457,7 +471,10 @@ func adminTriggerScrapeHandler(scraperFunc func(), name string) http.HandlerFunc
 		}
 		log.Printf("[I] [Admin] Admin triggered '%s' scrape manually.", name)
 		go scraperFunc()
-		http.Redirect(w, r, fmt.Sprintf("/admin?msg=%s+scrape+started.", name), http.StatusSeeOther)
+		// --- MODIFICATION: Use adminRedirectURL helper ---
+		msg := fmt.Sprintf("%s scrape started.", name)
+		http.Redirect(w, r, adminRedirectURL(r, msg), http.StatusSeeOther)
+		// --- END MODIFICATION ---
 	}
 }
 
@@ -468,7 +485,7 @@ func adminCacheActionHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := r.ParseForm(); err != nil {
-		http.Redirect(w, r, "/admin?msg=Error+parsing+form.", http.StatusSeeOther)
+		http.Redirect(w, r, adminRedirectURL(r, "Error parsing form."), http.StatusSeeOther)
 		return
 	}
 
@@ -483,30 +500,32 @@ func adminCacheActionHandler(w http.ResponseWriter, r *http.Request) {
 		log.Println("[I] [Admin] Admin triggered internal item DB clear.")
 		_, err := db.Exec("DELETE FROM internal_item_db")
 		if err != nil {
-			msg = "Error+clearing+internal+item+db."
+			msg = "Error clearing internal item db."
 			log.Printf("[E] [Admin] Failed to clear internal_item_db: %v", err)
 		} else {
-			msg = "Internal+item+db+cleared+successfully."
+			msg = "Internal item db cleared successfully."
 		}
 	case "drop":
 		log.Println("[I] [Admin] Admin triggered internal item DB table drop.")
 		_, err := db.Exec("DROP TABLE IF EXISTS internal_item_db")
 		if err != nil {
-			msg = "Error+dropping+internal+item+db+table."
+			msg = "Error dropping internal item db table."
 			log.Printf("[E] [Admin] Failed to drop internal_item_db table: %v", err)
 		} else {
-			msg = "Internal+item+db+table+dropped+successfully.+Restart+app+to+recreate."
+			msg = "Internal item db table dropped successfully. Restart app to recreate."
 		}
 	case "repopulate":
 		log.Println("[I] [Admin] Admin triggered internal item DB repopulation from YAMLs.")
 		go populateItemDBOnStartup()
-		msg = "Internal+item+db+repopulation+from+YAMLs+started+in+background."
+		msg = "Internal item db repopulation from YAMLs started in background."
 	default:
-		msg = "Unknown+cache+action."
+		msg = "Unknown cache action."
 	}
 	// --- END MODIFICATION ---
 
-	http.Redirect(w, r, "/admin?msg="+msg, http.StatusSeeOther)
+	// --- MODIFICATION: Use adminRedirectURL helper ---
+	http.Redirect(w, r, adminRedirectURL(r, msg), http.StatusSeeOther)
+	// --- END MODIFICATION ---
 }
 
 func adminUpdateGuildEmblemHandler(w http.ResponseWriter, r *http.Request) {
@@ -516,7 +535,7 @@ func adminUpdateGuildEmblemHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := r.ParseForm(); err != nil {
-		http.Redirect(w, r, "/admin?msg=Error+parsing+form.", http.StatusSeeOther)
+		http.Redirect(w, r, adminRedirectURL(r, "Error parsing form."), http.StatusSeeOther)
 		return
 	}
 
@@ -525,25 +544,27 @@ func adminUpdateGuildEmblemHandler(w http.ResponseWriter, r *http.Request) {
 	var msg string
 
 	if guildName == "" || emblemURL == "" {
-		msg = "Guild+name+and+URL+cannot+be+empty."
-		http.Redirect(w, r, "/admin?msg="+msg, http.StatusSeeOther)
+		msg = "Guild name and URL cannot be empty."
+		http.Redirect(w, r, adminRedirectURL(r, msg), http.StatusSeeOther)
 		return
 	}
 
 	result, err := db.Exec("UPDATE guilds SET emblem_url = ? WHERE name = ?", emblemURL, guildName)
 	if err != nil {
 		log.Printf("[E] [Admin] Failed to update emblem for guild '%s': %v", guildName, err)
-		msg = "Database+error+occurred."
+		msg = "Database error occurred."
 	} else {
 		rowsAffected, _ := result.RowsAffected()
 		if rowsAffected == 0 {
-			msg = fmt.Sprintf("Guild+'%s'+not+found.", url.QueryEscape(guildName))
+			msg = fmt.Sprintf("Guild '%s' not found.", guildName)
 		} else {
-			msg = fmt.Sprintf("Emblem+for+'%s'+updated+successfully.", url.QueryEscape(guildName))
+			msg = fmt.Sprintf("Emblem for '%s' updated successfully.", guildName)
 		}
 	}
 
-	http.Redirect(w, r, "/admin?msg="+msg, http.StatusSeeOther)
+	// --- MODIFICATION: Use adminRedirectURL helper ---
+	http.Redirect(w, r, adminRedirectURL(r, msg), http.StatusSeeOther)
+	// --- END MODIFICATION ---
 }
 
 func adminClearLastActiveHandler(w http.ResponseWriter, r *http.Request) {
@@ -559,13 +580,15 @@ func adminClearLastActiveHandler(w http.ResponseWriter, r *http.Request) {
 	result, err := db.Exec("UPDATE characters SET last_active = ?", zeroTime)
 	if err != nil {
 		log.Printf("[E] [Admin] Failed to clear last_active times: %v", err)
-		msg = "Database+error+while+clearing+activity+times."
+		msg = "Database error while clearing activity times."
 	} else {
 		rowsAffected, _ := result.RowsAffected()
-		msg = fmt.Sprintf("Successfully+reset+last_active+time+for+%d+characters.", rowsAffected)
+		msg = fmt.Sprintf("Successfully reset last_active time for %d characters.", rowsAffected)
 	}
 
-	http.Redirect(w, r, "/admin?msg="+msg, http.StatusSeeOther)
+	// --- MODIFICATION: Use adminRedirectURL helper ---
+	http.Redirect(w, r, adminRedirectURL(r, msg), http.StatusSeeOther)
+	// --- END MODIFICATION ---
 }
 
 func adminClearMvpKillsHandler(w http.ResponseWriter, r *http.Request) {
@@ -578,14 +601,16 @@ func adminClearMvpKillsHandler(w http.ResponseWriter, r *http.Request) {
 	result, err := db.Exec("DELETE FROM character_mvp_kills")
 	if err != nil {
 		log.Printf("[E] [Admin] Failed to clear MVP kills table: %v", err)
-		msg = "Database+error+while+clearing+MVP+kills."
+		msg = "Database error while clearing MVP kills."
 	} else {
 		rowsAffected, _ := result.RowsAffected()
-		msg = fmt.Sprintf("Successfully+deleted+%d+MVP+kill+records.", rowsAffected)
+		msg = fmt.Sprintf("Successfully deleted %d MVP kill records.", rowsAffected)
 		log.Printf("[I] [Admin] Admin cleared all MVP kill data (%d records).", rowsAffected)
 	}
 
-	http.Redirect(w, r, "/admin?msg="+msg, http.StatusSeeOther)
+	// --- MODIFICATION: Use adminRedirectURL helper ---
+	http.Redirect(w, r, adminRedirectURL(r, msg), http.StatusSeeOther)
+	// --- END MODIFICATION ---
 }
 
 func adminDeleteVisitorViewsHandler(w http.ResponseWriter, r *http.Request) {
@@ -595,7 +620,7 @@ func adminDeleteVisitorViewsHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := r.ParseForm(); err != nil {
-		http.Redirect(w, r, "/admin?msg=Error+parsing+form.", http.StatusSeeOther)
+		http.Redirect(w, r, adminRedirectURL(r, "Error parsing form."), http.StatusSeeOther)
 		return
 	}
 
@@ -603,15 +628,15 @@ func adminDeleteVisitorViewsHandler(w http.ResponseWriter, r *http.Request) {
 	var msg string
 
 	if visitorHash == "" {
-		msg = "Error:+Missing+visitor+hash."
-		http.Redirect(w, r, "/admin?msg="+msg, http.StatusSeeOther)
+		msg = "Error: Missing visitor hash."
+		http.Redirect(w, r, adminRedirectURL(r, msg), http.StatusSeeOther)
 		return
 	}
 
 	tx, err := db.Begin()
 	if err != nil {
 		log.Printf("[E] [Admin] Failed to begin transaction for deleting visitor: %v", err)
-		http.Redirect(w, r, "/admin?msg=Database+error+occurred.", http.StatusSeeOther)
+		http.Redirect(w, r, adminRedirectURL(r, "Database error occurred."), http.StatusSeeOther)
 		return
 	}
 
@@ -619,7 +644,7 @@ func adminDeleteVisitorViewsHandler(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		tx.Rollback()
 		log.Printf("[E] [Admin] Failed to delete from page_views for hash %s: %v", visitorHash, err)
-		http.Redirect(w, r, "/admin?msg=Database+error+on+page_views.", http.StatusSeeOther)
+		http.Redirect(w, r, adminRedirectURL(r, "Database error on page_views."), http.StatusSeeOther)
 		return
 	}
 
@@ -627,25 +652,25 @@ func adminDeleteVisitorViewsHandler(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		tx.Rollback()
 		log.Printf("[ECode] [Admin] Failed to delete from visitors for hash %s: %v", visitorHash, err)
-		http.Redirect(w, r, "/admin?msg=Database+error+on+visitors.", http.StatusSeeOther)
+		http.Redirect(w, r, adminRedirectURL(r, "Database error on visitors."), http.StatusSeeOther)
 		return
 	}
 
 	if err := tx.Commit(); err != nil {
 		log.Printf("[E] [Admin] Failed to commit transaction for deleting visitor: %v", err)
-		http.Redirect(w, r, "/admin?msg=Database+commit+error.", http.StatusSeeOther)
+		http.Redirect(w, r, adminRedirectURL(r, "Database commit error."), http.StatusSeeOther)
 		return
 	}
 
 	rowsAffected, _ := result.RowsAffected()
 	if rowsAffected > 0 {
-		msg = "Visitor+records+removed+successfully."
+		msg = "Visitor records removed successfully."
 		log.Printf("[I] [Admin] Admin removed all data for visitor with hash starting with %s...", visitorHash[:12])
 	} else {
-		msg = "Visitor+not+found+or+already+removed."
+		msg = "Visitor not found or already removed."
 	}
 
-	http.Redirect(w, r, "/admin?msg="+msg, http.StatusSeeOther)
+	http.Redirect(w, r, adminRedirectURL(r, msg), http.StatusSeeOther)
 }
 
 func adminDeleteTradingPostHandler(w http.ResponseWriter, r *http.Request) {
@@ -655,7 +680,7 @@ func adminDeleteTradingPostHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := r.ParseForm(); err != nil {
-		http.Redirect(w, r, "/admin?msg=Error+parsing+form.", http.StatusSeeOther)
+		http.Redirect(w, r, adminRedirectURL(r, "Error parsing form."), http.StatusSeeOther)
 		return
 	}
 
@@ -663,25 +688,25 @@ func adminDeleteTradingPostHandler(w http.ResponseWriter, r *http.Request) {
 	var msg string
 
 	if postID == "" {
-		msg = "Error:+Missing+post+ID."
+		msg = "Error: Missing post ID."
 	} else {
 
 		result, err := db.Exec("DELETE FROM trading_posts WHERE id = ?", postID)
 		if err != nil {
-			msg = "Database+error+occurred+while+deleting+post."
+			msg = "Database error occurred while deleting post."
 			log.Printf("[E] [Admin] Failed to delete trading post with ID %s: %v", postID, err)
 		} else {
 			rowsAffected, _ := result.RowsAffected()
 			if rowsAffected > 0 {
-				msg = "Trading+post+deleted+successfully."
+				msg = "Trading post deleted successfully."
 				log.Printf("[I] [Admin] Admin deleted trading post with ID %s.", postID)
 			} else {
-				msg = "Trading+post+not+found."
+				msg = "Trading post not found."
 			}
 		}
 	}
 
-	http.Redirect(w, r, "/admin?msg="+msg, http.StatusSeeOther)
+	http.Redirect(w, r, adminRedirectURL(r, msg), http.StatusSeeOther)
 }
 
 // reparseTradingPostItems handles the database transaction for updating items.
@@ -758,14 +783,14 @@ func adminReparseTradingPostHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := r.ParseForm(); err != nil {
-		http.Redirect(w, r, "/admin?msg=Error+parsing+form.", http.StatusSeeOther)
+		http.Redirect(w, r, adminRedirectURL(r, "Error parsing form."), http.StatusSeeOther)
 		return
 	}
 
 	postIDStr := r.FormValue("post_id")
 	postID, err := strconv.Atoi(postIDStr)
 	if err != nil {
-		http.Redirect(w, r, "/admin?msg=Error:+Invalid+post+ID.", http.StatusSeeOther)
+		http.Redirect(w, r, adminRedirectURL(r, "Error: Invalid post ID."), http.StatusSeeOther)
 		return
 	}
 
@@ -776,32 +801,32 @@ func adminReparseTradingPostHandler(w http.ResponseWriter, r *http.Request) {
 	err = db.QueryRow("SELECT notes, post_type, character_name FROM trading_posts WHERE id = ?", postID).Scan(&originalMessage, &originalPostType, &characterName)
 	if err != nil {
 		if err == sql.ErrNoRows {
-			msg = "Error:+Post+not+found."
+			msg = "Error: Post not found."
 		} else {
-			msg = "Error:+Database+query+failed."
+			msg = "Error: Database query failed."
 			log.Printf("[E] [Admin/Reparse] Failed to fetch post %d for re-parse: %v", postID, err)
 		}
-		http.Redirect(w, r, "/admin?msg="+msg, http.StatusSeeOther)
+		http.Redirect(w, r, adminRedirectURL(r, msg), http.StatusSeeOther)
 		return
 	}
 
 	// 2. Validate the post data
 	if !originalMessage.Valid || originalMessage.String == "" {
-		msg = "Error:+Post+has+no+original+message+(notes)+to+re-parse."
-		http.Redirect(w, r, "/admin?msg="+msg, http.StatusSeeOther)
+		msg = "Error: Post has no original message (notes) to re-parse."
+		http.Redirect(w, r, adminRedirectURL(r, msg), http.StatusSeeOther)
 		return
 	}
 	if !originalPostType.Valid || (originalPostType.String != "buying" && originalPostType.String != "selling") {
-		msg = "Error:+Post+has+an+invalid+type."
-		http.Redirect(w, r, "/admin?msg="+msg, http.StatusSeeOther)
+		msg = "Error: Post has an invalid type."
+		http.Redirect(w, r, adminRedirectURL(r, msg), http.StatusSeeOther)
 		return
 	}
 
 	// 3. Parse with Gemini
 	geminiResult, geminiErr := parseTradeMessageWithGemini(originalMessage.String)
 	if geminiErr != nil {
-		msg = fmt.Sprintf("Error:+Gemini+parse+failed:+%s", url.QueryEscape(geminiErr.Error()))
-		http.Redirect(w, r, "/admin?msg="+msg, http.StatusSeeOther)
+		msg = fmt.Sprintf("Error: Gemini parse failed: %s", geminiErr.Error())
+		http.Redirect(w, r, adminRedirectURL(r, msg), http.StatusSeeOther)
 		return
 	}
 
@@ -820,16 +845,16 @@ func adminReparseTradingPostHandler(w http.ResponseWriter, r *http.Request) {
 	// 5. Execute the database transaction
 	itemsUpdated, err := reparseTradingPostItems(postID, itemsToUpdate)
 	if err != nil {
-		msg = fmt.Sprintf("Error:+Database+update+failed:+%s", url.QueryEscape(err.Error()))
+		msg = fmt.Sprintf("Error: Database update failed: %s", err.Error())
 		log.Printf("[E] [Admin/Reparse] Failed to re-parse post %d: %v", postID, err)
-		http.Redirect(w, r, "/admin?msg="+msg, http.StatusSeeOther)
+		http.Redirect(w, r, adminRedirectURL(r, msg), http.StatusSeeOther)
 		return
 	}
 
 	// 6. Success
 	log.Printf("[I] [Admin] Admin successfully re-parsed trading post %d (%s) with %d items.", postID, characterName.String, itemsUpdated)
-	msg = fmt.Sprintf("Successfully+re-parsed+post+%d.+Found+%d+items.", postID, itemsUpdated)
-	http.Redirect(w, r, "/admin?msg="+msg, http.StatusSeeOther)
+	msg = fmt.Sprintf("Successfully re-parsed post %d. Found %d items.", postID, itemsUpdated)
+	http.Redirect(w, r, adminRedirectURL(r, msg), http.StatusSeeOther)
 }
 
 // adminShowEditTradingPostPage handles the GET request to show the edit form.
@@ -942,7 +967,7 @@ func adminHandleEditTradingPost(w http.ResponseWriter, r *http.Request, postID i
 	}
 
 	log.Printf("[I] [Admin] Admin edited trading post with ID %d.", postID)
-	http.Redirect(w, r, "/admin?msg=Trading+post+updated+successfully.", http.StatusSeeOther)
+	http.Redirect(w, r, adminRedirectURL(r, "Trading post updated successfully."), http.StatusSeeOther)
 }
 
 // adminEditTradingPostHandler is now just a router for GET/POST.
@@ -972,13 +997,13 @@ func adminClearTradingPostItemsHandler(w http.ResponseWriter, r *http.Request) {
 	_, err := db.Exec("DROP TABLE IF EXISTS trading_post_items")
 	if err != nil {
 		log.Printf("[E] [Admin] Failed to drop trading_post_items table: %v", err)
-		msg = "Database+error+while+dropping+trading+post+items+table."
+		msg = "Database error while dropping trading post items table."
 	} else {
-		msg = "Successfully+dropped+the+trading_post_items+table."
+		msg = "Successfully dropped the trading_post_items table."
 		log.Printf("[I] [Admin] Admin dropped the trading_post_items table.")
 	}
 
-	http.Redirect(w, r, "/admin?msg="+msg, http.StatusSeeOther)
+	http.Redirect(w, r, adminRedirectURL(r, msg), http.StatusSeeOther)
 }
 
 func adminClearTradingPostsHandler(w http.ResponseWriter, r *http.Request) {
@@ -993,21 +1018,21 @@ func adminClearTradingPostsHandler(w http.ResponseWriter, r *http.Request) {
 	_, err = db.Exec("DROP TABLE IF EXISTS trading_post_items")
 	if err != nil {
 		log.Printf("[E] [Admin] Failed to drop trading_post_items table (dependency): %v", err)
-		msg = "Database+error+while+dropping+dependent+items+table."
-		http.Redirect(w, r, "/admin?msg="+msg, http.StatusSeeOther)
+		msg = "Database error while dropping dependent items table."
+		http.Redirect(w, r, adminRedirectURL(r, msg), http.StatusSeeOther)
 		return
 	}
 
 	_, err = db.Exec("DROP TABLE IF EXISTS trading_posts")
 	if err != nil {
 		log.Printf("[E... ] [Admin] Failed to drop trading_posts table: %v", err)
-		msg = "Database+error+while+dropping+trading_posts+table."
+		msg = "Database error while dropping trading_posts table."
 	} else {
-		msg = "Successfully+dropped+the+trading_posts+and+trading_post_items+tables."
+		msg = "Successfully dropped the trading_posts and trading_post_items tables."
 		log.Printf("[I] [Admin] Admin dropped the trading_posts and trading_post_items tables.")
 	}
 
-	http.Redirect(w, r, "/admin?msg="+msg, http.StatusSeeOther)
+	http.Redirect(w, r, adminRedirectURL(r, msg), http.StatusSeeOther)
 }
 
 // insertTradingPostItemsFromForm processes form data and inserts items into the DB.
@@ -1086,3 +1111,4 @@ func insertTradingPostItemsFromForm(tx *sql.Tx, postID int, form url.Values) err
 
 	return nil
 }
+

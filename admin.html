@@ -556,7 +556,7 @@
 
         </div> </div>
 
-    <script>
+        <script>
         document.addEventListener('DOMContentLoaded', function () {
             // --- Guild Emblem Preview Script ---
             const guildSelect = document.getElementById('guild_select');
@@ -655,6 +655,36 @@
                 }
             }
             // --- End Tab Switching Script ---
+
+            // --- NEW: Start POST Form Tab-Aware Redirect Script ---
+            document.querySelectorAll('.tab-panel form[method="POST"]').forEach(form => {
+                form.addEventListener('submit', function() {
+                    // Find the active tab's name
+                    const currentHash = window.location.hash.replace('#', '');
+                    let activeTab = 'overview'; // default
+                    
+                    if (currentHash) {
+                        activeTab = currentHash;
+                    } else {
+                        // Fallback: find the button with the active classes
+                        const activeButton = document.querySelector('.tab-button.border-blue-500');
+                        if (activeButton) {
+                            activeTab = activeButton.dataset.tab;
+                        }
+                    }
+
+                    // Check if a 'tab' input already exists
+                    if (!form.querySelector('input[name="tab"]')) {
+                        // If not, create and append one
+                        const tabInput = document.createElement('input');
+                        tabInput.type = 'hidden';
+                        tabInput.name = 'tab';
+                        tabInput.value = activeTab;
+                        form.appendChild(tabInput);
+                    }
+                });
+            });
+            // --- END: End POST Form Tab-Aware Redirect Script ---
 
         });
     </script>
