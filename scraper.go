@@ -497,6 +497,11 @@ func processPlayerData(playerChan <-chan PlayerCharacter, updateTime string) {
 	}
 	log.Printf("[I] [Scraper/Char] Saved/updated %d records.", totalProcessed)
 
+	if totalProcessed == 0 {
+		log.Println("[W] [Scraper/Char] Scraper processed 0 total characters. This might be a parsing error. Skipping stale player cleanup to avoid wiping data.")
+		return // Abort before cleanup
+	}
+
 	// 5. Clean up stale records (outside the transaction)
 	cleanupStalePlayers(scrapedPlayerNames, existingPlayers)
 
@@ -1242,6 +1247,11 @@ func scrapeData() {
 
 	log.Printf("[I] [Scraper/Market] Scrape parsed. Found %d unique item names.", len(scrapedItemsByName))
 
+	if len(scrapedItemsByName) == 0 {
+		log.Println("[W] [Scraper/Market] Scraper found 0 items on the market page. This might be a parsing error or an empty market. Skipping this update cycle to avoid wiping data.")
+		return // Abort the function here
+	}
+
 	marketMutex.Lock()
 	defer marketMutex.Unlock()
 
@@ -1870,16 +1880,9 @@ func scrapeWoeCharacterRankings() {
 		return
 	}
 
-	// --- Step 4: Call DB processing function ---
 	processWoeCharacterData(allWoeChars, updateTime)
-	// --- End Step 4 ---
 }
 
-// --- END REPLACEMENT ---
-
-// --- END REPLACEMENT ---
-
-// --- END REPLACEMENT ---
 func oscrapeWoeCharacterRankings() {
 	log.Println("[I] [Scraper/WoE] Starting WoE character ranking scrape...")
 
@@ -2155,7 +2158,7 @@ func runJobOnTicker(ctx context.Context, job Job) {
 	defer ticker.Stop()
 
 	log.Printf("[I] [Job] Starting initial run for %s job...", job.Name)
-	job.Func() // Run immediately on start
+	//job.Func() // Run immediately on start
 
 	for {
 		select {
@@ -2173,12 +2176,12 @@ func startBackgroundJobs(ctx context.Context) {
 	// Define all scheduled jobs
 	jobs := []Job{
 		{Name: "Market", Func: scrapeData, Interval: 3 * time.Minute},
-		// {Name: "Player Count", Func: scrapeAndStorePlayerCount, Interval: 1 * time.Minute},
-		// {Name: "Player Character", Func: scrapePlayerCharacters, Interval: 30 * time.Minute},
-		// {Name: "Guild", Func: scrapeGuilds, Interval: 25 * time.Minute},
-		// {Name: "Zeny", Func: scrapeZeny, Interval: 1 * time.Hour},
-		// {Name: "MVP Kill", Func: scrapeMvpKills, Interval: 5 * time.Minute},
-		// {Name: "PT-Name-Populator", Func: populateMissingPortugueseNames, Interval: 6 * time.Hour},
+		{Name: "Player Count", Func: scrapeAndStorePlayerCount, Interval: 1 * time.Minute},
+		{Name: "Player Character", Func: scrapePlayerCharacters, Interval: 30 * time.Minute},
+		{Name: "Guild", Func: scrapeGuilds, Interval: 25 * time.Minute},
+		{Name: "Zeny", Func: scrapeZeny, Interval: 1 * time.Hour},
+		{Name: "MVP Kill", Func: scrapeMvpKills, Interval: 5 * time.Minute},
+		{Name: "PT-Name-Populator", Func: populateMissingPortugueseNames, Interval: 6 * time.Hour},
 		{Name: "WoE-Char-Rankings", Func: scrapeWoeCharacterRankings, Interval: 15 * time.Minute},
 	}
 
