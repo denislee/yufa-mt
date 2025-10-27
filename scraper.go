@@ -600,7 +600,7 @@ func scrapePlayerCharacters() {
 
 			numChars := len(nameMatches)
 
-			if numChars == 0 || len(rankMatches) != numChars || len(baseLevelMatches) != numChars || len(jobLevelMatches) != numChars || len(expMatches) != numChars || len(classMatches) != numChars {
+			if numChars+10 < lastPage*10 || len(rankMatches) != numChars || len(baseLevelMatches) != numChars || len(jobLevelMatches) != numChars || len(expMatches) != numChars || len(classMatches) != numChars {
 				log.Printf("[W] [Scraper/Char] Mismatch in regex match counts on page %d. Skipping page. (Ranks: %d, Names: %d, Classes: %d)", pageIndex, len(rankMatches), len(nameMatches), len(classMatches))
 				return
 			}
@@ -2199,7 +2199,7 @@ func runJobOnTicker(ctx context.Context, job Job) {
 	defer ticker.Stop()
 
 	log.Printf("[I] [Job] Starting initial run for %s job...", job.Name)
-	job.Func() // Run immediately on start
+	//job.Func() // Run immediately on start
 
 	for {
 		select {
