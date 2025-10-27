@@ -70,6 +70,11 @@ const (
 	retryScrapeDelay = 3 * time.Second
 )
 
+const (
+	maxParseRetries = 3 // Max attempts to parse a page if it returns 0 items
+	parseRetryDelay = 2 * time.Second
+)
+
 // ScraperClient holds a shared HTTP client and user agent for all scrapers.
 type ScraperClient struct {
 	Client    *http.Client
@@ -573,9 +578,6 @@ func scrapePlayerCharacters() {
 	// Use the helper to find the last page
 	const firstPageURL = "https://projetoyufa.com/rankings?page=1"
 	lastPage := scraperClient.findLastPage(firstPageURL, "[Characters]")
-	// --- MODIFICATION ---
-	// updateTime has been removed from here.
-	// --- END MODIFICATION ---
 
 	// --- Producer-Consumer setup ---
 	playerChan := make(chan PlayerCharacter, 100) // Buffered channel
@@ -583,10 +585,7 @@ func scrapePlayerCharacters() {
 	sem := make(chan struct{}, 5) // Concurrency semaphore for scraping
 
 	// Start the single DB consumer goroutine
-	// It will wait until playerChan is filled and closed.
-	// --- MODIFICATION ---
 	go processPlayerData(playerChan) // Pass only the channel
-	// --- END MODIFICATION ---
 
 	log.Printf("[I] [Scraper/Char] Scraping all %d pages...", lastPage)
 	for page := 1; page <= lastPage; page++ {
@@ -596,49 +595,105 @@ func scrapePlayerCharacters() {
 			defer wg.Done()
 			defer func() { <-sem }()
 
-			url := fmt.Sprintf("https://projetoyufa.com/rankings?page=%d", pageIndex)
-
-			bodyContent, err := scraperClient.getPage(url, "[Characters]")
-			if err != nil {
-				log.Printf("[E] [Scraper/Char] All retries failed for page %d: %v", pageIndex, err)
-				return
+			// --- ADDED LOGGING ---
+			if enableCharacterScraperDebugLogs {
+				log.Printf("[D] [Scraper/Char] Goroutine started for page %d.", pageIndex)
 			}
+			// --- END ADDED LOGGING ---
 
-			// --- Parsing logic (unchanged) ---
-			rankMatches := rankRegex.FindAllStringSubmatch(bodyContent, -1)
-			nameMatches := nameRegex.FindAllStringSubmatch(bodyContent, -1)
-			baseLevelMatches := baseLevelRegex.FindAllStringSubmatch(bodyContent, -1)
-			jobLevelMatches := jobLevelRegex.FindAllStringSubmatch(bodyContent, -1)
-			expMatches := expRegex.FindAllStringSubmatch(bodyContent, -1)
-			classMatches := classRegex.FindAllStringSubmatch(bodyContent, -1)
-
-			numChars := len(nameMatches)
-
-			if numChars+10 < lastPage*10 || len(rankMatches) != numChars || len(baseLevelMatches) != numChars || len(jobLevelMatches) != numChars || len(expMatches) != numChars || len(classMatches) != numChars {
-				log.Printf("[W] [Scraper/Char] Mismatch in regex match counts on page %d. Skipping page. (Ranks: %d, Names: %d, Classes: %d)", pageIndex, len(rankMatches), len(nameMatches), len(classMatches))
-				return
-			}
-
+			var bodyContent string
+			var err error
+			var numChars int
 			var pagePlayers []PlayerCharacter
-			for i := 0; i < numChars; i++ {
-				rank, _ := strconv.Atoi(rankMatches[i][1])
-				name := nameMatches[i][1]
-				baseLevel, _ := strconv.Atoi(baseLevelMatches[i][1])
-				jobLevel, _ := strconv.Atoi(jobLevelMatches[i][1])
-				rawExp, _ := strconv.ParseFloat(expMatches[i][1], 64)
-				class := classMatches[i][1]
 
-				player := PlayerCharacter{
-					Rank:       rank,
-					BaseLevel:  baseLevel,
-					JobLevel:   jobLevel,
-					Experience: rawExp / 1000000.0,
-					Class:      class,
-					Name:       name,
+			// --- MODIFICATION: Added retry loop for parsing ---
+			for attempt := 1; attempt <= maxParseRetries; attempt++ {
+				url := fmt.Sprintf("https://projetoyufa.com/rankings?page=%d", pageIndex)
+
+				// --- ADDED LOGGING ---
+				if enableCharacterScraperDebugLogs {
+					log.Printf("[D] [Scraper/Char] [Page %d, Att %d] Fetching URL: %s", pageIndex, attempt, url)
 				}
-				pagePlayers = append(pagePlayers, player)
+				// --- END ADDED LOGGING ---
+
+				bodyContent, err = scraperClient.getPage(url, "[Characters]")
+				if err != nil {
+					log.Printf("[E] [Scraper/Char] Network/HTTP error for page %d (attempt %d/%d): %v. Retrying...", pageIndex, attempt, maxParseRetries, err)
+					// This error is from getPage, which *already* retried network issues.
+					// We'll retry the whole thing just in case.
+					time.Sleep(parseRetryDelay)
+					continue
+				}
+
+				// --- ADDED LOGGING ---
+				if enableCharacterScraperDebugLogs {
+					log.Printf("[D] [Scraper/Char] [Page %d, Att %d] Fetched successfully. Body size: %d bytes", pageIndex, attempt, len(bodyContent))
+					log.Printf("[D] [Scraper/Char] [Page %d, Att %d] Parsing content with regex...", pageIndex, attempt)
+				}
+				// --- END ADDED LOGGING ---
+
+				// --- Parsing logic (unchanged from original) ---
+				rankMatches := rankRegex.FindAllStringSubmatch(bodyContent, -1)
+				nameMatches := nameRegex.FindAllStringSubmatch(bodyContent, -1)
+				baseLevelMatches := baseLevelRegex.FindAllStringSubmatch(bodyContent, -1)
+				jobLevelMatches := jobLevelRegex.FindAllStringSubmatch(bodyContent, -1)
+				expMatches := expRegex.FindAllStringSubmatch(bodyContent, -1)
+				classMatches := classRegex.FindAllStringSubmatch(bodyContent, -1)
+
+				// --- ADDED LOGGING ---
+				if enableCharacterScraperDebugLogs {
+					log.Printf("[D] [Scraper/Char] [Page %d, Att %d] Regex match counts: Ranks: %d, Names: %d, BaseLvl: %d, JobLvl: %d, Exp: %d, Class: %d",
+						pageIndex, attempt,
+						len(rankMatches),
+						len(nameMatches),
+						len(baseLevelMatches),
+						len(jobLevelMatches),
+						len(expMatches),
+						len(classMatches))
+				}
+				// --- END ADDED LOGGING ---
+
+				numChars = len(nameMatches)
+				pagePlayers = nil // Reset for this attempt
+
+				if numChars == 0 {
+					// --- THIS IS THE NEW LOGIC ---
+					log.Printf("[W] [Scraper/Char] Page %d returned 0 characters on parse attempt %d/%d. Retrying...", pageIndex, attempt, maxParseRetries)
+					time.Sleep(parseRetryDelay)
+					continue // Try fetching and parsing again
+				}
+
+				if len(rankMatches) != numChars || len(baseLevelMatches) != numChars || len(jobLevelMatches) != numChars || len(expMatches) != numChars || len(classMatches) != numChars {
+					log.Printf("[W] [Scraper/Char] Mismatch in regex match counts on page %d. Skipping page. (Ranks: %d, Names: %d, Classes: %d)", pageIndex, len(rankMatches), len(nameMatches), len(classMatches))
+					// This is a data integrity issue, not a "0 items" issue. Don't retry.
+					numChars = 0 // Set to 0 to prevent sending partial data
+					break        // Break from retry loop
+				}
+
+				for i := 0; i < numChars; i++ {
+					rank, _ := strconv.Atoi(rankMatches[i][1])
+					name := nameMatches[i][1]
+					baseLevel, _ := strconv.Atoi(baseLevelMatches[i][1])
+					jobLevel, _ := strconv.Atoi(jobLevelMatches[i][1])
+					rawExp, _ := strconv.ParseFloat(expMatches[i][1], 64)
+					class := classMatches[i][1]
+
+					player := PlayerCharacter{
+						Rank:       rank,
+						BaseLevel:  baseLevel,
+						JobLevel:   jobLevel,
+						Experience: rawExp / 1000000.0,
+						Class:      class,
+						Name:       name,
+					}
+					pagePlayers = append(pagePlayers, player)
+				}
+				// --- End parsing logic ---
+
+				// If we got here, we have data or a mismatch. Break from the retry loop.
+				break
 			}
-			// --- End parsing logic ---
+			// --- END MODIFICATION ---
 
 			// Send found players to the consumer
 			if len(pagePlayers) > 0 {
@@ -646,12 +701,32 @@ func scrapePlayerCharacters() {
 					playerChan <- player
 				}
 			}
-			log.Printf("[D] [Scraper/Char] Scraped page %d/%d, sent %d chars to DB worker.", pageIndex, lastPage, len(pagePlayers))
+
+			// Log final status for this page
+			if numChars > 0 {
+				// This existing log is good and will only show if debug is enabled
+				log.Printf("[D] [Scraper/Char] Scraped page %d/%d, sent %d chars to DB worker.", pageIndex, lastPage, len(pagePlayers))
+			} else {
+				log.Printf("[E] [Scraper/Char] Failed to scrape page %d/%d after all retries.", pageIndex, lastPage)
+			}
 		}(page)
 	}
 
+	// --- ADDED LOGGING ---
+	if enableCharacterScraperDebugLogs {
+		log.Println("[D] [Scraper/Char] All page-scraping goroutines launched. Waiting for completion...")
+	}
+	// --- END ADDED LOGGING ---
+
 	// Wait for all *scraping* goroutines to finish
 	wg.Wait()
+
+	// --- ADDED LOGGING ---
+	if enableCharacterScraperDebugLogs {
+		log.Println("[D] [Scraper/Char] wg.Wait() complete. Closing player channel.")
+	}
+	// --- END ADDED LOGGING ---
+
 	// Close the channel to signal the *consumer* that no more data is coming
 	close(playerChan)
 	log.Printf("[I] [Scraper/Char] Finished scraping all pages. DB worker is now processing data...")
@@ -809,42 +884,66 @@ func scrapeGuilds() {
 			defer wg.Done()
 			defer func() { <-sem }()
 
-			url := fmt.Sprintf("https://projetoyufa.com/rankings/guild?page=%d", pageIndex)
-
-			bodyContent, err := scraperClient.getPage(url, "[Guilds]")
-			if err != nil {
-				log.Printf("[E] [Scraper/Guild] All retries failed for page %d: %v", pageIndex, err)
-				return
-			}
-
-			// --- Parsing logic ---
-			nameMatches := nameRegex.FindAllStringSubmatch(bodyContent, -1)
-			levelMatches := levelRegex.FindAllStringSubmatch(bodyContent, -1)
-			masterMatches := masterRegex.FindAllStringSubmatch(bodyContent, -1)
-			membersMatches := membersRegex.FindAllStringSubmatch(bodyContent, -1)
-
-			numGuilds := len(nameMatches)
-			if numGuilds == 0 || len(levelMatches) != numGuilds || len(masterMatches) != numGuilds || len(membersMatches) != numGuilds {
-				log.Printf("[W] [Scraper/Guild] Mismatch in regex match counts on page %d. Skipping page. (Names: %d, Levels: %d, Masters: %d, Members: %d)",
-					pageIndex, len(nameMatches), len(levelMatches), len(masterMatches), len(membersMatches))
-				return
-			}
-
+			var bodyContent string
+			var err error
+			var numGuilds int
 			var pageGuilds []Guild
-			var pageMembers = make(map[string]string)
-			for i := 0; i < numGuilds; i++ {
-				name := nameMatches[i][1]
-				level, _ := strconv.Atoi(levelMatches[i][1])
-				master := masterMatches[i][1]
+			var pageMembers map[string]string
 
-				guild := Guild{Name: name, Level: level, Master: master}
-				pageGuilds = append(pageGuilds, guild)
+			// --- MODIFICATION: Added retry loop for parsing ---
+			for attempt := 1; attempt <= maxParseRetries; attempt++ {
+				url := fmt.Sprintf("https://projetoyufa.com/rankings/guild?page=%d", pageIndex)
 
-				members := memberNameRegex.FindAllStringSubmatch(membersMatches[i][1], -1)
-				for _, member := range members {
-					pageMembers[member[1]] = name // charName -> guildName
+				bodyContent, err = scraperClient.getPage(url, "[Guilds]")
+				if err != nil {
+					log.Printf("[E] [Scraper/Guild] Network/HTTP error for page %d (attempt %d/%d): %v. Retrying...", pageIndex, attempt, maxParseRetries, err)
+					time.Sleep(parseRetryDelay)
+					continue
 				}
+
+				// --- Parsing logic ---
+				nameMatches := nameRegex.FindAllStringSubmatch(bodyContent, -1)
+				levelMatches := levelRegex.FindAllStringSubmatch(bodyContent, -1)
+				masterMatches := masterRegex.FindAllStringSubmatch(bodyContent, -1)
+				membersMatches := membersRegex.FindAllStringSubmatch(bodyContent, -1)
+
+				numGuilds = len(nameMatches)
+				pageGuilds = nil // Reset
+				pageMembers = make(map[string]string)
+
+				if numGuilds == 0 {
+					// --- THIS IS THE NEW LOGIC ---
+					log.Printf("[W] [Scraper/Guild] Page %d returned 0 guilds on parse attempt %d/%d. Retrying...", pageIndex, attempt, maxParseRetries)
+					time.Sleep(parseRetryDelay)
+					continue // Try fetching and parsing again
+				}
+
+				if len(levelMatches) != numGuilds || len(masterMatches) != numGuilds || len(membersMatches) != numGuilds {
+					log.Printf("[W] [Scraper/Guild] Mismatch in regex match counts on page %d. Skipping page. (Names: %d, Levels: %d, Masters: %d, Members: %d)",
+						pageIndex, len(nameMatches), len(levelMatches), len(masterMatches), len(membersMatches))
+					numGuilds = 0 // Prevent sending partial data
+					break         // Break from retry loop
+				}
+
+				for i := 0; i < numGuilds; i++ {
+					name := nameMatches[i][1]
+					level, _ := strconv.Atoi(levelMatches[i][1])
+					master := masterMatches[i][1]
+
+					guild := Guild{Name: name, Level: level, Master: master}
+					pageGuilds = append(pageGuilds, guild)
+
+					members := memberNameRegex.FindAllStringSubmatch(membersMatches[i][1], -1)
+					for _, member := range members {
+						pageMembers[member[1]] = name // charName -> guildName
+					}
+				}
+				// --- End of parsing logic ---
+
+				// Success, break from retry loop
+				break
 			}
+			// --- END MODIFICATION ---
 
 			if len(pageGuilds) > 0 {
 				mu.Lock()
@@ -856,8 +955,13 @@ func scrapeGuilds() {
 				}
 				mu.Unlock()
 			}
-			log.Printf("[D] [Scraper/Guild] Scraped page %d/%d, found %d guilds.", pageIndex, lastPage, len(pageGuilds))
-			// --- End of parsing logic ---
+
+			// Log final status for this page
+			if numGuilds > 0 {
+				log.Printf("[D] [Scraper/Guild] Scraped page %d/%d, found %d guilds.", pageIndex, lastPage, len(pageGuilds))
+			} else {
+				log.Printf("[E] [Scraper/Guild] Failed to scrape page %d/%d after all retries.", pageIndex, lastPage)
+			}
 		}(page)
 	}
 	wg.Wait()
@@ -998,8 +1102,6 @@ func processZenyData(allZenyInfo map[string]int64) {
 	log.Printf("[I] [Scraper/Zeny] Database update complete. Updated activity for %d characters. %d characters were unchanged.", updatedCount, unchangedCount)
 }
 
-// in scraper.go
-
 // scrapeZeny is now only responsible for concurrent scraping.
 func scrapeZeny() {
 	log.Println("[I] [Scraper/Zeny] Starting Zeny ranking scrape...")
@@ -1007,9 +1109,6 @@ func scrapeZeny() {
 	const firstPageURL = "https://projetoyufa.com/rankings/zeny?page=1"
 	lastPage := scraperClient.findLastPage(firstPageURL, "[Scraper/Zeny]")
 
-	// --- MODIFICATION ---
-	// updateTime removed from here.
-	// --- END MODIFICATION ---
 	allZenyInfo := make(map[string]int64) // Map[characterName]zeny
 	var mu sync.Mutex
 	var wg sync.WaitGroup
@@ -1023,57 +1122,84 @@ func scrapeZeny() {
 			defer wg.Done()
 			defer func() { <-sem }()
 
-			url := fmt.Sprintf("https://projetoyufa.com/rankings/zeny?page=%d", pageIndex)
-			bodyContent, err := scraperClient.getPage(url, "[Scraper/Zeny]")
-			if err != nil {
-				log.Printf("[E] [Scraper/Zeny] All retries failed for page %d: %v", pageIndex, err)
-				return
-			}
+			var bodyContent string
+			var err error
+			var numRows int
 
-			doc, err := goquery.NewDocumentFromReader(strings.NewReader(bodyContent))
-			if err != nil {
-				log.Printf("[E] [Scraper/Zeny] Failed to parse body for page %d: %v", pageIndex, err)
-				return
-			}
-
-			// --- MODIFICATION START ---
-			// Replaced brittle `data-slot` selectors with more robust standard HTML tags.
-			doc.Find("table tbody tr").Each(func(i int, s *goquery.Selection) {
-				cells := s.Find("td")
-				if cells.Length() < 3 {
-					if enableZenyScraperDebugLogs {
-						log.Printf("[D] [Scraper/Zeny] Skipping row on page %d, expected >= 3 cells, got %d", pageIndex, cells.Length())
-					}
-					return
-				}
-
-				nameStr := strings.TrimSpace(cells.Eq(1).Text())
-				zenyStrRaw := strings.TrimSpace(cells.Eq(2).Text())
-				// --- MODIFICATION END ---
-
-				zenyStrClean := strings.ReplaceAll(zenyStrRaw, ",", "")
-				zenyStrClean = strings.TrimSuffix(zenyStrClean, "z")
-				zenyStrClean = strings.TrimSpace(zenyStrClean)
-
-				// Add check for empty name
-				if nameStr == "" {
-					if enableZenyScraperDebugLogs {
-						log.Printf("[D] [Scraper/Zeny] Skipping row on page %d, extracted name is empty.", pageIndex)
-					}
-					return
-				}
-
-				zenyVal, err := strconv.ParseInt(zenyStrClean, 10, 64)
+			// --- MODIFICATION: Added retry loop for parsing ---
+			for attempt := 1; attempt <= maxParseRetries; attempt++ {
+				url := fmt.Sprintf("https://projetoyufa.com/rankings/zeny?page=%d", pageIndex)
+				bodyContent, err = scraperClient.getPage(url, "[Scraper/Zeny]")
 				if err != nil {
-					log.Printf("[W] [Scraper/Zeny] Could not parse zeny value '%s' (from raw '%s') for player '%s'", zenyStrClean, zenyStrRaw, nameStr)
-					return
+					log.Printf("[E] [Scraper/Zeny] Network/HTTP error for page %d (attempt %d/%d): %v. Retrying...", pageIndex, attempt, maxParseRetries, err)
+					time.Sleep(parseRetryDelay)
+					continue
 				}
 
-				mu.Lock()
-				allZenyInfo[nameStr] = zenyVal
-				mu.Unlock()
-			})
-			log.Printf("[D] [Scraper/Zeny] Scraped page %d/%d successfully.", pageIndex, lastPage)
+				doc, err := goquery.NewDocumentFromReader(strings.NewReader(bodyContent))
+				if err != nil {
+					log.Printf("[E] [Scraper/Zeny] Failed to parse body for page %d: %v", pageIndex, err)
+					// Don't retry on parse error, just fail this page
+					numRows = -1 // Mark as failed
+					break
+				}
+
+				rows := doc.Find("table tbody tr")
+				numRows = rows.Length()
+
+				if numRows == 0 {
+					// --- THIS IS THE NEW LOGIC ---
+					log.Printf("[W] [Scraper/Zeny] Page %d returned 0 zeny rows on parse attempt %d/%d. Retrying...", pageIndex, attempt, maxParseRetries)
+					time.Sleep(parseRetryDelay)
+					continue // Try fetching and parsing again
+				}
+
+				rows.Each(func(i int, s *goquery.Selection) {
+					cells := s.Find("td")
+					if cells.Length() < 3 {
+						if enableZenyScraperDebugLogs {
+							log.Printf("[D] [Scraper/Zeny] Skipping row on page %d, expected >= 3 cells, got %d", pageIndex, cells.Length())
+						}
+						return
+					}
+
+					nameStr := strings.TrimSpace(cells.Eq(1).Text())
+					zenyStrRaw := strings.TrimSpace(cells.Eq(2).Text())
+
+					zenyStrClean := strings.ReplaceAll(zenyStrRaw, ",", "")
+					zenyStrClean = strings.TrimSuffix(zenyStrClean, "z")
+					zenyStrClean = strings.TrimSpace(zenyStrClean)
+
+					if nameStr == "" {
+						if enableZenyScraperDebugLogs {
+							log.Printf("[D] [Scraper/Zeny] Skipping row on page %d, extracted name is empty.", pageIndex)
+						}
+						return
+					}
+
+					zenyVal, err := strconv.ParseInt(zenyStrClean, 10, 64)
+					if err != nil {
+						log.Printf("[W] [Scraper/Zeny] Could not parse zeny value '%s' (from raw '%s') for player '%s'", zenyStrClean, zenyStrRaw, nameStr)
+						return
+					}
+
+					mu.Lock()
+					allZenyInfo[nameStr] = zenyVal
+					mu.Unlock()
+				})
+				// --- End parsing logic ---
+
+				// Success, break from retry loop
+				break
+			}
+			// --- END MODIFICATION ---
+
+			// Log final status for this page
+			if numRows > 0 {
+				log.Printf("[D] [Scraper/Zeny] Scraped page %d/%d successfully.", pageIndex, lastPage)
+			} else if numRows == 0 {
+				log.Printf("[E] [Scraper/Zeny] Failed to scrape page %d/%d after all retries.", pageIndex, lastPage)
+			} // (numRows == -1 was logged already)
 		}(page)
 	}
 
@@ -1086,9 +1212,7 @@ func scrapeZeny() {
 	}
 
 	// Call the dedicated database function
-	// --- MODIFICATION ---
-	processZenyData(allZenyInfo) // updateTime no longer passed
-	// --- END MODIFICATION ---
+	processZenyData(allZenyInfo)
 }
 
 // in scraper.go
@@ -1207,116 +1331,113 @@ func determineRemovalType(listing Item, activeSellers map[string]bool, dbStoreSi
 func scrapeData() {
 	log.Println("[I] [Scraper/Market] Starting scrape...")
 
-	// --- REMOVED regex definitions here, they are now in parseMarketItem ---
-
 	const requestURL = "https://projetoyufa.com/market"
 
-	// Use the new helper function. All the retry logic is now encapsulated.
-	htmlContent, err := scraperClient.getPage(requestURL, "[Scraper/Market]")
-	if err != nil {
-		log.Printf("[E] [Scraper/Market] Failed to scrape market page after retries: %v. Aborting update.", err)
-		return
-	}
-
-	doc, err := goquery.NewDocumentFromReader(strings.NewReader(htmlContent))
-	if err != nil {
-		log.Printf("[E] [Scraper/Market] Failed to parse HTML: %v", err)
-		return
-	}
-
-	retrievalTime := time.Now().Format(time.RFC3339)
+	var htmlContent string
+	var err error
+	var doc *goquery.Document
 	scrapedItemsByName := make(map[string][]Item)
 	activeSellers := make(map[string]bool)
 
-	// --- Main Scraper Loop ---
-	// MODIFICATION: Find shop cards by anchoring on the 'lucide-user' icon
-	// and working outwards to find the parent card. This is much more
-	// resilient than relying on 'data-slot="card"'.
-	doc.Find("svg.lucide-user").Each(func(i int, s *goquery.Selection) {
-		// s is the <svg> icon.
-		// Find the parent card. We'll assume it's the closest ancestor div with a border.
-		card := s.Closest("div.border")
-		if card.Length() == 0 {
-			// Fallback guess: maybe it's an <article>
-			card = s.Closest("article")
+	// --- MODIFICATION: Added retry loop for parsing ---
+	for attempt := 1; attempt <= maxParseRetries; attempt++ {
+		// Use the new helper function. All the retry logic is now encapsulated.
+		htmlContent, err = scraperClient.getPage(requestURL, "[Scraper/Market]")
+		if err != nil {
+			log.Printf("[E] [Scraper/Market] Network/HTTP error (attempt %d/%d): %v. Retrying...", attempt, maxParseRetries, err)
+			time.Sleep(parseRetryDelay)
+			continue
+		}
+
+		doc, err = goquery.NewDocumentFromReader(strings.NewReader(htmlContent))
+		if err != nil {
+			log.Printf("[E] [Scraper/Market] Failed to parse HTML: %v", err)
+			// This is a critical error, don't retry
+			return
+		}
+
+		// Reset maps for this attempt
+		scrapedItemsByName = make(map[string][]Item)
+		activeSellers = make(map[string]bool)
+
+		// --- Main Scraper Loop ---
+		doc.Find("svg.lucide-user").Each(func(i int, s *goquery.Selection) {
+			card := s.Closest("div.border")
 			if card.Length() == 0 {
-				log.Printf("[W] [Scraper/Market] Could not find parent 'card' for a lucide-user icon. Skipping shop.")
-				return
-			}
-		}
-
-		// Get shop-level details *within this card*
-		// We search *down* from the card we just found.
-
-		// --- MODIFICATION: Use the new selector for the shop title ---
-		shopName := strings.TrimSpace(card.Find("div.font-semibold.tracking-tight.line-clamp-1.text-lg").First().Text())
-		if shopName == "" {
-			// Fallback guess 1: older div.font-semibold
-			shopName = strings.TrimSpace(card.Find("div.font-semibold").First().Text())
-		}
-		if shopName == "" {
-			// Fallback guess 2: h3
-			shopName = strings.TrimSpace(card.Find("h3").First().Text())
-		}
-		// --- END MODIFICATION ---
-
-		// --- FIX: If shop name is still empty, set it to "(empty)" ---
-		if shopName == "" {
-			if enableMarketScraperDebugLogs {
-				log.Printf("[D] [Scraper/Market] Shop name is empty. Renaming to '(empty)'.")
-			}
-			shopName = "(empty)"
-		}
-		// --- END FIX ---
-
-		sellerName := strings.TrimSpace(s.Next().Text()) // Get text from span next to the icon we found
-		mapName := strings.TrimSpace(card.Find("svg.lucide-map-pin").Next().Text())
-		mapCoordinates := strings.TrimSpace(card.Find("svg.lucide-copy").Next().Text())
-		activeSellers[sellerName] = true
-
-		if enableMarketScraperDebugLogs == true {
-			log.Printf("[D] [Scraper/Market] shop name: %s, seller name: %s, map_name: %s, mapcoord: %s", shopName, sellerName, mapName, mapCoordinates)
-		}
-
-		// This check will now only skip if the sellerName is empty.
-		if sellerName == "" {
-			log.Printf("[W] [Scraper/Market] Skipping shop with missing seller name (Shop: '%s').", shopName)
-			return // Skip shops with missing critical info
-		}
-
-		// Iterate over items in this shop
-		// MODIFICATION: Removed data-slot="card-content".
-		// We find all item rows (based on old classes) within the card.
-		card.Find(".flex.items-center.space-x-2").Each(func(j int, itemSelection *goquery.Selection) {
-
-			// Use the helper function to do all the hard parsing
-			item, ok := parseMarketItem(itemSelection)
-			if !ok {
-				// Item was invalid (e.g., missing name or price), skip it
-				return
+				card = s.Closest("article")
+				if card.Length() == 0 {
+					log.Printf("[W] [Scraper/Market] Could not find parent 'card' for a lucide-user icon. Skipping shop.")
+					return
+				}
 			}
 
-			// Add the shop-level details to the item
-			item.StoreName = shopName
-			item.SellerName = sellerName
-			item.MapName = mapName
-			item.MapCoordinates = mapCoordinates
+			shopName := strings.TrimSpace(card.Find("div.font-semibold.tracking-tight.line-clamp-1.text-lg").First().Text())
+			if shopName == "" {
+				shopName = strings.TrimSpace(card.Find("div.font-semibold").First().Text())
+			}
+			if shopName == "" {
+				shopName = strings.TrimSpace(card.Find("h3").First().Text())
+			}
+			if shopName == "" {
+				if enableMarketScraperDebugLogs {
+					log.Printf("[D] [Scraper/Market] Shop name is empty. Renaming to '(empty)'.")
+				}
+				shopName = "(empty)"
+			}
+
+			sellerName := strings.TrimSpace(s.Next().Text())
+			mapName := strings.TrimSpace(card.Find("svg.lucide-map-pin").Next().Text())
+			mapCoordinates := strings.TrimSpace(card.Find("svg.lucide-copy").Next().Text())
+			activeSellers[sellerName] = true
 
 			if enableMarketScraperDebugLogs == true {
-				log.Printf("[D] [Scraper/Market] name: %s, id: %d, qtd: %d price %s store: %s seller: %s map: %s coord %s", item.Name, item.ItemID, item.Quantity, item.Price, shopName, sellerName, mapName, mapCoordinates)
+				log.Printf("[D] [Scraper/Market] shop name: %s, seller name: %s, map_name: %s, mapcoord: %s", shopName, sellerName, mapName, mapCoordinates)
 			}
 
-			// Add the fully-formed item to our map
-			scrapedItemsByName[item.Name] = append(scrapedItemsByName[item.Name], item)
+			if sellerName == "" {
+				log.Printf("[W] [Scraper/Market] Skipping shop with missing seller name (Shop: '%s').", shopName)
+				return
+			}
+
+			card.Find(".flex.items-center.space-x-2").Each(func(j int, itemSelection *goquery.Selection) {
+				item, ok := parseMarketItem(itemSelection)
+				if !ok {
+					return
+				}
+
+				item.StoreName = shopName
+				item.SellerName = sellerName
+				item.MapName = mapName
+				item.MapCoordinates = mapCoordinates
+
+				if enableMarketScraperDebugLogs == true {
+					log.Printf("[D] [Scraper/Market] name: %s, id: %d, qtd: %d price %s store: %s seller: %s map: %s coord %s", item.Name, item.ItemID, item.Quantity, item.Price, shopName, sellerName, mapName, mapCoordinates)
+				}
+
+				scrapedItemsByName[item.Name] = append(scrapedItemsByName[item.Name], item)
+			})
 		})
-	})
+
+		if len(scrapedItemsByName) == 0 {
+			// --- THIS IS THE NEW LOGIC ---
+			log.Printf("[W] [Scraper/Market] Market page returned 0 items on parse attempt %d/%d. Retrying...", attempt, maxParseRetries)
+			time.Sleep(parseRetryDelay)
+			continue // Try fetching and parsing again
+		}
+
+		// Success, break from retry loop
+		break
+	}
+	// --- END MODIFICATION ---
 
 	log.Printf("[I] [Scraper/Market] Scrape parsed. Found %d unique item names.", len(scrapedItemsByName))
 
 	if len(scrapedItemsByName) == 0 {
-		log.Println("[W] [Scraper/Market] Scraper found 0 items on the market page. This might be a parsing error or an empty market. Skipping this update cycle to avoid wiping data.")
+		log.Println("[W] [Scraper/Market] Scraper found 0 items on the market page after all retries. This might be a parsing error or an empty market. Skipping this update cycle to avoid wiping data.")
 		return // Abort the function here
 	}
+
+	retrievalTime := time.Now().Format(time.RFC3339) // Get time *after* successful parse
 
 	marketMutex.Lock()
 	defer marketMutex.Unlock()
@@ -1451,10 +1572,6 @@ func scrapeData() {
 				if err != nil {
 					log.Printf("[E] [Scraper/Market] Failed to log ADDED event for %s: %v", itemName, err)
 				}
-
-				// --- THIS IS THE FIX ---
-				// go scrapeAndCacheItemIfNotExists(firstItem.ItemID, itemName) // This function no longer exists
-				// --- END FIX ---
 			}
 
 			var historicalLowestPrice sql.NullInt64
@@ -1781,10 +1898,7 @@ func scrapeWoeCharacterRankings() {
 	log.Println("[I] [Scraper/WoE] Starting WoE character ranking scrape...")
 
 	const firstPageURL = "https://projetoyufa.com/rankings/woe?page=1" // Base URL for finding last page
-	// --- MODIFICATION ---
-	// updateTime removed from here.
-	// --- END MODIFICATION ---
-	allWoeChars := make(map[string]WoeCharacterRank) // Map[characterName]WoeCharacterRank
+	allWoeChars := make(map[string]WoeCharacterRank)                   // Map[characterName]WoeCharacterRank
 
 	// --- Step 1: Find the last page ---
 	lastPage := scraperClient.findLastPage(firstPageURL, "[Scraper/WoE]")
@@ -1818,10 +1932,8 @@ func scrapeWoeCharacterRankings() {
 	var wg sync.WaitGroup
 	sem := make(chan struct{}, 5)                 // Concurrency semaphore
 	var totalParsedCount, totalMatchedCount int32 // Use atomic or mutex for shared counters if needed, simple int32 for now
-	// --- START NEW ---
-	var emptyPageEncountered atomic.Bool // Flag for an empty page
-	emptyPageEncountered.Store(false)    // Initialize to false
-	// --- END NEW ---
+	var emptyPageEncountered atomic.Bool          // Flag for an empty page
+	emptyPageEncountered.Store(false)             // Initialize to false
 
 	log.Printf("[I] [Scraper/WoE] Scraping all %d pages...", lastPage)
 	for page := 1; page <= lastPage; page++ {
@@ -1831,141 +1943,149 @@ func scrapeWoeCharacterRankings() {
 			defer wg.Done()
 			defer func() { <-sem }() // Release semaphore when done
 
-			pageURL := fmt.Sprintf("https://projetoyufa.com/rankings/woe?page=%d", pageIndex)
-			// --- FIX TYPO ---
-			if enableWoeScraperDebugLogs {
-				log.Printf("[D] [Scraper/WoE] Fetching page: %s", pageURL)
-			}
-			bodyContent, err := scraperClient.getPage(pageURL, "[Scraper/WoE]")
-			if err != nil {
-				log.Printf("[E] [Scraper/WoE] All retries failed for page %d: %v", pageIndex, err)
-				return
-			}
+			var bodyContent string
+			var err error
+			var numRows int
 
-			doc, err := goquery.NewDocumentFromReader(strings.NewReader(bodyContent))
-			if err != nil {
-				log.Printf("[E] [Scraper/WoE] Failed to parse WoE page %d HTML: %v", pageIndex, err)
-				return
-			}
-
-			// --- START NEW LOGIC ---
-			// Check if the page is empty (no table rows)
-			rows := doc.Find("table tbody tr")
-			if rows.Length() == 0 {
-				log.Printf("[W] [Scraper/WoE] Page %d was fetched successfully but contained 0 character rows. This may indicate a scraper issue.", pageIndex)
-				emptyPageEncountered.Store(true) // Set the shared flag
-				return                           // Stop processing this page
-			}
-			// --- END NEW LOGIC ---
-
-			var pageParsedCount, pageMatchedCount int
-			rows.Each(func(i int, s *goquery.Selection) { // Use the 'rows' variable
-				cells := s.Find("td")
-				if cells.Length() < 8 {
-					// Log only if debug enabled to reduce noise
-					if enableWoeScraperDebugLogs {
-						log.Printf("[D] [Scraper/WoE] Skipping row %d on page %d, expected >= 8 cells, got %d", i, pageIndex, cells.Length())
-					}
-					return
+			// --- MODIFICATION: Added retry loop for parsing ---
+			for attempt := 1; attempt <= maxParseRetries; attempt++ {
+				pageURL := fmt.Sprintf("https://projetoyufa.com/rankings/woe?page=%d", pageIndex)
+				if enableWoeScraperDebugLogs {
+					log.Printf("[D] [Scraper/WoE] Fetching page: %s (Attempt %d/%d)", pageURL, attempt, maxParseRetries)
+				}
+				bodyContent, err = scraperClient.getPage(pageURL, "[Scraper/WoE]")
+				if err != nil {
+					log.Printf("[E] [Scraper/WoE] Network/HTTP error for page %d (attempt %d/%d): %v. Retrying...", pageIndex, attempt, maxParseRetries, err)
+					time.Sleep(parseRetryDelay)
+					continue
 				}
 
-				var c WoeCharacterRank
-
-				charCell := cells.Eq(1)
-				scrapedName := strings.TrimSpace(charCell.Find("span.font-medium").Text())
-				if scrapedName == "" {
-					if enableWoeScraperDebugLogs {
-						log.Printf("[D] [Scraper/WoE] Skipped row %d on page %d due to missing Name.", i, pageIndex)
-					}
-					return
+				doc, err := goquery.NewDocumentFromReader(strings.NewReader(bodyContent))
+				if err != nil {
+					log.Printf("[E] [Scraper/WoE] Failed to parse WoE page %d HTML: %v", pageIndex, err)
+					numRows = -1 // Mark as failed
+					break        // Don't retry on parse error
 				}
 
-				// Check if scraped name exists in our DB
-				_, foundInDB := existingCharNames[scrapedName]
-				if !foundInDB {
-					if enableWoeScraperDebugLogs {
-						log.Printf("[D] [Scraper/WoE] Scraped char '%s' (page %d) not found in DB. Skipping.", scrapedName, pageIndex)
-					}
-					return
+				rows := doc.Find("table tbody tr")
+				numRows = rows.Length()
+
+				if numRows == 0 {
+					// --- THIS IS THE NEW LOGIC ---
+					log.Printf("[W] [Scraper/WoE] Page %d returned 0 WoE rows on parse attempt %d/%d. Retrying...", pageIndex, attempt, maxParseRetries)
+					emptyPageEncountered.Store(true) // Set flag in case *all* pages are empty
+					time.Sleep(parseRetryDelay)
+					continue // Try fetching and parsing again
 				}
 
-				// If found, proceed with parsing
-				c.Name = scrapedName
-				pageMatchedCount++
+				// --- Found rows, clear the flag for this page and proceed ---
+				emptyPageEncountered.Store(false)
+				var pageParsedCount, pageMatchedCount int
+				rows.Each(func(i int, s *goquery.Selection) { // Use the 'rows' variable
+					cells := s.Find("td")
+					if cells.Length() < 8 {
+						if enableWoeScraperDebugLogs {
+							log.Printf("[D] [Scraper/WoE] Skipping row %d on page %d, expected >= 8 cells, got %d", i, pageIndex, cells.Length())
+						}
+						return
+					}
 
-				// ... (rest of the parsing logic for Class, Guild, K/D, Damage, etc. is IDENTICAL to the previous version) ...
-				imgSrc, _ := charCell.Find("img").Attr("src")
-				classIDMatch := jobIconRegex.FindStringSubmatch(imgSrc)
-				if len(classIDMatch) > 1 {
-					classID := classIDMatch[1]
-					if className, ok := jobIDToClassName[classID]; ok {
-						c.Class = className
+					var c WoeCharacterRank
+					charCell := cells.Eq(1)
+					scrapedName := strings.TrimSpace(charCell.Find("span.font-medium").Text())
+					if scrapedName == "" {
+						if enableWoeScraperDebugLogs {
+							log.Printf("[D] [Scraper/WoE] Skipped row %d on page %d due to missing Name.", i, pageIndex)
+						}
+						return
+					}
+
+					_, foundInDB := existingCharNames[scrapedName]
+					if !foundInDB {
+						if enableWoeScraperDebugLogs {
+							log.Printf("[D] [Scraper/WoE] Scraped char '%s' (page %d) not found in DB. Skipping.", scrapedName, pageIndex)
+						}
+						return
+					}
+
+					c.Name = scrapedName
+					pageMatchedCount++
+
+					imgSrc, _ := charCell.Find("img").Attr("src")
+					classIDMatch := jobIconRegex.FindStringSubmatch(imgSrc)
+					if len(classIDMatch) > 1 {
+						classID := classIDMatch[1]
+						if className, ok := jobIDToClassName[classID]; ok {
+							c.Class = className
+						} else {
+							c.Class = "Unknown (" + classID + ")"
+							log.Printf("[W] [Scraper/WoE] Unknown class ID '%s' found for char '%s' on page %d", classID, c.Name, pageIndex)
+						}
 					} else {
-						c.Class = "Unknown (" + classID + ")"
-						log.Printf("[W] [Scraper/WoE] Unknown class ID '%s' found for char '%s' on page %d", classID, c.Name, pageIndex)
+						c.Class = "Unknown"
 					}
-				} else {
-					c.Class = "Unknown"
-				}
 
-				guildCell := cells.Eq(2)
-				guildName := strings.TrimSpace(guildCell.Find("div.inline-flex").Text())
-				if guildName != "" && guildName != "N/A" {
-					c.GuildName = sql.NullString{String: guildName, Valid: true}
-					guildImgSrc, _ := guildCell.Find("img").Attr("src")
-					guildIDStr := regexp.MustCompile(`/(\d+)$`).FindStringSubmatch(guildImgSrc)
-					if len(guildIDStr) > 1 {
-						if guildID, err := strconv.ParseInt(guildIDStr[1], 10, 64); err == nil {
-							c.GuildID = sql.NullInt64{Int64: guildID, Valid: true}
+					guildCell := cells.Eq(2)
+					guildName := strings.TrimSpace(guildCell.Find("div.inline-flex").Text())
+					if guildName != "" && guildName != "N/A" {
+						c.GuildName = sql.NullString{String: guildName, Valid: true}
+						guildImgSrc, _ := guildCell.Find("img").Attr("src")
+						guildIDStr := regexp.MustCompile(`/(\d+)$`).FindStringSubmatch(guildImgSrc)
+						if len(guildIDStr) > 1 {
+							if guildID, err := strconv.ParseInt(guildIDStr[1], 10, 64); err == nil {
+								c.GuildID = sql.NullInt64{Int64: guildID, Valid: true}
+							}
 						}
 					}
-				}
 
-				kdCellText := cells.Eq(3).Text()
-				kdParts := strings.Split(strings.Split(kdCellText, "(")[0], "/")
-				if len(kdParts) == 2 {
-					c.KillCount, _ = strconv.Atoi(strings.TrimSpace(kdParts[0]))
-					c.DeathCount, _ = strconv.Atoi(strings.TrimSpace(kdParts[1]))
-				}
+					kdCellText := cells.Eq(3).Text()
+					kdParts := strings.Split(strings.Split(kdCellText, "(")[0], "/")
+					if len(kdParts) == 2 {
+						c.KillCount, _ = strconv.Atoi(strings.TrimSpace(kdParts[0]))
+						c.DeathCount, _ = strconv.Atoi(strings.TrimSpace(kdParts[1]))
+					}
 
-				damageStr := strings.ReplaceAll(strings.TrimSpace(cells.Eq(4).Text()), ",", "")
-				c.DamageDone, _ = strconv.ParseInt(damageStr, 10, 64)
-				c.EmperiumKill, _ = strconv.Atoi(strings.TrimSpace(cells.Eq(5).Text()))
-				healingStr := strings.ReplaceAll(strings.TrimSpace(cells.Eq(6).Text()), ",", "")
-				c.HealingDone, _ = strconv.ParseInt(healingStr, 10, 64)
-				c.Points, _ = strconv.Atoi(strings.TrimSpace(cells.Eq(7).Text()))
-				c.Score = 0
-				// --- End of identical parsing logic ---
+					damageStr := strings.ReplaceAll(strings.TrimSpace(cells.Eq(4).Text()), ",", "")
+					c.DamageDone, _ = strconv.ParseInt(damageStr, 10, 64)
+					c.EmperiumKill, _ = strconv.Atoi(strings.TrimSpace(cells.Eq(5).Text()))
+					healingStr := strings.ReplaceAll(strings.TrimSpace(cells.Eq(6).Text()), ",", "")
+					c.HealingDone, _ = strconv.ParseInt(healingStr, 10, 64)
+					c.Points, _ = strconv.Atoi(strings.TrimSpace(cells.Eq(7).Text()))
+					c.Score = 0
 
-				// Safely add to the shared map
+					mu.Lock()
+					allWoeChars[c.Name] = c
+					mu.Unlock()
+					pageParsedCount++
+				}) // End .Each row
+
+				// Update total counts
 				mu.Lock()
-				allWoeChars[c.Name] = c
+				totalParsedCount += int32(pageParsedCount)
+				totalMatchedCount += int32(pageMatchedCount)
 				mu.Unlock()
-				pageParsedCount++
 
-			}) // End .Each row
+				log.Printf("[D] [Scraper/WoE] Scraped page %d/%d. Matched %d chars from DB, parsed %d.", pageIndex, lastPage, pageMatchedCount, pageParsedCount)
+				// --- End parsing logic ---
 
-			// Update total counts (Consider using atomic later if high contention)
-			mu.Lock()
-			totalParsedCount += int32(pageParsedCount)
-			totalMatchedCount += int32(pageMatchedCount)
-			mu.Unlock()
+				// Success, break from retry loop
+				break
+			}
+			// --- END MODIFICATION ---
 
-			log.Printf("[D] [Scraper/WoE] Scraped page %d/%d. Matched %d chars from DB, parsed %d.", pageIndex, lastPage, pageMatchedCount, pageParsedCount)
-
-		}(page) // End goroutine func
+			if numRows == 0 {
+				log.Printf("[E] [Scraper/WoE] Failed to scrape page %d/%d after all retries.", pageIndex, lastPage)
+			}
+		}(page) // <-- *** THIS IS THE FIX (was pageIndex) ***
 	} // End page loop
 
 	wg.Wait() // Wait for all page scraping goroutines to finish
 	// --- End Step 3 ---
 
-	// --- START NEW CHECK ---
-	// Check the flag after all scraping is done
 	if emptyPageEncountered.Load() {
-		log.Println("[W] [Scraper/WoE] Aborting database update because at least one page was found to be empty. Selectors may be broken.")
+		log.Println("[W] [Scraper/WoE] Aborting database update because at least one page was found to be empty after retries. Selectors may be broken.")
 		return
 	}
-	// --- END NEW CHECK ---
 
 	log.Printf("[I] [Scraper/WoE] Finished scraping all pages. Total Matched from DB: %d. Total Parsed Details: %d.", totalMatchedCount, totalParsedCount)
 
@@ -1974,9 +2094,7 @@ func scrapeWoeCharacterRankings() {
 		return
 	}
 
-	// --- MODIFICATION ---
-	processWoeCharacterData(allWoeChars) // updateTime no longer passed
-	// --- END MODIFICATION ---
+	processWoeCharacterData(allWoeChars)
 }
 
 // scrapeMvpKills is now only responsible for concurrent scraping.
@@ -2002,32 +2120,50 @@ func scrapeMvpKills() {
 			defer wg.Done()
 			defer func() { <-sem }()
 
-			url := fmt.Sprintf("https://projetoyufa.com/rankings/mvp?page=%d", pageIndex)
-			bodyContent, err := scraperClient.getPage(url, "[Scraper/MVP]")
-			if err != nil {
-				log.Printf("[E] [Scraper/MVP] All retries failed for page %d: %v", pageIndex, err)
-				return
-			}
+			var bodyContent string
+			var err error
+			var numPlayerBlocks int
+			var pageKills map[string]map[string]int
 
-			playerBlocks := playerBlockRegex.FindAllStringSubmatch(bodyContent, -1)
-			if len(playerBlocks) == 0 {
-				log.Printf("[W] [Scraper/MVP] No player data blocks found on page %d.", pageIndex)
-				return
-			}
-
-			pageKills := make(map[string]map[string]int)
-			for _, block := range playerBlocks {
-				charName := block[1]
-				mvpsJSON := block[2]
-				playerKills := make(map[string]int)
-				killMatches := mvpKillsRegex.FindAllStringSubmatch(mvpsJSON, -1)
-				for _, killMatch := range killMatches {
-					mobID := killMatch[1]
-					killCount, _ := strconv.Atoi(killMatch[2])
-					playerKills[mobID] = killCount
+			// --- MODIFICATION: Added retry loop for parsing ---
+			for attempt := 1; attempt <= maxParseRetries; attempt++ {
+				url := fmt.Sprintf("https://projetoyufa.com/rankings/mvp?page=%d", pageIndex)
+				bodyContent, err = scraperClient.getPage(url, "[Scraper/MVP]")
+				if err != nil {
+					log.Printf("[E] [Scraper/MVP] Network/HTTP error for page %d (attempt %d/%d): %v. Retrying...", pageIndex, attempt, maxParseRetries, err)
+					time.Sleep(parseRetryDelay)
+					continue
 				}
-				pageKills[charName] = playerKills
+
+				playerBlocks := playerBlockRegex.FindAllStringSubmatch(bodyContent, -1)
+				numPlayerBlocks = len(playerBlocks)
+				pageKills = make(map[string]map[string]int) // Reset
+
+				if numPlayerBlocks == 0 {
+					// --- THIS IS THE NEW LOGIC ---
+					log.Printf("[W] [Scraper/MVP] Page %d returned 0 MVP player blocks on parse attempt %d/%d. Retrying...", pageIndex, attempt, maxParseRetries)
+					time.Sleep(parseRetryDelay)
+					continue // Try fetching and parsing again
+				}
+
+				for _, block := range playerBlocks {
+					charName := block[1]
+					mvpsJSON := block[2]
+					playerKills := make(map[string]int)
+					killMatches := mvpKillsRegex.FindAllStringSubmatch(mvpsJSON, -1)
+					for _, killMatch := range killMatches {
+						mobID := killMatch[1]
+						killCount, _ := strconv.Atoi(killMatch[2])
+						playerKills[mobID] = killCount
+					}
+					pageKills[charName] = playerKills
+				}
+				// --- End parsing logic ---
+
+				// Success, break from retry loop
+				break
 			}
+			// --- END MODIFICATION ---
 
 			if len(pageKills) > 0 {
 				mu.Lock()
@@ -2036,7 +2172,13 @@ func scrapeMvpKills() {
 				}
 				mu.Unlock()
 			}
-			log.Printf("[D] [Scraper/MVP] Scraped page %d/%d, found %d characters with MVP kills.", pageIndex, lastPage, len(pageKills))
+
+			// Log final status for this page
+			if numPlayerBlocks > 0 {
+				log.Printf("[D] [Scraper/MVP] Scraped page %d/%d, found %d characters with MVP kills.", pageIndex, lastPage, len(pageKills))
+			} else {
+				log.Printf("[E] [Scraper/MVP] Failed to scrape page %d/%d after all retries.", pageIndex, lastPage)
+			}
 		}(page)
 	}
 
