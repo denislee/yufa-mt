@@ -2331,7 +2331,7 @@ func startBackgroundJobs(ctx context.Context) {
 	jobs := []Job{
 		{Name: "Market", Func: scrapeData, Interval: 3 * time.Minute},
 		{Name: "Player Count", Func: scrapeAndStorePlayerCount, Interval: 1 * time.Minute},
-		{Name: "Player Character", Func: scrapePlayerCharacters, Interval: 30 * time.Minute},
+		{Name: "Player Character", Func: scrapePlayerCharacters, Interval: 1 * time.Hour},
 		{Name: "Guild", Func: scrapeGuilds, Interval: 25 * time.Minute},
 		{Name: "Zeny", Func: scrapeZeny, Interval: 1 * time.Hour},
 		{Name: "MVP Kill", Func: scrapeMvpKills, Interval: 5 * time.Minute},
