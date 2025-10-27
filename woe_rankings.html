@@ -16,12 +16,21 @@
 
     {{template "navbar.html" .}}
 
-    <div class="container mx-auto px-4 py-6">
+<div class="container mx-auto px-4 py-6">
         <div class="flex flex-col sm:flex-row justify-between sm:items-center gap-2 mb-4 border-b border-gray-200 pb-3">
             <h1 class="text-2xl font-bold text-gray-800">WoE Rankings (Character)</h1>
             <div id="last-updated" class="text-sm text-gray-500" data-timestamp="{{.LastScrapeTime}}"></div>
         </div>
 
+        <div class="bg-white p-3 rounded-lg shadow mb-4">
+            <form action="/woe" method="GET" class="flex flex-wrap items-center gap-3">
+                <input type="hidden" name="sort_by" value="{{.SortBy}}">
+                <input type="hidden" name="order" value="{{.Order}}">
+
+                <input type="text" name="query" placeholder="Search by character name..." value="{{.SearchQuery}}" class="flex-grow mt-1 block w-full md:w-auto rounded-md border-gray-300 shadow-sm focus:border-indigo-300 focus:ring focus:ring-indigo-200 focus:ring-opacity-50 text-sm">
+                <button type="submit" class="w-full md:w-auto bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-md">Search</button>
+            </form>
+        </div>
         <div class="bg-white shadow-lg rounded-lg overflow-hidden">
             <div class="overflow-x-auto">
                 <table class="min-w-full leading-normal">
@@ -29,23 +38,23 @@
                         <tr class="border-b-2 border-gray-200 bg-gray-50 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
                             {{$currentSort := .SortBy}}
                             {{$currentOrder := .Order}}
-                            {{$revOrder := "ASC"}}{{if eq $currentOrder "ASC"}}{{$revOrder = "DESC"}}{{end}}
-                            
-                            <th class="px-2 sm:px-3 py-2"><a href="/woe?sort_by=class&order={{if eq $currentSort "class"}}{{$revOrder}}{{else}}ASC{{end}}">Class {{if eq $currentSort "class"}}{{if eq $currentOrder "ASC"}}<span class="text-gray-400">▲</span>{{else}}<span class="text-gray-400">▼</span>{{end}}{{end}}</a></th>
-                            <th class="px-2 sm:px-3 py-2"><a href="/woe?sort_by=name&order={{if eq $currentSort "name"}}{{$revOrder}}{{else}}ASC{{end}}">Character {{if eq $currentSort "name"}}{{if eq $currentOrder "ASC"}}<span class="text-gray-400">▲</span>{{else}}<span class="text-gray-400">▼</span>{{end}}{{end}}</a></th>
-                            <th class="px-2 sm:px-3 py-2"><a href="/woe?sort_by=guild&order={{if eq $currentSort "guild"}}{{$revOrder}}{{else}}ASC{{end}}">Guild {{if eq $currentSort "guild"}}{{if eq $currentOrder "ASC"}}<span class="text-gray-400">▲</span>{{else}}<span class="text-gray-400">▼</span>{{end}}{{end}}</a></th>
-                            <th class="px-2 sm:px-3 py-2"><a href="/woe?sort_by=kills&order={{if eq $currentSort "kills"}}{{$revOrder}}{{else}}DESC{{end}}">Kills {{if eq $currentSort "kills"}}{{if eq $currentOrder "ASC"}}<span class="text-gray-400">▲</span>{{else}}<span class="text-gray-400">▼</span>{{end}}{{end}}</a></th>
-                            <th class="px-2 sm:px-3 py-2"><a href="/woe?sort_by=deaths&order={{if eq $currentSort "deaths"}}{{$revOrder}}{{else}}DESC{{end}}">Deaths {{if eq $currentSort "deaths"}}{{if eq $currentOrder "ASC"}}<span class="text-gray-400">▲</span>{{else}}<span class="text-gray-400">▼</span>{{end}}{{end}}</a></th>
-                            <th class="px-2 sm:px-3 py-2"><a href="/woe?sort_by=damage&order={{if eq $currentSort "damage"}}{{$revOrder}}{{else}}DESC{{end}}">Damage Done {{if eq $currentSort "damage"}}{{if eq $currentOrder "ASC"}}<span class="text-gray-400">▲</span>{{else}}<span class="text-gray-400">▼</span>{{end}}{{end}}</a></th>
-                            <th class="px-2 sm:px-3 py-2"><a href="/woe?sort_by=healing&order={{if eq $currentSort "healing"}}{{$revOrder}}{{else}}DESC{{end}}">Healing Done {{if eq $currentSort "healing"}}{{if eq $currentOrder "ASC"}}<span class="text-gray-400">▲</span>{{else}}<span class="text-gray-400">▼</span>{{end}}{{end}}</a></th>
-                            <th class="px-2 sm:px-3 py-2"><a href="/woe?sort_by=emperium&order={{if eq $currentSort "emperium"}}{{$revOrder}}{{else}}DESC{{end}}">Emperium {{if eq $currentSort "emperium"}}{{if eq $currentOrder "ASC"}}<span class="text-gray-400">▲</span>{{else}}<span class="text-gray-400">▼</span>{{end}}{{end}}</a></th>
-                            <th class="px-2 sm:px-3 py-2"><a href="/woe?sort_by=score&order={{if eq $currentSort "score"}}{{$revOrder}}{{else}}DESC{{end}}">Score {{if eq $currentSort "score"}}{{if eq $currentOrder "ASC"}}<span class="text-gray-400">▲</span>{{else}}<span class="text-gray-400">▼</span>{{end}}{{end}}</a></th>
-                            <th class="px-2 sm:px-3 py-2"><a href="/woe?sort_by=points&order={{if eq $currentSort "points"}}{{$revOrder}}{{else}}DESC{{end}}">Points {{if eq $currentSort "points"}}{{if eq $currentOrder "ASC"}}<span class="text-gray-400">▲</span>{{else}}<span class="text-gray-400">▼</span>{{end}}{{end}}</a></th>
+                            {{$searchQuery := .SearchQuery}} {{$revOrder := "ASC"}}{{if eq $currentOrder "ASC"}}{{$revOrder = "DESC"}}{{end}}
+
+                            <th class="px-2 sm:px-3 py-2"><a href="/woe?query={{$searchQuery}}&sort_by=class&order={{if eq $currentSort "class"}}{{$revOrder}}{{else}}ASC{{end}}">Class {{if eq $currentSort "class"}}{{if eq $currentOrder "ASC"}}<span class="text-gray-400">▲</span>{{else}}<span class="text-gray-400">▼</span>{{end}}{{end}}</a></th>
+                            <th class="px-2 sm:px-3 py-2"><a href="/woe?query={{$searchQuery}}&sort_by=name&order={{if eq $currentSort "name"}}{{$revOrder}}{{else}}ASC{{end}}">Character {{if eq $currentSort "name"}}{{if eq $currentOrder "ASC"}}<span class="text-gray-400">▲</span>{{else}}<span class="text-gray-400">▼</span>{{end}}{{end}}</a></th>
+                            <th class="px-2 sm:px-3 py-2"><a href="/woe?query={{$searchQuery}}&sort_by=guild&order={{if eq $currentSort "guild"}}{{$revOrder}}{{else}}ASC{{end}}">Guild {{if eq $currentSort "guild"}}{{if eq $currentOrder "ASC"}}<span class="text-gray-400">▲</span>{{else}}<span class="text-gray-400">▼</span>{{end}}{{end}}</a></th>
+                            <th class="px-2 sm:px-3 py-2"><a href="/woe?query={{$searchQuery}}&sort_by=kills&order={{if eq $currentSort "kills"}}{{$revOrder}}{{else}}DESC{{end}}">Kills {{if eq $currentSort "kills"}}{{if eq $currentOrder "ASC"}}<span class="text-gray-400">▲</span>{{else}}<span class="text-gray-400">▼</span>{{end}}{{end}}</a></th>
+                            <th class="px-2 sm:px-3 py-2"><a href="/woe?query={{$searchQuery}}&sort_by=deaths&order={{if eq $currentSort "deaths"}}{{$revOrder}}{{else}}DESC{{end}}">Deaths {{if eq $currentSort "deaths"}}{{if eq $currentOrder "ASC"}}<span class="text-gray-400">▲</span>{{else}}<span class="text-gray-400">▼</span>{{end}}{{end}}</a></th>
+                            <th class="px-2 sm:px-3 py-2"><a href="/woe?query={{$searchQuery}}&sort_by=damage&order={{if eq $currentSort "damage"}}{{$revOrder}}{{else}}DESC{{end}}">Damage Done {{if eq $currentSort "damage"}}{{if eq $currentOrder "ASC"}}<span class="text-gray-400">▲</span>{{else}}<span class="text-gray-400">▼</span>{{end}}{{end}}</a></th>
+                            <th class="px-2 sm:px-3 py-2"><a href="/woe?query={{$searchQuery}}&sort_by=healing&order={{if eq $currentSort "healing"}}{{$revOrder}}{{else}}DESC{{end}}">Healing Done {{if eq $currentSort "healing"}}{{if eq $currentOrder "ASC"}}<span class="text-gray-400">▲</span>{{else}}<span class="text-gray-400">▼</span>{{end}}{{end}}</a></th>
+                            <th class="px-2 sm:px-3 py-2"><a href="/woe?query={{$searchQuery}}&sort_by=emperium&order={{if eq $currentSort "emperium"}}{{$revOrder}}{{else}}DESC{{end}}">Emperium {{if eq $currentSort "emperium"}}{{if eq $currentOrder "ASC"}}<span class="text-gray-400">▲</span>{{else}}<span class="text-gray-400">▼</span>{{end}}{{end}}</a></th>
+                            <th class="px-2 sm:px-3 py-2"><a href="/woe?query={{$searchQuery}}&sort_by=score&order={{if eq $currentSort "score"}}{{$revOrder}}{{else}}DESC{{end}}">Score {{if eq $currentSort "score"}}{{if eq $currentOrder "ASC"}}<span class="text-gray-400">▲</span>{{else}}<span class="text-gray-400">▼</span>{{end}}{{end}}</a></th>
+                            <th class="px-2 sm:px-3 py-2"><a href="/woe?query={{$searchQuery}}&sort_by=points&order={{if eq $currentSort "points"}}{{$revOrder}}{{else}}DESC{{end}}">Points {{if eq $currentSort "points"}}{{if eq $currentOrder "ASC"}}<span class="text-gray-400">▲</span>{{else}}<span class="text-gray-400">▼</span>{{end}}{{end}}</a></th>
                         </tr>
                     </thead>
                     <tbody class="text-gray-700 text-xs">
                         {{range .Characters}}
-                        <tr class="border-b border-gray-200 hover:bg-gray-50">
+                         <tr class="border-b border-gray-200 hover:bg-gray-50">
                             <td class="px-2 sm:px-3 py-2">
                                 <div class="flex items-center">
                                     <img src="{{.Class | getClassImageURL}}" alt="{{.Class}}" class="w-6 h-6 mr-2" style="image-rendering: pixelated;" title="{{.Class}}">
@@ -76,11 +85,6 @@
             </div>
         </div>
     </div>
-
-    </body>
-</html>
-    </div>
-
     <script>
     // ... (The JavaScript is unchanged and correct) ...
     document.addEventListener('DOMContentLoaded', () => {

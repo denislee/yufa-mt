@@ -2430,14 +2430,16 @@ func findItemIDOnline(cleanItemName string, slots int) (sql.NullInt64, bool) {
 	return sql.NullInt64{Valid: false}, false
 }
 
-// in handlers.go
-
-// in handlers.go
-
 // --- REPLACE THIS HANDLER FUNCTION ---
 func woeRankingsHandler(w http.ResponseWriter, r *http.Request) {
+	if err := r.ParseForm(); err != nil { // Parse form data first
+		http.Error(w, "Failed to parse form", http.StatusBadRequest)
+		return
+	}
+	searchQuery := r.FormValue("query") // Get the search query
+
 	allowedSorts := map[string]string{
-		"name":     "name", // Now the primary key
+		"name":     "name",
 		"class":    "class",
 		"guild":    "guild_name",
 		"kills":    "kill_count",
@@ -2448,19 +2450,37 @@ func woeRankingsHandler(w http.ResponseWriter, r *http.Request) {
 		"score":    "score",
 		"points":   "points",
 	}
-	// Default sort by points DESC
-	orderByClause, sortBy, order := getSortClause(r, allowedSorts, "points", "DESC")
+	// Default sort by kills DESC
+	orderByClause, sortBy, order := getSortClause(r, allowedSorts, "kills", "DESC")
 
-	// *** MODIFIED QUERY (removed char_id) ***
+	// --- Build WHERE clause ---
+	var whereConditions []string
+	var queryParams []interface{}
+	if searchQuery != "" {
+		// Use LIKE for partial matching
+		whereConditions = append(whereConditions, "name LIKE ?")
+		queryParams = append(queryParams, "%"+searchQuery+"%")
+	}
+	whereClause := ""
+	if len(whereConditions) > 0 {
+		whereClause = "WHERE " + strings.Join(whereConditions, " AND ")
+	}
+	// --- End WHERE clause ---
+
+	// *** MODIFIED QUERY (added whereClause) ***
 	query := fmt.Sprintf(`
 		SELECT name, class, guild_id, guild_name,
 		       kill_count, death_count, damage_done, emperium_kill,
 		       healing_done, score, points
-		FROM woe_character_rankings %s`, orderByClause)
+		FROM woe_character_rankings
+		%s -- whereClause
+		%s -- orderByClause
+		`, whereClause, orderByClause) // Apply WHERE before ORDER BY
 
-	rows, err := db.Query(query)
+	// *** Pass queryParams to db.Query ***
+	rows, err := db.Query(query, queryParams...)
 	if err != nil {
-		log.Printf("[E] [HTTP/WoE] Could not query for WoE character rankings: %v", err)
+		log.Printf("[E] [HTTP/WoE] Could not query for WoE character rankings: %v | Query: %s | Params: %v", err, query, queryParams)
 		http.Error(w, "Could not query WoE rankings", http.StatusInternalServerError)
 		return
 	}
@@ -2469,9 +2489,8 @@ func woeRankingsHandler(w http.ResponseWriter, r *http.Request) {
 	var characters []WoeCharacterRank
 	for rows.Next() {
 		var c WoeCharacterRank
-		// *** MODIFIED SCAN (removed char_id) ***
 		err := rows.Scan(
-			&c.Name, &c.Class, &c.GuildID, &c.GuildName, // Scan Name first
+			&c.Name, &c.Class, &c.GuildID, &c.GuildName,
 			&c.KillCount, &c.DeathCount, &c.DamageDone, &c.EmperiumKill,
 			&c.HealingDone, &c.Score, &c.Points,
 		)
@@ -2487,10 +2506,13 @@ func woeRankingsHandler(w http.ResponseWriter, r *http.Request) {
 		LastScrapeTime: GetLastUpdateTime("last_updated", "woe_character_rankings"),
 		SortBy:         sortBy,
 		Order:          order,
+		SearchQuery:    searchQuery, // <-- PASS SEARCH QUERY TO TEMPLATE
 		PageTitle:      "WoE Rankings",
 	}
 	renderTemplate(w, "woe_rankings.html", data)
 }
+
+// --- END REPLACEMENT ---
 
 // --- END REPLACEMENT ---
 

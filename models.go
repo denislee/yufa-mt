@@ -382,6 +382,7 @@ type WoePageData struct {
 	LastScrapeTime string
 	SortBy         string
 	Order          string
+	SearchQuery    string // <-- ADD THIS LINE
 	PageTitle      string
 }
 
