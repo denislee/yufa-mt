@@ -361,6 +361,24 @@ type GuildDetailPageData struct {
 	PageTitle           string
 }
 
+// --- NEW STRUCT for WoE Guild Rankings ---
+// WoeGuildRank holds aggregated WoE stats for an entire guild.
+type WoeGuildRank struct {
+	GuildName      sql.NullString
+	GuildID        sql.NullInt64
+	MemberCount    int64 // <-- CHANGED
+	TotalKills     int64 // <-- CHANGED
+	TotalDeaths    int64 // <-- CHANGED
+	TotalDamage    int64
+	TotalHealing   int64
+	TotalEmpKills  int64 // <-- CHANGED
+	TotalPoints    int64 // <-- CHANGED
+	KillDeathRatio float64
+}
+
+// ... (other structs) ...
+
+// WoeCharacterRank remains unchanged
 type WoeCharacterRank struct {
 	Name         string // Now the primary identifier
 	Class        string
@@ -374,15 +392,18 @@ type WoeCharacterRank struct {
 	Score        int
 	Points       int
 	LastUpdated  string
-	// Removed CharID and Rank previously
 }
 
+// WoePageData is modified to hold both character and guild data,
+// plus the active tab.
 type WoePageData struct {
 	Characters     []WoeCharacterRank
+	Guilds         []WoeGuildRank // <-- ADDED
+	ActiveTab      string         // <-- ADDED
 	LastScrapeTime string
 	SortBy         string
 	Order          string
-	SearchQuery    string // <-- ADD THIS LINE
+	SearchQuery    string
 	PageTitle      string
 }
 

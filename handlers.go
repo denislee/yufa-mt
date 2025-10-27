@@ -2430,95 +2430,165 @@ func findItemIDOnline(cleanItemName string, slots int) (sql.NullInt64, bool) {
 	return sql.NullInt64{Valid: false}, false
 }
 
-// --- REPLACE THIS HANDLER FUNCTION ---
+// woeRankingsHandler fetches and displays WoE rankings for characters or guilds.
 func woeRankingsHandler(w http.ResponseWriter, r *http.Request) {
-	if err := r.ParseForm(); err != nil { // Parse form data first
+	if err := r.ParseForm(); err != nil {
 		http.Error(w, "Failed to parse form", http.StatusBadRequest)
 		return
 	}
-	searchQuery := r.FormValue("query") // Get the search query
-
-	allowedSorts := map[string]string{
-		"name":     "name",
-		"class":    "class",
-		"guild":    "guild_name",
-		"kills":    "kill_count",
-		"deaths":   "death_count",
-		"damage":   "damage_done",
-		"emperium": "emperium_kill",
-		"healing":  "healing_done",
-		"score":    "score",
-		"points":   "points",
+	searchQuery := r.FormValue("query")
+	activeTab := r.FormValue("tab")
+	if activeTab == "" {
+		activeTab = "characters" // Default to character view
 	}
-	// Default sort by kills DESC
-	orderByClause, sortBy, order := getSortClause(r, allowedSorts, "kills", "DESC")
-
-	// --- Build WHERE clause ---
-	var whereConditions []string
-	var queryParams []interface{}
-	if searchQuery != "" {
-		// Use LIKE for partial matching
-		whereConditions = append(whereConditions, "name LIKE ?")
-		queryParams = append(queryParams, "%"+searchQuery+"%")
-	}
-	whereClause := ""
-	if len(whereConditions) > 0 {
-		whereClause = "WHERE " + strings.Join(whereConditions, " AND ")
-	}
-	// --- End WHERE clause ---
-
-	// *** MODIFIED QUERY (added whereClause) ***
-	query := fmt.Sprintf(`
-		SELECT name, class, guild_id, guild_name,
-		       kill_count, death_count, damage_done, emperium_kill,
-		       healing_done, score, points
-		FROM woe_character_rankings
-		%s -- whereClause
-		%s -- orderByClause
-		`, whereClause, orderByClause) // Apply WHERE before ORDER BY
-
-	// *** Pass queryParams to db.Query ***
-	rows, err := db.Query(query, queryParams...)
-	if err != nil {
-		log.Printf("[E] [HTTP/WoE] Could not query for WoE character rankings: %v | Query: %s | Params: %v", err, query, queryParams)
-		http.Error(w, "Could not query WoE rankings", http.StatusInternalServerError)
-		return
-	}
-	defer rows.Close()
 
 	var characters []WoeCharacterRank
-	for rows.Next() {
-		var c WoeCharacterRank
-		err := rows.Scan(
-			&c.Name, &c.Class, &c.GuildID, &c.GuildName,
-			&c.KillCount, &c.DeathCount, &c.DamageDone, &c.EmperiumKill,
-			&c.HealingDone, &c.Score, &c.Points,
-		)
-		if err != nil {
-			log.Printf("[W] [HTTP/WoE] Failed to scan WoE character row: %v", err)
-			continue
+	var guilds []WoeGuildRank
+	var allowedSorts map[string]string
+	var orderByClause, sortBy, order string
+	var whereConditions []string
+	var queryParams []interface{}
+	var whereClause string
+
+	if activeTab == "guilds" {
+		// --- GUILD RANKING LOGIC ---
+		allowedSorts = map[string]string{
+			"guild":    "guild_name",
+			"members":  "member_count",
+			"kills":    "total_kills",
+			"deaths":   "total_deaths",
+			"kd":       "kd_ratio",
+			"damage":   "total_damage",
+			"healing":  "total_healing",
+			"emperium": "total_emp_kills",
+			"points":   "total_points",
 		}
-		characters = append(characters, c)
+		// Default sort by total kills DESC
+		orderByClause, sortBy, order = getSortClause(r, allowedSorts, "kills", "DESC")
+
+		if searchQuery != "" {
+			whereConditions = append(whereConditions, "guild_name LIKE ?")
+			queryParams = append(queryParams, "%"+searchQuery+"%")
+		}
+		if len(whereConditions) > 0 {
+			whereClause = "WHERE " + strings.Join(whereConditions, " AND ")
+		}
+
+		// Query to aggregate stats by guild
+		query := fmt.Sprintf(`
+			SELECT
+				guild_name,
+				guild_id,
+				COUNT(*) AS member_count,
+				SUM(kill_count) AS total_kills,
+				SUM(death_count) AS total_deaths,
+				SUM(damage_done) AS total_damage,
+				SUM(healing_done) AS total_healing,
+				SUM(emperium_kill) AS total_emp_kills,
+				SUM(points) AS total_points,
+				CASE
+					WHEN SUM(death_count) = 0 THEN SUM(kill_count) -- Avoid division by zero
+					ELSE CAST(SUM(kill_count) AS REAL) / SUM(death_count)
+				END AS kd_ratio
+			FROM woe_character_rankings
+			%s -- whereClause
+			GROUP BY guild_name, guild_id
+			%s -- orderByClause
+		`, whereClause, orderByClause)
+
+		rows, err := db.Query(query, queryParams...)
+		if err != nil {
+			log.Printf("[E] [HTTP/WoE] Could not query for WoE guild rankings: %v | Query: %s | Params: %v", err, query, queryParams)
+			http.Error(w, "Could not query WoE guild rankings", http.StatusInternalServerError)
+			return
+		}
+		defer rows.Close()
+
+		for rows.Next() {
+			var g WoeGuildRank
+			err := rows.Scan(
+				&g.GuildName, &g.GuildID, &g.MemberCount,
+				&g.TotalKills, &g.TotalDeaths, &g.TotalDamage,
+				&g.TotalHealing, &g.TotalEmpKills, &g.TotalPoints,
+				&g.KillDeathRatio,
+			)
+			if err != nil {
+				log.Printf("[W] [HTTP/WoE] Failed to scan WoE guild row: %v", err)
+				continue
+			}
+			guilds = append(guilds, g)
+		}
+
+	} else {
+		// --- CHARACTER RANKING LOGIC (Original logic) ---
+		allowedSorts = map[string]string{
+			"name":     "name",
+			"class":    "class",
+			"guild":    "guild_name",
+			"kills":    "kill_count",
+			"deaths":   "death_count",
+			"damage":   "damage_done",
+			"emperium": "emperium_kill",
+			"healing":  "healing_done",
+			"score":    "score",
+			"points":   "points",
+		}
+		// Default sort by kills DESC
+		orderByClause, sortBy, order = getSortClause(r, allowedSorts, "kills", "DESC")
+
+		if searchQuery != "" {
+			// Use LIKE for partial matching
+			whereConditions = append(whereConditions, "name LIKE ?")
+			queryParams = append(queryParams, "%"+searchQuery+"%")
+		}
+		if len(whereConditions) > 0 {
+			whereClause = "WHERE " + strings.Join(whereConditions, " AND ")
+		}
+
+		query := fmt.Sprintf(`
+			SELECT name, class, guild_id, guild_name,
+				   kill_count, death_count, damage_done, emperium_kill,
+				   healing_done, score, points
+			FROM woe_character_rankings
+			%s -- whereClause
+			%s -- orderByClause
+		`, whereClause, orderByClause)
+
+		rows, err := db.Query(query, queryParams...)
+		if err != nil {
+			log.Printf("[E] [HTTP/WoE] Could not query for WoE character rankings: %v | Query: %s | Params: %v", err, query, queryParams)
+			http.Error(w, "Could not query WoE rankings", http.StatusInternalServerError)
+			return
+		}
+		defer rows.Close()
+
+		for rows.Next() {
+			var c WoeCharacterRank
+			err := rows.Scan(
+				&c.Name, &c.Class, &c.GuildID, &c.GuildName,
+				&c.KillCount, &c.DeathCount, &c.DamageDone, &c.EmperiumKill,
+				&c.HealingDone, &c.Score, &c.Points,
+			)
+			if err != nil {
+				log.Printf("[W] [HTTP/WoE] Failed to scan WoE character row: %v", err)
+				continue
+			}
+			characters = append(characters, c)
+		}
 	}
 
 	data := WoePageData{
 		Characters:     characters,
+		Guilds:         guilds,
+		ActiveTab:      activeTab,
 		LastScrapeTime: GetLastUpdateTime("last_updated", "woe_character_rankings"),
 		SortBy:         sortBy,
 		Order:          order,
-		SearchQuery:    searchQuery, // <-- PASS SEARCH QUERY TO TEMPLATE
+		SearchQuery:    searchQuery,
 		PageTitle:      "WoE Rankings",
 	}
 	renderTemplate(w, "woe_rankings.html", data)
 }
-
-// --- END REPLACEMENT ---
-
-// --- END REPLACEMENT ---
-
-// --- END REPLACEMENT ---// --- END REPLACEMENT ---
-
-// ... (storeDetailHandler) ...
 
 // findItemIDByName orchestrates searching the cache and online for an item ID.
 // This function remains unchanged but is shown for context.
