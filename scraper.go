@@ -110,22 +110,81 @@ func (sc *ScraperClient) findLastPage(firstPageURL, logPrefix string) int {
 		return 1
 	}
 
-	lastPage := 1
-	// This regex is simple and works for all ranking pages on the target site
-	pageRegex := regexp.MustCompile(`page=(\d+)`)
-	matches := pageRegex.FindAllStringSubmatch(bodyContent, -1)
+	// --- START MODIFICATION ---
+	// 1. Use goquery to parse the document first.
+	doc, err := goquery.NewDocumentFromReader(strings.NewReader(bodyContent))
+	if err != nil {
+		log.Printf("[W] %s Could not parse page 1 HTML to determine page count. Assuming 1 page. Error: %v", logPrefix, err)
+		return 1
+	}
 
-	for _, match := range matches {
-		if len(match) > 1 {
-			if p, pErr := strconv.Atoi(match[1]); pErr == nil {
-				if p > lastPage {
+	// 2. Try to find the specific "Page X of Y" div based on the HTML provided.
+	pageText := ""
+	doc.Find("div.flex.w-fit.items-center.justify-center.text-sm.font-medium").Each(func(i int, s *goquery.Selection) {
+		// We get the text and check if it matches the pattern, just in case
+		// other divs share these classes.
+		t := s.Text()
+		if strings.HasPrefix(t, "Page ") {
+			pageText = t
+		}
+	})
+
+	if pageText != "" {
+		pageOfRegex := regexp.MustCompile(`Page \d+ of (\d+)`)
+		matches := pageOfRegex.FindStringSubmatch(pageText)
+		if len(matches) > 1 {
+			if p, pErr := strconv.Atoi(matches[1]); pErr == nil {
+				log.Printf("[I] %s Found 'Page X of Y' div text. Total pages: %d", logPrefix, p)
+				return p
+			}
+		}
+	}
+
+	// 3. If "Page X of Y" div fails, fall back to parsing the links.
+	log.Printf("[W] %s Could not find 'Page X of Y' div. Falling back to link parsing...", logPrefix)
+
+	lastPage := 1
+	pageRegex := regexp.MustCompile(`page=(\d+)`)
+	var foundLastPageLink bool
+
+	// 4. Try to find the "Last Page" link (e.g., '>>')
+	lastPageSelection := doc.Find("svg.lucide-chevrons-right")
+	if lastPageSelection.Length() > 0 {
+		// Find the parent <a> tag and get its href
+		href, exists := lastPageSelection.Parent().Attr("href")
+		if exists {
+			matches := pageRegex.FindStringSubmatch(href)
+			if len(matches) > 1 {
+				if p, pErr := strconv.Atoi(matches[1]); pErr == nil {
 					lastPage = p
+					foundLastPageLink = true
+					log.Printf("[I] %s Found 'Last Page' (>>) link. Total pages: %d", logPrefix, lastPage)
 				}
 			}
 		}
 	}
 
-	log.Printf("[I] %s Found %d total pages to scrape.", logPrefix, lastPage)
+	// 5. If no "Last Page" link is found (e.g., only a few pages exist),
+	// fall back to: find the max page number from all visible links.
+	if !foundLastPageLink {
+		doc.Find("a[href*='page=']").Each(func(i int, s *goquery.Selection) {
+			href, exists := s.Attr("href")
+			if !exists {
+				return
+			}
+			matches := pageRegex.FindStringSubmatch(href)
+			if len(matches) > 1 {
+				if p, pErr := strconv.Atoi(matches[1]); pErr == nil {
+					if p > lastPage {
+						lastPage = p
+					}
+				}
+			}
+		})
+		log.Printf("[I] %s No 'Last Page' (>>) link found. Using max of visible links. Total pages: %d", logPrefix, lastPage)
+	}
+	// --- END MODIFICATION ---
+
 	return lastPage
 }
 
@@ -840,6 +899,8 @@ func processZenyData(allZenyInfo map[string]int64, updateTime string) {
 	log.Printf("[I] [Scraper/Zeny] Database update complete. Updated activity for %d characters. %d characters were unchanged.", updatedCount, unchangedCount)
 }
 
+// in scraper.go
+
 // scrapeZeny is now only responsible for concurrent scraping.
 func scrapeZeny() {
 	log.Println("[I] [Scraper/Zeny] Starting Zeny ranking scrape...")
@@ -874,17 +935,32 @@ func scrapeZeny() {
 				return
 			}
 
-			doc.Find(`tbody[data-slot="table-body"] tr[data-slot="table-row"]`).Each(func(i int, s *goquery.Selection) {
-				cells := s.Find(`td[data-slot="table-cell"]`)
+			// --- MODIFICATION START ---
+			// Replaced brittle `data-slot` selectors with more robust standard HTML tags.
+			doc.Find("table tbody tr").Each(func(i int, s *goquery.Selection) {
+				cells := s.Find("td")
 				if cells.Length() < 3 {
+					if enableZenyScraperDebugLogs {
+						log.Printf("[D] [Scraper/Zeny] Skipping row on page %d, expected >= 3 cells, got %d", pageIndex, cells.Length())
+					}
 					return
 				}
 
 				nameStr := strings.TrimSpace(cells.Eq(1).Text())
 				zenyStrRaw := strings.TrimSpace(cells.Eq(2).Text())
+				// --- MODIFICATION END ---
+
 				zenyStrClean := strings.ReplaceAll(zenyStrRaw, ",", "")
 				zenyStrClean = strings.TrimSuffix(zenyStrClean, "z")
 				zenyStrClean = strings.TrimSpace(zenyStrClean)
+
+				// Add check for empty name
+				if nameStr == "" {
+					if enableZenyScraperDebugLogs {
+						log.Printf("[D] [Scraper/Zeny] Skipping row on page %d, extracted name is empty.", pageIndex)
+					}
+					return
+				}
 
 				zenyVal, err := strconv.ParseInt(zenyStrClean, 10, 64)
 				if err != nil {
