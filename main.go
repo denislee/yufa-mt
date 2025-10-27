@@ -297,6 +297,11 @@ func main() {
 	// adminRouter.HandleFunc("/scrape/rms-cache", adminTriggerScrapeHandler(runFullRMSCacheJob, "RMS-Cache-Refresh"))
 	// --- END MODIFICATION ---
 
+	// --- ADDITIONS START ---
+	adminRouter.HandleFunc("/scrape/pt-names", adminTriggerScrapeHandler(populateMissingPortugueseNames, "PT-Name-Populator"))
+	adminRouter.HandleFunc("/scrape/woe", adminTriggerScrapeHandler(scrapeWoeCharacterRankings, "WoE-Char-Rankings"))
+	// --- ADDITIONS END ---
+
 	// Apply the basicAuth middleware to the entire admin router
 	// Note the trailing slash on "/admin/" is important for sub-path matching
 	mux.Handle("/admin/", basicAuth(http.StripPrefix("/admin", adminRouter)))
@@ -329,3 +334,4 @@ func main() {
 	// This line will be reached after server.Shutdown() completes
 	log.Println("[I] [Main] All services shut down. Exiting.")
 }
+
