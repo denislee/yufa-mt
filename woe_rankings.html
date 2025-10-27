@@ -45,10 +45,10 @@
                             <th class="px-2 sm:px-3 py-2"><a href="/woe?query={{$searchQuery}}&sort_by=guild&order={{if eq $currentSort "guild"}}{{$revOrder}}{{else}}ASC{{end}}">Guild {{if eq $currentSort "guild"}}{{if eq $currentOrder "ASC"}}<span class="text-gray-400">▲</span>{{else}}<span class="text-gray-400">▼</span>{{end}}{{end}}</a></th>
                             <th class="px-2 sm:px-3 py-2"><a href="/woe?query={{$searchQuery}}&sort_by=kills&order={{if eq $currentSort "kills"}}{{$revOrder}}{{else}}DESC{{end}}">Kills {{if eq $currentSort "kills"}}{{if eq $currentOrder "ASC"}}<span class="text-gray-400">▲</span>{{else}}<span class="text-gray-400">▼</span>{{end}}{{end}}</a></th>
                             <th class="px-2 sm:px-3 py-2"><a href="/woe?query={{$searchQuery}}&sort_by=deaths&order={{if eq $currentSort "deaths"}}{{$revOrder}}{{else}}DESC{{end}}">Deaths {{if eq $currentSort "deaths"}}{{if eq $currentOrder "ASC"}}<span class="text-gray-400">▲</span>{{else}}<span class="text-gray-400">▼</span>{{end}}{{end}}</a></th>
-                            <th class="px-2 sm:px-3 py-2"><a href="/woe?query={{$searchQuery}}&sort_by=damage&order={{if eq $currentSort "damage"}}{{$revOrder}}{{else}}DESC{{end}}">Damage Done {{if eq $currentSort "damage"}}{{if eq $currentOrder "ASC"}}<span class="text-gray-400">▲</span>{{else}}<span class="text-gray-400">▼</span>{{end}}{{end}}</a></th>
-                            <th class="px-2 sm:px-3 py-2"><a href="/woe?query={{$searchQuery}}&sort_by=healing&order={{if eq $currentSort "healing"}}{{$revOrder}}{{else}}DESC{{end}}">Healing Done {{if eq $currentSort "healing"}}{{if eq $currentOrder "ASC"}}<span class="text-gray-400">▲</span>{{else}}<span class="text-gray-400">▼</span>{{end}}{{end}}</a></th>
+                            <th class="px-2 sm:px-3 py-2"><a href="/woe?query={{$searchQuery}}&sort_by=damage&order={{if eq $currentSort "damage"}}{{$revOrder}}{{else}}DESC{{end}}">Damage {{if eq $currentSort "damage"}}{{if eq $currentOrder "ASC"}}<span class="text-gray-400">▲</span>{{else}}<span class="text-gray-400">▼</span>{{end}}{{end}}</a></th>
+                            <th class="px-2 sm:px-3 py-2"><a href="/woe?query={{$searchQuery}}&sort_by=healing&order={{if eq $currentSort "healing"}}{{$revOrder}}{{else}}DESC{{end}}">Healing {{if eq $currentSort "healing"}}{{if eq $currentOrder "ASC"}}<span class="text-gray-400">▲</span>{{else}}<span class="text-gray-400">▼</span>{{end}}{{end}}</a></th>
                             <th class="px-2 sm:px-3 py-2"><a href="/woe?query={{$searchQuery}}&sort_by=emperium&order={{if eq $currentSort "emperium"}}{{$revOrder}}{{else}}DESC{{end}}">Emperium {{if eq $currentSort "emperium"}}{{if eq $currentOrder "ASC"}}<span class="text-gray-400">▲</span>{{else}}<span class="text-gray-400">▼</span>{{end}}{{end}}</a></th>
-                            <th class="px-2 sm:px-3 py-2"><a href="/woe?query={{$searchQuery}}&sort_by=score&order={{if eq $currentSort "score"}}{{$revOrder}}{{else}}DESC{{end}}">Score {{if eq $currentSort "score"}}{{if eq $currentOrder "ASC"}}<span class="text-gray-400">▲</span>{{else}}<span class="text-gray-400">▼</span>{{end}}{{end}}</a></th>
+                            <!-- <th class="px-2 sm:px-3 py-2"><a href="/woe?query={{$searchQuery}}&sort_by=score&order={{if eq $currentSort "score"}}{{$revOrder}}{{else}}DESC{{end}}">Score {{if eq $currentSort "score"}}{{if eq $currentOrder "ASC"}}<span class="text-gray-400">▲</span>{{else}}<span class="text-gray-400">▼</span>{{end}}{{end}}</a></th> -->
                             <th class="px-2 sm:px-3 py-2"><a href="/woe?query={{$searchQuery}}&sort_by=points&order={{if eq $currentSort "points"}}{{$revOrder}}{{else}}DESC{{end}}">Points {{if eq $currentSort "points"}}{{if eq $currentOrder "ASC"}}<span class="text-gray-400">▲</span>{{else}}<span class="text-gray-400">▼</span>{{end}}{{end}}</a></th>
                         </tr>
                     </thead>
@@ -58,7 +58,7 @@
                             <td class="px-2 sm:px-3 py-2">
                                 <div class="flex items-center">
                                     <img src="{{.Class | getClassImageURL}}" alt="{{.Class}}" class="w-6 h-6 mr-2" style="image-rendering: pixelated;" title="{{.Class}}">
-                                    <span class="hidden sm:inline">{{.Class}}</span>
+                                    <!-- <span class="hidden sm:inline">{{.Class}}</span> -->
                                 </div>
                             </td>
                             <td class="px-2 sm:px-3 py-2">
@@ -76,7 +76,7 @@
                             <td class="px-2 sm:px-3 py-2 font-semibold">{{.DamageDone | formatZeny}}</td>
                             <td class="px-2 sm:px-3 py-2 font-semibold">{{.HealingDone | formatZeny}}</td>
                             <td class="px-2 sm:px-3 py-2 font-semibold">{{.EmperiumKill}}</td>
-                            <td class="px-2 sm:px-3 py-2 font-semibold">{{.Score}}</td>
+                            <!-- <td class="px-2 sm:px-3 py-2 font-semibold">{{.Score}}</td> -->
                             <td class="px-2 sm:px-3 py-2 font-semibold">{{.Points}}</td>
                         </tr>
                         {{end}}
