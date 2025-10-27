@@ -256,7 +256,7 @@ func scrapeAndStorePlayerCount() {
 
 	// --- THIS IS THE UPDATED SECTION ---
 	// Define a regex to match the exact pattern "Online 100" and capture the number
-	onlinePlayerRegex := regexp.MustCompile(`Online\s+(\d+)`)
+	onlinePlayerRegex := regexp.MustCompile(`Online(?:\s|<!--.*?-->)*?(\d+)`)
 
 	var onlineCount int
 	var found bool
