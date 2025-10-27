@@ -80,17 +80,14 @@ func storeItemsInDB(items []ItemDBEntry) error {
 
 	var successCount int
 	for _, item := range items {
-		// --- NEW: Fetch Portuguese name from rms_item_cache ---
-		var namePT sql.NullString
-		// We use the transaction 'tx' to ensure we read data that might have been
-		// committed by other parts of the app, but within a consistent state.
-		// Note: This relies on rms_item_cache being populated by the scrapers.
-		err = tx.QueryRow("SELECT name_pt FROM rms_item_cache WHERE item_id = ?", item.ID).Scan(&namePT)
-		if err != nil && err != sql.ErrNoRows {
-			// Log the error but continue, as this isn't fatal
-			log.Printf("[W] [ItemDB] Could not query rms_item_cache for item %d: %v", item.ID, err)
-		}
-		// --- END NEW ---
+		// --- MODIFICATION: Remove query to rms_item_cache ---
+		var namePT sql.NullString // Will be NULL by default
+		// err = tx.QueryRow("SELECT name_pt FROM rms_item_cache WHERE item_id = ?", item.ID).Scan(&namePT)
+		// if err != nil && err != sql.ErrNoRows {
+		// 	// Log the error but continue, as this isn't fatal
+		// 	log.Printf("[W] [ItemDB] Could not query rms_item_cache for item %d: %v", item.ID, err)
+		// }
+		// --- END MODIFICATION ---
 
 		// Convert maps to JSON strings for storage
 		jobsJSON, err := json.Marshal(item.Jobs)
@@ -125,7 +122,7 @@ func storeItemsInDB(items []ItemDBEntry) error {
 			item.Script,
 			item.EquipScript,
 			item.UnEquipScript,
-			namePT, // Added the Portuguese name
+			namePT, // Added the Portuguese name (which is now NULL)
 		)
 		// --- END MODIFICATION ---
 

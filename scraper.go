@@ -1214,7 +1214,9 @@ func scrapeData() {
 					log.Printf("[ECode] [Scraper/Market] Failed to log ADDED event for %s: %v", itemName, err)
 				}
 
-				go scrapeAndCacheItemIfNotExists(firstItem.ItemID, itemName)
+				// --- THIS IS THE FIX ---
+				// go scrapeAndCacheItemIfNotExists(firstItem.ItemID, itemName) // This function no longer exists
+				// --- END FIX ---
 			}
 
 			var historicalLowestPrice sql.NullInt64
@@ -1559,7 +1561,7 @@ func runJobOnTicker(ctx context.Context, job Job) {
 	defer ticker.Stop()
 
 	log.Printf("[I] [Job] Starting initial run for %s job...", job.Name)
-	//job.Func() // Run immediately on start
+	job.Func() // Run immediately on start
 
 	for {
 		select {
@@ -1589,26 +1591,7 @@ func startBackgroundJobs(ctx context.Context) {
 		go runJobOnTicker(ctx, job)
 	}
 
-	// --- Special RMS Cache Refresh Job (runs once daily) ---
-	go func() {
-		ticker := time.NewTicker(24 * time.Hour)
-		defer ticker.Stop()
-
-		log.Printf("[I] [Job] Starting initial run for RMS Cache Refresh job...")
-		runFullRMSCacheJob() // Run immediately on start
-		log.Printf("[I] [Job] RMS Cache Refresh job scheduled. Will run once every 24 hours.")
-
-		for {
-			select {
-			case <-ctx.Done():
-				log.Printf("[I] [Job] Stopping RMS Cache Refresh job due to shutdown.")
-				return
-			case <-ticker.C:
-				log.Printf("[I] [Job] Starting scheduled 24-hour full RMS cache refresh...")
-				// Run in its own goroutine so it doesn't block the ticker
-				// if the job takes a long time.
-				go runFullRMSCacheJob()
-			}
-		}
-	}()
+	// --- MODIFICATION: Removed the entire "Special RMS Cache Refresh Job" goroutine ---
+	// The go func() { ... } block that called runFullRMSCacheJob() is deleted.
+	// --- END MODIFICATION ---
 }

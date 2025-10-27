@@ -237,7 +237,9 @@ func main() {
 	}()
 
 	// Start Background Services with the cancellable context
-	go populateMissingCachesOnStartup()
+	// --- MODIFICATION: Removed call to populateMissingCachesOnStartup() ---
+	// go populateMissingCachesOnStartup() // This function no longer exists
+	// --- END MODIFICATION ---
 	go startBackgroundJobs(ctx)
 	go startDiscordBot(ctx)
 	go startVisitorLogger(ctx)
@@ -290,7 +292,9 @@ func main() {
 	adminRouter.HandleFunc("/scrape/guilds", adminTriggerScrapeHandler(scrapeGuilds, "Guild"))
 	adminRouter.HandleFunc("/scrape/zeny", adminTriggerScrapeHandler(scrapeZeny, "Zeny"))
 	adminRouter.HandleFunc("/scrape/mvp", adminTriggerScrapeHandler(scrapeMvpKills, "MVP"))
-	adminRouter.HandleFunc("/scrape/rms-cache", adminTriggerScrapeHandler(runFullRMSCacheJob, "RMS-Cache-Refresh"))
+	// --- MODIFICATION: Removed the admin trigger for rms-cache ---
+	// adminRouter.HandleFunc("/scrape/rms-cache", adminTriggerScrapeHandler(runFullRMSCacheJob, "RMS-Cache-Refresh"))
+	// --- END MODIFICATION ---
 
 	// Apply the basicAuth middleware to the entire admin router
 	// Note the trailing slash on "/admin/" is important for sub-path matching

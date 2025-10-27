@@ -239,14 +239,20 @@ func getCombinedItemIDs(searchQuery string) ([]int, error) {
 		defer wg.Done()
 		var ids []int
 
+		// --- MODIFICATION: Query internal_item_db ---
 		query := `
 			SELECT item_id FROM (
 				SELECT DISTINCT item_id FROM items WHERE name_of_the_item LIKE ? AND item_id > 0
 				UNION
-				SELECT item_id FROM rms_item_cache WHERE name_pt LIKE ?
+				SELECT item_id FROM internal_item_db WHERE name LIKE ?
+				UNION
+				SELECT item_id FROM internal_item_db WHERE name_pt LIKE ?
 			)`
 
-		rows, err := db.Query(query, "%"+searchQuery+"%", "%"+searchQuery+"%")
+		likeQuery := "%" + searchQuery + "%"
+		rows, err := db.Query(query, likeQuery, likeQuery, likeQuery)
+		// --- END MODIFICATION ---
+
 		if err != nil {
 			log.Printf("[W] [HTTP] Concurrent local ID search failed for '%s': %v", searchQuery, err)
 			localIDsChan <- []int{}
@@ -263,17 +269,19 @@ func getCombinedItemIDs(searchQuery string) ([]int, error) {
 	}()
 
 	wg.Wait()
+	// --- THIS IS THE FIX ---
+	// Read the results from the channels *after* wg.Wait()
+	scrapedIDs := <-scrapedIDsChan
+	localIDs := <-localIDsChan
+	// --- END FIX ---
 	close(scrapedIDsChan)
 	close(localIDsChan)
 
-	scrapedIDs := <-scrapedIDsChan
-	localIDs := <-localIDsChan
-
 	combinedIDs := make(map[int]struct{})
-	for _, id := range scrapedIDs {
+	for _, id := range scrapedIDs { // Now 'scrapedIDs' is defined
 		combinedIDs[id] = struct{}{}
 	}
-	for _, id := range localIDs {
+	for _, id := range localIDs { // Now 'localIDs' is defined
 		combinedIDs[id] = struct{}{}
 	}
 
@@ -290,7 +298,9 @@ func getCombinedItemIDs(searchQuery string) ([]int, error) {
 
 func getItemTypeTabs() []ItemTypeTab {
 	var itemTypes []ItemTypeTab
-	rows, err := db.Query("SELECT DISTINCT item_type FROM rms_item_cache WHERE item_type IS NOT NULL AND item_type != '' ORDER BY item_type ASC")
+	// --- MODIFICATION: Query internal_item_db (using the 'type' column) ---
+	rows, err := db.Query("SELECT DISTINCT type FROM internal_item_db WHERE type IS NOT NULL AND type != '' ORDER BY type ASC")
+	// --- END MODIFICATION ---
 	if err != nil {
 		log.Printf("[W] [HTTP] Could not query for item types: %v", err)
 		return itemTypes
@@ -303,7 +313,40 @@ func getItemTypeTabs() []ItemTypeTab {
 			log.Printf("[W] [HTTP] Failed to scan item type: %v", err)
 			continue
 		}
-		itemTypes = append(itemTypes, mapItemTypeToTabData(itemType))
+		// --- MODIFICATION: The mapItemTypeToTabData function expects "CamelCase"
+		// The internal_item_db stores "Usable", "Etc", "Weapon", "Armor".
+		// We will map these.
+		var mappedType string
+		switch strings.ToLower(itemType) {
+		case "healing":
+			mappedType = "Healing Item"
+		case "usable":
+			mappedType = "Usable Item"
+		case "etc":
+			mappedType = "Miscellaneous"
+		case "ammo":
+			mappedType = "Ammunition"
+		case "card":
+			mappedType = "Card"
+		case "petegg":
+			mappedType = "Monster Egg"
+		case "petarmor":
+			mappedType = "Pet Armor"
+		case "petequip":
+			mappedType = "Pet Armor"
+		case "weapon":
+			mappedType = "Weapon"
+		case "armor":
+			mappedType = "Armor"
+		case "shadowgear":
+			mappedType = "Armor" // Grouping shadow gear with armor
+		case "cash":
+			mappedType = "Cash Shop Item"
+		default:
+			mappedType = itemType // Fallback
+		}
+		itemTypes = append(itemTypes, mapItemTypeToTabData(mappedType))
+		// --- END MODIFICATION ---
 	}
 	return itemTypes
 }
@@ -460,10 +503,12 @@ func summaryHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var params []interface{}
+	// --- MODIFICATION: Join internal_item_db ---
 	baseQuery := `
 		FROM items i
-		LEFT JOIN rms_item_cache rms ON i.item_id = rms.item_id
+		LEFT JOIN internal_item_db local_db ON i.item_id = local_db.item_id
 	`
+	// --- END MODIFICATION ---
 	var whereConditions []string
 
 	if searchClause, searchParams, err := buildItemSearchClause(searchQuery, "i"); err != nil {
@@ -475,8 +520,36 @@ func summaryHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if selectedType != "" {
-		whereConditions = append(whereConditions, "rms.item_type = ?")
-		params = append(params, selectedType)
+		// --- MODIFICATION: Query internal_item_db's 'type' column ---
+		// We must map the "pretty name" from the tab back to the DB value
+		var dbType string
+		switch selectedType {
+		case "Healing Item":
+			dbType = "Healing"
+		case "Usable Item":
+			dbType = "Usable"
+		case "Miscellaneous":
+			dbType = "Etc"
+		case "Ammunition":
+			dbType = "Ammo"
+		case "Card":
+			dbType = "Card"
+		case "Monster Egg":
+			dbType = "PetEgg"
+		case "Pet Armor":
+			dbType = "PetArmor" // Note: This might miss 'PetEquip'
+		case "Weapon":
+			dbType = "Weapon"
+		case "Armor":
+			dbType = "Armor" // Note: This might miss 'ShadowGear'
+		case "Cash Shop Item":
+			dbType = "Cash"
+		default:
+			dbType = selectedType
+		}
+		whereConditions = append(whereConditions, "local_db.type = ?")
+		// --- END MODIFICATION ---
+		params = append(params, dbType)
 	}
 
 	whereClause := ""
@@ -489,9 +562,9 @@ func summaryHandler(w http.ResponseWriter, r *http.Request) {
 		FROM (
 			SELECT 1
 			FROM items i
-			LEFT JOIN rms_item_cache rms ON i.item_id = rms.item_id
+			LEFT JOIN internal_item_db local_db ON i.item_id = local_db.item_id
 			%s
-			GROUP BY i.name_of_the_item, rms.name_pt
+			GROUP BY i.name_of_the_item, local_db.name_pt
 			%s
 		) AS UniqueItems
 	`
@@ -510,16 +583,18 @@ func summaryHandler(w http.ResponseWriter, r *http.Request) {
 		totalUniqueItems = 0
 	}
 
+	// --- MODIFICATION: Select from local_db ---
 	selectClause := `
         SELECT
             i.name_of_the_item,
-            rms.name_pt,
+            local_db.name_pt,
             MIN(i.item_id) as item_id,
             MIN(CASE WHEN i.is_available = 1 THEN CAST(REPLACE(i.price, ',', '') AS INTEGER) ELSE NULL END) as lowest_price,
             MAX(CASE WHEN i.is_available = 1 THEN CAST(REPLACE(i.price, ',', '') AS INTEGER) ELSE NULL END) as highest_price,
             SUM(CASE WHEN i.is_available = 1 THEN 1 ELSE 0 END) as listing_count
     `
-	groupByClause := " GROUP BY i.name_of_the_item, rms.name_pt"
+	groupByClause := " GROUP BY i.name_of_the_item, local_db.name_pt"
+	// --- END MODIFICATION ---
 
 	if !showAll {
 		havingClause = " HAVING listing_count > 0"
@@ -648,18 +723,49 @@ func fullListHandler(w http.ResponseWriter, r *http.Request) {
 		queryParams = append(queryParams, storeNameQuery)
 	}
 	if selectedType != "" {
-		whereConditions = append(whereConditions, "rms.item_type = ?")
-		queryParams = append(queryParams, selectedType)
+		// --- MODIFICATION: Query internal_item_db's 'type' column ---
+		// (Duplicating the logic from summaryHandler)
+		var dbType string
+		switch selectedType {
+		case "Healing Item":
+			dbType = "Healing"
+		case "Usable Item":
+			dbType = "Usable"
+		case "Miscellaneous":
+			dbType = "Etc"
+		case "Ammunition":
+			dbType = "Ammo"
+		case "Card":
+			dbType = "Card"
+		case "Monster Egg":
+			dbType = "PetEgg"
+		case "Pet Armor":
+			dbType = "PetArmor"
+		case "Weapon":
+			dbType = "Weapon"
+		case "Armor":
+			dbType = "Armor"
+		case "Cash Shop Item":
+			dbType = "Cash"
+		default:
+			dbType = selectedType
+		}
+		whereConditions = append(whereConditions, "local_db.type = ?")
+		// --- END MODIFICATION ---
+		queryParams = append(queryParams, dbType)
 	}
 	if !showAll {
 		whereConditions = append(whereConditions, "i.is_available = 1")
 	}
 
+	// --- MODIFICATION: Join internal_item_db ---
 	baseQuery := `
-		SELECT i.id, i.name_of_the_item, rms.name_pt, i.item_id, i.quantity, i.price, i.store_name, i.seller_name, i.date_and_time_retrieved, i.map_name, i.map_coordinates, i.is_available
+		SELECT i.id, i.name_of_the_item, local_db.name_pt, i.item_id, i.quantity, i.price, i.store_name, i.seller_name, i.date_and_time_retrieved, i.map_name, i.map_coordinates, i.is_available
 		FROM items i 
-		LEFT JOIN rms_item_cache rms ON i.item_id = rms.item_id
+		LEFT JOIN internal_item_db local_db ON i.item_id = local_db.item_id
 	`
+	// --- END MODIFICATION ---
+
 	whereClause := ""
 	if len(whereConditions) > 0 {
 		whereClause = "WHERE " + strings.Join(whereConditions, " AND ")
@@ -732,7 +838,9 @@ func activityHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var totalEvents int
-	countQuery := fmt.Sprintf("SELECT COUNT(*) FROM market_events me LEFT JOIN rms_item_cache rms ON me.item_id = rms.item_id %s", whereClause)
+	// --- MODIFICATION: Join internal_item_db ---
+	countQuery := fmt.Sprintf("SELECT COUNT(*) FROM market_events me LEFT JOIN internal_item_db local_db ON me.item_id = local_db.item_id %s", whereClause)
+	// --- END MODIFICATION ---
 	if err := db.QueryRow(countQuery, params...).Scan(&totalEvents); err != nil {
 		log.Printf("[E] [HTTP] Could not count market events: %v", err)
 		http.Error(w, "Could not count market events", http.StatusInternalServerError)
@@ -740,16 +848,20 @@ func activityHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	pagination := newPaginationData(r, totalEvents, eventsPerPage)
+	// --- MODIFICATION: Join internal_item_db ---
 	query := fmt.Sprintf(`
-        SELECT me.event_timestamp, me.event_type, me.item_name, rms.name_pt, me.item_id, me.details
+        SELECT me.event_timestamp, me.event_type, me.item_name, local_db.name_pt, me.item_id, me.details
         FROM market_events me
-        LEFT JOIN rms_item_cache rms ON me.item_id = rms.item_id %s
+        LEFT JOIN internal_item_db local_db ON me.item_id = local_db.item_id %s
         ORDER BY me.event_timestamp DESC LIMIT ? OFFSET ?`, whereClause)
+	// --- END MODIFICATION ---
 
 	finalParams := append(params, eventsPerPage, pagination.Offset)
 	eventRows, err := db.Query(query, finalParams...)
 	if err != nil {
+		// --- THIS IS THE FIX ---
 		log.Printf("[E] [HTTP] Could not query for market events: %v", err)
+		// --- END FIX ---
 		http.Error(w, "Could not query for market events", http.StatusInternalServerError)
 		return
 	}
@@ -797,23 +909,28 @@ func itemHistoryHandler(w http.ResponseWriter, r *http.Request) {
 
 	var itemID int
 	var itemNamePT sql.NullString
+	// --- MODIFICATION: Join internal_item_db ---
 	err := db.QueryRow(`
-		SELECT i.item_id, rms.name_pt 
+		SELECT i.item_id, local_db.name_pt 
 		FROM items i 
-		LEFT JOIN rms_item_cache rms ON i.item_id = rms.item_id
+		LEFT JOIN internal_item_db local_db ON i.item_id = local_db.item_id
 		WHERE i.name_of_the_item = ? AND i.item_id > 0 
 		LIMIT 1`, itemName).Scan(&itemID, &itemNamePT)
+	// --- END MODIFICATION ---
 	if err != nil {
 		log.Printf("[D] [HTTP/History] Step 1: Initial item ID/NamePT query failed for '%s': %v", itemName, err)
 	} else {
 		log.Printf("[D] [HTTP/History] Step 1: Found ItemID: %d, NamePT: '%s'", itemID, itemNamePT.String)
 	}
 
+	// --- MODIFICATION: This now calls the new getItemDetailsFromCache (from rms.go)
+	// which queries internal_item_db.
 	rmsItemDetails := fetchItemDetails(itemID)
+	// --- END MODIFICATION ---
 	if rmsItemDetails != nil {
-		log.Printf("[D] [HTTP/History] Step 2: Successfully fetched RMS details for ID %d.", itemID)
+		log.Printf("[D] [HTTP/History] Step 2: Successfully fetched details from internal_item_db for ID %d.", itemID)
 	} else {
-		log.Printf("[D] [HTTP/History] Step 2: No RMS details found for ID %d.", itemID)
+		log.Printf("[D] [HTTP/History] Step 2: No details found in internal_item_db for ID %d.", itemID)
 	}
 
 	currentListings, err := fetchCurrentListings(itemName)
@@ -901,35 +1018,23 @@ func itemHistoryHandler(w http.ResponseWriter, r *http.Request) {
 // I am also including the helper functions that were extracted in the refactor,
 // as they are called by the main handler.
 
-// fetchItemDetails attempts to get RMSItem details from cache, falling back to a live scrape.
+// fetchItemDetails attempts to get RMSItem details from the internal item DB.
 func fetchItemDetails(itemID int) *RMSItem {
 	if itemID <= 0 {
 		return nil
 	}
 
+	// --- MODIFICATION: Only query the internal_item_db. ---
+	// Fallback scraping and saving logic has been removed.
 	cachedItem, err := getItemDetailsFromCache(itemID)
 	if err == nil {
-		log.Printf("[D] [RMS] Found item %d in cache.", itemID)
-		return cachedItem // Found in cache
+		log.Printf("[D] [ItemDB] Found item %d in internal_item_db.", itemID)
+		return cachedItem // Found in local DB
 	}
-	log.Printf("[D] [RMS] Item %d not in cache, attempting scrape.", itemID)
 
-	// Not in cache, try to scrape
-	scrapedItem, scrapeErr := scrapeRMSItemDetails(itemID)
-	if scrapeErr != nil {
-		log.Printf("[D] [RMS] Scrape failed for item %d: %v", itemID, scrapeErr)
-		return nil // Scrape failed
-	}
-	log.Printf("[D] [RMS] Scrape successful for item %d.", itemID)
-
-	// Save to cache in the background
-	go func() {
-		if saveErr := saveItemDetailsToCache(scrapedItem); saveErr != nil {
-			log.Printf("[W] [RMS] Failed to save item ID %d to cache: %v", itemID, saveErr)
-		}
-	}()
-
-	return scrapedItem
+	log.Printf("[D] [ItemDB] Item %d not found in internal_item_db: %v", itemID, err)
+	return nil // Not found
+	// --- END MODIFICATION ---
 }
 
 // fetchCurrentListings gets all currently available listings for an item.
@@ -1067,16 +1172,18 @@ func fetchAllListings(itemName string, pagination PaginationData, listingsPerPag
 		return nil, 0, fmt.Errorf("failed to count all listings: %w", err)
 	}
 
+	// --- MODIFICATION: Join internal_item_db ---
 	query := `
-		SELECT i.id, i.name_of_the_item, rms.name_pt, i.item_id, i.quantity, i.price, 
+		SELECT i.id, i.name_of_the_item, local_db.name_pt, i.item_id, i.quantity, i.price, 
 		       i.store_name, i.seller_name, i.date_and_time_retrieved, i.map_name, 
 			   i.map_coordinates, i.is_available
 		FROM items i 
-		LEFT JOIN rms_item_cache rms ON i.item_id = rms.item_id 
+		LEFT JOIN internal_item_db local_db ON i.item_id = local_db.item_id 
 		WHERE i.name_of_the_item = ? 
 		ORDER BY i.is_available DESC, i.date_and_time_retrieved DESC 
 		LIMIT ? OFFSET ?;
 	`
+	// --- END MODIFICATION ---
 	// --- FIX IS HERE: Use the listingsPerPage parameter ---
 	rows, err := db.Query(query, itemName, listingsPerPage, pagination.Offset)
 	if err != nil {
@@ -1883,15 +1990,17 @@ func storeDetailHandler(w http.ResponseWriter, r *http.Request) {
 
 	var items []Item
 	if err == nil {
+		// --- MODIFICATION: Join internal_item_db ---
 		query := fmt.Sprintf(`
 			WITH RankedItems AS (
-				SELECT i.*, rms.name_pt, ROW_NUMBER() OVER(PARTITION BY i.name_of_the_item ORDER BY i.id DESC) as rn
+				SELECT i.*, local_db.name_pt, ROW_NUMBER() OVER(PARTITION BY i.name_of_the_item ORDER BY i.id DESC) as rn
 				FROM items i
-				LEFT JOIN rms_item_cache rms ON i.item_id = rms.item_id
+				LEFT JOIN internal_item_db local_db ON i.item_id = local_db.item_id
 				WHERE i.store_name = ? AND i.seller_name = ? AND i.map_name = ? AND i.map_coordinates = ?
 			)
 			SELECT id, name_of_the_item, name_pt, item_id, quantity, price, store_name, seller_name, date_and_time_retrieved, map_name, map_coordinates, is_available
 			FROM RankedItems WHERE rn = 1 %s`, orderByClause)
+		// --- END MODIFICATION ---
 
 		rows, queryErr := db.Query(query, storeName, sellerName, mapName, mapCoords)
 		if queryErr != nil {
@@ -1949,15 +2058,17 @@ func tradingPostListHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var queryParams []interface{}
+	// --- MODIFICATION: Join internal_item_db ---
 	baseQuery := `
 		SELECT
 			p.id, p.title, p.post_type, p.character_name, p.contact_info, p.created_at, p.notes,
-			i.item_name, rms.name_pt, i.item_id, i.quantity, i.price_zeny, i.price_rmt, 
+			i.item_name, local_db.name_pt, i.item_id, i.quantity, i.price_zeny, i.price_rmt, 
 			i.payment_methods, i.refinement, i.card1, i.card2, i.card3, i.card4
 		FROM trading_post_items i
 		JOIN trading_posts p ON i.post_id = p.id
-		LEFT JOIN rms_item_cache rms ON i.item_id = rms.item_id
+		LEFT JOIN internal_item_db local_db ON i.item_id = local_db.item_id
 	`
+	// --- END MODIFICATION ---
 	var whereConditions []string
 
 	if searchQuery != "" {
@@ -2059,27 +2170,21 @@ func tradingPostListHandler(w http.ResponseWriter, r *http.Request) {
 	renderTemplate(w, "trading_post.html", data)
 }
 
-// findItemIDInCache attempts to find an item ID using the local FTS cache.
-// This version includes Levenshtein distance for proximity matching.
+// findItemIDInCache attempts to find an item ID using the local item DB.
+// This version uses LIKE and Levenshtein distance for proximity matching.
 func findItemIDInCache(cleanItemName string) (sql.NullInt64, bool) {
-	terms := strings.Fields(cleanItemName)
-	for i, term := range terms {
-		if len(term) > 1 {
-			terms[i] = term + "*" // Append wildcard for FTS
-		}
-	}
-	ftsQuery := strings.Join(terms, " ")
-
+	// --- MODIFICATION: Use LIKE instead of FTS ---
+	likeQuery := "%" + strings.ReplaceAll(cleanItemName, " ", "%") + "%"
 	query := `
-		SELECT rowid, name, name_pt 
-		FROM rms_item_cache_fts 
-		WHERE rms_item_cache_fts MATCH ? 
-		ORDER BY rank 
-		LIMIT 10`
+		SELECT item_id, name, name_pt 
+		FROM internal_item_db 
+		WHERE name LIKE ? OR name_pt LIKE ?
+		LIMIT 10` // Limit to 10 potential matches
 
-	rows, err := db.Query(query, ftsQuery)
+	rows, err := db.Query(query, likeQuery, likeQuery)
+	// --- END MODIFICATION ---
 	if err != nil {
-		log.Printf("[W] [ItemID] Error during FTS query for '%s': %v", ftsQuery, err)
+		log.Printf("[W] [ItemID] Error during LIKE query for '%s': %v", likeQuery, err)
 		return sql.NullInt64{Valid: false}, false
 	}
 	defer rows.Close()
@@ -2093,7 +2198,7 @@ func findItemIDInCache(cleanItemName string) (sql.NullInt64, bool) {
 
 	for rows.Next() {
 		var match potentialMatch
-		var namePT sql.NullString // FTS table stores original name_pt
+		var namePT sql.NullString
 		if err := rows.Scan(&match.id, &match.name, &namePT); err == nil {
 			if namePT.Valid {
 				match.namePT = namePT.String
@@ -2102,39 +2207,30 @@ func findItemIDInCache(cleanItemName string) (sql.NullInt64, bool) {
 		}
 	}
 
-	// if len(potentialMatches) == 0 {
-	// 	// No FTS matches at all
-	// 	return sql.NullInt64{Valid: false}, false
-	// }
-
 	if len(potentialMatches) == 1 {
 		itemID := potentialMatches[0].id
-		log.Printf("[D] [ItemID] Found unique local FTS match for '%s': ID %d", cleanItemName, itemID)
+		log.Printf("[D] [ItemID] Found unique local LIKE match for '%s': ID %d", cleanItemName, itemID)
 		return sql.NullInt64{Int64: itemID, Valid: true}, true
 	}
 
-	// FTS returned multiple results (len > 1), so we need to disambiguate.
-	// We will normalize the search query and match names to lowercase for comparison.
+	// Disambiguation logic (Levenshtein) remains the same as before
 	lowerCleanItemName := strings.ToLower(cleanItemName)
 
-	// 1. Check for a perfect match first (fastest)
+	// 1. Check for a perfect match first
 	for _, match := range potentialMatches {
-		// Compare against lowercase, normalized names
 		if strings.ToLower(match.name) == lowerCleanItemName || strings.ToLower(match.namePT) == lowerCleanItemName {
-			log.Printf("[D] [ItemID] Found perfect match '%s' (ID %d) within %d FTS results.", cleanItemName, match.id, len(potentialMatches))
+			log.Printf("[D] [ItemID] Found perfect match '%s' (ID %d) within %d LIKE results.", cleanItemName, match.id, len(potentialMatches))
 			return sql.NullInt64{Int64: match.id, Valid: true}, true
 		}
 	}
 
 	// 2. No perfect match, find the closest Levenshtein distance.
-	// Only accept matches with a distance <= maxLevenshteinDistance.
 	const maxLevenshteinDistance = 2
 
 	bestMatchID := int64(-1)
 	bestMatchName := ""
-	minDistance := 100 // Initialize with a high number
+	minDistance := 100
 
-	// --- ADDED LOGS ---
 	log.Printf("[D] [ItemID/Levenshtein] No perfect match for '%s'. Calculating proximity for %d candidates.", cleanItemName, len(potentialMatches))
 
 	for _, match := range potentialMatches {
@@ -2157,18 +2253,16 @@ func findItemIDInCache(cleanItemName string) (sql.NullInt64, bool) {
 			}
 		}
 
-		log.Print(logMsg) // Print the comparison log
+		log.Print(logMsg)
 
-		// Check if this is the new best match
 		if currentMinDist < minDistance {
 			minDistance = currentMinDist
 			bestMatchID = match.id
-			bestMatchName = currentBestName // Store the name that matched
+			bestMatchName = currentBestName
 		}
 	}
 
 	log.Printf("[DF] [ItemID/Levenshtein] Best proximity match for '%s' is '%s' (ID %d) with distance %d.", cleanItemName, bestMatchName, bestMatchID, minDistance)
-	// --- END ADDED LOGS ---
 
 	// 3. Check if the best match is within our acceptable threshold
 	if bestMatchID != -1 && minDistance <= maxLevenshteinDistance {
@@ -2176,15 +2270,17 @@ func findItemIDInCache(cleanItemName string) (sql.NullInt64, bool) {
 		return sql.NullInt64{Int64: bestMatchID, Valid: true}, true
 	}
 
-	// 4. No close proximity match, fall back to "card" logic
+	// 4. Fallback for cards (unchanged)
 	if strings.Contains(lowerCleanItemName, "card") || strings.Contains(lowerCleanItemName, "carta") {
-		itemID := potentialMatches[0].id // Trust the first result from FTS rank
-		log.Printf("[D] [ItemID] Found %d FTS matches for '%s'. Proximity match rejected (dist %d > %d). Using first result (ID %d) due to 'card'/'carta' keyword.", len(potentialMatches), cleanItemName, minDistance, maxLevenshteinDistance, itemID)
-		return sql.NullInt64{Int64: itemID, Valid: true}, true
+		if len(potentialMatches) > 0 {
+			itemID := potentialMatches[0].id // Trust the first result from LIKE
+			log.Printf("[D] [ItemID] Found %d LIKE matches for '%s'. Proximity match rejected (dist %d > %d). Using first result (ID %d) due to 'card'/'carta' keyword.", len(potentialMatches), cleanItemName, minDistance, maxLevenshteinDistance, itemID)
+			return sql.NullInt64{Int64: itemID, Valid: true}, true
+		}
 	}
 
 	// 5. All ambiguity checks failed.
-	log.Printf("[D] [ItemID] Found %d ambiguous FTS matches for '%s'. Proximity match rejected (dist %d > %d). Proceeding to online search.", len(potentialMatches), cleanItemName, minDistance, maxLevenshteinDistance)
+	log.Printf("[D] [ItemID] Found %d ambiguous LIKE matches for '%s'. Proximity match rejected (dist %d > %d). Proceeding to online search.", len(potentialMatches), cleanItemName, minDistance, maxLevenshteinDistance)
 	return sql.NullInt64{Valid: false}, false
 }
 
@@ -2193,17 +2289,15 @@ func findItemIDOnline(cleanItemName string, slots int) (sql.NullInt64, bool) {
 	log.Printf("[D] [ItemID] No local FTS match for '%s'. Initiating online search...", cleanItemName)
 
 	var wg sync.WaitGroup
-	var rmsResults, rdbResults []ItemSearchResult
-	var rmsErr, rodbErr error
+	// --- MODIFICATION: Removed rmsResults and rmsErr ---
+	var rdbResults []ItemSearchResult
+	var rodbErr error
 
-	wg.Add(2)
-	go func() {
-		defer wg.Done()
-		rmsResults, rmsErr = scrapeRMSItemSearch(cleanItemName)
-		if rmsErr != nil {
-			log.Printf("[W] [ItemID] RMS Search failed for '%s': %v", cleanItemName, rmsErr)
-		}
-	}()
+	// --- MODIFICATION: Removed one item from wg.Add() ---
+	wg.Add(1)
+	// --- MODIFICATION: Removed goroutine for scrapeRMSItemSearch ---
+	// go func() { ... }()
+	// --- END MODIFICATION ---
 	go func() {
 		defer wg.Done()
 		rdbResults, rodbErr = scrapeRODatabaseSearch(cleanItemName, slots)
@@ -2214,11 +2308,7 @@ func findItemIDOnline(cleanItemName string, slots int) (sql.NullInt64, bool) {
 	wg.Wait()
 
 	combinedIDs := make(map[int]string)
-	if rmsResults != nil {
-		for _, res := range rmsResults {
-			combinedIDs[res.ID] = res.Name
-		}
-	}
+	// --- MODIFICATION: Removed loop for rmsResults ---
 	if rdbResults != nil {
 		for _, res := range rdbResults {
 			if _, ok := combinedIDs[res.ID]; !ok {
@@ -2226,16 +2316,19 @@ func findItemIDOnline(cleanItemName string, slots int) (sql.NullInt64, bool) {
 			}
 		}
 	}
+	// --- END MODIFICATION ---
 
 	if len(combinedIDs) == 1 {
 		var foundID int
-		var foundName string
+		// var foundName string // No longer needed
 		for id, name := range combinedIDs {
 			foundID = id
-			foundName = name
+			_ = name // foundName = name
 		}
 		log.Printf("[D] [ItemID] Found unique ONLINE match for '%s': ID %d", cleanItemName, foundID)
-		go scrapeAndCacheItemIfNotExists(foundID, foundName) // Cache in background
+		// --- MODIFICATION: Removed background caching ---
+		// go scrapeAndCacheItemIfNotExists(foundID, foundName) // This function no longer exists
+		// --- END MODIFICATION ---
 		return sql.NullInt64{Int64: int64(foundID), Valid: true}, true
 	}
 
@@ -2247,7 +2340,9 @@ func findItemIDOnline(cleanItemName string, slots int) (sql.NullInt64, bool) {
 
 			if name == cleanItemName || (nameWithoutSlots != "" && nameWithoutSlots == cleanItemName) {
 				log.Printf("[D] [ItemID] Found perfect match (exact or slot-stripped) '%s' (ID %d) within ONLINE results.", cleanItemName, id)
-				go scrapeAndCacheItemIfNotExists(id, name) // Cache in background
+				// --- MODIFICATION: Removed background caching ---
+				// go scrapeAndCacheItemIfNotExists(id, name) // This function no longer exists
+				// --- END MODIFICATION ---
 				return sql.NullInt64{Int64: int64(id), Valid: true}, true
 			}
 		}
@@ -2256,14 +2351,16 @@ func findItemIDOnline(cleanItemName string, slots int) (sql.NullInt64, bool) {
 		lowerCleanItemName := strings.ToLower(cleanItemName)
 		if strings.Contains(lowerCleanItemName, "card") || strings.Contains(lowerCleanItemName, "carta") {
 			var foundID int
-			var foundName string
+			// var foundName string // No longer needed
 			for id, name := range combinedIDs {
 				foundID = id
-				foundName = name
-				break // Get the first one
+				_ = name // foundName = name
+				break    // Get the first one
 			}
 			log.Printf("[D] [ItemID] Found %d ONLINE matches for '%s'. Using first result (ID %d) due to 'card'/'carta' keyword.", len(combinedIDs), cleanItemName, foundID)
-			go scrapeAndCacheItemIfNotExists(foundID, foundName) // Cache in background
+			// --- MODIFICATION: Removed background caching ---
+			// go scrapeAndCacheItemIfNotExists(foundID, foundName) // This function no longer exists
+			// --- END MODIFICATION ---
 			return sql.NullInt64{Int64: int64(foundID), Valid: true}, true
 		}
 

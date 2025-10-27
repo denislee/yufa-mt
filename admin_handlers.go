@@ -59,7 +59,9 @@ func getDashboardStats(stats *AdminDashboardData) error {
 	g.Go(runQuery("SELECT COUNT(*) FROM items", &stats.TotalItems))
 	g.Go(runQuery("SELECT COUNT(*) FROM items WHERE is_available = 1", &stats.AvailableItems))
 	g.Go(runQuery("SELECT COUNT(DISTINCT name_of_the_item) FROM items", &stats.UniqueItems))
-	g.Go(runQuery("SELECT COUNT(*) FROM rms_item_cache", &stats.CachedItems))
+	// --- MODIFICATION: Query internal_item_db ---
+	g.Go(runQuery("SELECT COUNT(*) FROM internal_item_db", &stats.CachedItems))
+	// --- END MODIFICATION ---
 	g.Go(runQuery("SELECT COUNT(*) FROM characters", &stats.TotalCharacters))
 	g.Go(runQuery("SELECT COUNT(*) FROM guilds", &stats.TotalGuilds))
 	g.Go(runQuery("SELECT COUNT(*) FROM player_history", &stats.PlayerHistoryEntries))
@@ -220,15 +222,17 @@ func performRMSCacheSearch(r *http.Request, stats *AdminDashboardData) {
 		return
 	}
 
-	ftsQuery := rmsQuery + "*"
+	// --- MODIFICATION: Use LIKE on internal_item_db ---
+	likeQuery := "%" + strings.ReplaceAll(rmsQuery, " ", "%") + "%"
 	searchRows, err := db.Query(`
-		SELECT rowid, name, name_pt 
-		FROM rms_item_cache_fts 
-		WHERE rms_item_cache_fts MATCH ? 
-		ORDER BY rank 
-		LIMIT 50`, ftsQuery)
+		SELECT item_id, name, name_pt 
+		FROM internal_item_db 
+		WHERE name LIKE ? OR name_pt LIKE ?
+		ORDER BY item_id 
+		LIMIT 50`, likeQuery, likeQuery)
+	// --- END MODIFICATION ---
 	if err != nil {
-		log.Printf("[W] [Admin/Stats] Admin RMS Cache FTS query error: %v", err)
+		log.Printf("[W] [Admin/Stats] Admin Internal DB query error: %v", err)
 		return
 	}
 	defer searchRows.Close()
@@ -251,17 +255,16 @@ func performRMSLiveSearch(r *http.Request, stats *AdminDashboardData) {
 
 	log.Printf("[I] [Admin] Admin performing live search for: '%s'", rmsLiveSearchQuery)
 	var wg sync.WaitGroup
-	var rmsResults, rodbResults []ItemSearchResult
-	var rmsErr, rodbErr error
+	// --- MODIFICATION: Removed rmsResults and rmsErr ---
+	var rodbResults []ItemSearchResult
+	var rodbErr error
 
-	wg.Add(2)
-	go func() {
-		defer wg.Done()
-		rmsResults, rmsErr = scrapeRMSItemSearch(rmsLiveSearchQuery)
-		if rmsErr != nil {
-			log.Printf("[W] [Admin/Search] Admin RMS Live Search (RMS) query error: %v", rmsErr)
-		}
-	}()
+	// --- MODIFICATION: Removed one item from wg.Add() ---
+	wg.Add(1)
+	// --- MODIFICATION: Removed goroutine for scrapeRMSItemSearch ---
+	// go func() { ... }()
+	// --- END MODIFICATION ---
+
 	go func() {
 		defer wg.Done()
 		rodbResults, rodbErr = scrapeRODatabaseSearch(rmsLiveSearchQuery, 0)
@@ -274,14 +277,7 @@ func performRMSLiveSearch(r *http.Request, stats *AdminDashboardData) {
 	combinedResults := make([]ItemSearchResult, 0)
 	seenIDs := make(map[int]bool)
 
-	if rmsResults != nil {
-		for _, res := range rmsResults {
-			if !seenIDs[res.ID] {
-				combinedResults = append(combinedResults, res)
-				seenIDs[res.ID] = true
-			}
-		}
-	}
+	// --- MODIFICATION: Removed loop for rmsResults ---
 	if rodbResults != nil {
 		for _, res := range rodbResults {
 			if !seenIDs[res.ID] {
@@ -290,6 +286,7 @@ func performRMSLiveSearch(r *http.Request, stats *AdminDashboardData) {
 			}
 		}
 	}
+	// --- END MODIFICATION ---
 
 	stats.RMSLiveSearchResults = combinedResults
 	log.Printf("[I] [Admin] Admin live search for '%s' found %d combined results.", rmsLiveSearchQuery, len(combinedResults))
@@ -371,30 +368,11 @@ func adminSaveCacheEntryHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := r.ParseForm(); err != nil {
-		http.Redirect(w, r, "/admin?msg=Error+parsing+form.", http.StatusSeeOther)
-		return
-	}
-
-	itemIDStr := r.FormValue("item_id")
-	itemName := r.FormValue("item_name")
-	itemID, err := strconv.Atoi(itemIDStr)
-	if err != nil {
-		http.Redirect(w, r, "/admin?msg=Error:+Invalid+item+ID.", http.StatusSeeOther)
-		return
-	}
-
-	if itemID <= 0 {
-		http.Redirect(w, r, "/admin?msg=Error:+Invalid+item+ID.", http.StatusSeeOther)
-		return
-	}
-
-	go scrapeAndCacheItemIfNotExists(itemID, itemName)
-
-	msg := fmt.Sprintf("Caching+for+item+%d+(%s)+started+in+background.", itemID, url.QueryEscape(itemName))
-	log.Printf("[I] [Admin] Admin triggered manual cache for item ID %d (%s).", itemID, itemName)
-
-	http.Redirect(w, r, "/admin?rms_live_search="+url.QueryEscape(r.FormValue("rms_live_search"))+"&msg="+msg, http.StatusSeeOther)
+	// --- MODIFICATION: This action is no longer supported ---
+	log.Printf("[W] [Admin] Admin attempted to use 'Save Cache Entry', which is disabled (internal_item_db is YAML-based).")
+	msg := "Error:+Cannot+manually+save+entry.+Item+database+is+now+populated+from+YAML+files."
+	http.Redirect(w, r, "/admin?msg="+msg, http.StatusSeeOther)
+	// --- END MODIFICATION ---
 }
 
 func adminDeleteCacheEntryHandler(w http.ResponseWriter, r *http.Request) {
@@ -403,41 +381,11 @@ func adminDeleteCacheEntryHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := r.ParseForm(); err != nil {
-		http.Redirect(w, r, "/admin?msg=Error+parsing+form.", http.StatusSeeOther)
-		return
-	}
-
-	itemIDs := r.Form["item_id[]"]
-	if len(itemIDs) == 0 {
-		http.Redirect(w, r, "/admin?msg=Error:+No+items+selected+for+deletion.", http.StatusSeeOther)
-		return
-	}
-
-	query := "DELETE FROM rms_item_cache WHERE item_id IN (?" + strings.Repeat(",?", len(itemIDs)-1) + ")"
-
-	args := make([]interface{}, len(itemIDs))
-	for i, idStr := range itemIDs {
-		args[i] = idStr
-	}
-
-	// --- THE FIX IS HERE ---
-	rmsCacheMutex.Lock()
-	result, err := db.Exec(query, args...)
-	rmsCacheMutex.Unlock()
-	// --- END FIX ---
-
-	if err != nil {
-		log.Printf("[E] [Admin] Failed to delete RMS cache entries: %v", err)
-		http.Redirect(w, r, "/admin?msg=Database+error+while+deleting+entries.", http.StatusSeeOther)
-		return
-	}
-
-	rowsAffected, _ := result.RowsAffected()
-	msg := fmt.Sprintf("Successfully+deleted+%d+cache+entries.", rowsAffected)
-	log.Printf("[I] [Admin] Admin deleted %d RMS cache entries: %v", rowsAffected, itemIDs)
-
+	// --- MODIFICATION: This action is no longer supported ---
+	log.Printf("[WW] [Admin] Admin attempted to use 'Delete Cache Entry', which is disabled (internal_item_db is YAML-based).")
+	msg := "Error:+Cannot+manually+delete+entry.+Item+database+is+now+populated+from+YAML+files."
 	http.Redirect(w, r, "/admin?msg="+msg, http.StatusSeeOther)
+	// --- END MODIFICATION ---
 }
 
 func adminHandler(w http.ResponseWriter, r *http.Request) {
@@ -519,44 +467,44 @@ func adminCacheActionHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if err := r.ParseForm(); err != nil {
+		http.Redirect(w, r, "/admin?msg=Error+parsing+form.", http.StatusSeeOther)
+		return
+	}
+
 	action := r.FormValue("action")
 	var msg string
 
-	// --- THE FIX IS HERE ---
-	// Lock for all write actions (clear, drop)
-	rmsCacheMutex.Lock()
-	// --- END FIX ---
-
+	// --- MODIFICATION: Target internal_item_db ---
+	// Note: No mutex is needed here as this is an admin action
+	// and we are not using rmsCacheMutex anymore.
 	switch action {
 	case "clear":
-		log.Println("[I] [Admin] Admin triggered cache clear.")
-		_, err := db.Exec("DELETE FROM rms_item_cache")
+		log.Println("[I] [Admin] Admin triggered internal item DB clear.")
+		_, err := db.Exec("DELETE FROM internal_item_db")
 		if err != nil {
-			msg = "Error+clearing+cache."
-			log.Printf("[E] [Admin] Failed to clear RMS cache: %v", err)
+			msg = "Error+clearing+internal+item+db."
+			log.Printf("[E] [Admin] Failed to clear internal_item_db: %v", err)
 		} else {
-			msg = "Item+cache+cleared+successfully."
+			msg = "Internal+item+db+cleared+successfully."
 		}
 	case "drop":
-		log.Println("[I] [Admin] Admin triggered cache table drop.")
-		_, err := db.Exec("DROP TABLE IF EXISTS rms_item_cache")
+		log.Println("[I] [Admin] Admin triggered internal item DB table drop.")
+		_, err := db.Exec("DROP TABLE IF EXISTS internal_item_db")
 		if err != nil {
-			msg = "Error+dropping+cache+table."
-			log.Printf("[E] [Admin] Failed to drop RMS cache table: %v", err)
+			msg = "Error+dropping+internal+item+db+table."
+			log.Printf("[E] [Admin] Failed to drop internal_item_db table: %v", err)
 		} else {
-			msg = "Item+cache+table+dropped+successfully.+Restart+app+to+recreate."
+			msg = "Internal+item+db+table+dropped+successfully.+Restart+app+to+recreate."
 		}
 	case "repopulate":
-		log.Println("[I] [Admin] Admin triggered cache repopulation.")
-		go populateMissingCachesOnStartup()
-		msg = "Cache+repopulation+started+in+background."
+		log.Println("[I] [Admin] Admin triggered internal item DB repopulation from YAMLs.")
+		go populateItemDBOnStartup()
+		msg = "Internal+item+db+repopulation+from+YAMLs+started+in+background."
 	default:
 		msg = "Unknown+cache+action."
 	}
-
-	// --- THE FIX IS HERE ---
-	rmsCacheMutex.Unlock()
-	// --- END FIX ---
+	// --- END MODIFICATION ---
 
 	http.Redirect(w, r, "/admin?msg="+msg, http.StatusSeeOther)
 }
@@ -903,10 +851,15 @@ func adminShowEditTradingPostPage(w http.ResponseWriter, r *http.Request, postID
 	}
 	post.CreatedAt = createdAtStr
 
+	// --- MODIFICATION: Join internal_item_db ---
 	itemRows, err := db.Query(`
-		SELECT item_name, item_id, quantity, price_zeny, price_rmt, payment_methods, refinement, slots, card1, card2, card3, card4 
-		FROM trading_post_items WHERE post_id = ?
+		SELECT i.item_name, i.item_id, i.quantity, i.price_zeny, i.price_rmt, i.payment_methods, 
+		       i.refinement, i.slots, i.card1, i.card2, i.card3, i.card4, local_db.name_pt
+		FROM trading_post_items i
+		LEFT JOIN internal_item_db local_db ON i.item_id = local_db.item_id
+		WHERE i.post_id = ?
 	`, postID)
+	// --- END MODIFICATION ---
 	if err != nil {
 		http.Error(w, "Database item query failed", http.StatusInternalServerError)
 		return
@@ -917,7 +870,7 @@ func adminShowEditTradingPostPage(w http.ResponseWriter, r *http.Request, postID
 		var item TradingPostItem
 		if err := itemRows.Scan(
 			&item.ItemName, &item.ItemID, &item.Quantity, &item.PriceZeny, &item.PriceRMT, &item.PaymentMethods,
-			&item.Refinement, &item.Slots, &item.Card1, &item.Card2, &item.Card3, &item.Card4,
+			&item.Refinement, &item.Slots, &item.Card1, &item.Card2, &item.Card3, &item.Card4, &item.NamePT, // Added NamePT
 		); err != nil {
 			log.Printf("[W] [Admin/Edit] Failed to scan trading post item row for edit: %v", err)
 			continue

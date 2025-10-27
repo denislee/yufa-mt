@@ -255,11 +255,11 @@ func initDB(filepath string) (*sql.DB, error) {
 
 	// Sequentially execute all table creation queries
 	queries := map[string]string{
-		"items":                 createItemsTableSQL,
-		"market_events":         createEventsTableSQL,
-		"scrape_history":        createHistoryTableSQL,
-		"rms_item_cache":        createRMSCacheTableSQL,
-		"rms_item_cache_fts":    createRMSFTSSTableSQL,
+		"items":          createItemsTableSQL,
+		"market_events":  createEventsTableSQL,
+		"scrape_history": createHistoryTableSQL,
+		// "rms_item_cache":        createRMSCacheTableSQL, // REMOVED
+		// "rms_item_cache_fts":    createRMSFTSSTableSQL,  // REMOVED
 		"player_history":        createPlayerHistoryTableSQL,
 		"guilds":                createGuildsTableSQL,
 		"characters":            createCharactersTableSQL,
@@ -270,7 +270,7 @@ func initDB(filepath string) (*sql.DB, error) {
 		"idx_page_path":         createPageIndexSQL,
 		"trading_posts":         createTradingPostsTableSQL,
 		"trading_post_items":    createTradingPostItemsTableSQL,
-		"internal_item_db":      createInternalItemDBTableSQL, // <-- ADDED
+		"internal_item_db":      createInternalItemDBTableSQL, // Exists
 	}
 
 	for name, query := range queries {
@@ -280,9 +280,10 @@ func initDB(filepath string) (*sql.DB, error) {
 	}
 
 	// --- FTS Triggers (Combined into one Exec) ---
-	if _, err = db.Exec(createTriggersSQL); err != nil {
-		return nil, fmt.Errorf("could not create FTS triggers: %w", err)
-	}
+	// REMOVED: The triggers for rms_item_cache_fts are no longer needed.
+	// if _, err = db.Exec(createTriggersSQL); err != nil {
+	// 	return nil, fmt.Errorf("could not create FTS triggers: %w", err)
+	// }
 
 	// --- Dynamic Table Creation (MVP Kills) ---
 	// ... (rest of the function is unchanged) ...
