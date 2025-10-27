@@ -409,7 +409,7 @@ func mapItemTypeToTabData(typeName string) ItemTypeTab {
 	case "Card":
 		tab.ShortName = ""
 		tab.IconItemID = 4133
-	case "Delayed-Consumable":
+	case "Delayconsume":
 		tab.ShortName = ""
 		tab.IconItemID = 610
 	case "Healing Item":

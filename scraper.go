@@ -1157,6 +1157,15 @@ func scrapeData() {
 		}
 		// --- END MODIFICATION ---
 
+		// --- FIX: If shop name is still empty, set it to "(empty)" ---
+		if shopName == "" {
+			if enableMarketScraperDebugLogs {
+				log.Printf("[D] [Scraper/Market] Shop name is empty. Renaming to '(empty)'.")
+			}
+			shopName = "(empty)"
+		}
+		// --- END FIX ---
+
 		sellerName := strings.TrimSpace(s.Next().Text()) // Get text from span next to the icon we found
 		mapName := strings.TrimSpace(card.Find("svg.lucide-map-pin").Next().Text())
 		mapCoordinates := strings.TrimSpace(card.Find("svg.lucide-copy").Next().Text())
@@ -1166,8 +1175,9 @@ func scrapeData() {
 			log.Printf("[D] [Scraper/Market] shop name: %s, seller name: %s, map_name: %s, mapcoord: %s", shopName, sellerName, mapName, mapCoordinates)
 		}
 
-		if shopName == "" || sellerName == "" {
-			log.Printf("[W] [Scraper/Market] Skipping shop with missing name ('%s') or seller ('%s').", shopName, sellerName)
+		// This check will now only skip if the sellerName is empty.
+		if sellerName == "" {
+			log.Printf("[W] [Scraper/Market] Skipping shop with missing seller name (Shop: '%s').", shopName)
 			return // Skip shops with missing critical info
 		}
 
@@ -1414,19 +1424,6 @@ func scrapeData() {
 		return
 	}
 	log.Printf("[I] [Scraper/Market] Scrape complete. Unchanged: %d groups. Updated: %d groups. Newly Added: %d groups. Removed: %d groups.", itemsUnchanged, itemsUpdated, itemsAdded, itemsRemoved)
-}
-
-func toComparable(item Item) comparableItem {
-	return comparableItem{
-		Name:           item.Name,
-		ItemID:         item.ItemID,
-		Quantity:       item.Quantity,
-		Price:          item.Price,
-		StoreName:      item.StoreName,
-		SellerName:     item.SellerName,
-		MapName:        item.MapName,
-		MapCoordinates: item.MapCoordinates,
-	}
 }
 
 func areItemSetsIdentical(setA, setB []Item) bool {
@@ -1699,11 +1696,11 @@ func startBackgroundJobs(ctx context.Context) {
 	// Define all scheduled jobs
 	jobs := []Job{
 		{Name: "Market", Func: scrapeData, Interval: 3 * time.Minute},
-		//		{Name: "Player Count", Func: scrapeAndStorePlayerCount, Interval: 1 * time.Minute},
-		//		{Name: "Player Character", Func: scrapePlayerCharacters, Interval: 30 * time.Minute},
-		//		{Name: "Guild", Func: scrapeGuilds, Interval: 25 * time.Minute},
-		//		{Name: "Zeny", Func: scrapeZeny, Interval: 1 * time.Hour},
-		//		{Name: "MVP Kill", Func: scrapeMvpKills, Interval: 5 * time.Minute},
+		{Name: "Player Count", Func: scrapeAndStorePlayerCount, Interval: 1 * time.Minute},
+		{Name: "Player Character", Func: scrapePlayerCharacters, Interval: 30 * time.Minute},
+		{Name: "Guild", Func: scrapeGuilds, Interval: 25 * time.Minute},
+		{Name: "Zeny", Func: scrapeZeny, Interval: 1 * time.Hour},
+		{Name: "MVP Kill", Func: scrapeMvpKills, Interval: 5 * time.Minute},
 	}
 
 	// Start all standard jobs
@@ -1714,4 +1711,17 @@ func startBackgroundJobs(ctx context.Context) {
 	// --- MODIFICATION: Removed the entire "Special RMS Cache Refresh Job" goroutine ---
 	// The go func() { ... } block that called runFullRMSCacheJob() is deleted.
 	// --- END MODIFICATION ---
+}
+
+func toComparable(item Item) comparableItem {
+	return comparableItem{
+		Name:           item.Name,
+		ItemID:         item.ItemID,
+		Quantity:       item.Quantity,
+		Price:          item.Price,
+		StoreName:      item.StoreName,
+		SellerName:     item.SellerName,
+		MapName:        item.MapName,
+		MapCoordinates: item.MapCoordinates,
+	}
 }
