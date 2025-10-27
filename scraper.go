@@ -243,6 +243,10 @@ func scrapeAndStorePlayerCount() {
 		return
 	}
 
+	if enablePlayerCountDebugLogs {
+		log.Printf("[D] [Scraper/PlayerCount] Page fetched successfully. Body size: %d bytes", len(bodyContent))
+	}
+
 	// Parse the HTML content
 	doc, err := goquery.NewDocumentFromReader(strings.NewReader(bodyContent))
 	if err != nil {
@@ -251,33 +255,45 @@ func scrapeAndStorePlayerCount() {
 	}
 
 	// --- THIS IS THE UPDATED SECTION ---
-	// Based on your HTML snippet, we now find all <p> tags and check
-	// their text content to find the one starting with "Online".
-	var playerCountText string
-	doc.Find("p").Each(func(i int, s *goquery.Selection) {
-		text := s.Text()
-		// Check if the text is like "Online 100"
-		if strings.HasPrefix(text, "Online") {
-			playerCountText = text
-		}
-	})
-	// --- END OF UPDATE ---
+	// Define a regex to match the exact pattern "Online 100" and capture the number
+	onlinePlayerRegex := regexp.MustCompile(`Online\s+(\d+)`)
 
 	var onlineCount int
 	var found bool
 
-	if playerCountText != "" {
-		// This regex correctly extracts the number from a string like "Online 100"
-		re := regexp.MustCompile(`\d+`)
-		numStr := re.FindString(playerCountText)
-		if num, err := strconv.Atoi(numStr); err == nil {
-			onlineCount = num
-			found = true
+	// Iterate over all <p> tags
+	doc.Find("p").Each(func(i int, s *goquery.Selection) {
+		if found { // Stop searching once we have a valid match
+			return
 		}
-	}
+
+		text := s.Text()
+		matches := onlinePlayerRegex.FindStringSubmatch(text)
+
+		// matches[0] will be "Online 100"
+		// matches[1] will be "100"
+		if len(matches) > 1 {
+			if enablePlayerCountDebugLogs {
+				log.Printf("[D] [Scraper/PlayerCount] Found <p> tag text matching regex: '%s'", text)
+				log.Printf("[D] [Scraper/PlayerCount] Regex captured number string: '%s'", matches[1])
+			}
+
+			if num, err := strconv.Atoi(matches[1]); err == nil {
+				onlineCount = num
+				found = true // Set found to true to stop the loop
+				if enablePlayerCountDebugLogs {
+					log.Printf("[D] [Scraper/PlayerCount] Parsed onlineCount: %d", onlineCount)
+				}
+			}
+		} else if enablePlayerCountDebugLogs && strings.HasPrefix(text, "Online") {
+			// This debug log helps if the structure changes slightly
+			log.Printf("[D] [Scraper/PlayerCount] Found <p> tag starting with 'Online' but it did NOT match regex: '%s'", text)
+		}
+	})
+	// --- END OF UPDATE ---
 
 	if !found {
-		log.Println("[W] [Scraper/PlayerCount] Could not find player count on the info page after successful load. The selector `p` with text 'Online' may need updating.")
+		log.Println("[W] [Scraper/PlayerCount] Could not find player count on the info page after successful load. The selector `p` with text matching regex 'Online\\s+(\\d+)' may need updating.")
 		return
 	}
 
@@ -290,6 +306,9 @@ func scrapeAndStorePlayerCount() {
 		log.Printf("[W] [Scraper/PlayerCount] Could not query for unique seller count: %v", err)
 		sellerCount = 0
 	}
+	if enablePlayerCountDebugLogs {
+		log.Printf("[D] [Scraper/PlayerCount] Found %d unique sellers in DB.", sellerCount)
+	}
 
 	var lastPlayerCount int
 	var lastSellerCount sql.NullInt64
@@ -299,11 +318,23 @@ func scrapeAndStorePlayerCount() {
 		return
 	}
 
+	if enablePlayerCountDebugLogs {
+		if err == sql.ErrNoRows {
+			log.Println("[D] [Scraper/PlayerCount] No previous player count found in DB.")
+		} else {
+			log.Printf("[D] [Scraper/PlayerCount] Last DB values - Players: %d, Sellers: %d (Valid: %v)", lastPlayerCount, lastSellerCount.Int64, lastSellerCount.Valid)
+		}
+	}
+
 	if err != sql.ErrNoRows && onlineCount == lastPlayerCount && lastSellerCount.Valid && sellerCount == int(lastSellerCount.Int64) {
 		if enablePlayerCountDebugLogs {
 			log.Printf("[D] [Scraper/PlayerCount] Player/seller count unchanged (%d players, %d sellers). No update needed.", onlineCount, sellerCount)
 		}
 		return
+	}
+
+	if enablePlayerCountDebugLogs {
+		log.Printf("[D] [Scraper/PlayerCount] Values changed. Old: (P: %d, S: %d), New: (P: %d, S: %d). Proceeding with insert.", lastPlayerCount, lastSellerCount.Int64, onlineCount, sellerCount)
 	}
 
 	retrievalTime := time.Now().Format(time.RFC3339)
@@ -2187,12 +2218,12 @@ func startBackgroundJobs(ctx context.Context) {
 	jobs := []Job{
 		{Name: "Market", Func: scrapeData, Interval: 3 * time.Minute},
 		{Name: "Player Count", Func: scrapeAndStorePlayerCount, Interval: 1 * time.Minute},
-		{Name: "Player Character", Func: scrapePlayerCharacters, Interval: 30 * time.Minute},
-		{Name: "Guild", Func: scrapeGuilds, Interval: 25 * time.Minute},
-		{Name: "Zeny", Func: scrapeZeny, Interval: 1 * time.Hour},
-		{Name: "MVP Kill", Func: scrapeMvpKills, Interval: 5 * time.Minute},
-		{Name: "PT-Name-Populator", Func: populateMissingPortugueseNames, Interval: 6 * time.Hour},
-		{Name: "WoE-Char-Rankings", Func: scrapeWoeCharacterRankings, Interval: 15 * time.Minute},
+		// {Name: "Player Character", Func: scrapePlayerCharacters, Interval: 30 * time.Minute},
+		// {Name: "Guild", Func: scrapeGuilds, Interval: 25 * time.Minute},
+		// {Name: "Zeny", Func: scrapeZeny, Interval: 1 * time.Hour},
+		// {Name: "MVP Kill", Func: scrapeMvpKills, Interval: 5 * time.Minute},
+		// {Name: "PT-Name-Populator", Func: populateMissingPortugueseNames, Interval: 6 * time.Hour},
+		// {Name: "WoE-Char-Rankings", Func: scrapeWoeCharacterRankings, Interval: 15 * time.Minute},
 	}
 
 	// Start all standard jobs
