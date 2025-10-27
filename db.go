@@ -206,6 +206,22 @@ const (
 		"equip_script" TEXT,
 		"unequip_script" TEXT
 	);`
+
+	createWoeCharRankingsTableSQL = `
+	CREATE TABLE IF NOT EXISTS woe_character_rankings (
+		"name" TEXT NOT NULL PRIMARY KEY, -- Changed from char_id
+		"class" TEXT NOT NULL,
+		"guild_id" INTEGER,
+		"guild_name" TEXT,
+		"kill_count" INTEGER NOT NULL,
+		"death_count" INTEGER NOT NULL,
+		"damage_done" INTEGER NOT NULL,
+		"emperium_kill" INTEGER NOT NULL,
+		"healing_done" INTEGER NOT NULL,
+		"score" INTEGER NOT NULL,
+		"points" INTEGER NOT NULL,
+		"last_updated" TEXT NOT NULL
+	);`
 )
 
 func applyMigrations(db *sql.DB) error {
@@ -260,17 +276,18 @@ func initDB(filepath string) (*sql.DB, error) {
 		"scrape_history": createHistoryTableSQL,
 		// "rms_item_cache":        createRMSCacheTableSQL, // REMOVED
 		// "rms_item_cache_fts":    createRMSFTSSTableSQL,  // REMOVED
-		"player_history":        createPlayerHistoryTableSQL,
-		"guilds":                createGuildsTableSQL,
-		"characters":            createCharactersTableSQL,
-		"character_changelog":   createChangelogTableSQL,
-		"v_character_changelog": createChangelogViewSQL,
-		"visitors":              createVisitorsTableSQL,
-		"page_views":            createPageViewsTableSQL,
-		"idx_page_path":         createPageIndexSQL,
-		"trading_posts":         createTradingPostsTableSQL,
-		"trading_post_items":    createTradingPostItemsTableSQL,
-		"internal_item_db":      createInternalItemDBTableSQL, // Exists
+		"player_history":         createPlayerHistoryTableSQL,
+		"guilds":                 createGuildsTableSQL,
+		"characters":             createCharactersTableSQL,
+		"character_changelog":    createChangelogTableSQL,
+		"v_character_changelog":  createChangelogViewSQL,
+		"visitors":               createVisitorsTableSQL,
+		"page_views":             createPageViewsTableSQL,
+		"idx_page_path":          createPageIndexSQL,
+		"trading_posts":          createTradingPostsTableSQL,
+		"trading_post_items":     createTradingPostItemsTableSQL,
+		"internal_item_db":       createInternalItemDBTableSQL, // Exists
+		"woe_character_rankings": createWoeCharRankingsTableSQL,
 	}
 
 	for name, query := range queries {

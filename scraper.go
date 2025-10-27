@@ -23,6 +23,35 @@ const enableGuildScraperDebugLogs = false
 const enableMvpScraperDebugLogs = false
 const enableZenyScraperDebugLogs = false
 const enableMarketScraperDebugLogs = false
+const enableWoeScraperDebugLogs = false // --- ADD THIS ---
+
+// in scraper.go, after var(...) block
+var jobIDToClassName = map[string]string{
+	"0":    "Aprendiz",
+	"4001": "Super Aprendiz",
+	"3":    "Arqueiro",
+	"1":    "Espadachim",
+	"6":    "Gatuno",
+	"2":    "Mago",
+	"5":    "Mercador",
+	"4":    "Noviço",
+	"18":   "Alquimista",
+	"17":   "Arruaceiro",
+	"19":   "Bardo",
+	"9":    "Bruxo", // This is ID 9 from the log
+	"7":    "Cavaleiro",
+	"11":   "Caçador",
+	"10":   "Ferreiro",
+	"12":   "Mercenário",
+	"15":   "Monge", // This is ID 15 from the log
+	"20":   "Odalisca",
+	"8":    "Sacerdote",
+	"16":   "Sábio",
+	"14":   "Templário", // This is ID 14 from the log
+	// Add other mappings if needed based on observed image URLs
+}
+
+var jobIconRegex = regexp.MustCompile(`icon_jobs_(\d+)\.png`) // Regex to extract ID from URL
 
 var (
 	marketMutex      sync.Mutex
@@ -1594,6 +1623,347 @@ func processMvpKills(allMvpKills map[string]map[string]int) {
 	log.Printf("[I] [Scraper/MVP] Scrape and update process complete.")
 }
 
+// in scraper.go
+
+// --- REPLACE THIS FUNCTION ---
+// --- REPLACE THIS FUNCTION ---
+// processWoeCharacterData handles saving the scraped WoE rankings to the database.
+func processWoeCharacterData(allWoeChars map[string]WoeCharacterRank, updateTime string) {
+	characterMutex.Lock() // Using characterMutex as WoE data relates to characters
+	defer characterMutex.Unlock()
+
+	log.Println("[D] [Scraper/WoE] Starting database update for WoE Character rankings...")
+
+	tx, err := db.Begin()
+	if err != nil {
+		log.Printf("[E] [Scraper/WoE] Failed to begin transaction: %v", err)
+		return
+	}
+	defer tx.Rollback()
+
+	// Clear the table for a fresh import
+	if _, err := tx.Exec("DELETE FROM woe_character_rankings"); err != nil {
+		log.Printf("[W] [Scraper/WoE] Could not clear old WoE rankings: %v", err)
+	}
+
+	// *** MODIFIED SQL STATEMENT ***
+	stmt, err := tx.Prepare(`
+		INSERT INTO woe_character_rankings (
+			name, class, guild_id, guild_name,
+			kill_count, death_count, damage_done, emperium_kill,
+			healing_done, score, points, last_updated
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		ON CONFLICT(name) DO UPDATE SET
+			class = excluded.class,
+			guild_id = excluded.guild_id,
+			guild_name = excluded.guild_name,
+			kill_count = excluded.kill_count,
+			death_count = excluded.death_count,
+			damage_done = excluded.damage_done,
+			emperium_kill = excluded.emperium_kill,
+			healing_done = excluded.healing_done,
+			score = excluded.score,
+			points = excluded.points,
+			last_updated = excluded.last_updated
+	`)
+	if err != nil {
+		log.Printf("[E] [Scraper/WoE] Failed to prepare upsert statement: %v", err)
+		return
+	}
+	defer stmt.Close()
+
+	updateCount := 0
+	for name, char := range allWoeChars { // Iterate using name as key
+		char.LastUpdated = updateTime
+		// *** MODIFIED EXEC PARAMETERS (removed CharID) ***
+		_, err := stmt.Exec(
+			name, char.Class, char.GuildID, char.GuildName, // Use name from map key
+			char.KillCount, char.DeathCount, char.DamageDone, char.EmperiumKill,
+			char.HealingDone, char.Score, char.Points, char.LastUpdated,
+		)
+		if err != nil {
+			log.Printf("[W] [Scraper/WoE] Failed to upsert WoE data for char '%s': %v", name, err)
+			continue
+		}
+		updateCount++
+	}
+
+	if err := tx.Commit(); err != nil {
+		log.Printf("[E] [Scraper/WoE] Failed to commit transaction: %v", err)
+		return
+	}
+	log.Printf("[I] [Scraper/WoE] Database update complete. Upserted %d WoE character records.", updateCount)
+}
+
+// --- REPLACE THIS ENTIRE FUNCTION ---
+// scrapeWoeCharacterRankings scrapes the WoE character rankings from the website using goquery, handling pagination.
+func scrapeWoeCharacterRankings() {
+	log.Println("[I] [Scraper/WoE] Starting WoE character ranking scrape...")
+
+	const firstPageURL = "https://projetoyufa.com/rankings/woe?page=1" // Base URL for finding last page
+	updateTime := time.Now().Format(time.RFC3339)
+	// Use Name as the key for processing, consistent with DB primary key
+	allWoeChars := make(map[string]WoeCharacterRank) // Map[characterName]WoeCharacterRank
+
+	// --- Step 1: Find the last page ---
+	lastPage := scraperClient.findLastPage(firstPageURL, "[Scraper/WoE]")
+	log.Printf("[I] [Scraper/WoE] Determined total pages: %d", lastPage)
+	// --- End Step 1 ---
+
+	// --- Step 2: Fetch Character NAME mapping from the main 'characters' table ---
+	log.Println("[D] [Scraper/WoE] Fetching existing Character Names from 'characters' table...")
+	existingCharNames := make(map[string]bool) // Set of names
+	rows, err := db.Query("SELECT name FROM characters")
+	if err != nil {
+		log.Printf("[E] [Scraper/WoE] Could not query characters table for Names: %v. Aborting WoE scrape.", err)
+		return
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var name string
+		if err := rows.Scan(&name); err == nil {
+			existingCharNames[name] = true
+		}
+	}
+	log.Printf("[D] [Scraper/WoE] Found %d characters in the main table.", len(existingCharNames))
+	if len(existingCharNames) == 0 {
+		log.Printf("[W] [Scraper/WoE] Main 'characters' table appears empty. Cannot link WoE stats. Aborting.")
+		return
+	}
+	// --- End Step 2 ---
+
+	// --- Step 3: Scrape all pages concurrently ---
+	var mu sync.Mutex
+	var wg sync.WaitGroup
+	sem := make(chan struct{}, 5)                 // Concurrency semaphore
+	var totalParsedCount, totalMatchedCount int32 // Use atomic or mutex for shared counters if needed, simple int32 for now
+
+	log.Printf("[I] [Scraper/WoE] Scraping all %d pages...", lastPage)
+	for page := 1; page <= lastPage; page++ {
+		wg.Add(1)
+		sem <- struct{}{}
+		go func(pageIndex int) {
+			defer wg.Done()
+			defer func() { <-sem }() // Release semaphore when done
+
+			pageURL := fmt.Sprintf("https://projetoyufa.com/rankings/woe?page=%d", pageIndex)
+			if enableWoeScraperDebugLogs {
+				log.Printf("[D] [Scraper/WoE] Fetching page: %s", pageURL)
+			}
+			bodyContent, err := scraperClient.getPage(pageURL, "[Scraper/WoE]")
+			if err != nil {
+				log.Printf("[E] [Scraper/WoE] All retries failed for page %d: %v", pageIndex, err)
+				return
+			}
+
+			doc, err := goquery.NewDocumentFromReader(strings.NewReader(bodyContent))
+			if err != nil {
+				log.Printf("[E] [Scraper/WoE] Failed to parse WoE page %d HTML: %v", pageIndex, err)
+				return
+			}
+
+			var pageParsedCount, pageMatchedCount int
+			doc.Find("table tbody tr").Each(func(i int, s *goquery.Selection) {
+				cells := s.Find("td")
+				if cells.Length() < 8 {
+					// Log only if debug enabled to reduce noise
+					if enableWoeScraperDebugLogs {
+						log.Printf("[D] [Scraper/WoE] Skipping row %d on page %d, expected >= 8 cells, got %d", i, pageIndex, cells.Length())
+					}
+					return
+				}
+
+				var c WoeCharacterRank
+
+				charCell := cells.Eq(1)
+				scrapedName := strings.TrimSpace(charCell.Find("span.font-medium").Text())
+				if scrapedName == "" {
+					if enableWoeScraperDebugLogs {
+						log.Printf("[D] [Scraper/WoE] Skipped row %d on page %d due to missing Name.", i, pageIndex)
+					}
+					return
+				}
+
+				// Check if scraped name exists in our DB
+				_, foundInDB := existingCharNames[scrapedName]
+				if !foundInDB {
+					if enableWoeScraperDebugLogs {
+						log.Printf("[D] [Scraper/WoE] Scraped char '%s' (page %d) not found in DB. Skipping.", scrapedName, pageIndex)
+					}
+					return
+				}
+
+				// If found, proceed with parsing
+				c.Name = scrapedName
+				pageMatchedCount++
+
+				// ... (rest of the parsing logic for Class, Guild, K/D, Damage, etc. is IDENTICAL to the previous version) ...
+				imgSrc, _ := charCell.Find("img").Attr("src")
+				classIDMatch := jobIconRegex.FindStringSubmatch(imgSrc)
+				if len(classIDMatch) > 1 {
+					classID := classIDMatch[1]
+					if className, ok := jobIDToClassName[classID]; ok {
+						c.Class = className
+					} else {
+						c.Class = "Unknown (" + classID + ")"
+						log.Printf("[W] [Scraper/WoE] Unknown class ID '%s' found for char '%s' on page %d", classID, c.Name, pageIndex)
+					}
+				} else {
+					c.Class = "Unknown"
+				}
+
+				guildCell := cells.Eq(2)
+				guildName := strings.TrimSpace(guildCell.Find("div.inline-flex").Text())
+				if guildName != "" && guildName != "N/A" {
+					c.GuildName = sql.NullString{String: guildName, Valid: true}
+					guildImgSrc, _ := guildCell.Find("img").Attr("src")
+					guildIDStr := regexp.MustCompile(`/(\d+)$`).FindStringSubmatch(guildImgSrc)
+					if len(guildIDStr) > 1 {
+						if guildID, err := strconv.ParseInt(guildIDStr[1], 10, 64); err == nil {
+							c.GuildID = sql.NullInt64{Int64: guildID, Valid: true}
+						}
+					}
+				}
+
+				kdCellText := cells.Eq(3).Text()
+				kdParts := strings.Split(strings.Split(kdCellText, "(")[0], "/")
+				if len(kdParts) == 2 {
+					c.KillCount, _ = strconv.Atoi(strings.TrimSpace(kdParts[0]))
+					c.DeathCount, _ = strconv.Atoi(strings.TrimSpace(kdParts[1]))
+				}
+
+				damageStr := strings.ReplaceAll(strings.TrimSpace(cells.Eq(4).Text()), ",", "")
+				c.DamageDone, _ = strconv.ParseInt(damageStr, 10, 64)
+				c.EmperiumKill, _ = strconv.Atoi(strings.TrimSpace(cells.Eq(5).Text()))
+				healingStr := strings.ReplaceAll(strings.TrimSpace(cells.Eq(6).Text()), ",", "")
+				c.HealingDone, _ = strconv.ParseInt(healingStr, 10, 64)
+				c.Points, _ = strconv.Atoi(strings.TrimSpace(cells.Eq(7).Text()))
+				c.Score = 0
+				// --- End of identical parsing logic ---
+
+				// Safely add to the shared map
+				mu.Lock()
+				allWoeChars[c.Name] = c
+				mu.Unlock()
+				pageParsedCount++
+
+			}) // End .Each row
+
+			// Update total counts (Consider using atomic later if high contention)
+			mu.Lock()
+			totalParsedCount += int32(pageParsedCount)
+			totalMatchedCount += int32(pageMatchedCount)
+			mu.Unlock()
+
+			log.Printf("[D] [Scraper/WoE] Scraped page %d/%d. Matched %d chars from DB, parsed %d.", pageIndex, lastPage, pageMatchedCount, pageParsedCount)
+
+		}(page) // End goroutine func
+	} // End page loop
+
+	wg.Wait() // Wait for all page scraping goroutines to finish
+	// --- End Step 3 ---
+
+	log.Printf("[I] [Scraper/WoE] Finished scraping all pages. Total Matched from DB: %d. Total Parsed Details: %d.", totalMatchedCount, totalParsedCount)
+
+	if len(allWoeChars) == 0 {
+		log.Println("[W] [Scraper/WoE] No WoE character information could be matched/parsed across all pages. Skipping database update.")
+		return
+	}
+
+	// --- Step 4: Call DB processing function ---
+	processWoeCharacterData(allWoeChars, updateTime)
+	// --- End Step 4 ---
+}
+
+// --- END REPLACEMENT ---
+
+// --- END REPLACEMENT ---
+
+// --- END REPLACEMENT ---
+func oscrapeWoeCharacterRankings() {
+	log.Println("[I] [Scraper/WoE] Starting WoE character ranking scrape...")
+
+	const woeURL = "https://projetoyufa.com/rankings/woe"
+	updateTime := time.Now().Format(time.RFC3339)
+	allWoeChars := make(map[string]WoeCharacterRank) // Map[characterName]WoeCharacterRank
+
+	// Regex to parse each player object.
+	// This regex is updated to no longer capture the "rank" field.
+	playerRegex := regexp.MustCompile(
+		`\{\\"char_id\\":(\d+),` +
+			`\\"name\\":\\"([^"]+)\\",` +
+			`\\"class\\":(\d+),` +
+			`\\"guild_id":(\d+),` +
+			`\\"guild_name\\":\\"([^"]+)\\",` +
+			`\\"kill_count\\":(\d+),` +
+			`\\"death_count\\":(\d+),` +
+			`\\"damage_done\\":(\d+),` +
+			`\\"emperium_kill\\":(\d+),` +
+			`\\"healing_done\\":(\d+),` +
+			`\\"score\\":(\d+),` +
+			`\\"points\\":(\d+)\}`)
+
+	log.Printf("[D] [Scraper/WoE] Fetching page: %s", woeURL)
+	// Scrape the main page
+	bodyContent, err := scraperClient.getPage(woeURL, "[Scraper/WoE]")
+	if err != nil {
+		log.Printf("[E] [Scraper/WoE] Failed to get WoE page: %v", err)
+		return
+	}
+	log.Printf("[D] [Scraper/WoE] Page fetched successfully. Body: %s", bodyContent)
+
+	// Parse all players found in the page body
+	playerMatches := playerRegex.FindAllStringSubmatch(bodyContent, -1)
+	if len(playerMatches) == 0 {
+		log.Printf("[W] [Scraper/WoE] No players matched regex in page body. The page structure might have changed.")
+		return
+	}
+	log.Printf("[D] [Scraper/WoE] Regex found %d potential character matches.", len(playerMatches))
+
+	for _, match := range playerMatches {
+		var c WoeCharacterRank
+
+		// Regex group indexes are now offset by -1 (since rank is no longer captured)
+		//		c.CharID, _ = strconv.Atoi(match[1])
+		c.Name = match[2]
+		c.Class = match[3]
+
+		// match[4] is guild_id, match[5] is guild_name.
+		if match[4] != "" && match[5] != "" {
+			if guildID, err := strconv.ParseInt(match[4], 10, 64); err == nil {
+				c.GuildID = sql.NullInt64{Int64: guildID, Valid: true}
+				c.GuildName = sql.NullString{String: match[5], Valid: true}
+			}
+		}
+
+		c.KillCount, _ = strconv.Atoi(match[6])
+		c.DeathCount, _ = strconv.Atoi(match[7])
+		c.DamageDone, _ = strconv.ParseInt(match[8], 10, 64)
+		c.EmperiumKill, _ = strconv.Atoi(match[9])
+		c.HealingDone, _ = strconv.ParseInt(match[10], 10, 64)
+		c.Score, _ = strconv.Atoi(match[11])
+		c.Points, _ = strconv.Atoi(match[12])
+
+		allWoeChars[c.Name] = c
+	}
+
+	log.Printf("[I] [Scraper/WoE] Finished scraping. Found info for %d characters.", len(allWoeChars))
+
+	if len(allWoeChars) == 0 {
+		log.Println("[W] [Scraper/WoE] No WoE character information was scraped. Skipping database update.")
+		return
+	}
+
+	// Call the dedicated database function (this function is already correct)
+	processWoeCharacterData(allWoeChars, updateTime)
+}
+
+// --- END REPLACEMENT ---
+
+// --- END REPLACEMENT ---
+
+// --- END REPLACEMENT ---
+
 // scrapeMvpKills is now only responsible for concurrent scraping.
 func scrapeMvpKills() {
 	log.Println("[I] [Scraper/MVP] Starting MVP kill count scrape...")
@@ -1802,13 +2172,14 @@ func runJobOnTicker(ctx context.Context, job Job) {
 func startBackgroundJobs(ctx context.Context) {
 	// Define all scheduled jobs
 	jobs := []Job{
-		{Name: "Market", Func: scrapeData, Interval: 3 * time.Minute},
-		{Name: "Player Count", Func: scrapeAndStorePlayerCount, Interval: 1 * time.Minute},
-		{Name: "Player Character", Func: scrapePlayerCharacters, Interval: 30 * time.Minute},
-		{Name: "Guild", Func: scrapeGuilds, Interval: 25 * time.Minute},
-		{Name: "Zeny", Func: scrapeZeny, Interval: 1 * time.Hour},
-		{Name: "MVP Kill", Func: scrapeMvpKills, Interval: 5 * time.Minute},
-		{Name: "PT-Name-Populator", Func: populateMissingPortugueseNames, Interval: 6 * time.Hour},
+		// {Name: "Market", Func: scrapeData, Interval: 3 * time.Minute},
+		// {Name: "Player Count", Func: scrapeAndStorePlayerCount, Interval: 1 * time.Minute},
+		// {Name: "Player Character", Func: scrapePlayerCharacters, Interval: 30 * time.Minute},
+		// {Name: "Guild", Func: scrapeGuilds, Interval: 25 * time.Minute},
+		// {Name: "Zeny", Func: scrapeZeny, Interval: 1 * time.Hour},
+		// {Name: "MVP Kill", Func: scrapeMvpKills, Interval: 5 * time.Minute},
+		// {Name: "PT-Name-Populator", Func: populateMissingPortugueseNames, Interval: 6 * time.Hour},
+		{Name: "WoE-Char-Rankings", Func: scrapeWoeCharacterRankings, Interval: 15 * time.Minute},
 	}
 
 	// Start all standard jobs

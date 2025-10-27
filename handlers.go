@@ -56,6 +56,30 @@ var (
 	reSlotRemover = regexp.MustCompile(`\s*\[\d+\]\s*`)
 )
 
+var classImages = map[string]string{
+	"Aprendiz":       "https://static.wikia.nocookie.net/ragnarok-online-encyclopedia/images/8/8b/Icon_jobs_0.png",
+	"Super Aprendiz": "https://static.wikia.nocookie.net/ragnarok-online-encyclopedia/images/c/c7/Icon_jobs_4001.png",
+	"Arqueiro":       "https://static.wikia.nocookie.net/ragnarok-online-encyclopedia/images/9/97/Icon_jobs_3.png",
+	"Espadachim":     "https://static.wikia.nocookie.net/ragnarok-online-encyclopedia/images/5/5b/Icon_jobs_1.png",
+	"Gatuno":         "https://static.wikia.nocookie.net/ragnarok-online-encyclopedia/images/3/3c/Icon_jobs_6.png",
+	"Mago":           "https://static.wikia.nocookie.net/ragnarok-online-encyclopedia/images/9/99/Icon_jobs_2.png",
+	"Mercador":       "https://static.wikia.nocookie.net/ragnarok-online-encyclopedia/images/9/9e/Icon_jobs_5.png",
+	"Noviço":         "https://static.wikia.nocookie.net/ragnarok-online-encyclopedia/images/c/c5/Icon_jobs_4.png",
+	"Alquimista":     "https://static.wikia.nocookie.net/ragnarok-online-encyclopedia/images/c/c7/Icon_jobs_18.png",
+	"Arruaceiro":     "https://static.wikia.nocookie.net/ragnarok-online-encyclopedia/images/4/48/Icon_jobs_17.png",
+	"Bardo":          "https://static.wikia.nocookie.net/ragnarok-online-encyclopedia/images/6/69/Icon_jobs_19.png",
+	"Bruxo":          "https://static.wikia.nocookie.net/ragnarok-online-encyclopedia/images/0/09/Icon_jobs_9.png",
+	"Cavaleiro":      "https://static.wikia.nocookie.net/ragnarok-online-encyclopedia/images/1/1d/Icon_jobs_7.png",
+	"Caçador":        "https://static.wikia.nocookie.net/ragnarok-online-encyclopedia/images/e/eb/Icon_jobs_11.png",
+	"Ferreiro":       "https://static.wikia.nocookie.net/ragnarok-online-encyclopedia/images/7/7b/Icon_jobs_10.png",
+	"Mercenário":     "https://static.wikia.nocookie.net/ragnarok-online-encyclopedia/images/9/9c/Icon_jobs_12.png",
+	"Monge":          "https://static.wikia.nocookie.net/ragnarok-online-encyclopedia/images/4/44/Icon_jobs_15.png",
+	"Odalisca":       "https://static.wikia.nocookie.net/ragnarok-online-encyclopedia/images/d/dc/Icon_jobs_20.png",
+	"Sacerdote":      "https://static.wikia.nocookie.net/ragnarok-online-encyclopedia/images/3/3a/Icon_jobs_8.png",
+	"Sábio":          "https://static.wikia.nocookie.net/ragnarok-online-encyclopedia/images/0/0e/Icon_jobs_16.png",
+	"Templário":      "https://static.wikia.nocookie.net/ragnarok-online-encyclopedia/images/e/e1/Icon_jobs_14.png",
+}
+
 const MvpKillCountOffset = 3
 
 var templateFuncs = template.FuncMap{
@@ -96,6 +120,13 @@ var templateFuncs = template.FuncMap{
 			return "N/A"
 		}
 		return fmt.Sprintf("%.1f", level)
+	},
+	"getClassImageURL": func(class string) string {
+		if url, ok := classImages[class]; ok {
+			return url
+		}
+		// Fallback icon (Aprendiz)
+		return "https://static.wikia.nocookie.net/ragnarok-online-encyclopedia/images/8/8b/Icon_jobs_0.png"
 	},
 }
 
@@ -461,6 +492,7 @@ func init() {
 		"guild_detail.html",
 		"store_detail.html",
 		"trading_post.html",
+		"woe_rankings.html", // --- ADD THIS LINE ---
 	}
 
 	navbarPath := "navbar.html"
@@ -2397,6 +2429,74 @@ func findItemIDOnline(cleanItemName string, slots int) (sql.NullInt64, bool) {
 	// No online matches or ambiguous matches
 	return sql.NullInt64{Valid: false}, false
 }
+
+// in handlers.go
+
+// in handlers.go
+
+// --- REPLACE THIS HANDLER FUNCTION ---
+func woeRankingsHandler(w http.ResponseWriter, r *http.Request) {
+	allowedSorts := map[string]string{
+		"name":     "name", // Now the primary key
+		"class":    "class",
+		"guild":    "guild_name",
+		"kills":    "kill_count",
+		"deaths":   "death_count",
+		"damage":   "damage_done",
+		"emperium": "emperium_kill",
+		"healing":  "healing_done",
+		"score":    "score",
+		"points":   "points",
+	}
+	// Default sort by points DESC
+	orderByClause, sortBy, order := getSortClause(r, allowedSorts, "points", "DESC")
+
+	// *** MODIFIED QUERY (removed char_id) ***
+	query := fmt.Sprintf(`
+		SELECT name, class, guild_id, guild_name,
+		       kill_count, death_count, damage_done, emperium_kill,
+		       healing_done, score, points
+		FROM woe_character_rankings %s`, orderByClause)
+
+	rows, err := db.Query(query)
+	if err != nil {
+		log.Printf("[E] [HTTP/WoE] Could not query for WoE character rankings: %v", err)
+		http.Error(w, "Could not query WoE rankings", http.StatusInternalServerError)
+		return
+	}
+	defer rows.Close()
+
+	var characters []WoeCharacterRank
+	for rows.Next() {
+		var c WoeCharacterRank
+		// *** MODIFIED SCAN (removed char_id) ***
+		err := rows.Scan(
+			&c.Name, &c.Class, &c.GuildID, &c.GuildName, // Scan Name first
+			&c.KillCount, &c.DeathCount, &c.DamageDone, &c.EmperiumKill,
+			&c.HealingDone, &c.Score, &c.Points,
+		)
+		if err != nil {
+			log.Printf("[W] [HTTP/WoE] Failed to scan WoE character row: %v", err)
+			continue
+		}
+		characters = append(characters, c)
+	}
+
+	data := WoePageData{
+		Characters:     characters,
+		LastScrapeTime: GetLastUpdateTime("last_updated", "woe_character_rankings"),
+		SortBy:         sortBy,
+		Order:          order,
+		PageTitle:      "WoE Rankings",
+	}
+	renderTemplate(w, "woe_rankings.html", data)
+}
+
+// --- END REPLACEMENT ---
+
+// --- END REPLACEMENT ---// --- END REPLACEMENT ---
+
+// ... (storeDetailHandler) ...
 
 // findItemIDByName orchestrates searching the cache and online for an item ID.
 // This function remains unchanged but is shown for context.

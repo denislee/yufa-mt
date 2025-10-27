@@ -361,6 +361,30 @@ type GuildDetailPageData struct {
 	PageTitle           string
 }
 
+type WoeCharacterRank struct {
+	Name         string // Now the primary identifier
+	Class        string
+	GuildID      sql.NullInt64
+	GuildName    sql.NullString
+	KillCount    int
+	DeathCount   int
+	DamageDone   int64
+	EmperiumKill int
+	HealingDone  int64
+	Score        int
+	Points       int
+	LastUpdated  string
+	// Removed CharID and Rank previously
+}
+
+type WoePageData struct {
+	Characters     []WoeCharacterRank
+	LastScrapeTime string
+	SortBy         string
+	Order          string
+	PageTitle      string
+}
+
 type FlatTradingPostItem struct {
 	PostID        int
 	Title         string
