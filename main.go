@@ -187,7 +187,6 @@ func visitorTracker(next http.HandlerFunc) http.HandlerFunc {
 	}
 }
 
-// main is rewritten to support graceful shutdown and cleaner routing.
 func main() {
 	if err := godotenv.Load(); err != nil {
 		log.Println("[I] [Main] No .env file found, relying on system environment variables.")
@@ -220,13 +219,20 @@ func main() {
 		cancel() // Trigger context cancellation
 	}()
 
-	// Admin Password
-	adminPass = generateRandomPassword(16)
-	if err := os.WriteFile("pwd.txt", []byte(adminPass), 0644); err != nil {
-		log.Printf("[W] [Main] Could not write admin password to file: %v", err)
+	// --- MODIFICATION: Admin Password Logic ---
+	adminPass = os.Getenv("ADMIN_PASSWORD")
+	if adminPass == "" {
+		log.Println("[I] [Main] ADMIN_PASSWORD not set. Generating a new random password.")
+		adminPass = generateRandomPassword(16)
+		if err := os.WriteFile("pwd.txt", []byte(adminPass), 0644); err != nil {
+			log.Printf("[W] [Main] Could not write generated admin password to file: %v", err)
+		} else {
+			log.Println("[I] [Main] Generated admin password saved to pwd.txt")
+		}
 	} else {
-		log.Println("[I] [Main] Admin password saved to pwd.txt")
+		log.Println("[I] [Main] Loaded admin password from ADMIN_PASSWORD environment variable.")
 	}
+	// --- END MODIFICATION ---
 
 	go func() {
 		time.Sleep(5 * time.Second) // Give server time to start
@@ -334,4 +340,3 @@ func main() {
 	// This line will be reached after server.Shutdown() completes
 	log.Println("[I] [Main] All services shut down. Exiting.")
 }
-
