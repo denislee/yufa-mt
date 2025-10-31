@@ -2231,19 +2231,39 @@ func tradingPostListHandler(w http.ResponseWriter, r *http.Request) {
 
 // findItemIDInCache attempts to find an item ID using the local item DB.
 // This version uses LIKE and Levenshtein distance for proximity matching.
-func findItemIDInCache(cleanItemName string) (sql.NullInt64, bool) {
-	// --- MODIFICATION: Use LIKE instead of FTS ---
-	likeQuery := "%" + strings.ReplaceAll(cleanItemName, " ", "%") + "%"
-	query := `
+// --- MODIFICATION: Added 'slots' parameter ---
+func findItemIDInCache(cleanItemName string, slots int) (sql.NullInt64, bool) {
+
+	// --- MODIFICATION: Build case-insensitive query ---
+	// Lowercase the search term *once*
+	lowerCleanItemName := strings.ToLower(cleanItemName)
+	likeQuery := "%" + strings.ReplaceAll(lowerCleanItemName, " ", "%") + "%"
+
+	var queryParams []interface{}
+	queryParams = append(queryParams, likeQuery, likeQuery)
+
+	var slotClause string
+	if slots == 0 {
+		// If slots are 0, match 0 or NULL (since NULL slots also mean 0)
+		slotClause = "AND (slots = 0 OR slots IS NULL)"
+	} else {
+		// If slots > 0, match that exact number
+		slotClause = "AND slots = ?"
+		queryParams = append(queryParams, slots)
+	}
+
+	// Use LOWER() on columns for case-insensitive matching
+	query := fmt.Sprintf(`
 		SELECT item_id, name, name_pt 
 		FROM internal_item_db 
-		WHERE name LIKE ? OR name_pt LIKE ?
-		LIMIT 10` // Limit to 10 potential matches
+		WHERE (LOWER(name) LIKE ? OR LOWER(name_pt) LIKE ?)
+		%s
+		LIMIT 10`, slotClause) // Limit to 10 potential matches
 
-	rows, err := db.Query(query, likeQuery, likeQuery)
+	rows, err := db.Query(query, queryParams...)
 	// --- END MODIFICATION ---
 	if err != nil {
-		log.Printf("[W] [ItemID] Error during LIKE query for '%s': %v", likeQuery, err)
+		log.Printf("[W] [ItemID] Error during LIKE query for '%s' (slots: %d): %v", likeQuery, slots, err)
 		return sql.NullInt64{Valid: false}, false
 	}
 	defer rows.Close()
@@ -2273,7 +2293,7 @@ func findItemIDInCache(cleanItemName string) (sql.NullInt64, bool) {
 	}
 
 	// Disambiguation logic (Levenshtein) remains the same as before
-	lowerCleanItemName := strings.ToLower(cleanItemName)
+	// We already have lowerCleanItemName from above.
 
 	// 1. Check for a perfect match first
 	for _, match := range potentialMatches {
@@ -2595,7 +2615,10 @@ func woeRankingsHandler(w http.ResponseWriter, r *http.Request) {
 func findItemIDByName(itemName string, allowRetry bool, slots int) (sql.NullInt64, error) {
 	// 1. Clean the name
 	reRefine := regexp.MustCompile(`\s*\+\d+\s*`)
-	cleanItemName := reRefine.ReplaceAllString(itemName, "")
+	// --- MODIFICATION: Use reSlotRemover to strip [1], etc. ---
+	cleanItemName := reSlotRemover.ReplaceAllString(itemName, " ")
+	cleanItemName = reRefine.ReplaceAllString(cleanItemName, "")
+	// --- END MODIFICATION ---
 	cleanItemName = strings.TrimSpace(cleanItemName)
 	cleanItemName = sanitizeString(cleanItemName, itemSanitizer)
 
@@ -2610,7 +2633,9 @@ func findItemIDByName(itemName string, allowRetry bool, slots int) (sql.NullInt6
 	}
 
 	// 3. Try local FTS cache first (This is the modified function)
-	if itemID, found := findItemIDInCache(cleanItemName); found {
+	// --- MODIFICATION: Pass 'slots' parameter ---
+	if itemID, found := findItemIDInCache(cleanItemName, slots); found {
+		// --- END MODIFICATION ---
 		return itemID, nil
 	}
 

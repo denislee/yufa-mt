@@ -382,11 +382,52 @@ func adminSaveCacheEntryHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// --- MODIFICATION: This action is no longer supported ---
-	log.Printf("[W] [Admin] Admin attempted to use 'Save Cache Entry', which is disabled (internal_item_db is YAML-based).")
-	msg := "Error: Cannot manually save entry. Item database is now populated from YAML files."
-	http.Redirect(w, r, adminRedirectURL(r, msg), http.StatusSeeOther)
-	// --- END MODIFICATION ---
+	if err := r.ParseForm(); err != nil {
+		http.Redirect(w, r, "/admin?msg=Error+parsing+form.&tab=cache", http.StatusSeeOther)
+		return
+	}
+
+	// Get params for the redirect
+	tab := r.PostFormValue("tab")
+	liveSearchQuery := r.PostFormValue("rms_live_search")
+
+	// Get the item ID to update
+	itemIDStr := r.PostFormValue("item_id")
+	itemID, err := strconv.Atoi(itemIDStr)
+	if err != nil {
+		msg := "Error: Invalid item ID."
+		// Build redirect URL manually
+		redirectURL := "/admin?msg=" + url.QueryEscape(msg)
+		if tab != "" {
+			redirectURL += "&tab=" + url.QueryEscape(tab)
+		}
+		if liveSearchQuery != "" {
+			redirectURL += "&rms_live_search=" + url.QueryEscape(liveSearchQuery)
+		}
+		http.Redirect(w, r, redirectURL, http.StatusSeeOther)
+		return
+	}
+
+	// --- NEW LOGIC: Try to fetch and update the PT name ---
+	var msg string
+	fetchedName, err := fetchAndUpdatePortugueseName(itemID)
+	if err != nil {
+		// This error includes "already exists" and "not found"
+		msg = fmt.Sprintf("Error: %v", err)
+	} else {
+		msg = fmt.Sprintf("Successfully updated item %d with PT name: %s", itemID, fetchedName)
+	}
+	// --- END NEW LOGIC ---
+
+	// Build redirect URL manually to include all params
+	redirectURL := "/admin?msg=" + url.QueryEscape(msg)
+	if tab != "" {
+		redirectURL += "&tab=" + url.QueryEscape(tab)
+	}
+	if liveSearchQuery != "" {
+		redirectURL += "&rms_live_search=" + url.QueryEscape(liveSearchQuery)
+	}
+	http.Redirect(w, r, redirectURL, http.StatusSeeOther)
 }
 
 func adminDeleteCacheEntryHandler(w http.ResponseWriter, r *http.Request) {
@@ -1111,4 +1152,3 @@ func insertTradingPostItemsFromForm(tx *sql.Tx, postID int, form url.Values) err
 
 	return nil
 }
-

@@ -2237,6 +2237,46 @@ func fetchPortugueseName(itemID int) (string, error) {
 	return "", fmt.Errorf("could not find name regex on page")
 }
 
+// fetchAndUpdatePortugueseName fetches and updates the PT name for a single item ID.
+func fetchAndUpdatePortugueseName(itemID int) (string, error) {
+	// 1. Check current status in DB
+	var namePT sql.NullString
+	err := db.QueryRow("SELECT name_pt FROM internal_item_db WHERE item_id = ?", itemID).Scan(&namePT)
+
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return "", fmt.Errorf("item ID %d not found in local database. Cannot update", itemID)
+		}
+		return "", fmt.Errorf("database query error for item %d: %w", itemID, err)
+	}
+
+	// 2. Check if name already exists
+	if namePT.Valid && namePT.String != "" {
+		log.Printf("[I] [PT-Name] Item %d already has a Portuguese name: %s", itemID, namePT.String)
+		return "", fmt.Errorf("item ID %d already has a Portuguese name (%s)", itemID, namePT.String)
+	}
+
+	// 3. Fetch the name
+	log.Printf("[I] [PT-Name] Fetching Portuguese name for item %d...", itemID)
+	fetchedName, err := fetchPortugueseName(itemID)
+	if err != nil {
+		return "", fmt.Errorf("failed to fetch name for item %d from RDB: %w", itemID, err)
+	}
+
+	if fetchedName == "" {
+		return "", fmt.Errorf("fetched name for item %d was empty. Not updating", itemID)
+	}
+
+	// 4. Update the DB
+	_, err = db.Exec("UPDATE internal_item_db SET name_pt = ? WHERE item_id = ?", fetchedName, itemID)
+	if err != nil {
+		return "", fmt.Errorf("failed to update database for item %d: %w", itemID, err)
+	}
+
+	log.Printf("[I] [PT-Name] Successfully updated item %d with Portuguese name: %s", itemID, fetchedName)
+	return fetchedName, nil
+}
+
 // populateMissingPortugueseNames is the background job function
 func populateMissingPortugueseNames() {
 	if !ptNameMutex.TryLock() {
