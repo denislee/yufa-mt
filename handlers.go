@@ -492,7 +492,8 @@ func init() {
 		"guild_detail.html",
 		"store_detail.html",
 		"trading_post.html",
-		"woe_rankings.html", // --- ADD THIS LINE ---
+		"woe_rankings.html",
+		"chat.html",
 	}
 
 	navbarPath := "navbar.html"
@@ -2610,15 +2611,68 @@ func woeRankingsHandler(w http.ResponseWriter, r *http.Request) {
 	renderTemplate(w, "woe_rankings.html", data)
 }
 
+// chatHandler displays the paginated public chat log.
+func chatHandler(w http.ResponseWriter, r *http.Request) {
+	const messagesPerPage = 100 // 100 messages per page
+
+	var totalMessages int
+	if err := db.QueryRow("SELECT COUNT(*) FROM chat").Scan(&totalMessages); err != nil {
+		log.Printf("[E] [HTTP/Chat] Could not count chat messages: %v", err)
+		http.Error(w, "Could not count chat messages", http.StatusInternalServerError)
+		return
+	}
+
+	pagination := newPaginationData(r, totalMessages, messagesPerPage)
+
+	// --- MODIFIED QUERY ---
+	query := `
+		SELECT timestamp, channel, character_name, message 
+		FROM chat 
+		ORDER BY timestamp DESC 
+		LIMIT ? OFFSET ?`
+
+	rows, err := db.Query(query, messagesPerPage, pagination.Offset)
+	if err != nil {
+		log.Printf("[E] [HTTP/Chat] Could not query for chat messages: %v", err)
+		http.Error(w, "Could not query for chat messages", http.StatusInternalServerError)
+		return
+	}
+	defer rows.Close()
+
+	var messages []ChatMessage
+	for rows.Next() {
+		var msg ChatMessage
+		var timestampStr string
+		// --- MODIFIED SCAN ---
+		if err := rows.Scan(&timestampStr, &msg.Channel, &msg.CharacterName, &msg.Message); err != nil {
+			log.Printf("[W] [HTTP/Chat] Failed to scan chat message row: %v", err)
+			continue
+		}
+
+		if parsedTime, err := time.Parse(time.RFC3339, timestampStr); err == nil {
+			msg.Timestamp = parsedTime.Format("2006-01-02 15:04:05")
+		} else {
+			msg.Timestamp = timestampStr
+		}
+		messages = append(messages, msg)
+	}
+
+	data := ChatPageData{
+		Messages:       messages,
+		LastScrapeTime: GetLastChatLogTime(),
+		Pagination:     pagination,
+		PageTitle:      "Chat",
+	}
+	renderTemplate(w, "chat.html", data)
+}
+
 // findItemIDByName orchestrates searching the cache and online for an item ID.
 // This function remains unchanged but is shown for context.
 func findItemIDByName(itemName string, allowRetry bool, slots int) (sql.NullInt64, error) {
 	// 1. Clean the name
 	reRefine := regexp.MustCompile(`\s*\+\d+\s*`)
-	// --- MODIFICATION: Use reSlotRemover to strip [1], etc. ---
 	cleanItemName := reSlotRemover.ReplaceAllString(itemName, " ")
 	cleanItemName = reRefine.ReplaceAllString(cleanItemName, "")
-	// --- END MODIFICATION ---
 	cleanItemName = strings.TrimSpace(cleanItemName)
 	cleanItemName = sanitizeString(cleanItemName, itemSanitizer)
 

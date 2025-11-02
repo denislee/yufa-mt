@@ -222,6 +222,15 @@ const (
 		"points" INTEGER NOT NULL,
 		"last_updated" TEXT NOT NULL
 	);`
+
+	createChatTableSQL = `
+	CREATE TABLE IF NOT EXISTS chat (
+		"id" INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+		"timestamp" TEXT NOT NULL,
+		"channel" TEXT NOT NULL,
+		"character_name" TEXT NOT NULL,
+		"message" TEXT NOT NULL
+	);`
 )
 
 func applyMigrations(db *sql.DB) error {
@@ -288,6 +297,7 @@ func initDB(filepath string) (*sql.DB, error) {
 		"trading_post_items":     createTradingPostItemsTableSQL,
 		"internal_item_db":       createInternalItemDBTableSQL, // Exists
 		"woe_character_rankings": createWoeCharRankingsTableSQL,
+		"chat":                   createChatTableSQL, // <-- ADD THIS ENTRY
 	}
 
 	for name, query := range queries {

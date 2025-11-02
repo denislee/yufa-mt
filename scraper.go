@@ -1,30 +1,42 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"database/sql"
+	"encoding/binary"
+	"encoding/hex" // <-- ADD THIS LINE
 	"encoding/json"
 	"fmt"
 	"io"
 	"log"
+	"net"
 	"net/http"
+	"os"
 	"regexp"
 	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic" // --- ADDED THIS IMPORT ---
 	"time"
+	"unicode"
 
 	"github.com/PuerkitoBio/goquery"
+	"github.com/google/gopacket"
+	"github.com/google/gopacket/layers"
+	"github.com/google/gopacket/pcap"
 )
 
-const enablePlayerCountDebugLogs = false
-const enableCharacterScraperDebugLogs = false
-const enableGuildScraperDebugLogs = false
-const enableMvpScraperDebugLogs = false
-const enableZenyScraperDebugLogs = false
-const enableMarketScraperDebugLogs = false
-const enableWoeScraperDebugLogs = false // --- ADD THIS ---
+const (
+	enablePlayerCountDebugLogs      = false
+	enableCharacterScraperDebugLogs = false
+	enableGuildScraperDebugLogs     = false
+	enableMvpScraperDebugLogs       = false
+	enableZenyScraperDebugLogs      = false
+	enableMarketScraperDebugLogs    = false
+	enableWoeScraperDebugLogs       = false // --- ADD THIS ---
+	enableChatScraperDebugLogs      = true  // <-- ADD THIS LINE
+)
 
 // in scraper.go, after var(...) block
 var jobIDToClassName = map[string]string{
@@ -61,6 +73,25 @@ var (
 	ptNameMutex      sync.Mutex
 	ptNameRegex      = regexp.MustCompile(`<h1 class="item-title-db">([^<]+)</h1>`)
 	slotRemoverRegex = regexp.MustCompile(`\s*\[\d+\]\s*`)
+)
+
+type chatPacketDefinition struct {
+	prefix        []byte // The packet's byte prefix
+	messageOffset int    // How many bytes from prefix start to the message text
+	headerLength  int    // The length of the header to subtract from the packet length field
+}
+
+var (
+	knownChatPackets = []chatPacketDefinition{
+		// Standard chat
+		{prefix: []byte{0xf3, 0x00}, messageOffset: 4, headerLength: 4},
+		// Guild/Party chat?
+		{prefix: []byte{0x8e, 0x00}, messageOffset: 4, headerLength: 4},
+		// Channel chat (e.g., [Trade], [Global])
+		{prefix: []byte{0xc1, 0x02}, messageOffset: 12, headerLength: 12},
+		// Drop notification
+		{prefix: []byte{0x9a, 0x00}, messageOffset: 4, headerLength: 4}, // <-- ADD THIS LINE
+	}
 )
 
 const (
@@ -2338,6 +2369,336 @@ func populateMissingPortugueseNames() {
 	log.Printf("[I] [Scraper/PT-Name] Job finished. Successfully updated: %d, Failed: %d", successCount, failCount)
 }
 
+// saveChatMessagesToDB inserts a batch of new messages in a single transaction.
+func saveChatMessagesToDB(messages []ChatMessage) error {
+	if len(messages) == 0 {
+		return nil
+	}
+
+	// De-duplication logic
+	// The key is the ChatMessage struct (Channel, CharacterName, Message).
+	// This will now correctly de-duplicate retransmitted packets.
+	seen := make(map[ChatMessage]struct{}, len(messages))
+	dedupedMessages := make([]ChatMessage, 0, len(messages))
+
+	for _, msg := range messages {
+		if _, exists := seen[msg]; !exists {
+			seen[msg] = struct{}{}
+			dedupedMessages = append(dedupedMessages, msg)
+		}
+	}
+
+	if len(dedupedMessages) == 0 {
+		log.Printf("[D] [Scraper/Chat] Skipped saving batch of %d, all were duplicates.", len(messages))
+		return nil
+	}
+
+	tx, err := db.Begin()
+	if err != nil {
+		return fmt.Errorf("failed to start transaction: %w", err)
+	}
+	defer tx.Rollback() // Rollback on error
+
+	// --- MODIFIED: SQL includes channel ---
+	stmt, err := tx.Prepare("INSERT INTO chat (timestamp, channel, character_name, message) VALUES (?, ?, ?, ?)")
+	if err != nil {
+		return fmt.Errorf("failed to prepare statement: %w", err)
+	}
+	defer stmt.Close()
+
+	now := time.Now().Format(time.RFC3339)
+	for _, msg := range dedupedMessages {
+		// --- MODIFIED: Exec call includes msg.Channel ---
+		if _, err := stmt.Exec(now, msg.Channel, msg.CharacterName, msg.Message); err != nil {
+			log.Printf("[W] [Scraper/Chat] Failed to insert message from '%s' (%s): %v", msg.CharacterName, msg.Channel, err)
+			// Continue inserting other messages
+		}
+	}
+
+	log.Printf("[I] [Scraper/Chat] Saved %d new chat messages to DB (out of %d batched).", len(dedupedMessages), len(messages))
+	return tx.Commit()
+}
+
+// In scraper.go
+
+// startChatPacketCapture is the new long-running service to replace processChatLogFile
+func startChatPacketCapture(ctx context.Context) {
+	log.Println("[I] [Scraper/Chat] Initializing live packet capture...")
+
+	// --- 1. Find Network Device ---
+	device := os.Getenv("CHAT_CAPTURE_DEVICE")
+	if device == "" {
+		// Use Go's standard 'net' package to find a suitable device.
+		ifaces, err := net.Interfaces()
+		if err != nil {
+			log.Printf("[E] [Scraper/Chat] net.Interfaces() failed: %v. Chat capture disabled.", err)
+			return
+		}
+
+		for _, i := range ifaces {
+			// Check if interface is up and not a loopback
+			isUp := (i.Flags & net.FlagUp) != 0
+			isLoopback := (i.Flags & net.FlagLoopback) != 0
+
+			if isUp && !isLoopback {
+				// Check if it has a usable address
+				addrs, err := i.Addrs()
+				if err == nil && len(addrs) > 0 {
+					device = i.Name
+					log.Printf("[I] [Scraper/Chat] No CHAT_CAPTURE_DEVICE set. Auto-selected device: %s", device)
+					break
+				}
+			}
+		}
+
+		if device == "" {
+			log.Printf("[E] [Scraper/Chat] Could not find a suitable non-loopback network device. Please set CHAT_CAPTURE_DEVICE. Chat capture disabled.")
+			return
+		}
+	}
+
+	// --- 2. Get Port ---
+	port := os.Getenv("CHAT_CAPTURE_PORT")
+	if port == "" {
+		port = "6121" // Default Ragnarok Online Char Server port
+		log.Printf("[W] [Scraper/Chat] CHAT_CAPTURE_PORT not set. Defaulting to %s. This may not be correct.", port)
+	}
+
+	// --- 3. Open pcap Handle ---
+	handle, err := pcap.OpenLive(device, 65536, true, pcap.BlockForever)
+	if err != nil {
+		log.Printf("[E] [Scraper/Chat] Failed to open pcap handle on %s: %v. (Do you have libpcap/Npcap installed and root/admin privileges?)", device, err)
+		return
+	}
+	defer handle.Close()
+
+	// --- 4. Set BPF Filter ---
+	filter := fmt.Sprintf("tcp port %s", port)
+	if err := handle.SetBPFFilter(filter); err != nil {
+		log.Printf("[E] [Scraper/Chat] Failed to set BPF filter (%s): %v", filter, err)
+		return
+	}
+	log.Printf("[I] [Scraper/Chat] Started packet capture on %s, filtering for %s.", device, filter)
+
+	// --- 5. Start Packet Processing Loop ---
+	packetSource := gopacket.NewPacketSource(handle, handle.LinkType())
+	var newMessages []ChatMessage
+	flushTicker := time.NewTicker(5 * time.Second) // Flush messages to DB every 5s
+	defer flushTicker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			// Shutdown signal received
+			log.Println("[I] [Scraper/Chat] Stopping packet capture...")
+			if len(newMessages) > 0 {
+				log.Println("[I] [Scraper/Chat] Flushing final batch of chat messages...")
+				// Call and check error
+				if err := saveChatMessagesToDB(newMessages); err != nil {
+					log.Printf("[E] [Scraper/Chat] Error flushing final message batch to DB: %v", err)
+				}
+			}
+			return
+
+		case <-flushTicker.C:
+			// Periodic flush to DB
+			if len(newMessages) > 0 {
+				log.Printf("[I] [Scraper/Chat] Flushing %d batched messages to DB.", len(newMessages))
+				// Call and check error
+				if err := saveChatMessagesToDB(newMessages); err != nil {
+					log.Printf("[E] [Scraper/Chat] Error flushing message batch to DB: %v", err)
+				}
+				newMessages = nil // Clear the batch
+			}
+
+		case packet := <-packetSource.Packets():
+			if enableChatScraperDebugLogs {
+				log.Printf("[D] [Scraper/Chat] Received packet. PktData size: %d", len(packet.Data()))
+			}
+
+			// We have a packet
+			tcpLayer := packet.Layer(layers.LayerTypeTCP)
+			if tcpLayer == nil {
+				continue
+			}
+			tcp, _ := tcpLayer.(*layers.TCP)
+			payload := tcp.Payload // This is the raw byte payload
+			if len(payload) == 0 {
+				continue
+			}
+
+			if enableChatScraperDebugLogs {
+				log.Printf("[D] [Scraper/Chat] Found TCP packet. Payload size: %d bytes", len(payload))
+				// Log the full payload in hex and as a sanitized string
+				sanitizedPayload := strings.Map(func(r rune) rune {
+					if unicode.IsPrint(r) {
+						return r
+					}
+					return '.' // Replace non-printable with a dot
+				}, string(payload))
+				log.Printf("[D] [Scraper/Chat] RAW PAYLOAD (HEX): %s", hex.EncodeToString(payload))
+				log.Printf("[D] [Scraper/Chat] RAW PAYLOAD (STR): %s", sanitizedPayload)
+			}
+
+			// --- REFACTORED PARSING LOOP ---
+			i := 0
+			for i < len(payload) {
+				firstPrefixIdx := -1
+				var firstPacketDef chatPacketDefinition
+
+				// Find the *closest* known prefix from our current position 'i'
+				for _, packetDef := range knownChatPackets {
+					idx := bytes.Index(payload[i:], packetDef.prefix)
+					if idx != -1 { // Found this prefix
+						if firstPrefixIdx == -1 || idx < firstPrefixIdx {
+							firstPrefixIdx = idx
+							firstPacketDef = packetDef
+						}
+					}
+				}
+
+				if firstPrefixIdx == -1 {
+					break // No more known prefixes in this payload
+				}
+
+				absIdx := i + firstPrefixIdx // Absolute index in payload
+				def := firstPacketDef        // The definition for the packet we found
+
+				if enableChatScraperDebugLogs {
+					log.Printf("[D] [Scraper/Chat] Matched prefix %s at index %d.", hex.EncodeToString(def.prefix), absIdx)
+				}
+
+				// Check if we have enough bytes to read the length (prefix + 2 bytes for length)
+				if absIdx+4 > len(payload) {
+					if enableChatScraperDebugLogs {
+						log.Printf("[D] [Scraper/Chat] Fragmented header. Skipping.")
+					}
+					i = absIdx + 1 // Search after this partial prefix
+					continue
+				}
+
+				// Read the packet length (2 bytes, little-endian)
+				length := int(binary.LittleEndian.Uint16(payload[absIdx+2 : absIdx+4]))
+				msgLen := length - def.headerLength // Use definition's header length
+				msgEnd := absIdx + def.messageOffset + msgLen
+
+				if enableChatScraperDebugLogs {
+					log.Printf("[D] [Scraper/Chat] Parsed packet length: %d. Header: %d. Message length: %d. Required end index: %d", length, def.headerLength, msgLen, msgEnd)
+				}
+
+				if msgLen <= 0 {
+					if enableChatScraperDebugLogs {
+						log.Printf("[D] [Scraper/Chat] Invalid message length (%d). Skipping.", msgLen)
+					}
+					i = absIdx + 1
+					continue
+				}
+
+				if msgEnd > len(payload) {
+					if enableChatScraperDebugLogs {
+						log.Printf("[D] [Scraper/Chat] Fragmented body. Need %d bytes, have %d. Skipping.", msgEnd, len(payload))
+					}
+					i = absIdx + 1 // Search after this partial prefix
+					continue
+				}
+
+				// If we're here, we have a full message!
+				// Use the definition's message offset
+				msgBytes := payload[absIdx+def.messageOffset : msgEnd]
+				if enableChatScraperDebugLogs {
+					log.Printf("[D] [Scraper/Chat] Extracted message (raw hex): %s", hex.EncodeToString(msgBytes))
+				}
+
+				message := string(bytes.Trim(msgBytes, "\x00"))
+
+				// Sanitize
+				message = strings.Map(func(r rune) rune {
+					if unicode.IsPrint(r) {
+						return r
+					}
+					return -1 // Discard
+				}, message)
+				message = strings.TrimSpace(message)
+
+				if enableChatScraperDebugLogs && message != "" {
+					log.Printf("[D] [Scraper/Chat] Sanitized message: '%s'", message)
+				}
+
+				// --- UPDATED PARSING LOGIC TO HANDLE DROPS ---
+				if message != "" {
+					var channel, charName, chatMsg string
+
+					// --- NEW: Check for Drop Packet ---
+					// We can compare the prefix of the definition we just used to parse
+					if bytes.Equal(def.prefix, []byte{0x9a, 0x00}) {
+						channel = "Drop"
+						charName = "System"
+						chatMsg = message
+					} else if strings.HasPrefix(message, "[") && strings.Contains(message, "] ") {
+						// Case: "[Global] golbin : bom dia!"
+						channelPart, rest, _ := strings.Cut(message, "] ")
+						channel = strings.TrimPrefix(channelPart, "[") // "Global"
+
+						// Now parse the 'rest' for "char : msg"
+						charNamePart, chatMsgPart, found := strings.Cut(rest, " : ")
+						if found {
+							// Standard: [Channel] Char : Msg
+							charName = strings.TrimSpace(charNamePart) // "golbin"
+							chatMsg = strings.TrimSpace(chatMsgPart)   // "bom dia!"
+						} else {
+							// No colon. Is it a system broadcast?
+							// Whitelist known system channels.
+							if channel == "Notice" {
+								charName = "System"
+								chatMsg = strings.TrimSpace(rest)
+							} else {
+								// It's [Global] golbin or [Trade] M2LOKERO (no colon)
+								// This is not a chat message. Discard it.
+								chatMsg = "" // Set to empty to be discarded
+								if enableChatScraperDebugLogs {
+									log.Printf("[D] [Scraper/Chat] Discarding non-chat message (no ' : ' in channel '%s'): '%s'", channel, message)
+								}
+							}
+						}
+					} else {
+						// 2. No channel prefix, assume "Local"
+						channel = "Local"
+
+						// Case: "golbin : segunda aaa"
+						charNamePart, chatMsgPart, found := strings.Cut(message, " : ")
+						if found {
+							// Standard: Char : Msg
+							charName = strings.TrimSpace(charNamePart) // "golbin"
+							chatMsg = strings.TrimSpace(chatMsgPart)   // "segunda aaa"
+						} else {
+							// No colon. Assume it's a local system broadcast.
+							// Case: "Welcome to the server!"
+							charName = "System"
+							chatMsg = message // message is already trimmed
+						}
+					}
+
+					// 3. Add to batch (if message is not empty)
+					if chatMsg != "" {
+						newMessages = append(newMessages, ChatMessage{
+							Channel:       channel,
+							CharacterName: charName,
+							Message:       chatMsg,
+						})
+					} else if enableChatScraperDebugLogs {
+						log.Printf("[D] [Scraper/Chat] Parsed an empty message. Discarding.")
+					}
+				}
+				// --- END UPDATED PARSING LOGIC ---
+
+				// Continue search *after* this full message
+				i = msgEnd
+			}
+			// --- END REFACTORED PARSING LOOP ---
+		}
+	}
+}
+
 // Job defines a background task with its function and schedule.
 type Job struct {
 	Name     string
@@ -2352,7 +2713,7 @@ func runJobOnTicker(ctx context.Context, job Job) {
 	defer ticker.Stop()
 
 	log.Printf("[I] [Job] Starting initial run for %s job...", job.Name)
-	//job.Func() // Run immediately on start
+	job.Func() // Run immediately on start
 
 	for {
 		select {
@@ -2369,14 +2730,14 @@ func runJobOnTicker(ctx context.Context, job Job) {
 func startBackgroundJobs(ctx context.Context) {
 	// Define all scheduled jobs
 	jobs := []Job{
-		{Name: "Market", Func: scrapeData, Interval: 3 * time.Minute},
-		{Name: "Player Count", Func: scrapeAndStorePlayerCount, Interval: 1 * time.Minute},
-		{Name: "Player Character", Func: scrapePlayerCharacters, Interval: 1 * time.Hour},
-		{Name: "Guild", Func: scrapeGuilds, Interval: 25 * time.Minute},
-		{Name: "Zeny", Func: scrapeZeny, Interval: 1 * time.Hour},
-		{Name: "MVP Kill", Func: scrapeMvpKills, Interval: 5 * time.Minute},
-		{Name: "PT-Name-Populator", Func: populateMissingPortugueseNames, Interval: 6 * time.Hour},
-		{Name: "WoE-Char-Rankings", Func: scrapeWoeCharacterRankings, Interval: 15 * time.Minute},
+		// {Name: "Market", Func: scrapeData, Interval: 3 * time.Minute},
+		// {Name: "Player Count", Func: scrapeAndStorePlayerCount, Interval: 1 * time.Minute},
+		// {Name: "Player Character", Func: scrapePlayerCharacters, Interval: 1 * time.Hour},
+		// {Name: "Guild", Func: scrapeGuilds, Interval: 25 * time.Minute},
+		// {Name: "Zeny", Func: scrapeZeny, Interval: 1 * time.Hour},
+		// {Name: "MVP Kill", Func: scrapeMvpKills, Interval: 5 * time.Minute},
+		// {Name: "PT-Name-Populator", Func: populateMissingPortugueseNames, Interval: 6 * time.Hour},
+		// {Name: "WoE-Char-Rankings", Func: scrapeWoeCharacterRankings, Interval: 15 * time.Minute},
 	}
 
 	// Start all standard jobs
@@ -2384,6 +2745,7 @@ func startBackgroundJobs(ctx context.Context) {
 		go runJobOnTicker(ctx, job)
 	}
 
+	go startChatPacketCapture(ctx)
 	// --- MODIFICATION: Removed the entire "Special RMS Cache Refresh Job" goroutine ---
 	// The go func() { ... } block that called runFullRMSCacheJob() is deleted.
 	// --- END MODIFICATION ---

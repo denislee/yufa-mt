@@ -7,6 +7,7 @@ require (
 	github.com/agnivade/levenshtein v1.2.1
 	github.com/bwmarrin/discordgo v0.29.0
 	github.com/google/generative-ai-go v0.20.1
+	github.com/google/gopacket v1.1.19
 	github.com/joho/godotenv v1.5.1
 	github.com/mattn/go-sqlite3 v1.14.32
 	golang.org/x/crypto v0.42.0

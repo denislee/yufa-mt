@@ -673,3 +673,19 @@ func (fi FlatTradingPostItem) OriginalName() string {
 	}
 	return ""
 }
+
+// ChatMessage holds a single chat log entry
+type ChatMessage struct {
+	Timestamp     string
+	Channel       string // <-- ADD THIS LINE
+	CharacterName string // <-- ADD THIS LINE
+	Message       string
+}
+
+// ChatPageData holds all data for the chat.html template
+type ChatPageData struct {
+	Messages       []ChatMessage
+	LastScrapeTime string
+	Pagination     PaginationData
+	PageTitle      string
+}

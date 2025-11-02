@@ -59,3 +59,8 @@ func GetLastGuildScrapeTime() string {
 func GetLastCharacterScrapeTime() string {
 	return GetLastUpdateTime("last_updated", "characters")
 }
+
+// GetLastChatLogTime gets the timestamp of the last chat message.
+func GetLastChatLogTime() string {
+	return GetLastUpdateTime("timestamp", "chat")
+}
