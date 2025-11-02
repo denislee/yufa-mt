@@ -77,10 +77,24 @@
                                     </span>
                                 {{end}}
                             </td>
+                            
                             <td class="px-3 py-2 font-mono break-all {{if eq .Channel "Drop"}}text-yellow-200{{end}}">
-                                {{.Message}}
+                                {{/* Check if it's a system-generated drop message */}}
+                                {{if and (eq .Channel "Drop") (eq .CharacterName "System")}}
+                                    {{/* Try to parse it */}}
+                                    {{with parseDropMessage .Message}}
+                                        '<a href="/character?name={{.charName}}" class="hover:underline text-yellow-300 hover:text-yellow-200 font-semibold">{{.charName}}</a>'
+                                        {{.message}}
+                                    {{else}}
+                                        {{/* Parsing failed, show raw message */}}
+                                        {{.Message}}
+                                    {{end}}
+                                {{else}}
+                                    {{/* Not a system drop message, show as is */}}
+                                    {{.Message}}
+                                {{end}}
                             </td>
-                        </tr>
+                            </tr>
                         {{else}}
                         <tr>
                             <td colspan="4" class="px-3 py-4 text-center text-gray-500">No chat messages found.</td>

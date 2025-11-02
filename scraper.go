@@ -75,6 +75,7 @@ var (
 	ptNameMutex      sync.Mutex
 	ptNameRegex      = regexp.MustCompile(`<h1 class="item-title-db">([^<]+)</h1>`)
 	slotRemoverRegex = regexp.MustCompile(`\s*\[\d+\]\s*`)
+	dropMessageRegex = regexp.MustCompile(`^'([^']*)' got (.*)$`) // <-- ADD THIS LINE
 )
 
 type chatPacketDefinition struct {
