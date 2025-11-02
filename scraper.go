@@ -171,6 +171,8 @@ func (sc *ScraperClient) getPage(url, logPrefix string) (string, error) {
 	return "", fmt.Errorf("all retries failed for %s: %w", url, err)
 }
 
+// in scraper.go
+
 // findLastPage determines the total number of pages for a paginated ranking.
 func (sc *ScraperClient) findLastPage(firstPageURL, logPrefix string) int {
 	log.Printf("[I] %s Determining total number of pages...", logPrefix)
@@ -181,7 +183,6 @@ func (sc *ScraperClient) findLastPage(firstPageURL, logPrefix string) int {
 		return 1
 	}
 
-	// --- START MODIFICATION ---
 	// 1. Use goquery to parse the document first.
 	doc, err := goquery.NewDocumentFromReader(strings.NewReader(bodyContent))
 	if err != nil {
@@ -189,30 +190,38 @@ func (sc *ScraperClient) findLastPage(firstPageURL, logPrefix string) int {
 		return 1
 	}
 
-	// 2. Try to find the specific "Page X of Y" div based on the HTML provided.
-	pageText := ""
+	// --- START MODIFICATION ---
+	// 2. Try to find the specific "Page/Página X of/de Y" div text.
+	// This regex handles "Page 1 of 15" and "Página 1 de 15", ignoring comments.
+	pageOfRegex := regexp.MustCompile(`(?:Page|Página)\s+\d+\s+(?:of|de)\s+(\d+)`)
+	var foundLastPageFromText bool
+	var lastPageFromText int
+
 	doc.Find("div.flex.w-fit.items-center.justify-center.text-sm.font-medium").Each(func(i int, s *goquery.Selection) {
-		// We get the text and check if it matches the pattern, just in case
-		// other divs share these classes.
-		t := s.Text()
-		if strings.HasPrefix(t, "Page ") {
-			pageText = t
+		if foundLastPageFromText { // Stop searching once found
+			return
+		}
+		t := s.Text() // .Text() strips comments, giving "Página 1 de 15"
+		matches := pageOfRegex.FindStringSubmatch(t)
+
+		// matches[1] will be the last page number (e.g., "15")
+		if len(matches) > 1 {
+			if p, pErr := strconv.Atoi(matches[1]); pErr == nil {
+				log.Printf("[I] %s Found 'Page/Página X of/de Y' div text. Total pages: %d", logPrefix, p)
+				lastPageFromText = p
+				foundLastPageFromText = true
+			}
 		}
 	})
 
-	if pageText != "" {
-		pageOfRegex := regexp.MustCompile(`Page \d+ of (\d+)`)
-		matches := pageOfRegex.FindStringSubmatch(pageText)
-		if len(matches) > 1 {
-			if p, pErr := strconv.Atoi(matches[1]); pErr == nil {
-				log.Printf("[I] %s Found 'Page X of Y' div text. Total pages: %d", logPrefix, p)
-				return p
-			}
-		}
+	// If we found the page number from the text, return it.
+	if foundLastPageFromText {
+		return lastPageFromText
 	}
 
 	// 3. If "Page X of Y" div fails, fall back to parsing the links.
 	log.Printf("[W] %s Could not find 'Page X of Y' div. Falling back to link parsing...", logPrefix)
+	// --- END MODIFICATION ---
 
 	lastPage := 1
 	pageRegex := regexp.MustCompile(`page=(\d+)`)
@@ -254,7 +263,6 @@ func (sc *ScraperClient) findLastPage(firstPageURL, logPrefix string) int {
 		})
 		log.Printf("[I] %s No 'Last Page' (>>) link found. Using max of visible links. Total pages: %d", logPrefix, lastPage)
 	}
-	// --- END MODIFICATION ---
 
 	return lastPage
 }
