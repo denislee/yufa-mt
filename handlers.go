@@ -2615,8 +2615,43 @@ func woeRankingsHandler(w http.ResponseWriter, r *http.Request) {
 func chatHandler(w http.ResponseWriter, r *http.Request) {
 	const messagesPerPage = 100 // 100 messages per page
 
+	// --- NEW: Get active channel from query param ---
+	activeChannel := r.URL.Query().Get("channel")
+	if activeChannel == "" {
+		activeChannel = "all" // Default to "all"
+	}
+
+	// --- NEW: Get all distinct channels from DB ---
+	var allChannels []string
+	channelRows, err := db.Query("SELECT DISTINCT channel FROM chat ORDER BY channel ASC")
+	if err != nil {
+		log.Printf("[W] [HTTP/Chat] Could not query for distinct channels: %v", err)
+	} else {
+		for channelRows.Next() {
+			var channel string
+			if err := channelRows.Scan(&channel); err == nil {
+				allChannels = append(allChannels, channel)
+			}
+		}
+		channelRows.Close() // Close rows manually here
+	}
+
+	// --- NEW: Build WHERE clause and params ---
+	var whereConditions []string
+	var params []interface{}
+	if activeChannel != "all" {
+		whereConditions = append(whereConditions, "channel = ?")
+		params = append(params, activeChannel)
+	}
+	whereClause := ""
+	if len(whereConditions) > 0 {
+		whereClause = "WHERE " + strings.Join(whereConditions, " AND ")
+	}
+
 	var totalMessages int
-	if err := db.QueryRow("SELECT COUNT(*) FROM chat").Scan(&totalMessages); err != nil {
+	// --- MODIFIED: Use whereClause in count query ---
+	countQuery := fmt.Sprintf("SELECT COUNT(*) FROM chat %s", whereClause)
+	if err := db.QueryRow(countQuery, params...).Scan(&totalMessages); err != nil {
 		log.Printf("[E] [HTTP/Chat] Could not count chat messages: %v", err)
 		http.Error(w, "Could not count chat messages", http.StatusInternalServerError)
 		return
@@ -2624,14 +2659,17 @@ func chatHandler(w http.ResponseWriter, r *http.Request) {
 
 	pagination := newPaginationData(r, totalMessages, messagesPerPage)
 
-	// --- MODIFIED QUERY ---
-	query := `
+	// --- MODIFIED QUERY: Use whereClause ---
+	query := fmt.Sprintf(`
 		SELECT timestamp, channel, character_name, message 
 		FROM chat 
+		%s
 		ORDER BY timestamp DESC 
-		LIMIT ? OFFSET ?`
+		LIMIT ? OFFSET ?`, whereClause)
 
-	rows, err := db.Query(query, messagesPerPage, pagination.Offset)
+	// --- MODIFIED: Add params to final list ---
+	finalParams := append(params, messagesPerPage, pagination.Offset)
+	rows, err := db.Query(query, finalParams...)
 	if err != nil {
 		log.Printf("[E] [HTTP/Chat] Could not query for chat messages: %v", err)
 		http.Error(w, "Could not query for chat messages", http.StatusInternalServerError)
@@ -2643,7 +2681,6 @@ func chatHandler(w http.ResponseWriter, r *http.Request) {
 	for rows.Next() {
 		var msg ChatMessage
 		var timestampStr string
-		// --- MODIFIED SCAN ---
 		if err := rows.Scan(&timestampStr, &msg.Channel, &msg.CharacterName, &msg.Message); err != nil {
 			log.Printf("[W] [HTTP/Chat] Failed to scan chat message row: %v", err)
 			continue
@@ -2657,11 +2694,21 @@ func chatHandler(w http.ResponseWriter, r *http.Request) {
 		messages = append(messages, msg)
 	}
 
+	// --- NEW: Build query filter for pagination ---
+	queryFilter := url.Values{}
+	if activeChannel != "all" {
+		queryFilter.Set("channel", activeChannel)
+	}
+
+	// --- MODIFIED: Pass new data to template ---
 	data := ChatPageData{
 		Messages:       messages,
 		LastScrapeTime: GetLastChatLogTime(),
 		Pagination:     pagination,
 		PageTitle:      "Chat",
+		AllChannels:    allChannels,
+		ActiveChannel:  activeChannel,
+		QueryFilter:    template.URL(queryFilter.Encode()),
 	}
 	renderTemplate(w, "chat.html", data)
 }

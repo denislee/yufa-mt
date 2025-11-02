@@ -688,4 +688,7 @@ type ChatPageData struct {
 	LastScrapeTime string
 	Pagination     PaginationData
 	PageTitle      string
+	AllChannels    []string     `json:"-"` // <-- ADD THIS LINE
+	ActiveChannel  string       `json:"-"` // <-- ADD THIS LINE
+	QueryFilter    template.URL `json:"-"` // <-- ADD THIS LINE
 }

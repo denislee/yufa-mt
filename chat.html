@@ -22,6 +22,18 @@
             <div id="last-updated" class="text-sm text-gray-500" data-timestamp="{{.LastScrapeTime}}"></div>
         </div>
 
+        <div class="flex flex-wrap items-center border-b border-gray-200 mb-4">
+            <a href="?" 
+               class="px-4 py-2 text-sm font-medium border-b-2 {{if eq .ActiveChannel "all"}}border-blue-600 text-blue-600{{else}}border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300{{end}}">
+                All
+            </a>
+            {{range .AllChannels}}
+            <a href="?channel={{.}}"
+               class="px-4 py-2 text-sm font-medium border-b-2 {{if eq $.ActiveChannel .}}border-blue-600 text-blue-600{{else}}border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300{{end}}">
+                {{.}}
+            </a>
+            {{end}}
+        </div>
         <div class="bg-white shadow-lg rounded-lg overflow-hidden">
             <div class="overflow-x-auto">
                 <table class="min-w-full leading-normal">
@@ -61,10 +73,11 @@
         </div>
 
         {{if gt .Pagination.TotalPages 1}}
+        {{$filter := .QueryFilter}} {{/* Store the query filter */}}
         <div class="mt-6 flex justify-center items-center space-x-2">
             {{if .Pagination.HasPrevPage}}
-                <a href="?page=1" class="px-3 py-1 rounded-md text-sm font-medium bg-white text-gray-600 hover:bg-gray-50 shadow-sm">&laquo; First</a>
-                <a href="?page={{.Pagination.PrevPage}}" class="px-3 py-1 rounded-md text-sm font-medium bg-white text-gray-600 hover:bg-gray-50 shadow-sm">&lsaquo; Prev</a>
+                <a href="?page=1{{if $filter}}&{{$filter}}{{end}}" class="px-3 py-1 rounded-md text-sm font-medium bg-white text-gray-600 hover:bg-gray-50 shadow-sm">&laquo; First</a>
+                <a href="?page={{.Pagination.PrevPage}}{{if $filter}}&{{$filter}}{{end}}" class="px-3 py-1 rounded-md text-sm font-medium bg-white text-gray-600 hover:bg-gray-50 shadow-sm">&lsaquo; Prev</a>
             {{end}}
 
             <span class="px-3 py-1 rounded-md text-sm font-medium text-gray-700 bg-gray-100">
@@ -72,13 +85,12 @@
             </span>
 
             {{if .Pagination.HasNextPage}}
-                <a href="?page={{.Pagination.NextPage}}" class="px-3 py-1 rounded-md text-sm font-medium bg-white text-gray-600 hover:bg-gray-50 shadow-sm">Next &rsaquo;</a>
-                <a href="?page={{.Pagination.TotalPages}}" class="px-3 py-1 rounded-md text-sm font-medium bg-white text-gray-600 hover:bg-gray-50 shadow-sm">Last &raquo;</a>
+                <a href="?page={{.Pagination.NextPage}}{{if $filter}}&{{$filter}}{{end}}" class="px-3 py-1 rounded-md text-sm font-medium bg-white text-gray-600 hover:bg-gray-50 shadow-sm">Next &rsaquo;</a>
+                <a href="?page={{.Pagination.TotalPages}}{{if $filter}}&{{$filter}}{{end}}" class="px-3 py-1 rounded-md text-sm font-medium bg-white text-gray-600 hover:bg-gray-50 shadow-sm">Last &raquo;</a>
             {{end}}
         </div>
         {{end}}
-
-    </div>
+        </div>
 
     <script>
         // ... (All Javascript is identical and remains unchanged) ...
