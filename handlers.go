@@ -2615,15 +2615,16 @@ func woeRankingsHandler(w http.ResponseWriter, r *http.Request) {
 func chatHandler(w http.ResponseWriter, r *http.Request) {
 	const messagesPerPage = 100 // 100 messages per page
 
-	// --- NEW: Get active channel from query param ---
+	// --- MODIFIED: Get active channel and default to "all" ---
 	activeChannel := r.URL.Query().Get("channel")
-	if activeChannel == "" {
-		activeChannel = "all" // Default to "all"
+	if activeChannel == "" || activeChannel == "Local" {
+		activeChannel = "all" // Default to "all" and hide "Local"
 	}
+	// --- END MODIFICATION ---
 
-	// --- NEW: Get all distinct channels from DB ---
+	// --- MODIFIED: Get all distinct channels, excluding "Local" ---
 	var allChannels []string
-	channelRows, err := db.Query("SELECT DISTINCT channel FROM chat ORDER BY channel ASC")
+	channelRows, err := db.Query("SELECT DISTINCT channel FROM chat WHERE channel != 'Local' ORDER BY channel ASC")
 	if err != nil {
 		log.Printf("[W] [HTTP/Chat] Could not query for distinct channels: %v", err)
 	} else {
@@ -2635,18 +2636,29 @@ func chatHandler(w http.ResponseWriter, r *http.Request) {
 		}
 		channelRows.Close() // Close rows manually here
 	}
+	// --- END MODIFICATION ---
 
-	// --- NEW: Build WHERE clause and params ---
+	// --- MODIFIED: Build WHERE clause and params ---
 	var whereConditions []string
 	var params []interface{}
 	if activeChannel != "all" {
 		whereConditions = append(whereConditions, "channel = ?")
 		params = append(params, activeChannel)
+	} else {
+		// When "all" is selected, still hide "Local"
+		whereConditions = append(whereConditions, "channel != ?")
+		params = append(params, "Local")
 	}
+
+	// --- NEW: Add filter for specific Battlegrounds Drop messages ---
+	whereConditions = append(whereConditions, "NOT (channel = 'Drop' AND character_name = 'System' AND (message LIKE '%Os Campos de Batalha%' OR message LIKE '%Utilizem os efeitos%'))")
+	// --- END NEW ---
+
 	whereClause := ""
 	if len(whereConditions) > 0 {
 		whereClause = "WHERE " + strings.Join(whereConditions, " AND ")
 	}
+	// --- END MODIFICATION ---
 
 	var totalMessages int
 	// --- MODIFIED: Use whereClause in count query ---
