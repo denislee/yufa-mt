@@ -2615,14 +2615,15 @@ func woeRankingsHandler(w http.ResponseWriter, r *http.Request) {
 func chatHandler(w http.ResponseWriter, r *http.Request) {
 	const messagesPerPage = 100 // 100 messages per page
 
-	// --- MODIFIED: Get active channel and default to "all" ---
+	// --- MODIFIED: Read both channel and search query ---
 	activeChannel := r.URL.Query().Get("channel")
+	searchQuery := r.URL.Query().Get("query") // <-- ADD THIS LINE
 	if activeChannel == "" || activeChannel == "Local" {
 		activeChannel = "all" // Default to "all" and hide "Local"
 	}
 	// --- END MODIFICATION ---
 
-	// --- MODIFIED: Get all distinct channels, excluding "Local" ---
+	// --- Get all distinct channels, excluding "Local" (unchanged) ---
 	var allChannels []string
 	channelRows, err := db.Query("SELECT DISTINCT channel FROM chat WHERE channel != 'Local' ORDER BY channel ASC")
 	if err != nil {
@@ -2634,9 +2635,8 @@ func chatHandler(w http.ResponseWriter, r *http.Request) {
 				allChannels = append(allChannels, channel)
 			}
 		}
-		channelRows.Close() // Close rows manually here
+		channelRows.Close()
 	}
-	// --- END MODIFICATION ---
 
 	// --- MODIFIED: Build WHERE clause and params ---
 	var whereConditions []string
@@ -2650,9 +2650,16 @@ func chatHandler(w http.ResponseWriter, r *http.Request) {
 		params = append(params, "Local")
 	}
 
-	// --- NEW: Add filter for specific Battlegrounds Drop messages ---
-	whereConditions = append(whereConditions, "NOT (channel = 'Drop' AND character_name = 'System' AND (message LIKE '%Os Campos de Batalha%' OR message LIKE '%Utilizem os efeitos%'))")
+	// --- NEW: Add search query filter ---
+	if searchQuery != "" {
+		whereConditions = append(whereConditions, "(message LIKE ? OR character_name LIKE ?)")
+		likeQuery := "%" + searchQuery + "%"
+		params = append(params, likeQuery, likeQuery)
+	}
 	// --- END NEW ---
+
+	// --- Add filter for specific Battlegrounds Drop messages (unchanged) ---
+	whereConditions = append(whereConditions, "NOT (channel = 'Drop' AND character_name = 'System' AND (message LIKE '%Os Campos de Batalha%' OR message LIKE '%Utilizem os efeitos%'))")
 
 	whereClause := ""
 	if len(whereConditions) > 0 {
@@ -2661,7 +2668,7 @@ func chatHandler(w http.ResponseWriter, r *http.Request) {
 	// --- END MODIFICATION ---
 
 	var totalMessages int
-	// --- MODIFIED: Use whereClause in count query ---
+	// --- MODIFIED: Use whereClause in count query (unchanged from last step) ---
 	countQuery := fmt.Sprintf("SELECT COUNT(*) FROM chat %s", whereClause)
 	if err := db.QueryRow(countQuery, params...).Scan(&totalMessages); err != nil {
 		log.Printf("[E] [HTTP/Chat] Could not count chat messages: %v", err)
@@ -2671,7 +2678,7 @@ func chatHandler(w http.ResponseWriter, r *http.Request) {
 
 	pagination := newPaginationData(r, totalMessages, messagesPerPage)
 
-	// --- MODIFIED QUERY: Use whereClause ---
+	// --- MODIFIED QUERY: Use whereClause (unchanged from last step) ---
 	query := fmt.Sprintf(`
 		SELECT timestamp, channel, character_name, message 
 		FROM chat 
@@ -2679,7 +2686,7 @@ func chatHandler(w http.ResponseWriter, r *http.Request) {
 		ORDER BY timestamp DESC 
 		LIMIT ? OFFSET ?`, whereClause)
 
-	// --- MODIFIED: Add params to final list ---
+	// --- MODIFIED: Add params to final list (unchanged from last step) ---
 	finalParams := append(params, messagesPerPage, pagination.Offset)
 	rows, err := db.Query(query, finalParams...)
 	if err != nil {
@@ -2689,6 +2696,7 @@ func chatHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	defer rows.Close()
 
+	// --- (Message scanning loop is unchanged) ---
 	var messages []ChatMessage
 	for rows.Next() {
 		var msg ChatMessage
@@ -2697,7 +2705,6 @@ func chatHandler(w http.ResponseWriter, r *http.Request) {
 			log.Printf("[W] [HTTP/Chat] Failed to scan chat message row: %v", err)
 			continue
 		}
-
 		if parsedTime, err := time.Parse(time.RFC3339, timestampStr); err == nil {
 			msg.Timestamp = parsedTime.Format("2006-01-02 15:04:05")
 		} else {
@@ -2706,11 +2713,15 @@ func chatHandler(w http.ResponseWriter, r *http.Request) {
 		messages = append(messages, msg)
 	}
 
-	// --- NEW: Build query filter for pagination ---
+	// --- MODIFIED: Build query filter for pagination ---
 	queryFilter := url.Values{}
 	if activeChannel != "all" {
 		queryFilter.Set("channel", activeChannel)
 	}
+	if searchQuery != "" { // <-- ADD THIS
+		queryFilter.Set("query", searchQuery)
+	}
+	// --- END MODIFICATION ---
 
 	// --- MODIFIED: Pass new data to template ---
 	data := ChatPageData{
@@ -2721,6 +2732,7 @@ func chatHandler(w http.ResponseWriter, r *http.Request) {
 		AllChannels:    allChannels,
 		ActiveChannel:  activeChannel,
 		QueryFilter:    template.URL(queryFilter.Encode()),
+		SearchQuery:    searchQuery, // <-- ADD THIS LINE
 	}
 	renderTemplate(w, "chat.html", data)
 }
