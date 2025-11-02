@@ -25,6 +25,8 @@ import (
 	"github.com/google/gopacket"
 	"github.com/google/gopacket/layers"
 	"github.com/google/gopacket/pcap"
+	"golang.org/x/text/encoding/charmap" // <-- ADD THIS
+	"golang.org/x/text/transform"        // <-- ADD THIS
 )
 
 const (
@@ -2419,7 +2421,7 @@ func saveChatMessagesToDB(messages []ChatMessage) error {
 	return tx.Commit()
 }
 
-// In scraper.go
+// in scraper.go
 
 // startChatPacketCapture is the new long-running service to replace processChatLogFile
 func startChatPacketCapture(ctx context.Context) {
@@ -2530,12 +2532,19 @@ func startChatPacketCapture(ctx context.Context) {
 			if enableChatScraperDebugLogs {
 				log.Printf("[D] [Scraper/Chat] Found TCP packet. Payload size: %d bytes", len(payload))
 				// Log the full payload in hex and as a sanitized string
+
+				// --- FIX: Decode payload from Latin-1 for logging ---
+				// *** CHANGED HERE ***
+				reader := transform.NewReader(bytes.NewReader(payload), charmap.ISO8859_1.NewDecoder())
+				utf8Bytes, _ := io.ReadAll(reader) // Ignore error for logging
+
 				sanitizedPayload := strings.Map(func(r rune) rune {
 					if unicode.IsPrint(r) {
 						return r
 					}
 					return '.' // Replace non-printable with a dot
-				}, string(payload))
+				}, string(utf8Bytes)) // Use the decoded bytes
+				// --- END FIX ---
 				log.Printf("[D] [Scraper/Chat] RAW PAYLOAD (HEX): %s", hex.EncodeToString(payload))
 				log.Printf("[D] [Scraper/Chat] RAW PAYLOAD (STR): %s", sanitizedPayload)
 			}
@@ -2609,9 +2618,22 @@ func startChatPacketCapture(ctx context.Context) {
 					log.Printf("[D] [Scraper/Chat] Extracted message (raw hex): %s", hex.EncodeToString(msgBytes))
 				}
 
-				message := string(bytes.Trim(msgBytes, "\x00"))
+				// --- FIX: Decode from Latin-1 (ISO-8859-1) to UTF-8 ---
+				// The game client likely sends in a legacy encoding.
+				// *** CHANGED HERE ***
+				reader := transform.NewReader(bytes.NewReader(msgBytes), charmap.ISO8859_1.NewDecoder())
+				utf8Bytes, err := io.ReadAll(reader)
+				if err != nil {
+					log.Printf("[W] [Scraper/Chat] Failed to decode message from Latin-1: %v", err)
+					// Fallback to the old (broken) method just in case
+					utf8Bytes = msgBytes
+				}
 
-				// Sanitize
+				// Trim NULL bytes *after* decoding
+				message := string(bytes.Trim(utf8Bytes, "\x00"))
+				// --- END FIX ---
+
+				// Sanitize (this part now operates on a valid UTF-8 string)
 				message = strings.Map(func(r rune) rune {
 					if unicode.IsPrint(r) {
 						return r
@@ -2730,14 +2752,14 @@ func runJobOnTicker(ctx context.Context, job Job) {
 func startBackgroundJobs(ctx context.Context) {
 	// Define all scheduled jobs
 	jobs := []Job{
-		{Name: "Market", Func: scrapeData, Interval: 3 * time.Minute},
-		{Name: "Player Count", Func: scrapeAndStorePlayerCount, Interval: 1 * time.Minute},
-		{Name: "Player Character", Func: scrapePlayerCharacters, Interval: 1 * time.Hour},
-		{Name: "Guild", Func: scrapeGuilds, Interval: 25 * time.Minute},
-		{Name: "Zeny", Func: scrapeZeny, Interval: 1 * time.Hour},
-		{Name: "MVP Kill", Func: scrapeMvpKills, Interval: 5 * time.Minute},
-		{Name: "PT-Name-Populator", Func: populateMissingPortugueseNames, Interval: 6 * time.Hour},
-		{Name: "WoE-Char-Rankings", Func: scrapeWoeCharacterRankings, Interval: 15 * time.Minute},
+		// {Name: "Market", Func: scrapeData, Interval: 3 * time.Minute},
+		// {Name: "Player Count", Func: scrapeAndStorePlayerCount, Interval: 1 * time.Minute},
+		// {Name: "Player Character", Func: scrapePlayerCharacters, Interval: 1 * time.Hour},
+		// {Name: "Guild", Func: scrapeGuilds, Interval: 25 * time.Minute},
+		// {Name: "Zeny", Func: scrapeZeny, Interval: 1 * time.Hour},
+		// {Name: "MVP Kill", Func: scrapeMvpKills, Interval: 5 * time.Minute},
+		// {Name: "PT-Name-Populator", Func: populateMissingPortugueseNames, Interval: 6 * time.Hour},
+		// {Name: "WoE-Char-Rankings", Func: scrapeWoeCharacterRankings, Interval: 15 * time.Minute},
 	}
 
 	// Start all standard jobs
