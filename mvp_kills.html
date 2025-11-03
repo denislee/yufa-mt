@@ -80,37 +80,6 @@
     </div>
     <script>
         document.addEventListener('DOMContentLoaded', () => {
-            // --- Navigation Menu Logic ---
-            const mobileMenuButton = document.getElementById('mobile-menu-button');
-            const mobileMenu = document.getElementById('mobile-menu');
-            if (mobileMenuButton && mobileMenu) {
-                mobileMenuButton.addEventListener('click', function() {
-                    mobileMenu.classList.toggle('hidden');
-                });
-            }
-
-            function setupDropdown(buttonId, contentId) {
-                const button = document.getElementById(buttonId);
-                const content = document.getElementById(contentId);
-                if (!button || !content) return;
-
-                button.addEventListener('click', (event) => {
-                    event.stopPropagation();
-                    document.querySelectorAll('.dropdown-content').forEach(el => {
-                        if (el.id !== contentId) el.classList.add('hidden');
-                    });
-                    content.classList.toggle('hidden');
-                });
-            }
-
-            setupDropdown('ranking-dropdown-button', 'ranking-dropdown-content');
-
-            window.addEventListener('click', () => {
-                document.querySelectorAll('.dropdown-content').forEach(el => {
-                    el.classList.add('hidden');
-                });
-            });
-
             // --- Page-Specific Logic ---
             const lastUpdateElement = document.getElementById('last-updated');
             if (lastUpdateElement) {

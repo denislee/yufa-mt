@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{.PageTitle}} - Yufa Market Tracker</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        html { font-size: 110%; }
+        .container {
+            max-width: 95% !important;
+        }
+    </style>
+</head>
+<body class="bg-gray-100 text-gray-800 text-sm sm:text-base">
+
+    {{template "navbar.html" .}}
+
+    <div class="container mx-auto px-4 py-6 max-w-3xl">
+        <div class="flex flex-col sm:flex-row justify-between sm:items-center gap-2 mb-4 border-b border-gray-200 pb-3">
+            <h1 class="text-2xl font-bold text-gray-800">{{.PageTitle}}</h1>
+        </div>
+
+        {{if .ErrorMessage}}
+        <div class="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded relative mb-4" role="alert">
+            <strong class="font-bold">Error:</strong>
+            <span class="block sm:inline">{{.ErrorMessage}}</span>
+        </div>
+        {{end}}
+
+        <div class="bg-white p-6 rounded-lg shadow mb-6">
+            <form action="/xp-calculator" method="POST">
+                <div class="mb-6">
+                    <span class="block text-sm font-medium text-gray-700 mb-2">Calculator Type</span>
+                    <div class="flex items-center space-x-6">
+                        <label for="calc_type_base" class="flex items-center cursor-pointer">
+                            <input type="radio" name="calc_type" id="calc_type_base" value="base" {{if or (eq .CalcType "base") (eq .CalcType "")}}checked{{end}} class="focus:ring-indigo-500 h-4 w-4 text-indigo-600 border-gray-300">
+                            <span class="ml-2 text-sm text-gray-700">Base Level (1-99)</span>
+                        </label>
+                        <label for="calc_type_job" class="flex items-center cursor-pointer">
+                            <input type="radio" name="calc_type" id="calc_type_job" value="job" {{if eq .CalcType "job"}}checked{{end}} class="focus:ring-indigo-500 h-4 w-4 text-indigo-600 border-gray-300">
+                            <span class="ml-2 text-sm text-gray-700">Job Level (1-50)</span>
+                        </label>
+                    </div>
+                </div>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-4">
+                    <fieldset class="border border-gray-300 p-4 rounded-md">
+                        <legend class="text-lg font-semibold px-2">Initial</legend>
+                        <div class="space-y-4">
+                            <div>
+                                <label for="start_level" class="block text-sm font-medium text-gray-700">Level</label>
+                                <input type="number" name="start_level" id="start_level" min="1" max="99" value="{{.StartLevel}}" required class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm">
+                            </div>
+                            <div>
+                                <label for="start_perc" class="block text-sm font-medium text-gray-700">Percentage (0-100)</label>
+                                <input type="number" name="start_perc" id="start_perc" min="0" max="100" step="0.01" value="{{.StartPerc}}" required class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm">
+                            </div>
+                        </div>
+                    </fieldset>
+                    
+                    <fieldset class="border border-gray-300 p-4 rounded-md">
+                        <legend class="text-lg font-semibold px-2">Final</legend>
+                        <div class="space-y-4">
+                            <div>
+                                <label for="end_level" class="block text-sm font-medium text-gray-700">Level</label>
+                                <input type="number" name="end_level" id="end_level" min="1" max="99" value="{{.EndLevel}}" required class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm">
+                            </div>
+                            <div>
+                                <label for="end_perc" class="block text-sm font-medium text-gray-700">Percentage (0-100)</label>
+                                <input type="number" name="end_perc" id="end_perc" min="0" max="100" step="0.01" value="{{.EndPerc}}" required class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm">
+                            </div>
+                        </div>
+                    </fieldset>
+                </div>
+                
+                <div class="mb-6">
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Time Spent</label>
+                    <div class="grid grid-cols-2 gap-4">
+                        <div>
+                            <label for="time_hours" class="block text-xs font-medium text-gray-500">Hours</label>
+                            <input type="number" name="time_hours" id="time_hours" min="0" step="1" value="{{.TimeHours}}" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm">
+                        </div>
+                        <div>
+                            <label for="time_minutes" class="block text-xs font-medium text-gray-500">Minutes (0-59)</label>
+                            <input type="number" name="time_minutes" id="time_minutes" min="0" max="59" step="1" value="{{.TimeMinutes}}" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm">
+                        </div>
+                    </div>
+                </div>
+                <button type="submit" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2">Calculate</button>
+            </form>
+        </div>
+
+        {{if .ShowResults}}
+        <div class="bg-white p-6 rounded-lg shadow">
+            <h2 class="text-xl font-semibold mb-4">Results</h2>
+            <div class="space-y-3">
+                <div class="flex justify-between items-baseline">
+                    <span class="text-gray-600">Total Experience Gained:</span>
+                    <span id="total-xp" class="text-2xl font-bold text-green-600">0</span>
+                </div>
+                <div class="flex justify-between items-baseline">
+                    <span class="text-gray-600">Experience per Hour:</span>
+                    <span id="xp-per-hour" class="text-2xl font-bold text-blue-600">0 / hr</span>
+                </div>
+            </div>
+        </div>
+        {{end}}
+
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            // --- Page-Specific Logic ---
+            // Last Updated (from index.html)
+            const lastUpdateElement = document.getElementById('last-updated');
+            if (lastUpdateElement) {
+                const timestampStr = lastUpdateElement.dataset.timestamp;
+                if (!timestampStr || timestampStr === 'Never' || timestampStr === '') {
+                    lastUpdateElement.textContent = 'Updated: never';
+                    return;
+                }
+
+                const lastUpdateDate = new Date(timestampStr);
+                const formattedTimestamp = lastUpdateDate.toLocaleString([], {
+                    year: 'numeric', month: 'short', day: 'numeric',
+                    hour: '2-digit', minute: '2-digit'
+                });
+
+                const updateTimeAgo = () => {
+                    const now = new Date();
+                    const secondsPast = Math.floor((now.getTime() - lastUpdateDate.getTime()) / 1000);
+                    let timeAgoString;
+                    if (secondsPast < 5) timeAgoString = 'just now';
+                    else if (secondsPast < 60) timeAgoString = `${secondsPast}s ago`;
+                    else if (secondsPast < 3600) timeAgoString = `${Math.floor(secondsPast / 60)}m ago`;
+                    else if (secondsPast < 86400) timeAgoString = `${Math.floor(secondsPast / 3600)}h ago`;
+                    else timeAgoString = `${Math.floor(secondsPast / 86400)}d ago`;
+                    
+                    lastUpdateElement.innerHTML = `Updated: ${timeAgoString} <span class="text-gray-400 font-normal">(${formattedTimestamp})</span>`;
+                };
+
+                updateTimeAgo();
+                setInterval(updateTimeAgo, 30000);
+            }
+
+            // Format result numbers
+            {{if .ShowResults}}
+            const totalXP = {{.TotalXPGained}};
+            const xpPerHour = {{.XPPerHour}};
+            
+            document.getElementById('total-xp').textContent = totalXP.toLocaleString() + ' XP';
+            document.getElementById('xp-per-hour').textContent = xpPerHour.toLocaleString() + ' / hr';
+            {{end}}
+        });
+    </script>
+</body>
+</html>

@@ -1,21 +1,29 @@
-
 <nav class="bg-white shadow-sm sticky top-0 z-10 font-sans">
     <div class="container mx-auto px-4">
         <div class="flex justify-between items-center py-2">
             <div class="text-xl font-semibold text-gray-700">Yufa Market Tracker</div>
             
-            {{/* Define a variable to check if the current page is a ranking page */}}
+            {{/* Define variables to check if the current page is active */}}
             {{ $isRankingPage := (or (eq .PageTitle "Characters") (eq .PageTitle "Guilds") (eq .PageTitle "MVP Kills") (eq .PageTitle "WoE Rankings")) }}
+            {{ $isMiscPage := (or (eq .PageTitle "Player Count") (eq .PageTitle "XP Calculator")) }}
 
-            <!-- Desktop Menu -->
             <div class="hidden md:flex items-center space-x-1">
                 <a href="/" class="text-sm px-3 py-2 rounded-md {{if eq .PageTitle "Summary"}}font-semibold text-blue-600 bg-blue-50{{else}}text-gray-600 hover:bg-gray-100{{end}}">Summary</a>
                 <a href="/full-list" class="text-sm px-3 py-2 rounded-md {{if eq .PageTitle "Full List"}}font-semibold text-blue-600 bg-blue-50{{else}}text-gray-600 hover:bg-gray-100{{end}}">Full List</a>
                 <a href="/activity" class="text-sm px-3 py-2 rounded-md {{if eq .PageTitle "Activity"}}font-semibold text-blue-600 bg-blue-50{{else}}text-gray-600 hover:bg-gray-100{{end}}">Activity</a>
                 <a href="/discord" class="text-sm px-3 py-2 rounded-md {{if eq .PageTitle "Discord"}}font-semibold text-blue-600 bg-blue-50{{else}}text-gray-600 hover:bg-gray-100{{end}}">Discord</a>
                 <a href="/chat" class="text-sm px-3 py-2 rounded-md {{if eq .PageTitle "Chat"}}font-semibold text-blue-600 bg-blue-50{{else}}text-gray-600 hover:bg-gray-100{{end}}">Chat</a>
-                <a href="/players" class="text-sm px-3 py-2 rounded-md {{if eq .PageTitle "Player Count"}}font-semibold text-blue-600 bg-blue-50{{else}}text-gray-600 hover:bg-gray-100{{end}}">Player Count</a>
-
+                
+                <div class="relative" id="misc-dropdown-menu">
+                    <button id="misc-dropdown-button" class="text-sm px-3 py-2 rounded-md flex items-center {{if $isMiscPage}}font-semibold text-blue-600 bg-blue-50{{else}}text-gray-600 hover:bg-gray-100{{end}}">
+                        <span>Misc.</span>
+                        <svg class="w-4 h-4 ml-1" fill="currentColor" viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg"><path fill-rule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clip-rule="evenodd"></path></svg>
+                    </button>
+                    <div id="misc-dropdown-content" class="dropdown-content hidden absolute right-0 mt-2 w-48 bg-white rounded-md shadow-lg py-1 z-20 ring-1 ring-black ring-opacity-5">
+                        <a href="/players" class="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">Player Count</a>
+                        <a href="/xp-calculator" class="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">XP Calculator</a>
+                    </div>
+                </div>
                 <div class="relative" id="ranking-dropdown-menu">
                     <button id="ranking-dropdown-button" class="text-sm px-3 py-2 rounded-md flex items-center {{if $isRankingPage}}font-semibold text-blue-600 bg-blue-50{{else}}text-gray-600 hover:bg-gray-100{{end}}">
                         <span>Rankings</span>
@@ -30,33 +38,37 @@
                 </div>
             </div>
 
-            <!-- Mobile Menu Button -->
             <div class="md:hidden flex items-center">
-                <!-- START: ADDED HAMBURGER BUTTON -->
                 <button id="mobile-menu-button" class="p-2 rounded-md text-gray-600 hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-blue-500" aria-label="Main menu" aria-expanded="false">
                     <span class="sr-only">Open main menu</span>
-                    <!-- Icon when menu is closed (hamburger) -->
                     <svg id="open-icon" class="block h-6 w-6" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16" />
                     </svg>
-                    <!-- Icon when menu is open (X) -->
                     <svg id="close-icon" class="hidden h-6 w-6" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
                     </svg>
                 </button>
-                <!-- END: ADDED HAMBURGER BUTTON -->
             </div>
         </div>
     </div>
 
-    <!-- Mobile Menu Content -->
     <div id="mobile-menu" class="hidden md:hidden border-t border-gray-200">
         <a href="/" class="block py-2 px-4 text-sm {{if eq .PageTitle "Summary"}}bg-blue-50 text-blue-600 font-semibold{{else}}text-gray-600 hover:bg-gray-50{{end}}">Summary</a>
         <a href="/full-list" class="block py-2 px-4 text-sm {{if eq .PageTitle "Full List"}}bg-blue-50 text-blue-600 font-semibold{{else}}text-gray-600 hover:bg-gray-50{{end}}">Full List</a>
         <a href="/activity" class="block py-2 px-4 text-sm {{if eq .PageTitle "Activity"}}bg-blue-50 text-blue-600 font-semibold{{else}}text-gray-600 hover:bg-gray-50{{end}}">Activity</a>
         <a href="/discord" class="block py-2 px-4 text-sm {{if eq .PageTitle "Discord"}}bg-blue-50 text-blue-600 font-semibold{{else}}text-gray-600 hover:bg-gray-50{{end}}">Discord</a>
         <a href="/chat" class="block py-2 px-4 text-sm {{if eq .PageTitle "Chat"}}bg-blue-50 text-blue-600 font-semibold{{else}}text-gray-600 hover:bg-gray-50{{end}}">Chat</a>
-        <a href="/players" class="block py-2 px-4 text-sm {{if eq .PageTitle "Player Count"}}bg-blue-50 text-blue-600 font-semibold{{else}}text-gray-600 hover:bg-gray-50{{end}}">Player Count</a>
+        
+        <details class="group" {{if $isMiscPage}}open{{end}}>
+            <summary class="py-2 px-4 text-sm list-none flex justify-between cursor-pointer {{if $isMiscPage}}text-blue-600 font-semibold{{else}}text-gray-600 hover:bg-gray-50{{end}}">
+                <span>Misc.</span>
+                 <svg class="w-4 h-4 transition-transform duration-200 group-open:rotate-90" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path></svg>
+            </summary>
+            <div class="pl-4">
+                <a href="/players" class="block py-2 px-4 text-sm {{if eq .PageTitle "Player Count"}}bg-blue-50 text-blue-600 font-semibold{{else}}text-gray-600 hover:bg-gray-50{{end}}">Player Count</a>
+                <a href="/xp-calculator" class="block py-2 px-4 text-sm {{if eq .PageTitle "XP Calculator"}}bg-blue-50 text-blue-600 font-semibold{{else}}text-gray-600 hover:bg-gray-50{{end}}">XP Calculator</a>
+            </div>
+        </details>
         <details class="group" {{if $isRankingPage}}open{{end}}>
             <summary class="py-2 px-4 text-sm list-none flex justify-between cursor-pointer {{if $isRankingPage}}text-blue-600 font-semibold{{else}}text-gray-600 hover:bg-gray-50{{end}}">
                 <span>Rankings</span>
@@ -72,4 +84,53 @@
     </div>
 </nav>
 
+<script>
+document.addEventListener('DOMContentLoaded', () => {
+    // --- Navigation Menu Logic ---
+    const mobileMenuButton = document.getElementById('mobile-menu-button');
+    const mobileMenu = document.getElementById('mobile-menu');
+    const openIcon = document.getElementById('open-icon');
+    const closeIcon = document.getElementById('close-icon');
 
+    if (mobileMenuButton && mobileMenu && openIcon && closeIcon) {
+        mobileMenuButton.addEventListener('click', function() {
+            // Toggle menu visibility
+            mobileMenu.classList.toggle('hidden');
+            
+            // Toggle icon visibility
+            openIcon.classList.toggle('block');
+            openIcon.classList.toggle('hidden');
+            closeIcon.classList.toggle('block');
+            closeIcon.classList.toggle('hidden');
+        });
+    }
+
+    // Function to set up a dropdown menu
+    function setupDropdown(buttonId, contentId) {
+        const button = document.getElementById(buttonId);
+        const content = document.getElementById(contentId);
+        if (!button || !content) return;
+
+        button.addEventListener('click', (event) => {
+            event.stopPropagation();
+            // Close all other dropdowns first
+            document.querySelectorAll('.dropdown-content').forEach(el => {
+                if (el.id !== contentId) el.classList.add('hidden');
+            });
+            // Toggle the clicked dropdown
+            content.classList.toggle('hidden');
+        });
+    }
+
+    // Initialize both dropdowns
+    setupDropdown('ranking-dropdown-button', 'ranking-dropdown-content');
+    setupDropdown('misc-dropdown-button', 'misc-dropdown-content');
+
+    // Global click listener to close dropdowns when clicking anywhere else
+    window.addEventListener('click', () => {
+        document.querySelectorAll('.dropdown-content').forEach(el => {
+            el.classList.add('hidden');
+        });
+    });
+});
+</script>

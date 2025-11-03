@@ -693,3 +693,25 @@ type ChatPageData struct {
 	QueryFilter    template.URL `json:"-"`
 	SearchQuery    string       `json:"-"` // <-- ADD THIS LINE
 }
+
+// XPCalculatorPageData holds all data for the xp_calculator.html template
+type XPCalculatorPageData struct {
+	PageTitle      string
+	LastScrapeTime string
+
+	// Form Inputs
+	StartLevel  int
+	StartPerc   float64
+	EndLevel    int
+	EndPerc     float64
+	TimeHours   int     // <-- CHANGED
+	TimeMinutes int     // <-- ADDED
+	CalcType    string  // <-- ADDED
+	TimeSpent   float64 // in hours (REMOVED)
+
+	// Results
+	TotalXPGained int64
+	XPPerHour     int64
+	ShowResults   bool
+	ErrorMessage  string
+}

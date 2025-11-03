@@ -150,42 +150,7 @@
 
     <script>
         document.addEventListener('DOMContentLoaded', () => {
-            // --- Navigation Menu Logic ---
-            const mobileMenuButton = document.getElementById('mobile-menu-button');
-            const mobileMenu = document.getElementById('mobile-menu');
-            const openIcon = document.getElementById('open-icon');
-            const closeIcon = document.getElementById('close-icon');
 
-            if (mobileMenuButton && mobileMenu && openIcon && closeIcon) {
-                mobileMenuButton.addEventListener('click', function() {
-                    mobileMenu.classList.toggle('hidden');
-                    openIcon.classList.toggle('hidden');
-                    closeIcon.classList.toggle('hidden');
-                });
-            }
-
-            function setupDropdown(buttonId, contentId) {
-                const button = document.getElementById(buttonId);
-                const content = document.getElementById(contentId);
-                if (!button || !content) return;
-
-                button.addEventListener('click', (event) => {
-                    event.stopPropagation();
-                    document.querySelectorAll('.dropdown-content').forEach(el => {
-                        if (el.id !== contentId) el.classList.add('hidden');
-                    });
-                    content.classList.toggle('hidden');
-                });
-            }
-
-            setupDropdown('ranking-dropdown-button', 'ranking-dropdown-content');
-
-            window.addEventListener('click', () => {
-                document.querySelectorAll('.dropdown-content').forEach(el => {
-                    el.classList.add('hidden');
-                });
-            });
-            
             // --- Page-Specific Logic (Last Updated Time) ---
             const lastUpdateElement = document.getElementById('last-updated');
             if (lastUpdateElement) {
@@ -210,7 +175,7 @@
                     else if (secondsPast < 3600) timeAgoString = `${Math.floor(secondsPast / 60)}m ago`;
                     else if (secondsPast < 86400) timeAgoString = `${Math.floor(secondsPast / 3600)}h ago`;
                     else timeAgoString = `${Math.floor(secondsPast / 86400)}d ago`;
-                    
+
                     lastUpdateElement.innerHTML = `Last message: ${timeAgoString} <span class="text-gray-400 font-normal">(${formattedTimestamp})</span>`;
                 };
 

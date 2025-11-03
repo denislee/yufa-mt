@@ -509,6 +509,7 @@ func init() {
 		"trading_post.html",
 		"woe_rankings.html",
 		"chat.html",
+		"xp_calculator.html",
 	}
 
 	navbarPath := "navbar.html"
