@@ -52,8 +52,19 @@
                     <thead>
                         <tr class="border-b-2 border-gray-200 bg-gray-50 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
                             <th class="px-3 py-2" style="width: 150px;">Timestamp</th>
+                            
+                            {{/* --- MODIFICATION START --- */}}
+                            {{/* Only show "Channel" column if "All" tab is active */}}
+                            {{if eq .ActiveChannel "all"}}
                             <th class="px-3 py-2" style="width: 100px;">Channel</th>
+                            {{end}}
+                            
+                            {{/* Only show "Character" column if NOT on "Drop" tab */}}
+                            {{if ne .ActiveChannel "Drop"}}
                             <th class="px-3 py-2" style="width: 150px;">Character</th>
+                            {{end}}
+                            {{/* --- MODIFICATION END --- */}}
+
                             <th class="px-3 py-2">Message</th>
                         </tr>
                     </thead>
@@ -63,9 +74,17 @@
                             <td class="px-3 py-2 whitespace-nowrap {{if eq .Channel "Drop"}}text-yellow-200{{else}}text-gray-500{{end}}">
                                 {{.Timestamp}}
                             </td>
+
+                            {{/* --- MODIFICATION START --- */}}
+                            {{/* Only show "Channel" cell if "All" tab is active */}}
+                            {{if eq $.ActiveChannel "all"}}
                             <td class="px-3 py-2 whitespace-nowrap {{if eq .Channel "Drop"}}text-yellow-200{{else}}text-gray-500{{end}}">
                                 {{.Channel}}
                             </td>
+                            {{end}}
+                            
+                            {{/* Only show "Character" cell if NOT on "Drop" tab */}}
+                            {{if ne $.ActiveChannel "Drop"}}
                             <td class="px-3 py-2 whitespace-nowrap font-semibold">
                                 {{if ne .CharacterName "System"}}
                                     <a href="/character?name={{.CharacterName}}" class="hover:underline {{if eq .Channel "Drop"}}text-yellow-300 hover:text-yellow-200{{else}}text-blue-600 hover:text-blue-800{{end}}">
@@ -77,6 +96,8 @@
                                     </span>
                                 {{end}}
                             </td>
+                            {{end}}
+                            {{/* --- MODIFICATION END --- */}}
                             
                             <td class="px-3 py-2 font-mono break-all {{if eq .Channel "Drop"}}text-yellow-200{{end}}">
                                 {{/* Check if it's a system-generated drop message */}}
@@ -97,7 +118,9 @@
                             </tr>
                         {{else}}
                         <tr>
-                            <td colspan="4" class="px-3 py-4 text-center text-gray-500">No chat messages found.</td>
+                            {{/* --- MODIFICATION START: Dynamic colspan --- */}}
+                            <td colspan="{{if eq .ActiveChannel "all"}}4{{else if eq .ActiveChannel "Drop"}}2{{else}}3{{end}}" class="px-3 py-4 text-center text-gray-500">No chat messages found.</td>
+                            {{/* --- MODIFICATION END --- */}}
                         </tr>
                         {{end}}
                     </tbody>
