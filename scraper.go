@@ -2752,7 +2752,7 @@ func runJobOnTicker(ctx context.Context, job Job) {
 	defer ticker.Stop()
 
 	log.Printf("[I] [Job] Starting initial run for %s job...", job.Name)
-	job.Func() // Run immediately on start
+	//job.Func() // Run immediately on start
 
 	for {
 		select {
