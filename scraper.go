@@ -75,7 +75,7 @@ var (
 	ptNameMutex      sync.Mutex
 	ptNameRegex      = regexp.MustCompile(`<h1 class="item-title-db">([^<]+)</h1>`)
 	slotRemoverRegex = regexp.MustCompile(`\s*\[\d+\]\s*`)
-	dropMessageRegex = regexp.MustCompile(`^'([^']*)' got (.*)$`) // <-- ADD THIS LINE
+	dropMessageRegex = regexp.MustCompile(`^'([^']*)' (got|stole) (.*)$`)
 )
 
 type chatPacketDefinition struct {
@@ -2665,7 +2665,7 @@ func startChatPacketCapture(ctx context.Context) {
 						channel = "Drop"
 						// This is an announcement/drop packet.
 						// Check if it's the specific 0.01% drop message.
-						if strings.Contains(message, "(chance: 0.01%)") && strings.Contains(message, "got") {
+						if strings.Contains(message, "(chance: 0.01%)") && (strings.Contains(message, "got") || strings.Contains(message, "stole")) {
 							channel = "Drop"
 						} else {
 							// Otherwise, it's a general announcement.

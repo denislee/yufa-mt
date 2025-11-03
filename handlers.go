@@ -96,13 +96,14 @@ var templateFuncs = template.FuncMap{
 	"parseDropMessage": func(msg string) map[string]string {
 		// dropMessageRegex is defined in scraper.go in the package-level var block
 		matches := dropMessageRegex.FindStringSubmatch(msg)
-		if len(matches) == 3 {
+		if len(matches) == 4 { // Check for 4 matches
 			// matches[0] = full string
 			// matches[1] = character name (e.g., "Lindinha GC")
-			// matches[2] = rest of message (e.g., "Raydric's Iron Cain (chance: 0.01%)")
+			// matches[2] = "got" or "stole"
+			// matches[3] = rest of message (e.g., "Raydric's Iron Cain (chance: 0.01%)")
 			return map[string]string{
 				"charName": matches[1],
-				"message":  "got " + matches[2],
+				"message":  matches[2] + " " + matches[3], // Reconstruct "got Item..." or "stole Item..."
 			}
 		}
 		return nil
