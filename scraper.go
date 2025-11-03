@@ -2663,6 +2663,14 @@ func startChatPacketCapture(ctx context.Context) {
 					// We can compare the prefix of the definition we just used to parse
 					if bytes.Equal(def.prefix, []byte{0x9a, 0x00}) {
 						channel = "Drop"
+						// This is an announcement/drop packet.
+						// Check if it's the specific 0.01% drop message.
+						if strings.Contains(message, "(chance: 0.01%)") && strings.Contains(message, "got") {
+							channel = "Drop"
+						} else {
+							// Otherwise, it's a general announcement.
+							channel = "Announcement"
+						}
 						charName = "System"
 						chatMsg = message
 					} else if strings.HasPrefix(message, "[") && strings.Contains(message, "] ") {
