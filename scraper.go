@@ -69,13 +69,14 @@ var jobIDToClassName = map[string]string{
 var jobIconRegex = regexp.MustCompile(`icon_jobs_(\d+)\.png`) // Regex to extract ID from URL
 
 var (
-	marketMutex      sync.Mutex
-	characterMutex   sync.Mutex
-	playerCountMutex sync.Mutex
-	ptNameMutex      sync.Mutex
-	ptNameRegex      = regexp.MustCompile(`<h1 class="item-title-db">([^<]+)</h1>`)
-	slotRemoverRegex = regexp.MustCompile(`\s*\[\d+\]\s*`)
-	dropMessageRegex = regexp.MustCompile(`^'([^']*)' (got|stole) (.*)$`)
+	marketMutex        sync.Mutex
+	characterMutex     sync.Mutex
+	playerCountMutex   sync.Mutex
+	ptNameMutex        sync.Mutex
+	ptNameRegex        = regexp.MustCompile(`<h1 class="item-title-db">([^<]+)</h1>`)
+	slotRemoverRegex   = regexp.MustCompile(`\s*\[\d+\]\s*`)
+	dropMessageRegex   = regexp.MustCompile(`^'([^']*)' (got|stole) (.*)$`)
+	lastChatPacketTime atomic.Int64 // Stores Unix timestamp
 )
 
 type chatPacketDefinition struct {
@@ -2523,6 +2524,7 @@ func startChatPacketCapture(ctx context.Context) {
 			}
 
 		case packet := <-packetSource.Packets():
+			lastChatPacketTime.Store(time.Now().Unix())
 			if enableChatScraperDebugLogs {
 				log.Printf("[D] [Scraper/Chat] Received packet. PktData size: %d", len(packet.Data()))
 			}

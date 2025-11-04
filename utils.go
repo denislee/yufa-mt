@@ -64,3 +64,16 @@ func GetLastCharacterScrapeTime() string {
 func GetLastChatLogTime() string {
 	return GetLastUpdateTime("timestamp", "chat")
 }
+
+// GetLastChatPacketTime gets the timestamp of the last packet seen by the sniffer.
+func GetLastChatPacketTime() string {
+	// This var is from scraper.go (same package)
+	unixTime := lastChatPacketTime.Load()
+	if unixTime == 0 {
+		// Fallback to the last saved message time if no packets seen this session
+		return GetLastChatLogTime()
+	}
+	parsedTime := time.Unix(unixTime, 0)
+	// Format it to match the other GetLast...Time functions
+	return parsedTime.Format("2006-01-02 15:04:05")
+}

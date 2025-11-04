@@ -2742,7 +2742,7 @@ func chatHandler(w http.ResponseWriter, r *http.Request) {
 	// --- MODIFIED: Pass new data to template ---
 	data := ChatPageData{
 		Messages:       messages,
-		LastScrapeTime: GetLastChatLogTime(),
+		LastScrapeTime: GetLastChatPacketTime(),
 		Pagination:     pagination,
 		PageTitle:      "Chat",
 		AllChannels:    allChannels,
