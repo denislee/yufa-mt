@@ -26,7 +26,7 @@
 
         <div class="bg-white p-4 rounded-lg shadow mb-4">
             <h2 class="text-lg font-semibold text-gray-700 mb-2">Chat Listener Activity (Last 24h)</h2>
-            <div class="h-24">
+            <div class="h-16">
                 <canvas id="activityChart" data-activity-json="{{.ActivityGraphJSON}}"></canvas>
             </div>
         </div>
@@ -223,7 +223,6 @@
                                             afterLabel: function(context) {
                                                 return context.parsed.y === 1 ? 'Active' : 'Inactive';
                                             },
-                                            // --- MODIFICATION START ---
                                             title: function(context) {
                                                 // context[0].parsed.x is the timestamp (a number)
                                                 const timestamp = context[0].parsed.x; 
@@ -237,7 +236,6 @@
                                                     hour: '2-digit', minute: '2-digit'
                                                 });
                                             }
-                                            // --- MODIFICATION END ---
                                         }
                                     }
                                 },
