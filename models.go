@@ -684,14 +684,15 @@ type ChatMessage struct {
 
 // ChatPageData holds all data for the chat.html template
 type ChatPageData struct {
-	Messages       []ChatMessage
-	LastScrapeTime string
-	Pagination     PaginationData
-	PageTitle      string
-	AllChannels    []string     `json:"-"`
-	ActiveChannel  string       `json:"-"`
-	QueryFilter    template.URL `json:"-"`
-	SearchQuery    string       `json:"-"` // <-- ADD THIS LINE
+	Messages          []ChatMessage
+	LastScrapeTime    string
+	Pagination        PaginationData
+	PageTitle         string
+	AllChannels       []string     `json:"-"`
+	ActiveChannel     string       `json:"-"`
+	QueryFilter       template.URL `json:"-"`
+	SearchQuery       string       `json:"-"` // <-- ADD THIS LINE
+	ActivityGraphJSON template.JS  `json:"-"`
 }
 
 // XPCalculatorPageData holds all data for the xp_calculator.html template

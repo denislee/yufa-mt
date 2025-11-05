@@ -2627,19 +2627,78 @@ func woeRankingsHandler(w http.ResponseWriter, r *http.Request) {
 	renderTemplate(w, "woe_rankings.html", data)
 }
 
+type ChatActivityPoint struct {
+	Timestamp string `json:"t"`
+	Value     int    `json:"v"`
+}
+
+// --- NEW FUNCTION ---
+// getChatActivityGraphData queries the DB for activity heartbeats in the
+// last 24 hours and formats them for a Chart.js graph.
+func getChatActivityGraphData() template.JS {
+	now := time.Now()
+	// Start from exactly 24 hours ago, truncated to the minute
+	viewStart := now.Add(-24 * time.Hour).Truncate(time.Minute)
+
+	// 1. Get all heartbeats from the DB in the time range
+	rows, err := db.Query("SELECT timestamp FROM chat_activity_log WHERE timestamp >= ?", viewStart.Format(time.RFC3339))
+	if err != nil {
+		log.Printf("[E] [HTTP/Chat] Could not query chat activity log: %v", err)
+		return template.JS("[]")
+	}
+	defer rows.Close()
+
+	// Store found heartbeats in a map for fast lookup
+	activeMinutes := make(map[string]bool)
+	for rows.Next() {
+		var ts string
+		if err := rows.Scan(&ts); err == nil {
+			activeMinutes[ts] = true
+		}
+	}
+
+	// 2. Build the full 1440-point (24 * 60) dataset
+	var graphData []ChatActivityPoint
+	currentMinute := viewStart
+
+	// Loop from 24 hours ago up to the current minute
+	for currentMinute.Before(now) {
+		timestampStr := currentMinute.Format(time.RFC3339)
+		value := 0
+		if activeMinutes[timestampStr] {
+			value = 1 // Active
+		}
+
+		graphData = append(graphData, ChatActivityPoint{
+			Timestamp: timestampStr,
+			Value:     value,
+		})
+
+		currentMinute = currentMinute.Add(1 * time.Minute)
+	}
+
+	// 3. Marshal to JSON
+	jsonData, err := json.Marshal(graphData)
+	if err != nil {
+		log.Printf("[E] [HTTP/Chat] Could not marshal activity graph data: %v", err)
+		return template.JS("[]")
+	}
+
+	return template.JS(jsonData)
+}
+
 // chatHandler displays the paginated public chat log.
 func chatHandler(w http.ResponseWriter, r *http.Request) {
 	const messagesPerPage = 100 // 100 messages per page
 
-	// --- MODIFIED: Read both channel and search query ---
+	// ... (channel and search query logic is unchanged) ...
 	activeChannel := r.URL.Query().Get("channel")
-	searchQuery := r.URL.Query().Get("query") // <-- ADD THIS LINE
+	searchQuery := r.URL.Query().Get("query")
 	if activeChannel == "" || activeChannel == "Local" {
-		activeChannel = "all" // Default to "all" and hide "Local"
+		activeChannel = "all"
 	}
-	// --- END MODIFICATION ---
 
-	// --- Get all distinct channels, excluding "Local" (unchanged) ---
+	// ... (all channel, WHERE clause, and pagination logic is unchanged) ...
 	var allChannels []string
 	channelRows, err := db.Query("SELECT DISTINCT channel FROM chat WHERE channel != 'Local' ORDER BY channel ASC")
 	if err != nil {
@@ -2654,37 +2713,30 @@ func chatHandler(w http.ResponseWriter, r *http.Request) {
 		channelRows.Close()
 	}
 
-	// --- MODIFIED: Build WHERE clause and params ---
 	var whereConditions []string
 	var params []interface{}
 	if activeChannel != "all" {
 		whereConditions = append(whereConditions, "channel = ?")
 		params = append(params, activeChannel)
 	} else {
-		// When "all" is selected, still hide "Local"
 		whereConditions = append(whereConditions, "channel != ?")
 		params = append(params, "Local")
 	}
 
-	// --- NEW: Add search query filter ---
 	if searchQuery != "" {
 		whereConditions = append(whereConditions, "(message LIKE ? OR character_name LIKE ?)")
 		likeQuery := "%" + searchQuery + "%"
 		params = append(params, likeQuery, likeQuery)
 	}
-	// --- END NEW ---
 
-	// --- Add filter for specific Battlegrounds Drop messages (unchanged) ---
 	whereConditions = append(whereConditions, "NOT (channel = 'Drop' AND character_name = 'System' AND (message LIKE '%Os Campos de Batalha%' OR message LIKE '%Utilizem os efeitos%'))")
 
 	whereClause := ""
 	if len(whereConditions) > 0 {
 		whereClause = "WHERE " + strings.Join(whereConditions, " AND ")
 	}
-	// --- END MODIFICATION ---
 
 	var totalMessages int
-	// --- MODIFIED: Use whereClause in count query (unchanged from last step) ---
 	countQuery := fmt.Sprintf("SELECT COUNT(*) FROM chat %s", whereClause)
 	if err := db.QueryRow(countQuery, params...).Scan(&totalMessages); err != nil {
 		log.Printf("[E] [HTTP/Chat] Could not count chat messages: %v", err)
@@ -2694,7 +2746,6 @@ func chatHandler(w http.ResponseWriter, r *http.Request) {
 
 	pagination := newPaginationData(r, totalMessages, messagesPerPage)
 
-	// --- MODIFIED QUERY: Use whereClause (unchanged from last step) ---
 	query := fmt.Sprintf(`
 		SELECT timestamp, channel, character_name, message 
 		FROM chat 
@@ -2702,7 +2753,6 @@ func chatHandler(w http.ResponseWriter, r *http.Request) {
 		ORDER BY timestamp DESC 
 		LIMIT ? OFFSET ?`, whereClause)
 
-	// --- MODIFIED: Add params to final list (unchanged from last step) ---
 	finalParams := append(params, messagesPerPage, pagination.Offset)
 	rows, err := db.Query(query, finalParams...)
 	if err != nil {
@@ -2712,7 +2762,6 @@ func chatHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	defer rows.Close()
 
-	// --- (Message scanning loop is unchanged) ---
 	var messages []ChatMessage
 	for rows.Next() {
 		var msg ChatMessage
@@ -2729,17 +2778,19 @@ func chatHandler(w http.ResponseWriter, r *http.Request) {
 		messages = append(messages, msg)
 	}
 
-	// --- MODIFIED: Build query filter for pagination ---
 	queryFilter := url.Values{}
 	if activeChannel != "all" {
 		queryFilter.Set("channel", activeChannel)
 	}
-	if searchQuery != "" { // <-- ADD THIS
+	if searchQuery != "" {
 		queryFilter.Set("query", searchQuery)
 	}
+	// --- END UNCHANGED SECTION ---
+
+	// --- MODIFICATION: Get graph data ---
+	activityGraphJSON := getChatActivityGraphData()
 	// --- END MODIFICATION ---
 
-	// --- MODIFIED: Pass new data to template ---
 	data := ChatPageData{
 		Messages:       messages,
 		LastScrapeTime: GetLastChatPacketTime(),
@@ -2748,7 +2799,9 @@ func chatHandler(w http.ResponseWriter, r *http.Request) {
 		AllChannels:    allChannels,
 		ActiveChannel:  activeChannel,
 		QueryFilter:    template.URL(queryFilter.Encode()),
-		SearchQuery:    searchQuery, // <-- ADD THIS LINE
+		SearchQuery:    searchQuery,
+		// --- MODIFICATION: Pass data to template ---
+		ActivityGraphJSON: activityGraphJSON,
 	}
 	renderTemplate(w, "chat.html", data)
 }

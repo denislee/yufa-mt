@@ -77,6 +77,8 @@ var (
 	slotRemoverRegex   = regexp.MustCompile(`\s*\[\d+\]\s*`)
 	dropMessageRegex   = regexp.MustCompile(`^'([^']*)' (got|stole) (.*)$`)
 	lastChatPacketTime atomic.Int64 // Stores Unix timestamp
+	lastActivityLog    time.Time
+	activityLogMutex   sync.Mutex
 )
 
 type chatPacketDefinition struct {
@@ -2431,7 +2433,31 @@ func saveChatMessagesToDB(messages []ChatMessage) error {
 	return tx.Commit()
 }
 
-// in scraper.go
+func logChatActivityPeriodically() {
+	activityLogMutex.Lock()
+	defer activityLogMutex.Unlock()
+
+	now := time.Now()
+	// Check if we've already logged an entry within the last minute
+	if now.Sub(lastActivityLog) < 1*time.Minute {
+		return // Already logged this minute
+	}
+
+	// It's a new minute (or the first log), so update the timestamp
+	lastActivityLog = now
+
+	// Store the timestamp truncated to the minute (e.g., 15:04:00)
+	timestamp := now.Truncate(time.Minute).Format(time.RFC3339)
+
+	// Use "INSERT OR IGNORE" to avoid errors on duplicate (which shouldn't
+	// happen with the mutex, but it's safer)
+	_, err := db.Exec("INSERT OR IGNORE INTO chat_activity_log (timestamp) VALUES (?)", timestamp)
+	if err != nil {
+		log.Printf("[E] [Scraper/Chat] Failed to log chat activity heartbeat: %v", err)
+	} else if enableChatScraperDebugLogs {
+		log.Printf("[D] [Scraper/Chat] Logged activity heartbeat for %s", timestamp)
+	}
+}
 
 // startChatPacketCapture is the new long-running service to replace processChatLogFile
 func startChatPacketCapture(ctx context.Context) {
@@ -2524,7 +2550,12 @@ func startChatPacketCapture(ctx context.Context) {
 			}
 
 		case packet := <-packetSource.Packets():
+
+			// 1. Update the "last seen" time (for navbar)
 			lastChatPacketTime.Store(time.Now().Unix())
+			// 2. Log this minute's activity for the graph
+			logChatActivityPeriodically()
+
 			if enableChatScraperDebugLogs {
 				log.Printf("[D] [Scraper/Chat] Received packet. PktData size: %d", len(packet.Data()))
 			}

@@ -231,6 +231,11 @@ const (
 		"character_name" TEXT NOT NULL,
 		"message" TEXT NOT NULL
 	);`
+
+	createChatActivityLogTableSQL = `
+	CREATE TABLE IF NOT EXISTS chat_activity_log (
+		"timestamp" TEXT NOT NULL PRIMARY KEY -- Stores the timestamp truncated to the minute
+	);`
 )
 
 func applyMigrations(db *sql.DB) error {
@@ -297,7 +302,8 @@ func initDB(filepath string) (*sql.DB, error) {
 		"trading_post_items":     createTradingPostItemsTableSQL,
 		"internal_item_db":       createInternalItemDBTableSQL, // Exists
 		"woe_character_rankings": createWoeCharRankingsTableSQL,
-		"chat":                   createChatTableSQL, // <-- ADD THIS ENTRY
+		"chat":                   createChatTableSQL,            // <-- ADD THIS ENTRY
+		"chat_activity_log":      createChatActivityLogTableSQL, // <-- ADD THIS ENTRY
 	}
 
 	for name, query := range queries {

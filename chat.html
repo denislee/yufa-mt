@@ -5,6 +5,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Chat Log - Yufa Market Tracker</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3.0.0/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
     <style>
         html { font-size: 110%; }
         .container {
@@ -20,6 +22,13 @@
         <div class="flex flex-col sm:flex-row justify-between sm:items-center gap-2 mb-4 border-b border-gray-200 pb-3">
             <h1 class="text-2xl font-bold text-gray-800">Public Chat Log</h1>
             <div id="last-updated" class="text-sm text-gray-500" data-timestamp="{{.LastScrapeTime}}"></div>
+        </div>
+
+        <div class="bg-white p-4 rounded-lg shadow mb-4">
+            <h2 class="text-lg font-semibold text-gray-700 mb-2">Chat Listener Activity (Last 24h)</h2>
+            <div class="h-24">
+                <canvas id="activityChart" data-activity-json="{{.ActivityGraphJSON}}"></canvas>
+            </div>
         </div>
 
         <div class="flex flex-wrap items-center border-b border-gray-200">
@@ -53,17 +62,13 @@
                         <tr class="border-b-2 border-gray-200 bg-gray-50 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
                             <th class="px-3 py-2" style="width: 150px;">Timestamp</th>
                             
-                            {{/* --- MODIFICATION START --- */}}
-                            {{/* Only show "Channel" column if "All" tab is active */}}
                             {{if eq .ActiveChannel "all"}}
                             <th class="px-3 py-2" style="width: 100px;">Channel</th>
                             {{end}}
                             
-                            {{/* Only show "Character" column if NOT on "Drop" tab */}}
                             {{if ne .ActiveChannel "Drop"}}
                             <th class="px-3 py-2" style="width: 150px;">Character</th>
                             {{end}}
-                            {{/* --- MODIFICATION END --- */}}
 
                             <th class="px-3 py-2">Message</th>
                         </tr>
@@ -75,15 +80,12 @@
                                 {{.Timestamp}}
                             </td>
 
-                            {{/* --- MODIFICATION START --- */}}
-                            {{/* Only show "Channel" cell if "All" tab is active */}}
                             {{if eq $.ActiveChannel "all"}}
                             <td class="px-3 py-2 whitespace-nowrap {{if eq .Channel "Drop"}}text-yellow-200{{else}}text-gray-500{{end}}">
                                 {{.Channel}}
                             </td>
                             {{end}}
                             
-                            {{/* Only show "Character" cell if NOT on "Drop" tab */}}
                             {{if ne $.ActiveChannel "Drop"}}
                             <td class="px-3 py-2 whitespace-nowrap font-semibold">
                                 {{if ne .CharacterName "System"}}
@@ -97,30 +99,23 @@
                                 {{end}}
                             </td>
                             {{end}}
-                            {{/* --- MODIFICATION END --- */}}
                             
                             <td class="px-3 py-2 font-mono break-all {{if eq .Channel "Drop"}}text-yellow-200{{end}}">
-                                {{/* Check if it's a system-generated drop message */}}
                                 {{if and (eq .Channel "Drop") (eq .CharacterName "System")}}
-                                    {{/* Try to parse it */}}
                                     {{with parseDropMessage .Message}}
                                         '<a href="/character?name={{.charName}}" class="hover:underline text-yellow-300 hover:text-yellow-200 font-semibold">{{.charName}}</a>'
                                         {{.message}}
                                     {{else}}
-                                        {{/* Parsing failed, show raw message */}}
                                         {{.Message}}
                                     {{end}}
                                 {{else}}
-                                    {{/* Not a system drop message, show as is */}}
                                     {{.Message}}
                                 {{end}}
                             </td>
                             </tr>
                         {{else}}
                         <tr>
-                            {{/* --- MODIFICATION START: Dynamic colspan --- */}}
                             <td colspan="{{if eq .ActiveChannel "all"}}4{{else if eq .ActiveChannel "Drop"}}2{{else}}3{{end}}" class="px-3 py-4 text-center text-gray-500">No chat messages found.</td>
-                            {{/* --- MODIFICATION END --- */}}
                         </tr>
                         {{end}}
                     </tbody>
@@ -182,6 +177,105 @@
                 updateTimeAgo();
                 setInterval(updateTimeAgo, 30000);
             }
+
+            // --- NEW: Activity Chart ---
+            const activityCanvas = document.getElementById('activityChart');
+            if (activityCanvas) {
+                try {
+                    const activityData = JSON.parse(activityCanvas.dataset.activityJson || '[]');
+                    if (activityData.length > 0) {
+                        const ctx = activityCanvas.getContext('2d');
+                        
+                        // Format data for Chart.js
+                        const points = activityData.map(d => ({
+                            x: new Date(d.t),
+                            y: d.v
+                        }));
+
+                        new Chart(ctx, {
+                            type: 'line',
+                            data: {
+                                datasets: [{
+                                    label: 'Listener Activity',
+                                    data: points,
+                                    borderColor: 'rgb(37, 99, 235)',
+                                    backgroundColor: 'rgba(37, 99, 235, 0.1)',
+                                    borderWidth: 2,
+                                    pointRadius: 0,
+                                    fill: 'start', // Fill area under the line
+                                    stepped: true // Creates a "block" look
+                                }]
+                            },
+                            options: {
+                                responsive: true,
+                                maintainAspectRatio: false,
+                                interaction: {
+                                    intersect: false,
+                                    mode: 'index'
+                                },
+                                plugins: {
+                                    legend: { display: false },
+                                    tooltip: {
+                                        callbacks: {
+                                            label: function(context) {
+                                                return ''; // Hide default label
+                                            },
+                                            afterLabel: function(context) {
+                                                return context.parsed.y === 1 ? 'Active' : 'Inactive';
+                                            },
+                                            // --- MODIFICATION START ---
+                                            title: function(context) {
+                                                // context[0].parsed.x is the timestamp (a number)
+                                                const timestamp = context[0].parsed.x; 
+                                                
+                                                // Create a new Date object from that timestamp
+                                                const date = new Date(timestamp); 
+                                                
+                                                // Now call toLocaleString on the Date object
+                                                return date.toLocaleString([], { 
+                                                    year: 'numeric', month: 'short', day: 'numeric',
+                                                    hour: '2-digit', minute: '2-digit'
+                                                });
+                                            }
+                                            // --- MODIFICATION END ---
+                                        }
+                                    }
+                                },
+                                scales: {
+                                    x: {
+                                        type: 'time',
+                                        time: {
+                                            unit: 'hour',
+                                            tooltipFormat: 'yyyy-MM-dd HH:mm',
+                                            displayFormats: {
+                                                hour: 'HH:mm'
+                                            }
+                                        },
+                                        ticks: {
+                                            maxRotation: 0,
+                                            autoSkip: true,
+                                            maxTicksLimit: 12 // Show ~12 labels
+                                        },
+                                        grid: { display: false }
+                                    },
+                                    y: {
+                                        display: false, // Hide Y-axis labels
+                                        min: 0,
+                                        max: 1,
+                                        ticks: {
+                                            stepSize: 1
+                                        }
+                                    }
+                                }
+                            }
+                        });
+                    }
+                } catch (e) {
+                    console.error("Failed to parse or render activity chart:", e);
+                    activityCanvas.parentElement.innerHTML = "<p class='text-center text-gray-500 text-sm'>Could not load activity graph.</p>";
+                }
+            }
+            // --- END NEW ---
         });
     </script>
 </body>
