@@ -26,7 +26,7 @@
 
         <div class="bg-white p-4 rounded-lg shadow mb-4">
             <h2 class="text-lg font-semibold text-gray-700 mb-2">Chat Listener Activity (Last 24h)</h2>
-            <div class="h-16">
+            <div class="h-12">
                 <canvas id="activityChart" data-activity-json="{{.ActivityGraphJSON}}"></canvas>
             </div>
         </div>
@@ -73,34 +73,36 @@
                             <th class="px-3 py-2">Message</th>
                         </tr>
                     </thead>
-                    <tbody class="text-gray-700 text-xs">
+                    <tbody class="text-gray-700">
                         {{range .Messages}}
-                        <tr class="border-b {{if eq .Channel "Drop"}}bg-gray-800 hover:bg-gray-700 border-gray-700{{else}}hover:bg-gray-50 border-gray-200{{end}}">
-                            <td class="px-3 py-2 whitespace-nowrap {{if eq .Channel "Drop"}}text-yellow-200{{else}}text-gray-500{{end}}">
+                        <tr class="border-b {{if or (eq .Channel "Drop") (eq .CharacterName "System")}}bg-gray-800 hover:bg-gray-700 border-gray-700{{else}}hover:bg-gray-50 border-gray-200{{end}}">
+                            
+                            <td class="px-3 py-2 whitespace-nowrap text-xs {{if or (eq .Channel "Drop") (eq .CharacterName "System")}}text-yellow-200{{else}}text-gray-500{{end}}">
                                 {{.Timestamp}}
                             </td>
 
                             {{if eq $.ActiveChannel "all"}}
-                            <td class="px-3 py-2 whitespace-nowrap {{if eq .Channel "Drop"}}text-yellow-200{{else}}text-gray-500{{end}}">
+                            <td class="px-3 py-2 whitespace-nowrap text-xs {{if or (eq .Channel "Drop") (eq .CharacterName "System")}}text-yellow-200{{else}}text-gray-500{{end}}">
                                 {{.Channel}}
                             </td>
                             {{end}}
                             
                             {{if ne $.ActiveChannel "Drop"}}
-                            <td class="px-3 py-2 whitespace-nowrap font-semibold">
+                            <td class="px-3 py-2 whitespace-nowrap font-semibold text-xs">
                                 {{if ne .CharacterName "System"}}
-                                    <a href="/character?name={{.CharacterName}}" class="hover:underline {{if eq .Channel "Drop"}}text-yellow-300 hover:text-yellow-200{{else}}text-blue-600 hover:text-blue-800{{end}}">
+                                    <a href="/character?name={{.CharacterName}}" class="hover:underline {{if or (eq .Channel "Drop") (eq .CharacterName "System")}}text-yellow-300 hover:text-yellow-200{{else}}text-blue-600 hover:text-blue-800{{end}}">
                                         {{.CharacterName}}
                                     </a>
                                 {{else}}
-                                    <span class="{{if eq .Channel "Drop"}}text-yellow-200{{else}}text-gray-500{{end}}">
+                                    <span class="{{if or (eq .Channel "Drop") (eq .CharacterName "System")}}text-yellow-200{{else}}text-gray-500{{end}}">
                                         {{.CharacterName}}
                                     </span>
                                 {{end}}
                             </td>
                             {{end}}
                             
-                            <td class="px-3 py-2 font-mono break-all {{if eq .Channel "Drop"}}text-yellow-200{{end}}">
+                            <td class="px-3 py-2 font-mono break-all text-xs {{if or (eq .Channel "Drop") (eq .CharacterName "System")}}text-yellow-200{{end}}">
+                                {{/* This logic is still correct: it only applies special parsing to "Drop" + "System" */}}
                                 {{if and (eq .Channel "Drop") (eq .CharacterName "System")}}
                                     {{with parseDropMessage .Message}}
                                         '<a href="/character?name={{.charName}}" class="hover:underline text-yellow-300 hover:text-yellow-200 font-semibold">{{.charName}}</a>'
