@@ -262,6 +262,7 @@ func getCombinedItemIDs(searchQuery string) ([]int, error) {
 
 	wg.Add(2)
 
+	// Goroutine 1: Scrape rodatabase.com (unchanged)
 	go func() {
 		defer wg.Done()
 
@@ -281,23 +282,25 @@ func getCombinedItemIDs(searchQuery string) ([]int, error) {
 		scrapedIDsChan <- ids
 	}()
 
+	// Goroutine 2: Search local database (OPTIMIZED)
 	go func() {
 		defer wg.Done()
 		var ids []int
 
-		// --- MODIFICATION: Query internal_item_db ---
-		query := `
-			SELECT item_id FROM (
-				SELECT DISTINCT item_id FROM items WHERE name_of_the_item LIKE ? AND item_id > 0
-				UNION
-				SELECT item_id FROM internal_item_db WHERE name LIKE ?
-				UNION
-				SELECT item_id FROM internal_item_db WHERE name_pt LIKE ?
-			)`
+		// --- OPTIMIZATION ---
+		// The original query included a UNION with the `items` table using LIKE.
+		// The `items` table is a transaction log and can be massive, making
+		// a `LIKE` query extremely slow and inefficient.
+		// The `internal_item_db` is the canonical source for item names and IDs.
+		// This query is now targeted *only* at the fast, indexed `internal_item_db`.
+		const query = `
+			SELECT item_id FROM internal_item_db
+			WHERE name LIKE ? OR name_pt LIKE ?
+		`
+		// --- END OPTIMIZATION ---
 
 		likeQuery := "%" + searchQuery + "%"
-		rows, err := db.Query(query, likeQuery, likeQuery, likeQuery)
-		// --- END MODIFICATION ---
+		rows, err := db.Query(query, likeQuery, likeQuery)
 
 		if err != nil {
 			log.Printf("[W] [HTTP] Concurrent local ID search failed for '%s': %v", searchQuery, err)
@@ -315,19 +318,17 @@ func getCombinedItemIDs(searchQuery string) ([]int, error) {
 	}()
 
 	wg.Wait()
-	// --- THIS IS THE FIX ---
-	// Read the results from the channels *after* wg.Wait()
 	scrapedIDs := <-scrapedIDsChan
 	localIDs := <-localIDsChan
-	// --- END FIX ---
 	close(scrapedIDsChan)
 	close(localIDsChan)
 
+	// Combine and de-duplicate (unchanged)
 	combinedIDs := make(map[int]struct{})
-	for _, id := range scrapedIDs { // Now 'scrapedIDs' is defined
+	for _, id := range scrapedIDs {
 		combinedIDs[id] = struct{}{}
 	}
-	for _, id := range localIDs { // Now 'localIDs' is defined
+	for _, id := range localIDs {
 		combinedIDs[id] = struct{}{}
 	}
 

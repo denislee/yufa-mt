@@ -6,8 +6,25 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"sync" // Added
 	"time"
 )
+
+// --- NEW ---
+// updateTimeCacheEntry holds a cached timestamp and its expiry.
+type updateTimeCacheEntry struct {
+	value  string
+	expiry time.Time
+}
+
+// updateTimeCache holds the in-memory cache for GetLastUpdateTime.
+var (
+	updateTimeCache      = make(map[string]updateTimeCacheEntry)
+	updateTimeCacheMutex sync.RWMutex
+	updateTimeCacheTTL   = 30 * time.Second // Cache for 30 seconds
+)
+
+// --- END NEW ---
 
 func generateRandomPassword(length int) string {
 	const chars = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
@@ -24,20 +41,52 @@ func generateRandomPassword(length int) string {
 }
 
 // GetLastUpdateTime is a centralized helper to get the max timestamp from any table/column.
+// This version is optimized with an in-memory cache to reduce redundant DB queries.
 func GetLastUpdateTime(columnName, tableName string) string {
+	cacheKey := fmt.Sprintf("%s.%s", tableName, columnName)
+	now := time.Now()
+
+	// --- OPTIMIZATION: Check cache first (Read Lock) ---
+	updateTimeCacheMutex.RLock()
+	entry, found := updateTimeCache[cacheKey]
+	updateTimeCacheMutex.RUnlock()
+
+	if found && now.Before(entry.expiry) {
+		// Cache hit and not expired
+		return entry.value
+	}
+	// --- END OPTIMIZATION ---
+
+	// Cache miss or expired, run the query
 	var lastTimestamp sql.NullString
 	query := fmt.Sprintf("SELECT MAX(%s) FROM %s", columnName, tableName)
 	err := db.QueryRow(query).Scan(&lastTimestamp)
 	if err != nil {
 		log.Printf("[W] [Util] Could not get last update time for %s.%s: %v", tableName, columnName, err)
 	}
+
+	var resultValue string
 	if lastTimestamp.Valid {
 		parsedTime, err := time.Parse(time.RFC3339, lastTimestamp.String)
 		if err == nil {
-			return parsedTime.Format("2006-01-02 15:04:05")
+			resultValue = parsedTime.Format("2006-01-02 15:04:05")
+		} else {
+			resultValue = "Never" // Handle parse error
 		}
+	} else {
+		resultValue = "Never"
 	}
-	return "Never"
+
+	// --- OPTIMIZATION: Update cache (Write Lock) ---
+	updateTimeCacheMutex.Lock()
+	updateTimeCache[cacheKey] = updateTimeCacheEntry{
+		value:  resultValue,
+		expiry: now.Add(updateTimeCacheTTL),
+	}
+	updateTimeCacheMutex.Unlock()
+	// --- END OPTIMIZATION ---
+
+	return resultValue
 }
 
 // GetLastScrapeTime gets the timestamp of the last market scrape.
@@ -77,3 +126,4 @@ func GetLastChatPacketTime() string {
 	// Format it to match the other GetLast...Time functions
 	return parsedTime.Format("2006-01-02 15:04:05")
 }
+
