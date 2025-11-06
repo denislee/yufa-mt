@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -60,64 +61,64 @@
                 <table class="min-w-full leading-normal">
                     <thead>
                         <tr class="border-b-2 border-gray-200 bg-gray-50 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                            <th class="px-3 py-2" style="width: 150px;">Timestamp</th>
                             
                             {{if eq .ActiveChannel "all"}}
-                            <th class="px-2 py-2 text-center"></th>
+                            <th class="px-3 py-2" style="width: 100px;">Channel</th>
                             {{end}}
                             
+                            {{if and (ne .ActiveChannel "Drop") (ne .ActiveChannel "Announcement")}}
+                            <th class="px-3 py-2" style="width: 150px;">Character</th>
+                            {{end}}
+
                             <th class="px-3 py-2">Message</th>
                         </tr>
                     </thead>
                     <tbody class="text-gray-700">
                         {{range .Messages}}
                         <tr class="border-b {{if or (eq .Channel "Drop") (eq .CharacterName "System")}}bg-gray-800 hover:bg-gray-700 border-gray-700{{else}}hover:bg-gray-50 border-gray-200{{end}}">
+                            
+                            <td class="px-3 py-2 whitespace-nowrap text-xs {{if or (eq .Channel "Drop") (eq .CharacterName "System")}}text-yellow-200{{else}}text-gray-500{{end}}">
+                                {{.Timestamp}}
+                            </td>
 
                             {{if eq $.ActiveChannel "all"}}
-                            <td class="px-2 py-2 whitespace-nowrap text-xs text-center {{if or (eq .Channel "Drop") (eq .CharacterName "System")}}text-yellow-200{{else}}text-gray-500{{end}}">
-                                [{{slice .Channel 0 1 | lower}}]
+                            <td class="px-3 py-2 whitespace-nowrap text-xs {{if or (eq .Channel "Drop") (eq .CharacterName "System")}}text-yellow-200{{else}}text-gray-500{{end}}">
+                                {{.Channel}}
                             </td>
                             {{end}}
                             
-                            <td class="px-3 py-2 font-mono text-xs {{if or (eq .Channel "Drop") (eq .CharacterName "System")}}text-yellow-200{{end}}">
-                                {{if and (eq .Channel "Drop") (eq .CharacterName "System")}}
-                                    <div class="flex justify-between items-end gap-2">
-                                        <span class="flex-grow break-all">
-                                            {{with parseDropMessage .Message}}
-                                                '<a href="/character?name={{.charName}}" class="hover:underline text-yellow-300 hover:text-yellow-200 font-semibold">{{.charName}}</a>'
-                                                {{.message}}
-                                            {{else}}
-                                                {{.Message}} {{end}}
-                                        </span>
-                                        <span class="text-[10px] {{if or (eq .Channel "Drop") (eq .CharacterName "System")}}text-yellow-400/70{{else}}text-gray-400{{end}} flex-shrink-0 whitespace-nowrap">
-                                            {{.Timestamp}}
-                                        </span>
-                                    </div>
+                            {{if and (ne $.ActiveChannel "Drop") (ne $.ActiveChannel "Announcement")}}
+                            <td class="px-3 py-2 whitespace-nowrap font-semibold text-xs">
+                                {{if ne .CharacterName "System"}}
+                                    <a href="/character?name={{.CharacterName}}" class="hover:underline {{if or (eq .Channel "Drop") (eq .CharacterName "System")}}text-yellow-300 hover:text-yellow-200{{else}}text-blue-600 hover:text-blue-800{{end}}">
+                                        {{.CharacterName}}
+                                    </a>
                                 {{else}}
-                                    <div class="flex items-baseline gap-2">
-                                        <span class="font-semibold">
-                                            {{if ne .CharacterName "System"}}
-                                                <a href="/character?name={{.CharacterName}}" class="hover:underline {{if or (eq .Channel "Drop") (eq .CharacterName "System")}}text-yellow-300 hover:text-yellow-200{{else}}text-blue-600 hover:text-blue-800{{end}}">
-                                                    {{.CharacterName}}
-                                                </a>
-                                            {{else}}
-                                                <span class="{{if or (eq .Channel "Drop") (eq .CharacterName "System")}}text-yellow-200{{else}}text-gray-500{{end}}">
-                                                    {{.CharacterName}}
-                                                </span>
-                                            {{end}}
-                                        </span>
-                                        <span class="text-[10px] {{if or (eq .Channel "Drop") (eq .CharacterName "System")}}text-yellow-400/70{{else}}text-gray-400{{end}} whitespace-nowrap">
-                                            {{.Timestamp}}
-                                        </span>
-                                    </div>
-                                    <div class="break-all mt-0.5">
+                                    <span class="{{if or (eq .Channel "Drop") (eq .CharacterName "System")}}text-yellow-200{{else}}text-gray-500{{end}}">
+                                        {{.CharacterName}}
+                                    </span>
+                                {{end}}
+                            </td>
+                            {{end}}
+                            
+                            <td class="px-3 py-2 font-mono break-all text-xs {{if or (eq .Channel "Drop") (eq .CharacterName "System")}}text-yellow-200{{end}}">
+                                {{/* This logic is still correct: it only applies special parsing to "Drop" + "System" */}}
+                                {{if and (eq .Channel "Drop") (eq .CharacterName "System")}}
+                                    {{with parseDropMessage .Message}}
+                                        '<a href="/character?name={{.charName}}" class="hover:underline text-yellow-300 hover:text-yellow-200 font-semibold">{{.charName}}</a>'
+                                        {{.message}}
+                                    {{else}}
                                         {{.Message}}
-                                    </div>
+                                    {{end}}
+                                {{else}}
+                                    {{.Message}}
                                 {{end}}
                             </td>
                             </tr>
                         {{else}}
                         <tr>
-                            <td colspan="{{if eq .ActiveChannel "all"}}2{{else}}1{{end}}" class="px-3 py-4 text-center text-gray-500">No chat messages found.</td>
+                            <td colspan="{{if eq .ActiveChannel "all"}}4{{else if or (eq .ActiveChannel "Drop") (eq .ActiveChannel "Announcement")}}2{{else}}3{{end}}" class="px-3 py-4 text-center text-gray-500">No chat messages found.</td>
                         </tr>
                         {{end}}
                     </tbody>
@@ -280,3 +281,4 @@
     </script>
 </body>
 </html>
+
