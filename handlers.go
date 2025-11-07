@@ -2634,7 +2634,6 @@ type ChatActivityPoint struct {
 	Value     int    `json:"v"`
 }
 
-// --- NEW FUNCTION ---
 // getChatActivityGraphData queries the DB for activity heartbeats in the
 // last 24 hours and formats them for a Chart.js graph.
 func getChatActivityGraphData() template.JS {
@@ -2663,27 +2662,29 @@ func getChatActivityGraphData() template.JS {
 	var graphData []ChatActivityPoint
 	currentMinute := viewStart
 
-	// Loop from 24 hours ago up to the current minute
+	// Loop from 24 hours ago up to the current minute, in 3-minute steps
 	for currentMinute.Before(now) {
 		timestampStr := currentMinute.Format(time.RFC3339)
 
-		// Check the *next* minute as well to cover the 2-minute window
-		nextMinute := currentMinute.Add(1 * time.Minute)
-		nextTimestampStr := nextMinute.Format(time.RFC3339)
+		// Check the next two minutes as well to cover the 3-minute window
+		minute2 := currentMinute.Add(1 * time.Minute)
+		minute2Str := minute2.Format(time.RFC3339)
+		minute3 := currentMinute.Add(2 * time.Minute)
+		minute3Str := minute3.Format(time.RFC3339)
 
 		value := 0
-		// Check if *either* minute in the 2-minute window has activity
-		if activeMinutes[timestampStr] || activeMinutes[nextTimestampStr] {
+		// Check if *any* minute in the 3-minute window has activity
+		if activeMinutes[timestampStr] || activeMinutes[minute2Str] || activeMinutes[minute3Str] {
 			value = 1 // Active
 		}
 
 		graphData = append(graphData, ChatActivityPoint{
-			Timestamp: timestampStr, // The timestamp for the *start* of the 2-minute bucket
+			Timestamp: timestampStr, // The timestamp for the *start* of the 3-minute bucket
 			Value:     value,
 		})
 
-		// Increment by 2 minutes for the next bucket
-		currentMinute = currentMinute.Add(2 * time.Minute)
+		// Increment by 3 minutes for the next bucket
+		currentMinute = currentMinute.Add(3 * time.Minute)
 	}
 
 	// 3. Marshal to JSON
