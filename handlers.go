@@ -2665,17 +2665,24 @@ func getChatActivityGraphData() template.JS {
 	// Loop from 24 hours ago up to the current minute
 	for currentMinute.Before(now) {
 		timestampStr := currentMinute.Format(time.RFC3339)
+
+		// Check the *next* minute as well to cover the 2-minute window
+		nextMinute := currentMinute.Add(1 * time.Minute)
+		nextTimestampStr := nextMinute.Format(time.RFC3339)
+
 		value := 0
-		if activeMinutes[timestampStr] {
+		// Check if *either* minute in the 2-minute window has activity
+		if activeMinutes[timestampStr] || activeMinutes[nextTimestampStr] {
 			value = 1 // Active
 		}
 
 		graphData = append(graphData, ChatActivityPoint{
-			Timestamp: timestampStr,
+			Timestamp: timestampStr, // The timestamp for the *start* of the 2-minute bucket
 			Value:     value,
 		})
 
-		currentMinute = currentMinute.Add(1 * time.Minute)
+		// Increment by 2 minutes for the next bucket
+		currentMinute = currentMinute.Add(2 * time.Minute)
 	}
 
 	// 3. Marshal to JSON
