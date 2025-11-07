@@ -126,4 +126,3 @@ func GetLastChatPacketTime() string {
 	// Format it to match the other GetLast...Time functions
 	return parsedTime.Format("2006-01-02 15:04:05")
 }
-
