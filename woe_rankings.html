@@ -1,16 +1,15 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="{{.Page.Lang}}"> {{/* <-- MODIFIED */}}
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>WoE Rankings - Yufa Market Tracker</title>
+    <title>{{.Page.T.woe_rankings_title}} - Yufa Market Tracker</title> {{/* <-- MODIFIED */}}
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
         html { font-size: 110%; }
         .container {
             max-width: 95% !important;
         }
-        /* --- REMOVED BROKEN @apply RULES --- */
     </style>
 </head>
 <body class="bg-gray-100 text-gray-800 text-sm sm:text-base">
@@ -19,26 +18,27 @@
 
     <div class="container mx-auto px-4 py-6">
         <div class="flex flex-col sm:flex-row justify-between sm:items-center gap-2 mb-4 border-b border-gray-200 pb-3">
-            <h1 class="text-2xl font-bold text-gray-800">WoE Rankings</h1>
-            <div id="last-updated" class="text-sm text-gray-500" data-timestamp="{{.LastScrapeTime}}"></div>
+            <h1 class="text-2xl font-bold text-gray-800">{{.Page.T.woe_rankings_title}}</h1> {{/* <-- MODIFIED */}}
+            <div id="last-updated" class="text-sm text-gray-500" data-timestamp="{{.Data.LastScrapeTime}}"></div> {{/* <-- MODIFIED */}}
         </div>
 
         <div class="mb-4">
             <div class="sm:hidden">
                 <label for="tabs" class="sr-only">Select a tab</label>
+                {{/* MODIFIED: Use .Data and .Page.T */}}
                 <select id="tabs" name="tabs" onchange="window.location.href = this.value;" class="block w-full rounded-md border-gray-300 focus:border-blue-500 focus:ring-blue-500">
-                    <option value="/woe?tab=characters" {{if eq .ActiveTab "characters"}}selected{{end}}>Character Rankings</option>
-                    <option value="/woe?tab=guilds" {{if eq .ActiveTab "guilds"}}selected{{end}}>Guild Rankings</option>
+                    <option value="/woe?tab=characters" {{if eq .Data.ActiveTab "characters"}}selected{{end}}>{{.Page.T.char_rankings}}</option>
+                    <option value="/woe?tab=guilds" {{if eq .Data.ActiveTab "guilds"}}selected{{end}}>{{.Page.T.guild_rankings}}</option>
                 </select>
             </div>
             <div class="hidden sm:block">
                 <div class="border-b border-gray-200">
                     <nav class="-mb-px flex space-x-8" aria-label="Tabs">
-                        <a href="/woe?tab=characters" class="whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm {{if eq .ActiveTab "characters"}}border-blue-500 text-blue-600{{else}}border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300{{end}}">
-                            Character Rankings
+                        <a href="/woe?tab=characters" class="whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm {{if eq .Data.ActiveTab "characters"}}border-blue-500 text-blue-600{{else}}border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300{{end}}">
+                            {{.Page.T.char_rankings}}
                         </a>
-                        <a href="/woe?tab=guilds" class="whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm {{if eq .ActiveTab "guilds"}}border-blue-500 text-blue-600{{else}}border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300{{end}}">
-                            Guild Rankings
+                        <a href="/woe?tab=guilds" class="whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm {{if eq .Data.ActiveTab "guilds"}}border-blue-500 text-blue-600{{else}}border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300{{end}}">
+                            {{.Page.T.guild_rankings}}
                         </a>
                         </nav>
                 </div>
@@ -47,43 +47,45 @@
 
         <div class="bg-white p-3 rounded-lg shadow mb-4">
             <form action="/woe" method="GET" class="flex flex-wrap items-center gap-3">
-                <input type="hidden" name="tab" value="{{.ActiveTab}}">
-                <input type="hidden" name="sort_by" value="{{.SortBy}}">
-                <input type="hidden" name="order" value="{{.Order}}">
+                {{/* MODIFIED: Use .Data and .Page.T */}}
+                <input type="hidden" name="tab" value="{{.Data.ActiveTab}}">
+                <input type="hidden" name="sort_by" value="{{.Data.SortBy}}">
+                <input type="hidden" name="order" value="{{.Data.Order}}">
                 
-                {{if eq .ActiveTab "characters"}}
-                <input type="text" name="query" placeholder="Search by character name..." value="{{.SearchQuery}}" class="flex-grow mt-1 block w-full md:w-auto rounded-md border-gray-300 shadow-sm focus:border-indigo-300 focus:ring focus:ring-indigo-200 focus:ring-opacity-50 text-sm">
+                {{if eq .Data.ActiveTab "characters"}}
+                <input type="text" name="query" placeholder="{{.Page.T.search_by_char}}" value="{{.Data.SearchQuery}}" class="flex-grow mt-1 block w-full md:w-auto rounded-md border-gray-300 shadow-sm focus:border-indigo-300 focus:ring focus:ring-indigo-200 focus:ring-opacity-50 text-sm">
                 {{else}}
-                <input type="text" name="query" placeholder="Search by guild name..." value="{{.SearchQuery}}" class="flex-grow mt-1 block w-full md:w-auto rounded-md border-gray-300 shadow-sm focus:border-indigo-300 focus:ring focus:ring-indigo-200 focus:ring-opacity-50 text-sm">
+                <input type="text" name="query" placeholder="{{.Page.T.search_by_guild}}" value="{{.Data.SearchQuery}}" class="flex-grow mt-1 block w-full md:w-auto rounded-md border-gray-300 shadow-sm focus:border-indigo-300 focus:ring focus:ring-indigo-200 focus:ring-opacity-50 text-sm">
                 {{end}}
-                <button type="submit" class="w-full md:w-auto bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-md">Search</button>
+                <button type="submit" class="w-full md:w-auto bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-md">{{.Page.T.search}}</button>
             </form>
         </div>
 
         <div class="bg-white shadow-lg rounded-lg overflow-hidden">
             <div class="overflow-x-auto">
                 
-                {{if eq .ActiveTab "characters"}}
+                {{if eq .Data.ActiveTab "characters"}}
                 <table class="min-w-full leading-normal">
                     <thead>
                         <tr class="border-b-2 border-gray-200 bg-gray-50 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
-                            {{$currentSort := .SortBy}}
-                            {{$currentOrder := .Order}}
-                            {{$searchQuery := .SearchQuery}} {{$revOrder := "ASC"}}{{if eq $currentOrder "ASC"}}{{$revOrder = "DESC"}}{{end}}
+                            {{/* MODIFIED: Use .Data and .Page.T */}}
+                            {{$currentSort := .Data.SortBy}}
+                            {{$currentOrder := .Data.Order}}
+                            {{$searchQuery := .Data.SearchQuery}} {{$revOrder := "ASC"}}{{if eq $currentOrder "ASC"}}{{$revOrder = "DESC"}}{{end}}
 
-                            <th class="px-2 sm:px-3 py-2"><a href="/woe?tab=characters&query={{$searchQuery}}&sort_by=class&order={{if eq $currentSort "class"}}{{$revOrder}}{{else}}ASC{{end}}">Class {{if eq $currentSort "class"}}{{if eq $currentOrder "ASC"}}<span class="text-gray-400">▲</span>{{else}}<span class="text-gray-400">▼</span>{{end}}{{end}}</a></th>
-                            <th class="px-2 sm:px-3 py-2"><a href="/woe?tab=characters&query={{$searchQuery}}&sort_by=name&order={{if eq $currentSort "name"}}{{$revOrder}}{{else}}ASC{{end}}">Character {{if eq $currentSort "name"}}{{if eq $currentOrder "ASC"}}<span class="text-gray-400">▲</span>{{else}}<span class="text-gray-400">▼</span>{{end}}{{end}}</a></th>
-                            <th class="px-2 sm:px-3 py-2"><a href="/woe?tab=characters&query={{$searchQuery}}&sort_by=guild&order={{if eq $currentSort "guild"}}{{$revOrder}}{{else}}ASC{{end}}">Guild {{if eq $currentSort "guild"}}{{if eq $currentOrder "ASC"}}<span class="text-gray-400">▲</span>{{else}}<span class="text-gray-400">▼</span>{{end}}{{end}}</a></th>
-                            <th class="px-2 sm:px-3 py-2"><a href="/woe?tab=characters&query={{$searchQuery}}&sort_by=kills&order={{if eq $currentSort "kills"}}{{$revOrder}}{{else}}DESC{{end}}">Kills {{if eq $currentSort "kills"}}{{if eq $currentOrder "ASC"}}<span class="text-gray-400">▲</span>{{else}}<span class="text-gray-400">▼</span>{{end}}{{end}}</a></th>
-                            <th class="px-2 sm:px-3 py-2"><a href="/woe?tab=characters&query={{$searchQuery}}&sort_by=deaths&order={{if eq $currentSort "deaths"}}{{$revOrder}}{{else}}DESC{{end}}">Deaths {{if eq $currentSort "deaths"}}{{if eq $currentOrder "ASC"}}<span class="text-gray-400">▲</span>{{else}}<span class="text-gray-400">▼</span>{{end}}{{end}}</a></th>
-                            <th class="px-2 sm:px-3 py-2"><a href="/woe?tab=characters&query={{$searchQuery}}&sort_by=damage&order={{if eq $currentSort "damage"}}{{$revOrder}}{{else}}DESC{{end}}">Damage {{if eq $currentSort "damage"}}{{if eq $currentOrder "ASC"}}<span class="text-gray-400">▲</span>{{else}}<span class="text-gray-400">▼</span>{{end}}{{end}}</a></th>
-                            <th class="px-2 sm:px-3 py-2"><a href="/woe?tab=characters&query={{$searchQuery}}&sort_by=healing&order={{if eq $currentSort "healing"}}{{$revOrder}}{{else}}DESC{{end}}">Healing {{if eq $currentSort "healing"}}{{if eq $currentOrder "ASC"}}<span class="text-gray-400">▲</span>{{else}}<span class="text-gray-400">▼</span>{{end}}{{end}}</a></th>
-                            <th class="px-2 sm:px-3 py-2"><a href="/woe?tab=characters&query={{$searchQuery}}&sort_by=emperium&order={{if eq $currentSort "emperium"}}{{$revOrder}}{{else}}DESC{{end}}">Emperium {{if eq $currentSort "emperium"}}{{if eq $currentOrder "ASC"}}<span class="text-gray-400">▲</span>{{else}}<span class="text-gray-400">▼</span>{{end}}{{end}}</a></th>
-                            <th class="px-2 sm:px-3 py-2"><a href="/woe?tab=characters&query={{$searchQuery}}&sort_by=points&order={{if eq $currentSort "points"}}{{$revOrder}}{{else}}DESC{{end}}">Points {{if eq $currentSort "points"}}{{if eq $currentOrder "ASC"}}<span class="text-gray-400">▲</span>{{else}}<span class="text-gray-400">▼</span>{{end}}{{end}}</a></th>
+                            <th class="px-2 sm:px-3 py-2"><a href="/woe?tab=characters&query={{$searchQuery}}&sort_by=class&order={{if eq $currentSort "class"}}{{$revOrder}}{{else}}ASC{{end}}">{{.Page.T.class}} {{if eq $currentSort "class"}}{{if eq $currentOrder "ASC"}}<span class="text-gray-400">▲</span>{{else}}<span class="text-gray-400">▼</span>{{end}}{{end}}</a></th>
+                            <th class="px-2 sm:px-3 py-2"><a href="/woe?tab=characters&query={{$searchQuery}}&sort_by=name&order={{if eq $currentSort "name"}}{{$revOrder}}{{else}}ASC{{end}}">{{.Page.T.character}} {{if eq $currentSort "name"}}{{if eq $currentOrder "ASC"}}<span class="text-gray-400">▲</span>{{else}}<span class="text-gray-400">▼</span>{{end}}{{end}}</a></th>
+                            <th class="px-2 sm:px-3 py-2"><a href="/woe?tab=characters&query={{$searchQuery}}&sort_by=guild&order={{if eq $currentSort "guild"}}{{$revOrder}}{{else}}ASC{{end}}">{{.Page.T.guild}} {{if eq $currentSort "guild"}}{{if eq $currentOrder "ASC"}}<span class="text-gray-400">▲</span>{{else}}<span class="text-gray-400">▼</span>{{end}}{{end}}</a></th>
+                            <th class="px-2 sm:px-3 py-2"><a href="/woe?tab=characters&query={{$searchQuery}}&sort_by=kills&order={{if eq $currentSort "kills"}}{{$revOrder}}{{else}}DESC{{end}}">{{.Page.T.kills}} {{if eq $currentSort "kills"}}{{if eq $currentOrder "ASC"}}<span class="text-gray-400">▲</span>{{else}}<span class="text-gray-400">▼</span>{{end}}{{end}}</a></th>
+                            <th class="px-2 sm:px-3 py-2"><a href="/woe?tab=characters&query={{$searchQuery}}&sort_by=deaths&order={{if eq $currentSort "deaths"}}{{$revOrder}}{{else}}DESC{{end}}">{{.Page.T.deaths}} {{if eq $currentSort "deaths"}}{{if eq $currentOrder "ASC"}}<span class="text-gray-400">▲</span>{{else}}<span class="text-gray-400">▼</span>{{end}}{{end}}</a></th>
+                            <th class="px-2 sm:px-3 py-2"><a href="/woe?tab=characters&query={{$searchQuery}}&sort_by=damage&order={{if eq $currentSort "damage"}}{{$revOrder}}{{else}}DESC{{end}}">{{.Page.T.damage}} {{if eq $currentSort "damage"}}{{if eq $currentOrder "ASC"}}<span class="text-gray-400">▲</span>{{else}}<span class="text-gray-400">▼</span>{{end}}{{end}}</a></th>
+                            <th class="px-2 sm:px-3 py-2"><a href="/woe?tab=characters&query={{$searchQuery}}&sort_by=healing&order={{if eq $currentSort "healing"}}{{$revOrder}}{{else}}DESC{{end}}">{{.Page.T.healing}} {{if eq $currentSort "healing"}}{{if eq $currentOrder "ASC"}}<span class="text-gray-400">▲</span>{{else}}<span class="text-gray-400">▼</span>{{end}}{{end}}</a></th>
+                            <th class="px-2 sm:px-3 py-2"><a href="/woe?tab=characters&query={{$searchQuery}}&sort_by=emperium&order={{if eq $currentSort "emperium"}}{{$revOrder}}{{else}}DESC{{end}}">{{.Page.T.emperium}} {{if eq $currentSort "emperium"}}{{if eq $currentOrder "ASC"}}<span class="text-gray-400">▲</span>{{else}}<span class="text-gray-400">▼</span>{{end}}{{end}}</a></th>
+                            <th class="px-2 sm:px-3 py-2"><a href="/woe?tab=characters&query={{$searchQuery}}&sort_by=points&order={{if eq $currentSort "points"}}{{$revOrder}}{{else}}DESC{{end}}">{{.Page.T.points}} {{if eq $currentSort "points"}}{{if eq $currentOrder "ASC"}}<span class="text-gray-400">▲</span>{{else}}<span class="text-gray-400">▼</span>{{end}}{{end}}</a></th>
                         </tr>
                     </thead>
                     <tbody class="text-gray-700 text-xs">
-                        {{range .Characters}}
+                        {{range .Data.Characters}} {{/* <-- MODIFIED */}}
                          <tr class="border-b border-gray-200 hover:bg-gray-50">
                             <td class="px-2 sm:px-3 py-2">
                                 <div class="flex items-center">
@@ -111,27 +113,28 @@
                     </tbody>
                 </table>
                 
-                {{else if eq .ActiveTab "guilds"}}
+                {{else if eq .Data.ActiveTab "guilds"}}
                 <table class="min-w-full leading-normal">
                     <thead>
                         <tr class="border-b-2 border-gray-200 bg-gray-50 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
-                            {{$currentSort := .SortBy}}
-                            {{$currentOrder := .Order}}
-                            {{$searchQuery := .SearchQuery}} {{$revOrder := "ASC"}}{{if eq $currentOrder "ASC"}}{{$revOrder = "DESC"}}{{end}}
+                            {{/* MODIFIED: Use .Data and .Page.T */}}
+                            {{$currentSort := .Data.SortBy}}
+                            {{$currentOrder := .Data.Order}}
+                            {{$searchQuery := .Data.SearchQuery}} {{$revOrder := "ASC"}}{{if eq $currentOrder "ASC"}}{{$revOrder = "DESC"}}{{end}}
 
-                            <th class="px-2 sm:px-3 py-2"><a href="/woe?tab=guilds&query={{$searchQuery}}&sort_by=guild&order={{if eq $currentSort "guild"}}{{$revOrder}}{{else}}ASC{{end}}">Guild {{if eq $currentSort "guild"}}{{if eq $currentOrder "ASC"}}<span class="text-gray-400">▲</span>{{else}}<span class="text-gray-400">▼</span>{{end}}{{end}}</a></th>
-                            <th class="px-2 sm:px-3 py-2"><a href="/woe?tab=guilds&query={{$searchQuery}}&sort_by=members&order={{if eq $currentSort "members"}}{{$revOrder}}{{else}}DESC{{end}}">Members {{if eq $currentSort "members"}}{{if eq $currentOrder "ASC"}}<span class="text-gray-400">▲</span>{{else}}<span class="text-gray-400">▼</span>{{end}}{{end}}</a></th>
-                            <th class="px-2 sm:px-3 py-2"><a href="/woe?tab=guilds&query={{$searchQuery}}&sort_by=kills&order={{if eq $currentSort "kills"}}{{$revOrder}}{{else}}DESC{{end}}">Total Kills {{if eq $currentSort "kills"}}{{if eq $currentOrder "ASC"}}<span class="text-gray-400">▲</span>{{else}}<span class="text-gray-400">▼</span>{{end}}{{end}}</a></th>
-                            <th class="px-2 sm:px-3 py-2"><a href="/woe?tab=guilds&query={{$searchQuery}}&sort_by=deaths&order={{if eq $currentSort "deaths"}}{{$revOrder}}{{else}}DESC{{end}}">Total Deaths {{if eq $currentSort "deaths"}}{{if eq $currentOrder "ASC"}}<span class="text-gray-400">▲</span>{{else}}<span class="text-gray-400">▼</span>{{end}}{{end}}</a></th>
-                            <th class="px-2 sm:px-3 py-2"><a href="/woe?tab=guilds&query={{$searchQuery}}&sort_by=kd&order={{if eq $currentSort "kd"}}{{$revOrder}}{{else}}DESC{{end}}">K/D Ratio {{if eq $currentSort "kd"}}{{if eq $currentOrder "ASC"}}<span class="text-gray-4Example">▲</span>{{else}}<span class="text-gray-400">▼</span>{{end}}{{end}}</a></th>
-                            <th class="px-2 sm:px-3 py-2"><a href="/woe?tab=guilds&query={{$searchQuery}}&sort_by=damage&order={{if eq $currentSort "damage"}}{{$revOrder}}{{else}}DESC{{end}}">Total Damage {{if eq $currentSort "damage"}}{{if eq $currentOrder "ASC"}}<span class="text-gray-400">▲</span>{{else}}<span class="text-gray-400">▼</span>{{end}}{{end}}</a></th>
-                            <th class="px-2 sm:px-3 py-2"><a href="/woe?tab=guilds&query={{$searchQuery}}&sort_by=healing&order={{if eq $currentSort "healing"}}{{$revOrder}}{{else}}DESC{{end}}">Total Healing {{if eq $currentSort "healing"}}{{if eq $currentOrder "ASC"}}<span class="text-gray-400">▲</span>{{else}}<span class="text-gray-400">▼</span>{{end}}{{end}}</a></th>
-                            <th class="px-2 sm:px-3 py-2"><a href="/woe?tab=guilds&query={{$searchQuery}}&sort_by=emperium&order={{if eq $currentSort "emperium"}}{{$revOrder}}{{else}}DESC{{end}}">Emperium {{if eq $currentSort "emperium"}}{{if eq $currentOrder "ASC"}}<span class="text-gray-400">▲</span>{{else}}<span class="text-gray-400">▼</span>{{end}}{{end}}</a></th>
-                            <th class="px-2 sm:px-3 py-2"><a href="/woe?tab=guilds&query={{$searchQuery}}&sort_by=points&order={{if eq $currentSort "points"}}{{$revOrder}}{{else}}DESC{{end}}">Points {{if eq $currentSort "points"}}{{if eq $currentOrder "ASC"}}<span classs="text-gray-400">▲</span>{{else}}<span class="text-gray-400">▼</span>{{end}}{{end}}</a></th>
+                            <th class="px-2 sm:px-3 py-2"><a href="/woe?tab=guilds&query={{$searchQuery}}&sort_by=guild&order={{if eq $currentSort "guild"}}{{$revOrder}}{{else}}ASC{{end}}">{{.Page.T.guild}} {{if eq $currentSort "guild"}}{{if eq $currentOrder "ASC"}}<span class="text-gray-400">▲</span>{{else}}<span class="text-gray-400">▼</span>{{end}}{{end}}</a></th>
+                            <th class="px-2 sm:px-3 py-2"><a href="/woe?tab=guilds&query={{$searchQuery}}&sort_by=members&order={{if eq $currentSort "members"}}{{$revOrder}}{{else}}DESC{{end}}">{{.Page.T.members}} {{if eq $currentSort "members"}}{{if eq $currentOrder "ASC"}}<span class="text-gray-400">▲</span>{{else}}<span class="text-gray-400">▼</span>{{end}}{{end}}</a></th>
+                            <th class="px-2 sm:px-3 py-2"><a href="/woe?tab=guilds&query={{$searchQuery}}&sort_by=kills&order={{if eq $currentSort "kills"}}{{$revOrder}}{{else}}DESC{{end}}">{{.Page.T.total_kills}} {{if eq $currentSort "kills"}}{{if eq $currentOrder "ASC"}}<span class="text-gray-400">▲</span>{{else}}<span class="text-gray-400">▼</span>{{end}}{{end}}</a></th>
+                            <th class="px-2 sm:px-3 py-2"><a href="/woe?tab=guilds&query={{$searchQuery}}&sort_by=deaths&order={{if eq $currentSort "deaths"}}{{$revOrder}}{{else}}DESC{{end}}">{{.Page.T.total_deaths}} {{if eq $currentSort "deaths"}}{{if eq $currentOrder "ASC"}}<span class="text-gray-400">▲</span>{{else}}<span class="text-gray-400">▼</span>{{end}}{{end}}</a></th>
+                            <th class="px-2 sm:px-3 py-2"><a href="/woe?tab=guilds&query={{$searchQuery}}&sort_by=kd&order={{if eq $currentSort "kd"}}{{$revOrder}}{{else}}DESC{{end}}">{{.Page.T.kd_ratio}} {{if eq $currentSort "kd"}}{{if eq $currentOrder "ASC"}}<span class="text-gray-40Example">▲</span>{{else}}<span class="text-gray-400">▼</span>{{end}}{{end}}</a></th>
+                            <th class="px-2 sm:px-3 py-2"><a href="/woe?tab=guilds&query={{$searchQuery}}&sort_by=damage&order={{if eq $currentSort "damage"}}{{$revOrder}}{{else}}DESC{{end}}">{{.Page.T.total_damage}} {{if eq $currentSort "damage"}}{{if eq $currentOrder "ASC"}}<span class="text-gray-400">▲</span>{{else}}<span class="text-gray-400">▼</span>{{end}}{{end}}</a></th>
+                            <th class="px-2 sm:px-3 py-2"><a href="/woe?tab=guilds&query={{$searchQuery}}&sort_by=healing&order={{if eq $currentSort "healing"}}{{$revOrder}}{{else}}DESC{{end}}">{{.Page.T.total_healing}} {{if eq $currentSort "healing"}}{{if eq $currentOrder "ASC"}}<span class="text-gray-400">▲</span>{{else}}<span class="text-gray-400">▼</span>{{end}}{{end}}</a></th>
+                            <th class="px-2 sm:px-3 py-2"><a href="/woe?tab=guilds&query={{$searchQuery}}&sort_by=emperium&order={{if eq $currentSort "emperium"}}{{$revOrder}}{{else}}DESC{{end}}">{{.Page.T.emperium}} {{if eq $currentSort "emperium"}}{{if eq $currentOrder "ASC"}}<span class="text-gray-400">▲</span>{{else}}<span class="text-gray-400">▼</span>{{end}}{{end}}</a></th>
+                            <th class="px-2 sm:px-3 py-2"><a href="/woe?tab=guilds&query={{$searchQuery}}&sort_by=points&order={{if eq $currentSort "points"}}{{$revOrder}}{{else}}DESC{{end}}">{{.Page.T.points}} {{if eq $currentSort "points"}}{{if eq $currentOrder "ASC"}}<span classs="text-gray-400">▲</span>{{else}}<span class="text-gray-400">▼</span>{{end}}{{end}}</a></th>
                         </tr>
                     </thead>
                     <tbody class="text-gray-700 text-xs">
-                        {{range .Guilds}}
+                        {{range .Data.Guilds}} {{/* <-- MODIFIED */}}
                          <tr class="border-b border-gray-200 hover:bg-gray-50">
                             <td class="px-2 sm:px-3 py-2">
                                 {{if .GuildName.Valid}}
@@ -160,11 +163,18 @@
     
     <script>
     document.addEventListener('DOMContentLoaded', () => {
+        // --- MODIFIED: Use translations ---
+        const lang = document.documentElement.lang || 'en';
+        const translations = {
+            updated_never: '{{.Page.T.updated_never}}',
+            updated_ago: '{{.Page.T.updated_ago}}'
+        };
+
         const lastUpdateElement = document.getElementById('last-updated');
         if (lastUpdateElement) {
             const timestampStr = lastUpdateElement.dataset.timestamp;
             if (!timestampStr || timestampStr === 'Never' || timestampStr === '') {
-                lastUpdateElement.textContent = 'Updated: never';
+                lastUpdateElement.textContent = translations.updated_never;
                 return;
             }
 
@@ -178,13 +188,23 @@
                 const now = new Date();
                 const secondsPast = Math.floor((now.getTime() - lastUpdateDate.getTime()) / 1000);
                 let timeAgoString;
-                if (secondsPast < 5) timeAgoString = 'just now';
-                else if (secondsPast < 60) timeAgoString = `${secondsPast}s ago`;
-                else if (secondsPast < 3600) timeAgoString = `${Math.floor(secondsPast / 60)}m ago`;
-                else if (secondsPast < 86400) timeAgoString = `${Math.floor(secondsPast / 3600)}h ago`;
-                else timeAgoString = `${Math.floor(secondsPast / 86400)}d ago`;
                 
-                lastUpdateElement.innerHTML = `Updated: ${timeAgoString} <span class="text-gray-400 font-normal">(${formattedTimestamp})</span>`;
+                if (lang === 'pt') {
+                    if (secondsPast < 5) timeAgoString = 'agora mesmo';
+                    else if (secondsPast < 60) timeAgoString = `${secondsPast}s atrás`;
+                    else if (secondsPast < 3600) timeAgoString = `${Math.floor(secondsPast / 60)}m atrás`;
+                    else if (secondsPast < 86400) timeAgoString = `${Math.floor(secondsPast / 3600)}h atrás`;
+                    else timeAgoString = `${Math.floor(secondsPast / 86400)}d atrás`;
+                } else {
+                    if (secondsPast < 5) timeAgoString = 'just now';
+                    else if (secondsPast < 60) timeAgoString = `${secondsPast}s ago`;
+                    else if (secondsPast < 3600) timeAgoString = `${Math.floor(secondsPast / 60)}m ago`;
+                    else if (secondsPast < 86400) timeAgoString = `${Math.floor(secondsPast / 3600)}h ago`;
+                    else timeAgoString = `${Math.floor(secondsPast / 86400)}d ago`;
+                }
+                
+                const fullString = translations.updated_ago.replace('%s', timeAgoString);
+                lastUpdateElement.innerHTML = `${fullString} <span class="text-gray-400 font-normal">(${formattedTimestamp})</span>`;
             };
             updateTimeAgo();
             setInterval(updateTimeAgo, 30000);

@@ -1,9 +1,9 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="{{.Page.Lang}}"> {{/* <-- MODIFIED */}}
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{{.Character.Name}} - Yufa Market Tracker</title>
+    <title>{{.Data.Character.Name}} - Yufa Market Tracker</title> {{/* <-- MODIFIED */}}
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
         html { font-size: 110%; }
@@ -19,97 +19,100 @@
     <div class="container mx-auto px-4 py-6">
         <div class="flex flex-col sm:flex-row justify-between sm:items-center gap-2 mb-4 border-b border-gray-200 pb-3">
             <div class="flex items-center gap-4">
-                {{if .ClassImageURL}}
-                <img src="{{.ClassImageURL}}" alt="{{.Character.Class}}" class="h-16 w-16 bg-gray-200 p-1 rounded-md">
+                {{/* MODIFIED: Use .Data */}}
+                {{if .Data.ClassImageURL}}
+                <img src="{{.Data.ClassImageURL}}" alt="{{.Data.Character.Class}}" class="h-16 w-16 bg-gray-200 p-1 rounded-md">
                 {{end}}
                 <div>
                     <h1 class="text-3xl font-bold text-gray-800 flex items-center">
-                        {{.Character.Name}}
-                        {{if .Character.IsGuildLeader}}
-                            <span title="Guild Leader" class="ml-2 text-xl">⭐</span>
+                        {{.Data.Character.Name}}
+                        {{if .Data.Character.IsGuildLeader}}
+                            <span title="{{.Page.T.guild_leader}}" class="ml-2 text-xl">⭐</span> {{/* <-- MODIFIED */}}
                         {{end}}
                     </h1>
-                    <p class="text-lg text-gray-600">{{.Character.Class}}</p>
+                    <p class="text-lg text-gray-600">{{.Data.Character.Class}}</p>
                 </div>
             </div>
-            <div class="text-sm text-gray-500">Last updated: {{.LastScrapeTime}}</div>
+            {{/* MODIFIED: Use .Data and new #last-updated ID */}}
+            <div id="last-updated" class="text-sm text-gray-500" data-timestamp="{{.Data.LastScrapeTime}}"></div>
         </div>
 
         <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
             <div class="md:col-span-2">
                 <div class="bg-white p-4 rounded-lg shadow">
-                    <h2 class="text-xl font-semibold mb-4 border-b pb-2">Character Information</h2>
+                    <h2 class="text-xl font-semibold mb-4 border-b pb-2">{{.Page.T.char_info}}</h2> {{/* <-- MODIFIED */}}
                     <div class="grid grid-cols-2 sm:grid-cols-3 gap-4">
                         <div>
-                            <p class="font-medium text-gray-500">Rank</p>
-                            <p class="text-lg">{{.Character.Rank}}</p>
+                            <p class="font-medium text-gray-500">{{.Page.T.rank}}</p> {{/* <-- MODIFIED */}}
+                            <p class="text-lg">{{.Data.Character.Rank}}</p>
                         </div>
                         <div>
-                            <p class="font-medium text-gray-500">Base Level</p>
-                            <p class="text-lg">{{.Character.BaseLevel}}</p>
+                            <p class="font-medium text-gray-500">{{.Page.T.base_level}}</p> {{/* <-- MODIFIED */}}
+                            <p class="text-lg">{{.Data.Character.BaseLevel}}</p>
                         </div>
                         <div>
-                            <p class="font-medium text-gray-500">Job Level</p>
-                            <p class="text-lg">{{.Character.JobLevel}}</p>
+                            <p class="font-medium text-gray-500">{{.Page.T.job_level}}</p> {{/* <-- MODIFIED */}}
+                            <p class="text-lg">{{.Data.Character.JobLevel}}</p>
                         </div>
                         <div>
-                            <p class="font-medium text-gray-500">Experience</p>
-                            <p class="text-lg">{{printf "%.2f" .Character.Experience}}%</p>
+                            <p class="font-medium text-gray-500">{{.Page.T.experience}}</p> {{/* <-- MODIFIED */}}
+                            <p class="text-lg">{{printf "%.2f" .Data.Character.Experience}}%</p>
                         </div>
                         <div>
-                            <p class="font-medium text-gray-500">Zeny</p>
-                            <p class="text-lg font-mono">{{if .Character.Zeny}}{{formatZeny .Character.Zeny}} z{{else}}N/A{{end}}</p>
+                            <p class="font-medium text-gray-500">{{.Page.T.zeny}}</p> {{/* <-- MODIFIED */}}
+                            <p class="text-lg font-mono">{{if .Data.Character.Zeny}}{{formatZeny .Data.Character.Zeny}} z{{else}}N/A{{end}}</p>
                         </div>
                          <div>
-                            <p class="font-medium text-gray-500">Status</p>
-                            <p class="text-lg">{{if .Character.IsActive}}<span class="text-green-600 font-semibold">Active</span>{{else}}<span class="text-gray-500">Inactive</span>{{end}}</p>
+                            <p class="font-medium text-gray-500">{{.Page.T.status}}</p> {{/* <-- MODIFIED */}}
+                            <p class="text-lg">{{if .Data.Character.IsActive}}<span class="text-green-600 font-semibold">{{.Page.T.active}}</span>{{else}}<span class="text-gray-500">{{.Page.T.inactive}}</span>{{end}}</p> {{/* <-- MODIFIED */}}
                         </div>
                         <div class="col-span-full sm:col-span-1">
-                            <p class="font-medium text-gray-500">Last Active</p>
-                            <p class="text-lg">{{.Character.LastActive}}</p>
+                            <p class="font-medium text-gray-500">{{.Page.T.last_active}}</p> {{/* <-- MODIFIED */}}
+                            <p class="text-lg">{{.Data.Character.LastActive}}</p>
                         </div>
                     </div>
                 </div>
 
                 <div class="bg-white p-4 rounded-lg shadow mt-6">
-                    <h2 class="text-xl font-semibold mb-2">MVP Kills ({{.MvpKills.TotalKills}} Total)</h2>
-                    {{if gt .MvpKills.TotalKills 0}}
+                    {{/* MODIFIED: Use .Data and .Page.T */}}
+                    <h2 class="text-xl font-semibold mb-2">{{printf .Page.T.mvp_kills_total .Data.MvpKills.TotalKills}}</h2>
+                    {{if gt .Data.MvpKills.TotalKills 0}}
                     <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4 pt-2">
-                        {{range .MvpHeaders}}
-                            {{$killCount := getKillCount $.MvpKills.Kills .MobID}}
+                        {{range .Data.MvpHeaders}}
+                            {{$killCount := getKillCount $.Data.MvpKills.Kills .MobID}}
                             {{if gt $killCount 0}}
                             <div class="flex items-center space-x-3 p-2 rounded-md bg-gray-50">
                                 <img src="https://projetoyufa.com/_next/image?url=%2Fimages%2Fmvp%2F{{.MobID}}.png&w=1920&q=75" alt="{{.MobName}}" class="h-10 w-10 object-contain">
                                 <div>
                                     <p class="font-semibold text-gray-800">{{.MobName}}</p>
-                                    <p class="text-sm text-gray-600">{{$killCount}} kills</p>
+                                    <p class="text-sm text-gray-600">{{$killCount}} {{$.Page.T.kills}}</p> {{/* <-- MODIFIED */}}
                                 </div>
                             </div>
                             {{end}}
                         {{end}}
                     </div>
                     {{else}}
-                    <p class="text-gray-500 mt-4">This player has no recorded MVP kills.</p>
+                    <p class="text-gray-500 mt-4">{{.Page.T.no_mvp_kills}}</p> {{/* <-- MODIFIED */}}
                     {{end}}
                 </div>
 
                 <div class="bg-white p-4 rounded-lg shadow mt-6">
-                    <h2 class="text-xl font-semibold mb-2">Character Changelog</h2>
-                    {{if .ChangelogEntries}}
+                    <h2 class="text-xl font-semibold mb-2">{{.Page.T.char_changelog}}</h2> {{/* <-- MODIFIED */}}
+                    {{if .Data.ChangelogEntries}} {{/* <-- MODIFIED */}}
                     <div class="overflow-x-auto">
                         <table class="min-w-full divide-y divide-gray-200 mt-4">
                             <thead class="bg-gray-50">
                                 <tr>
                                     <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                                        Timestamp
+                                        {{.Page.T.timestamp}} {{/* <-- MODIFIED */}}
                                     </th>
                                     <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                                        Activity
+                                        {{.Page.T.activity}} {{/* <-- MODIFIED */}}
                                     </th>
                                 </tr>
                             </thead>
                             <tbody class="bg-white divide-y divide-gray-200">
-                                {{range .ChangelogEntries}}
+                                {{range .Data.ChangelogEntries}} {{/* <-- MODIFIED */}}
                                 <tr>
                                     <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500 font-mono">{{.ChangeTime}}</td>
                                     <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-800">{{.ActivityDescription}}</td>
@@ -119,72 +122,73 @@
                         </table>
                     </div>
 
-                    {{if gt .ChangelogPagination.TotalPages 1}}
+                    {{if gt .Data.ChangelogPagination.TotalPages 1}} {{/* <-- MODIFIED */}}
                     <div class="mt-4 flex justify-between items-center">
                         <div>
                             <p class="text-sm text-gray-700">
-                                Page <span class="font-medium">{{.ChangelogPagination.CurrentPage}}</span> of <span class="font-medium">{{.ChangelogPagination.TotalPages}}</span>
+                                {{/* MODIFIED: Use .Data and .Page.T */}}
+                                {{printf .Page.T.page_of .Data.ChangelogPagination.CurrentPage .Data.ChangelogPagination.TotalPages | TmplHTML}}
                             </p>
                         </div>
                         <div class="flex items-center space-x-2">
-                            {{if .ChangelogPagination.HasPrevPage}}
-                            <a href="/character?name={{$.Character.Name}}&page=1" class="px-3 py-1 border border-gray-300 bg-white text-sm font-medium rounded-md text-gray-700 hover:bg-gray-50">&laquo; First</a>
-                            <a href="/character?name={{$.Character.Name}}&page={{.ChangelogPagination.PrevPage}}" class="px-3 py-1 border border-gray-300 bg-white text-sm font-medium rounded-md text-gray-700 hover:bg-gray-50">Previous</a>
+                            {{if .Data.ChangelogPagination.HasPrevPage}}
+                            <a href="/character?name={{$.Data.Character.Name}}&page=1" class="px-3 py-1 border border-gray-300 bg-white text-sm font-medium rounded-md text-gray-700 hover:bg-gray-50">&laquo; {{.Page.T.first}}</a>
+                            <a href="/character?name={{$.Data.Character.Name}}&page={{.Data.ChangelogPagination.PrevPage}}" class="px-3 py-1 border border-gray-300 bg-white text-sm font-medium rounded-md text-gray-700 hover:bg-gray-50">{{.Page.T.previous}}</a>
                             {{else}}
-                            <span class="px-3 py-1 border border-gray-200 bg-gray-50 text-sm font-medium rounded-md text-gray-400 cursor-not-allowed">&laquo; First</span>
-                            <span class="px-3 py-1 border border-gray-200 bg-gray-50 text-sm font-medium rounded-md text-gray-400 cursor-not-allowed">Previous</span>
+                            <span class="px-3 py-1 border border-gray-200 bg-gray-50 text-sm font-medium rounded-md text-gray-400 cursor-not-allowed">&laquo; {{.Page.T.first}}</span>
+                            <span class="px-3 py-1 border border-gray-200 bg-gray-50 text-sm font-medium rounded-md text-gray-400 cursor-not-allowed">{{.Page.T.previous}}</span>
                             {{end}}
 
-                            {{if .ChangelogPagination.HasNextPage}}
-                            <a href="/character?name={{$.Character.Name}}&page={{.ChangelogPagination.NextPage}}" class="px-3 py-1 border border-gray-300 bg-white text-sm font-medium rounded-md text-gray-700 hover:bg-gray-50">Next</a>
-                            <a href="/character?name={{$.Character.Name}}&page={{.ChangelogPagination.TotalPages}}" class="px-3 py-1 border border-gray-300 bg-white text-sm font-medium rounded-md text-gray-700 hover:bg-gray-50">Last &raquo;</a>
+                            {{if .Data.ChangelogPagination.HasNextPage}}
+                            <a href="/character?name={{$.Data.Character.Name}}&page={{.Data.ChangelogPagination.NextPage}}" class="px-3 py-1 border border-gray-300 bg-white text-sm font-medium rounded-md text-gray-700 hover:bg-gray-50">{{.Page.T.next}}</a>
+                            <a href="/character?name={{$.Data.Character.Name}}&page={{.Data.ChangelogPagination.TotalPages}}" class="px-3 py-1 border border-gray-300 bg-white text-sm font-medium rounded-md text-gray-700 hover:bg-gray-50">{{.Page.T.last}} &raquo;</a>
                             {{else}}
-                            <span class="px-3 py-1 border border-gray-200 bg-gray-50 text-sm font-medium rounded-md text-gray-400 cursor-not-allowed">Next</span>
-                            <span class="px-3 py-1 border border-gray-200 bg-gray-50 text-sm font-medium rounded-md text-gray-400 cursor-not-allowed">Last &raquo;</span>
+                            <span class="px-3 py-1 border border-gray-200 bg-gray-50 text-sm font-medium rounded-md text-gray-400 cursor-not-allowed">{{.Page.T.next}}</span>
+                            <span class="px-3 py-1 border border-gray-200 bg-gray-50 text-sm font-medium rounded-md text-gray-400 cursor-not-allowed">{{.Page.T.last}} &raquo;</span>
                             {{end}}
                         </div>
                     </div>
                     {{end}}
                     {{else}}
-                    <p class="text-gray-500 mt-4">No recent activity recorded for this character.</p>
+                    <p class="text-gray-500 mt-4">{{.Page.T.no_char_activity}}</p> {{/* <-- MODIFIED */}}
                     {{end}}
                 </div>
                 </div>
 
             <div class="md:col-span-1">
-                {{if .Guild}}
+                {{if .Data.Guild}} {{/* <-- MODIFIED */}}
                 <div class="bg-white p-4 rounded-lg shadow">
-                    <h2 class="text-xl font-semibold mb-4 border-b pb-2">Guild Information</h2>
+                    <h2 class="text-xl font-semibold mb-4 border-b pb-2">{{.Page.T.guild_info}}</h2> {{/* <-- MODIFIED */}}
                     <div class="space-y-3">
                         <div>
-                            <p class="font-medium text-gray-500">Guild Name</p>
-                            <a href="/guild?name={{.Guild.Name | urlquery}}" class="text-lg text-blue-600 hover:underline">{{.Guild.Name}}</a>
+                            <p class="font-medium text-gray-500">{{.Page.T.guild_name}}</p> {{/* <-- MODIFIED */}}
+                            <a href="/guild?name={{.Data.Guild.Name | urlquery}}" class="text-lg text-blue-600 hover:underline">{{.Data.Guild.Name}}</a>
                         </div>
                         <div>
-                            <p class="font-medium text-gray-500">Guild Level</p>
-                            <p class="text-lg">{{.Guild.Level}}</p>
+                            <p class="font-medium text-gray-500">{{.Page.T.guild_level}}</p> {{/* <-- MODIFIED */}}
+                            <p class="text-lg">{{.Data.Guild.Level}}</p>
                         </div>
                         <div>
-                            <p class="font-medium text-gray-500">Guild Master</p>
-                            <a href="/character?name={{.Guild.Master}}" class="text-lg text-blue-600 hover:underline">{{.Guild.Master}}</a>
+                            <p class="font-medium text-gray-500">{{.Page.T.guild_master}}</p> {{/* <-- MODIFIED */}}
+                            <a href="/character?name={{.Data.Guild.Master}}" class="text-lg text-blue-600 hover:underline">{{.Data.Guild.Master}}</a>
                         </div>
                         <div>
-                            <p class="font-medium text-gray-500">Members</p>
-                            <p class="text-lg">{{.Guild.MemberCount}}</p>
+                            <p class="font-medium text-gray-500">{{.Page.T.members}}</p> {{/* <-- MODIFIED */}}
+                            <p class="text-lg">{{.Data.Guild.MemberCount}}</p>
                         </div>
                     </div>
                 </div>
                 {{else}}
                 <div class="bg-white p-4 rounded-lg shadow">
-                     <h2 class="text-xl font-semibold mb-2">Guild Information</h2>
-                     <p class="text-gray-500 mt-4">This character is not in a guild.</p>
+                     <h2 class="text-xl font-semibold mb-2">{{.Page.T.guild_info}}</h2> {{/* <-- MODIFIED */}}
+                     <p class="text-gray-500 mt-4">{{.Page.T.not_in_guild}}</p> {{/* <-- MODIFIED */}}
                 </div>
                 {{end}}
                 <div class="bg-white p-4 rounded-lg shadow mt-6">
-                    <h2 class="text-xl font-semibold mb-2">Guild History</h2>
-                    {{if .GuildHistory}}
+                    <h2 class="text-xl font-semibold mb-2">{{.Page.T.guild_history}}</h2> {{/* <-- MODIFIED */}}
+                    {{if .Data.GuildHistory}} {{/* <-- MODIFIED */}}
                     <div class="mt-4 space-y-3">
-                        {{range .GuildHistory}}
+                        {{range .Data.GuildHistory}} {{/* <-- MODIFIED */}}
                         <div class="flex items-start space-x-3">
                             <div class="text-xs text-gray-400 font-mono whitespace-nowrap pt-1">{{.ChangeTime}}</div>
                             <div class="text-sm text-gray-700">{{.ActivityDescription}}</div>
@@ -192,11 +196,65 @@
                         {{end}}
                     </div>
                     {{else}}
-                    <p class="text-gray-500 mt-4">No guild history recorded.</p>
+                    <p class="text-gray-500 mt-4">{{.Page.T.no_guild_history}}</p> {{/* <-- MODIFIED */}}
                     {{end}}
                 </div>
             </div>
         </div>
     </div>
+    
+    {{/* --- NEW: Added update script --- */}}
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            const lang = document.documentElement.lang || 'en';
+            const translations = {
+                updated_never: '{{.Page.T.updated_never}}',
+                updated_ago: '{{.Page.T.updated_ago}}',
+                last_updated_at: '{{.Page.T.last_updated_at}}'
+            };
+
+            const lastUpdateElement = document.getElementById('last-updated');
+            if (lastUpdateElement) {
+                const timestampStr = lastUpdateElement.dataset.timestamp;
+
+                if (!timestampStr || timestampStr === 'Never' || timestampStr === '') {
+                    lastUpdateElement.textContent = translations.updated_never;
+                    return;
+                }
+
+                const lastUpdateDate = new Date(timestampStr);
+                const formattedTimestamp = lastUpdateDate.toLocaleString([], {
+                    year: 'numeric', month: 'short', day: 'numeric',
+                    hour: '2-digit', minute: '2-digit'
+                });
+
+                const updateTimeAgo = () => {
+                    const now = new Date();
+                    const secondsPast = Math.floor((now.getTime() - lastUpdateDate.getTime()) / 1000);
+                    let timeAgoString;
+
+                    if (lang === 'pt') {
+                        if (secondsPast < 5) timeAgoString = 'agora mesmo';
+                        else if (secondsPast < 60) timeAgoString = `${secondsPast}s atrás`;
+                        else if (secondsPast < 3600) timeAgoString = `${Math.floor(secondsPast / 60)}m atrás`;
+                        else if (secondsPast < 86400) timeAgoString = `${Math.floor(secondsPast / 3600)}h atrás`;
+                        else timeAgoString = `${Math.floor(secondsPast / 86400)}d atrás`;
+                    } else {
+                        if (secondsPast < 5) timeAgoString = 'just now';
+                        else if (secondsPast < 60) timeAgoString = `${secondsPast}s ago`;
+                        else if (secondsPast < 3600) timeAgoString = `${Math.floor(secondsPast / 60)}m ago`;
+                        else if (secondsPast < 86400) timeAgoString = `${Math.floor(secondsPast / 3600)}h ago`;
+                        else timeAgoString = `${Math.floor(secondsPast / 86400)}d ago`;
+                    }
+                    
+                    const fullString = translations.last_updated_at.replace('%s', timeAgoString);
+                    lastUpdateElement.innerHTML = `${fullString} <span class="text-gray-400 font-normal">(${formattedTimestamp})</span>`;
+                };
+
+                updateTimeAgo();
+                setInterval(updateTimeAgo, 30000);
+            }
+        });
+    </script>
 </body>
 </html>

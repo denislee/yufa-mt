@@ -21,6 +21,611 @@ import (
 	"github.com/agnivade/levenshtein" // <-- ADD THIS IMPORT
 )
 
+type BasePageData struct {
+	Lang       string
+	T          map[string]string
+	RequestURL string
+}
+
+var translations = map[string]map[string]string{
+	"en": {
+		"market_summary":       "Market Summary",
+		"search_by_item_name":  "Search by item name or ID...",
+		"show_only_available":  "Show only available",
+		"search":               "Search",
+		"all_items":            "All Items",
+		"showing_unique_items": "Showing <strong>%d</strong> unique items.",
+		"item_name":            "Item Name",
+		"item_id":              "Item ID",
+		"available":            "Available",
+		"lowest_price":         "Lowest Price",
+		"highest_price":        "Highest Price",
+		"updated_never":        "Updated: never",
+		"updated_ago":          "Updated: %s ago",
+		"nav_summary":          "Summary",
+		"nav_full_list":        "Full List",
+		"nav_activity":         "Activity",
+		"nav_discord":          "Discord",
+		"nav_chat":             "Chat",
+		"nav_misc":             "Misc.",
+		"nav_player_count":     "Player Count",
+		"nav_xp_calculator":    "XP Calculator",
+		"nav_about":            "About",
+		"nav_rankings":         "Rankings",
+		"nav_characters":       "Characters",
+		"nav_guilds":           "Guilds",
+		"nav_mvp_kills":        "MVP Kills",
+		"nav_woe_rankings":     "WoE Rankings",
+		// --- NEW for activity.html ---
+		"recent_market_activity": "Recent Market Activity",
+		"show_only_sold":         "Show only sold items",
+		"filter":                 "Filter",
+		"clear_filters":          "[Clear Filters]",
+		"was_added":              "was added for sale.",
+		"no_longer_for_sale":     "is no longer for sale.",
+		"was_sold":               "was sold.",
+		"vendor_logged_off":      "Vendor logged off or item was sold",
+		"new_historical_low":     "New historical low",
+		"for":                    "for",
+		"no_market_activity":     "No market activity has been recorded yet.",
+		"page_of":                "Page %d of %d",
+		"previous":               "Previous",
+		"next":                   "Next",
+
+		// --- NEW for about.html ---
+		"about_title":           "About This Application",
+		"about_what_is_this":    "🏛️ What is This Site?",
+		"about_welcome":         "Welcome! The goal of this site is to collect all public information from Project Yufa, whether on the official website, in the game, or on Discord, and organize it in one place, making it easy to search and consult.",
+		"about_all_info_public": "All information here is publicly accessible. However, some of it is difficult to find or requires a lot of work to extract certain information. For this reason, I created this site, which is constantly being updated.",
+		"about_warnings":        "⚠️ Important Notices",
+		"about_please_read":     "Please read the following points carefully:",
+		"about_warning_1":       "<strong>Do not</strong> consider the information on this site as the sole source of truth, as <strong>inconsistencies</strong> may exist here, since it collects information from different places at different times and on different days.",
+		"about_warning_2":       "Some <strong>assumptions</strong> are data cross-references that the site makes, but which <strong>may also contain errors</strong> (<strong>for example</strong>: whether an item was sold or if the store closed, the AI's interpretation of Discord messages, the last time the character was active, etc.).",
+		"about_warning_3":       "The information may be delayed. As the site takes a \"snapshot\" of various states from its sources at different intervals, there may be outdated information that <strong>does not</strong> reflect the present. Always check the indicator in the top right corner to see when the information was updated.",
+		"about_warning_4":       "<strong>This</strong> site <strong>is</strong> completely independent and <strong>has no</strong> involvement from anyone in the Project Yufa <strong>administration</strong>. The only <strong>concession</strong> from the administrators was <strong>not</strong> to block this site's access to the official Project Yufa website. <strong>If</strong> they understand that this site harms the server, the community, or the <strong>operation</strong> of Project Yufa in any way, I will <strong>take</strong> the site down promptly.",
+		"info_loaded_at":        "Information loaded: %s",
+
+		// --- NEW for character_detail.html ---
+		"last_updated_at":  "Last updated: %s",
+		"char_info":        "Character Information",
+		"rank":             "Rank",
+		"base_level":       "Base Level",
+		"job_level":        "Job Level",
+		"experience":       "Experience",
+		"zeny":             "Zeny",
+		"status":           "Status",
+		"active":           "Active",
+		"inactive":         "Inactive",
+		"last_active":      "Last Active",
+		"mvp_kills_total":  "MVP Kills (%s Total)",
+		"kills":            "kills",
+		"no_mvp_kills":     "This player has no recorded MVP kills.",
+		"char_changelog":   "Character Changelog",
+		"timestamp":        "Timestamp",
+		"activity":         "Activity",
+		"first":            "First",
+		"last":             "Last",
+		"no_char_activity": "No recent activity recorded for this character.",
+		"guild_info":       "Guild Information",
+		"guild_name":       "Guild Name",
+		"guild_level":      "Guild Level",
+		"guild_master":     "Guild Master",
+		"members":          "Members",
+		"not_in_guild":     "This character is not in a guild.",
+		"guild_history":    "Guild History",
+		"no_guild_history": "No guild history recorded.",
+		"guild_leader":     "Guild Leader",
+
+		// --- NEW for character_changelog.html ---
+		"char_changelog_title": "Character Changelog",
+		"character":            "Character",
+		"no_changelog_entries": "No changelog entries found.",
+		"prev_short":           "Prev",
+		"next_short":           "Next",
+		// --- NEW for characters.html ---
+		"characters_title":    "Characters",
+		"search_by_name":      "Search by Name",
+		"filter_by_class":     "Filter by Class",
+		"all_classes":         "All Classes",
+		"apply":               "Apply",
+		"show_columns":        "Show Columns:",
+		"filtering_by_guild":  "Filtering by Guild:",
+		"clear_filter":        "[Clear Filter]",
+		"stats_distribution":  "📊 Statistics & Distribution",
+		"class_distribution":  "Class Distribution",
+		"show_types":          "Show Types:",
+		"novice":              "Novice",
+		"first_class":         "First Class",
+		"second_class":        "Second Class",
+		"total_zeny_filtered": "Total Zeny (Filtered)",
+		"sum_across_chars":    "Sum across %d characters (without bank).",
+		"name":                "Name",
+		"base_lvl":            "Base Lvl",
+		"job_lvl":             "Job Lvl",
+		"exp_perc":            "Exp %",
+		"class":               "Class",
+		"guild":               "Guild",
+		"last_updated":        "Last Updated",
+		"last_active_tooltip": "this is an estimate of when the character was last active on the server. to make the timestamp valid as active, if there is a change in the experience percentage and/or the amount of zeny between one scrape and another, it will be considered that the character was active during that time window.",
+		"first_99_class":      "First 99 in your class",
+		"no_chars_found":      "No characters found matching your criteria.",
+		"total_chars":         "(%d total characters)",
+
+		// --- NEW for full_list.html ---
+		"full_market_list":    "Full Market List",
+		"show":                "Show:",
+		"showing_listings":    "Showing <strong>%d</strong> individual listings.",
+		"qty_short":           "Qty",
+		"price":               "Price",
+		"store":               "Store",
+		"seller":              "Seller",
+		"map":                 "Map",
+		"coords":              "Coords",
+		"scanned":             "Scanned",
+		"availability_status": "Available",
+		"yes":                 "Yes",
+		"no":                  "No",
+		"click_to_copy":       "Click to copy /navi command",
+		"copied":              "Copied!",
+		"filtering_by_store":  "Filtering by Store:",
+
+		// --- NEW for chat.html ---
+		"public_chat_log":        "Public Chat Log",
+		"chat_listener_activity": "Chat Listener Activity (Last 24h)",
+		"all":                    "All",
+		"search_by_message_char": "Search by message or character...",
+		"channel":                "Channel",
+		"message":                "Message",
+		"no_chat_messages":       "No chat messages found.",
+		"last_updated_at_chat":   "Last updated: %s", // Different key to avoid conflict
+		// --- NEW for guilds.html ---
+		"guilds_title":         "Guilds",
+		"search_by_guild_name": "Search by Guild Name",
+		"level":                "Level",
+		"master":               "Master",
+		"total_zeny":           "Total Zeny",
+		"avg_base_lvl":         "Avg Base Lvl",
+		"no_guilds_found":      "No guilds found matching your criteria.",
+		"showing_page_guilds":  "Showing page %d of %d (%d total guilds)",
+
+		// --- NEW for guild_detail.html ---
+		"guild_detail_title": "%s - Guild Details",
+		"led_by":             "Led by",
+		"combined_zeny":      "Combined Zeny",
+		"guild_members":      "Guild Members",
+		"base_short":         "Base",
+		"job_short":          "Job",
+		"no_chart_data":      "Not enough data to display a chart.",
+		"guild_activity_log": "Guild Activity Log",
+		"js_num_of_members":  "Number of Members",
+
+		// --- NEW for history.html ---
+		"price_history_for":     "Price History:",
+		"last_updated_at_hist":  "Last updated: %s %s",
+		"no_detailed_info":      "No detailed item information could be found.",
+		"item_script":           "Item Script",
+		"all_time_price_range":  "All-Time Price Range:",
+		"lowest_current_price":  "Lowest Current Price",
+		"quantity":              "Quantity:",
+		"location":              "Location:",
+		"date":                  "Date:",
+		"highest_current_price": "Highest Current Price",
+		"all_recorded_listings": "All Recorded Listings",
+		"qty":                   "Qty",
+		"location_coords":       "Location",
+		"date_scanned":          "Date Scanned",
+		"listing_not_available": "This specific listing is no longer available",
+		"total_listings":        "(%d total listings)",
+		"js_lowest_price":       "Lowest Price",
+		"js_highest_price":      "Highest Price",
+
+		// --- NEW for mvp_kills.html ---
+		"mvp_kills_title":   "MVP Kills",
+		"showing_chars_mvp": "Showing <strong>%d</strong> characters with MVP kills.",
+		"character_name":    "Character Name",
+		"total_kills":       "Total Kills",
+
+		// --- NEW for players.html ---
+		"online_player_history": "Online Player History",
+		"active_players_now":    "Active Players Now",
+		"historical_max_active": "Historical Max Active",
+		"peak_active_interval":  "Peak Active (%s)",
+		"avg_active_interval":   "Avg Active (%s)",
+		"low_active_interval":   "Low Active (%s)",
+		"interval":              "Interval:",
+		"players":               "Players",
+		"sellers":               "Sellers",
+		"active_delta":          "Active (Δ)",
+		"events":                "Events",
+		"js_online_players":     "Online Players",
+		"js_active_players":     "Active Players (Delta)",
+		"js_count":              "Count",
+		"js_date_time":          "Date & Time",
+
+		// --- NEW for trading_post.html ---
+		"discord_title":    "Discord",
+		"all_posts":        "All Posts",
+		"selling":          "Selling",
+		"buying":           "Buying",
+		"both":             "Both",
+		"rmt":              "RMT",
+		"type":             "Type",
+		"item":             "Item",
+		"price_ea":         "Price (ea)",
+		"payment":          "Payment",
+		"discord_user":     "Discord",
+		"posted":           "Posted",
+		"source":           "Source",
+		"type_selling":     "Selling",
+		"type_buying":      "Buying",
+		"negotiable":       "Negotiable",
+		"no_trading_posts": "No trading posts found{{if .SearchQuery}} matching your search{{end}}.",
+		"lightbox_title":   "Source / Original Message",
+
+		// --- NEW for woe_rankings.html ---
+		"woe_rankings_title": "WoE Rankings",
+		"char_rankings":      "Character Rankings",
+		"guild_rankings":     "Guild Rankings",
+		"search_by_char":     "Search by character name...",
+		"search_by_guild":    "Search by guild name...",
+		"damage":             "Damage",
+		"healing":            "Healing",
+		"emperium":           "Emperium",
+		"points":             "Points",
+		"total_deaths":       "Total Deaths",
+		"kd_ratio":           "K/D Ratio",
+		"total_damage":       "Total Damage",
+		"total_healing":      "Total Healing",
+
+		// --- NEW for xp_calculator.html ---
+		"xp_calc_title":    "XP Calculator",
+		"error":            "Error:",
+		"calc_type":        "Calculator Type",
+		"base_level_1_99":  "Base Level (1-99)",
+		"job_level_1_50":   "Job Level (1-50)",
+		"initial":          "Initial",
+		"percentage_0_100": "Percentage (0-100)",
+		"final":            "Final",
+		"time_spent":       "Time Spent",
+		"hours":            "Hours",
+		"minutes_0_59":     "Minutes (0-59)",
+		"calculate":        "Calculate",
+		"results":          "Results",
+		"total_xp_gained":  "Total Experience Gained:",
+		"xp_per_hour":      "Experience per Hour:",
+
+		// --- NEW for store_detail.html ---
+		"store_title":       "Store: %s",
+		"store_details":     "Store Details",
+		"showing_last_seen": "Showing the <strong>%d</strong> items last seen in this store. Faded items are no longer available.",
+		"last_seen":         "Last Seen",
+	},
+	"pt": {
+		"market_summary":       "Resumo do Mercado",
+		"search_by_item_name":  "Buscar por nome ou ID do item...",
+		"show_only_available":  "Mostrar apenas disponíveis",
+		"search":               "Buscar",
+		"all_items":            "Todos os Itens",
+		"showing_unique_items": "Mostrando <strong>%d</strong> itens únicos.",
+		"item_name":            "Nome do Item",
+		"item_id":              "ID do Item",
+		"available":            "Disponíveis",
+		"lowest_price":         "Menor Preço",
+		"highest_price":        "Maior Preço",
+		"updated_never":        "Atualizado: nunca",
+		"updated_ago":          "Atualizado: %s atrás",
+		"nav_summary":          "Resumo",
+		"nav_full_list":        "Lista Completa",
+		"nav_activity":         "Atividade",
+		"nav_discord":          "Discord",
+		"nav_chat":             "Chat",
+		"nav_misc":             "Outros",
+		"nav_player_count":     "Jogadores Online",
+		"nav_xp_calculator":    "Calculadora XP",
+		"nav_about":            "Sobre",
+		"nav_rankings":         "Rankings",
+		"nav_characters":       "Personagens",
+		"nav_guilds":           "Guilds",
+		"nav_mvp_kills":        "MVPs Mortos",
+		"nav_woe_rankings":     "Rankings WoE",
+		// --- NEW for activity.html ---
+		"recent_market_activity": "Atividade Recente do Mercado",
+		"show_only_sold":         "Mostrar apenas vendidos",
+		"filter":                 "Filtrar",
+		"clear_filters":          "[Limpar Filtros]",
+		"was_added":              "foi adicionado à venda.",
+		"no_longer_for_sale":     "não está mais à venda.",
+		"was_sold":               "foi vendido.",
+		"vendor_logged_off":      "Vendedor deslogou ou item foi vendido",
+		"new_historical_low":     "Novo recorde de preço baixo",
+		"for":                    "para",
+		"no_market_activity":     "Nenhuma atividade de mercado foi registrada ainda.",
+		"page_of":                "Página %d de %d",
+		"previous":               "Anterior",
+		"next":                   "Próxima",
+
+		// --- NEW for about.html ---
+		"about_title":           "Sobre Esta Aplicação",
+		"about_what_is_this":    "🏛️ O Que é Este Site?",
+		"about_welcome":         "Bem-vindo! O objetivo deste site é coletar todas as informações públicas do Projeto Yufa, seja no site oficial, no jogo ou no Discord, e organizá-las em um só lugar, de forma fácil de pesquisar e consultar.",
+		"about_all_info_public": "Todas as informações aqui são publicamente acessíveis. Porém, algumas delas são difíceis de encontrar ou exigem um grande trabalho para se extrair certas informações. Por esse motivo, criei este site, que está sendo atualizado constantemente.",
+		"about_warnings":        "⚠️ Avisos Importantes",
+		"about_please_read":     "Por favor, leia os seguintes pontos com atenção:",
+		"about_warning_1":       "<strong>Não</strong> considere como fonte única da verdade as informações contidas neste site, pois aqui podem existir <strong>inconsistências</strong>, já que ele coleta informações em lugares diferentes, em diferentes horários e dias.",
+		"about_warning_2":       "Algumas <strong>presunções são</strong> cruzamentos de dados que o site faz, mas que <strong>também</strong> podem <strong>conter equívocos</strong> (<strong>por exemplo</strong>: se um item foi vendido ou se a loja fechou, a interpretação da IA sobre as mensagens do Discord, a última vez que o personagem esteve ativo, etc.).",
+		"about_warning_3":       "As informações podem estar atrasadas. Como o site tira uma \"fotografia\" de diversos estados das suas fontes em diferentes intervalos, podem existir informações desatualizadas que <strong>não</strong> refletem o presente. Sempre verifique o indicador no canto superior direito para ver quando a informação foi atualizada.",
+		"about_warning_4":       "<strong>Este</strong> site <strong>é</strong> completely independente e <strong>não</strong> possui nenhum envolvimento de qualquer pessoa da <strong>administração</strong> do Projeto Yufa. A única <strong>concessão</strong> por parte dos administradores foi a de <strong>não</strong> bloquear o acesso deste site ao site oficial do Projeto Yufa. <strong>Caso</strong> eles entendam que este site prejudica de alguma maneira o servidor, a comunidade ou o <strong>funcionamento</strong> do Projeto Yufa, <strong>retirarei</strong> o site do ar prontamente.",
+		"info_loaded_at":        "Informações carregadas: %s",
+
+		// --- NEW for character_detail.html ---
+		"last_updated_at":  "Última atualização: %s",
+		"char_info":        "Informações do Personagem",
+		"rank":             "Rank",
+		"base_level":       "Nível de Base",
+		"job_level":        "Nível de Classe",
+		"experience":       "Experiência",
+		"zeny":             "Zeny",
+		"status":           "Status",
+		"active":           "Ativo",
+		"inactive":         "Inativo",
+		"last_active":      "Visto por último",
+		"mvp_kills_total":  "MVPs Mortos (%s Total)",
+		"kills":            "mortes",
+		"no_mvp_kills":     "Este jogador não tem mortes de MVP registradas.",
+		"char_changelog":   "Histórico do Personagem",
+		"timestamp":        "Data/Hora",
+		"activity":         "Atividade",
+		"first":            "Primeira",
+		"last":             "Última",
+		"no_char_activity": "Nenhuma atividade recente registrada para este personagem.",
+		"guild_info":       "Informações da Guild",
+		"guild_name":       "Nome da Guild",
+		"guild_level":      "Nível da Guild",
+		"guild_master":     "Líder da Guild",
+		"members":          "Membros",
+		"not_in_guild":     "Este personagem não está em uma guild.",
+		"guild_history":    "Histórico de Guild",
+		"no_guild_history": "Nenhum histórico de guild registrado.",
+		"guild_leader":     "Líder da Guild",
+
+		// --- NEW for character_changelog.html ---
+		"char_changelog_title": "Histórico de Personagens",
+		"character":            "Personagem",
+		"no_changelog_entries": "Nenhuma entrada de histórico encontrada.",
+		"prev_short":           "Ant",
+		"next_short":           "Próx",
+		// --- NEW for characters.html ---
+		"characters_title":    "Personagens",
+		"search_by_name":      "Buscar por Nome",
+		"filter_by_class":     "Filtrar por Classe",
+		"all_classes":         "Todas as Classes",
+		"apply":               "Aplicar",
+		"show_columns":        "Mostrar Colunas:",
+		"filtering_by_guild":  "Filtrando por Guild:",
+		"clear_filter":        "[Limpar Filtro]",
+		"stats_distribution":  "📊 Estatísticas e Distribuição",
+		"class_distribution":  "Distribuição de Classes",
+		"show_types":          "Mostrar Tipos:",
+		"novice":              "Aprendiz",
+		"first_class":         "Classe 1",
+		"second_class":        "Classe 2",
+		"total_zeny_filtered": "Zeny Total (Filtrado)",
+		"sum_across_chars":    "Soma entre %d personagens (sem banco).",
+		"name":                "Nome",
+		"base_lvl":            "Nível Base",
+		"job_lvl":             "Nível Classe",
+		"exp_perc":            "Exp %",
+		"class":               "Classe",
+		"guild":               "Guild",
+		"last_updated":        "Última Atualização",
+		"last_active_tooltip": "esta é uma estimativa de quando o personagem esteve ativo pela última vez no servidor. para que o timestamp seja válido como ativo, se houver mudança no percentual de experiência e/ou na quantidade de zeny entre um scrape e outro, será considerado que o personagem esteve ativo nessa janela de tempo.",
+		"first_99_class":      "Primeiro 99 da sua classe",
+		"no_chars_found":      "Nenhum personagem encontrado com seus critérios.",
+		"total_chars":         "(%d personagens no total)",
+
+		// --- NEW for full_list.html ---
+		"full_market_list":    "Lista Completa do Mercado",
+		"show":                "Mostrar:",
+		"showing_listings":    "Mostrando <strong>%d</strong> itens individuais.",
+		"qty_short":           "Qtd",
+		"price":               "Preço",
+		"store":               "Loja",
+		"seller":              "Vendedor",
+		"map":                 "Mapa",
+		"coords":              "Coords",
+		"scanned":             "Visto em",
+		"availability_status": "Disponível",
+		"yes":                 "Sim",
+		"no":                  "Não",
+		"click_to_copy":       "Clique para copiar comando /navi",
+		"copied":              "Copiado!",
+		"filtering_by_store":  "Filtrando por Loja:",
+
+		// --- NEW for chat.html ---
+		"public_chat_log":        "Log de Chat Público",
+		"chat_listener_activity": "Atividade do Chat (Últimas 24h)",
+		"all":                    "Todos",
+		"search_by_message_char": "Buscar por mensagem ou personagem...",
+		"channel":                "Canal",
+		"message":                "Mensagem",
+		"no_chat_messages":       "Nenhuma mensagem de chat encontrada.",
+		"last_updated_at_chat":   "Última atualização: %s",
+
+		// --- NEW for guilds.html ---
+		"guilds_title":         "Guilds",
+		"search_by_guild_name": "Buscar por Nome da Guild",
+		"level":                "Nível",
+		"master":               "Líder",
+		"total_zeny":           "Zeny Total",
+		"avg_base_lvl":         "Nível Base Médio",
+		"no_guilds_found":      "Nenhuma guild encontrada com seus critérios.",
+		"showing_page_guilds":  "Mostrando página %d de %d (%d guilds no total)",
+
+		// --- NEW for guild_detail.html ---
+		"guild_detail_title": "%s - Detalhes da Guild",
+		"led_by":             "Liderada por",
+		"combined_zeny":      "Zeny Combinado",
+		"guild_members":      "Membros da Guild",
+		"base_short":         "Base",
+		"job_short":          "Classe",
+		"no_chart_data":      "Sem dados suficientes para exibir um gráfico.",
+		"guild_activity_log": "Histórico de Atividade da Guild",
+		"js_num_of_members":  "Número de Membros",
+
+		// --- NEW for history.html ---
+		"price_history_for":     "Histórico de Preço:",
+		"last_updated_at_hist":  "Última atualização: %s %s",
+		"no_detailed_info":      "Nenhuma informação detalhada do item foi encontrada.",
+		"item_script":           "Script do Item",
+		"all_time_price_range":  "Faixa de Preço Histórica:",
+		"lowest_current_price":  "Menor Preço Atual",
+		"quantity":              "Quantidade:",
+		"location":              "Localização:",
+		"date":                  "Data:",
+		"highest_current_price": "Maior Preço Atual",
+		"all_recorded_listings": "Todos os Anúncios Registrados",
+		"qty":                   "Qtd",
+		"location_coords":       "Localização",
+		"date_scanned":          "Data da Verificação",
+		"listing_not_available": "Este anúncio específico não está mais disponível",
+		"total_listings":        "(%d anúncios no total)",
+		"js_lowest_price":       "Menor Preço",
+		"js_highest_price":      "Maior Preço",
+
+		// --- NEW for mvp_kills.html ---
+		"mvp_kills_title":   "MVPs Mortos",
+		"showing_chars_mvp": "Mostrando <strong>%d</strong> personagens com mortes de MVP.",
+		"character_name":    "Nome do Personagem",
+		"total_kills":       "Total de Mortes",
+
+		// --- NEW for players.html ---
+		"online_player_history": "Histórico de Jogadores Online",
+		"active_players_now":    "Jogadores Ativos Agora",
+		"historical_max_active": "Máx. Histórico de Ativos",
+		"peak_active_interval":  "Pico de Ativos (%s)",
+		"avg_active_interval":   "Média de Ativos (%s)",
+		"low_active_interval":   "Mínimo de Ativos (%s)",
+		"interval":              "Intervalo:",
+		"players":               "Jogadores",
+		"sellers":               "Vendedores",
+		"active_delta":          "Ativos (Δ)",
+		"events":                "Eventos",
+		"js_online_players":     "Jogadores Online",
+		"js_active_players":     "Jogadores Ativos (Delta)",
+		"js_count":              "Contagem",
+		"js_date_time":          "Data e Hora",
+
+		// --- NEW for trading_post.html ---
+		"discord_title":    "Discord",
+		"all_posts":        "Todos os Posts",
+		"selling":          "Vendendo",
+		"buying":           "Comprando",
+		"both":             "Ambos",
+		"rmt":              "RMT",
+		"type":             "Tipo",
+		"item":             "Item",
+		"price_ea":         "Preço (un)",
+		"payment":          "Pgto",
+		"discord_user":     "Discord",
+		"posted":           "Postado",
+		"source":           "Fonte",
+		"type_selling":     "Vendendo",
+		"type_buying":      "Comprando",
+		"negotiable":       "Negociável",
+		"no_trading_posts": "Nenhum post encontrado{{if .SearchQuery}} com a sua busca{{end}}.",
+		"lightbox_title":   "Fonte / Mensagem Original",
+
+		// --- NEW for woe_rankings.html ---
+		"woe_rankings_title": "Rankings WoE",
+		"char_rankings":      "Rankings de Personagens",
+		"guild_rankings":     "Rankings de Guilds",
+		"search_by_char":     "Buscar por nome de personagem...",
+		"search_by_guild":    "Buscar por nome de guild...",
+		"damage":             "Dano",
+		"healing":            "Cura",
+		"emperium":           "Emperium",
+		"points":             "Pontos",
+		"total_deaths":       "Total de Mortes",
+		"kd_ratio":           "K/D",
+		"total_damage":       "Dano Total",
+		"total_healing":      "Cura Total",
+
+		// --- NEW for xp_calculator.html ---
+		"xp_calc_title":    "Calculadora XP",
+		"error":            "Erro:",
+		"calc_type":        "Tipo de Calculadora",
+		"base_level_1_99":  "Nível de Base (1-99)",
+		"job_level_1_50":   "Nível de Classe (1-50)",
+		"initial":          "Inicial",
+		"percentage_0_100": "Porcentagem (0-100)",
+		"final":            "Final",
+		"time_spent":       "Tempo Gasto",
+		"hours":            "Horas",
+		"minutes_0_59":     "Minutos (0-59)",
+		"calculate":        "Calcular",
+		"results":          "Resultados",
+		"total_xp_gained":  "Total de Experiência Ganhos:",
+		"xp_per_hour":      "Experiência por Hora:",
+
+		// --- NEW for store_detail.html ---
+		"store_title":       "Loja: %s",
+		"store_details":     "Detalhes da Loja",
+		"showing_last_seen": "Mostrando os <strong>%d</strong> itens vistos por último nesta loja. Itens esmaecidos não estão mais disponíveis.",
+		"last_seen":         "Visto por Último",
+	},
+}
+
+// --- NEW: getTranslations returns the correct map ---
+func getTranslations(lang string) map[string]string {
+	if trans, ok := translations[lang]; ok {
+		return trans
+	}
+	// Default to English
+	return translations["en"]
+}
+
+// --- NEW: getLang reads the language from the cookie ---
+func getLang(r *http.Request) string {
+	cookie, err := r.Cookie("lang")
+	if err != nil {
+		// No cookie, default to Portuguese
+		return "pt"
+	}
+	if cookie.Value == "en" {
+		return "en"
+	}
+	// Default to Portuguese for "pt" or any other value
+	return "pt"
+}
+
+// --- NEW: setLangHandler sets the cookie and redirects ---
+func setLangHandler(w http.ResponseWriter, r *http.Request) {
+	lang := r.URL.Query().Get("lang")
+	redirectURL := r.URL.Query().Get("redirect")
+
+	if lang != "en" && lang != "pt" {
+		lang = "pt" // Default to 'pt'
+	}
+
+	if redirectURL == "" {
+		redirectURL = "/" // Default redirect to home
+	}
+
+	// Set the cookie
+	http.SetCookie(w, &http.Cookie{
+		Name:     "lang",
+		Value:    lang,
+		Path:     "/",
+		Expires:  time.Now().Add(365 * 24 * time.Hour), // Cookie good for 1 year
+		HttpOnly: true,
+		Secure:   r.TLS != nil,
+		SameSite: http.SameSiteLaxMode,
+	})
+
+	// Redirect back to the page the user was on
+	http.Redirect(w, r, redirectURL, http.StatusSeeOther)
+}
+
 type ItemSearchResult struct {
 	ID       int    `json:"ID"`
 	Name     string `json:"Name"`
@@ -143,6 +748,9 @@ var templateFuncs = template.FuncMap{
 		// Fallback icon (Aprendiz)
 		return "https://static.wikia.nocookie.net/ragnarok-online-encyclopedia/images/8/8b/Icon_jobs_0.png"
 	},
+	"TmplHTML": func(s string) template.HTML {
+		return template.HTML(s)
+	},
 }
 
 type PaginationData struct {
@@ -235,17 +843,32 @@ func buildItemSearchClause(searchQuery, tableAlias string) (string, []interface{
 	return "1 = 0", nil, nil
 }
 
-func renderTemplate(w http.ResponseWriter, tmplFile string, data interface{}) {
+func renderTemplate(w http.ResponseWriter, r *http.Request, tmplFile string, data interface{}) {
 
 	tmpl, ok := templateCache[tmplFile]
 	if !ok {
-
 		log.Printf("[E] [HTTP] Could not find template '%s' in cache!", tmplFile)
 		http.Error(w, "Could not load template", http.StatusInternalServerError)
 		return
 	}
 
-	err := tmpl.Execute(w, data)
+	// --- NEW: Create page context ---
+	lang := getLang(r)
+	pageCtx := BasePageData{
+		Lang:       lang,
+		T:          getTranslations(lang),
+		RequestURL: r.URL.RequestURI(),
+	}
+
+	// Wrap the page-specific data and the base context in a single map
+	fullData := map[string]interface{}{
+		"Page": pageCtx, // Site-wide context
+		"Data": data,    // Page-specific data (e.g., SummaryPageData)
+	}
+	// --- END NEW ---
+
+	// Execute with the new wrapped data
+	err := tmpl.Execute(w, fullData)
 	if err != nil {
 		log.Printf("[E] [HTTP] Could not execute template '%s': %v", tmplFile, err)
 	}
@@ -722,7 +1345,7 @@ func summaryHandler(w http.ResponseWriter, r *http.Request) {
 		TotalUniqueItems: totalUniqueItems,
 		PageTitle:        "Summary",
 	}
-	renderTemplate(w, "index.html", data)
+	renderTemplate(w, r, "index.html", data)
 }
 
 func fullListHandler(w http.ResponseWriter, r *http.Request) {
@@ -883,7 +1506,7 @@ func fullListHandler(w http.ResponseWriter, r *http.Request) {
 		ItemTypes: getItemTypeTabs(), SelectedType: selectedType,
 		PageTitle: "Full List",
 	}
-	renderTemplate(w, "full_list.html", data)
+	renderTemplate(w, r, "full_list.html", data)
 }
 
 func activityHandler(w http.ResponseWriter, r *http.Request) {
@@ -970,7 +1593,7 @@ func activityHandler(w http.ResponseWriter, r *http.Request) {
 		Pagination:     pagination,
 		PageTitle:      "Activity",
 	}
-	renderTemplate(w, "activity.html", data)
+	renderTemplate(w, r, "activity.html", data)
 }
 
 func itemHistoryHandler(w http.ResponseWriter, r *http.Request) {
@@ -1090,7 +1713,7 @@ func itemHistoryHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	log.Printf("[D] [HTTP/History] Rendering template for '%s' with all data.", itemName)
-	renderTemplate(w, "history.html", data)
+	renderTemplate(w, r, "history.html", data)
 }
 
 // I am also including the helper functions that were extracted in the refactor,
@@ -1430,7 +2053,7 @@ func playerCountHandler(w http.ResponseWriter, r *http.Request) {
 		IntervalLowActive:      minActiveInterval,
 		// --- END NEW ---
 	}
-	renderTemplate(w, "players.html", data)
+	renderTemplate(w, r, "players.html", data)
 }
 
 func characterHandler(w http.ResponseWriter, r *http.Request) {
@@ -1610,7 +2233,7 @@ func characterHandler(w http.ResponseWriter, r *http.Request) {
 		HasChartData: len(chartData) > 1,
 		PageTitle:    "Characters",
 	}
-	renderTemplate(w, "characters.html", data)
+	renderTemplate(w, r, "characters.html", data)
 }
 
 func guildHandler(w http.ResponseWriter, r *http.Request) {
@@ -1689,7 +2312,7 @@ func guildHandler(w http.ResponseWriter, r *http.Request) {
 		TotalGuilds:         totalGuilds,
 		PageTitle:           "Guilds",
 	}
-	renderTemplate(w, "guilds.html", data)
+	renderTemplate(w, r, "guilds.html", data)
 }
 
 func mvpKillsHandler(w http.ResponseWriter, r *http.Request) {
@@ -1756,7 +2379,7 @@ func mvpKillsHandler(w http.ResponseWriter, r *http.Request) {
 		LastScrapeTime: GetLastScrapeTime(),
 		PageTitle:      "MVP Kills",
 	}
-	renderTemplate(w, "mvp_kills.html", data)
+	renderTemplate(w, r, "mvp_kills.html", data)
 }
 
 func characterDetailHandler(w http.ResponseWriter, r *http.Request) {
@@ -1896,7 +2519,7 @@ func characterDetailHandler(w http.ResponseWriter, r *http.Request) {
 		ChangelogPagination: pagination,
 		PageTitle:           p.Name,
 	}
-	renderTemplate(w, "character_detail.html", data)
+	renderTemplate(w, r, "character_detail.html", data)
 }
 
 func characterChangelogHandler(w http.ResponseWriter, r *http.Request) {
@@ -1938,7 +2561,7 @@ func characterChangelogHandler(w http.ResponseWriter, r *http.Request) {
 		Pagination:       pagination,
 		PageTitle:        "Character Changelog",
 	}
-	renderTemplate(w, "character_changelog.html", data)
+	renderTemplate(w, r, "character_changelog.html", data)
 }
 
 func guildDetailHandler(w http.ResponseWriter, r *http.Request) {
@@ -2038,7 +2661,7 @@ func guildDetailHandler(w http.ResponseWriter, r *http.Request) {
 		ChangelogPagination:   pagination,
 		PageTitle:             g.Name,
 	}
-	renderTemplate(w, "guild_detail.html", data)
+	renderTemplate(w, r, "guild_detail.html", data)
 }
 
 func storeDetailHandler(w http.ResponseWriter, r *http.Request) {
@@ -2113,7 +2736,7 @@ func storeDetailHandler(w http.ResponseWriter, r *http.Request) {
 		Order:          order,
 		PageTitle:      storeName,
 	}
-	renderTemplate(w, "store_detail.html", data)
+	renderTemplate(w, r, "store_detail.html", data)
 }
 
 func generateSecretToken(length int) (string, error) {
@@ -2245,7 +2868,7 @@ func tradingPostListHandler(w http.ResponseWriter, r *http.Request) {
 		Order:          order,
 		PageTitle:      "Discord",
 	}
-	renderTemplate(w, "trading_post.html", data)
+	renderTemplate(w, r, "trading_post.html", data)
 }
 
 // findItemIDInCache attempts to find an item ID using the local item DB.
@@ -2626,7 +3249,7 @@ func woeRankingsHandler(w http.ResponseWriter, r *http.Request) {
 		SearchQuery:    searchQuery,
 		PageTitle:      "WoE Rankings",
 	}
-	renderTemplate(w, "woe_rankings.html", data)
+	renderTemplate(w, r, "woe_rankings.html", data)
 }
 
 type ChatActivityPoint struct {
@@ -2813,7 +3436,7 @@ func chatHandler(w http.ResponseWriter, r *http.Request) {
 		// --- MODIFICATION: Pass data to template ---
 		ActivityGraphJSON: activityGraphJSON,
 	}
-	renderTemplate(w, "chat.html", data)
+	renderTemplate(w, r, "chat.html", data)
 }
 
 // aboutHandler displays the static "About" page.
@@ -2822,7 +3445,7 @@ func aboutHandler(w http.ResponseWriter, r *http.Request) {
 	data := map[string]interface{}{
 		"PageTitle": "About",
 	}
-	renderTemplate(w, "about.html", data)
+	renderTemplate(w, r, "about.html", data)
 }
 
 // findItemIDByName orchestrates searching the cache and online for an item ID.

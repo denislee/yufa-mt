@@ -1,9 +1,9 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="{{.Page.Lang}}">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Market Activity - Yufa Market Tracker</title>
+    <title>{{.Page.T.recent_market_activity}} - Yufa Market Tracker</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
         html { font-size: 110%; }
@@ -18,28 +18,28 @@
 
     <div class="container mx-auto px-4 py-6">
         <div class="flex flex-col sm:flex-row justify-between sm:items-center gap-2 mb-4 border-b border-gray-200 pb-3">
-            <h1 class="text-2xl font-bold text-gray-800">Recent Market Activity</h1>
-            <div id="last-updated" class="text-sm text-gray-500" data-timestamp="{{.LastScrapeTime}}"></div>
+            <h1 class="text-2xl font-bold text-gray-800">{{.Page.T.recent_market_activity}}</h1>
+            <div id="last-updated" class="text-sm text-gray-500" data-timestamp="{{.Data.LastScrapeTime}}"></div>
         </div>
 
         <div class="bg-white p-3 rounded-lg shadow mb-4">
             <form action="/activity" method="get" class="flex flex-col sm:flex-row sm:items-center gap-3">
-                <input type="text" name="query" placeholder="Search by item name or ID..." value="{{.SearchQuery}}" class="flex-grow mt-1 block w-full sm:w-auto rounded-md border-gray-300 shadow-sm focus:border-indigo-300 focus:ring focus:ring-indigo-200 focus:ring-opacity-50 text-sm">
+                <input type="text" name="query" placeholder="{{.Page.T.search_by_item_name}}" value="{{.Data.SearchQuery}}" class="flex-grow mt-1 block w-full sm:w-auto rounded-md border-gray-300 shadow-sm focus:border-indigo-300 focus:ring focus:ring-indigo-200 focus:ring-opacity-50 text-sm">
                 <label class="flex items-center space-x-2 text-sm text-gray-700">
-                    <input type="checkbox" name="sold_only" value="true" {{if .SoldOnly}}checked{{end}} class="rounded border-gray-300 text-indigo-600 shadow-sm focus:border-indigo-300 focus:ring focus:ring-offset-0 focus:ring-indigo-200 focus:ring-opacity-50">
-                    <span>Show only sold items</span>
+                    <input type="checkbox" name="sold_only" value="true" {{if .Data.SoldOnly}}checked{{end}} class="rounded border-gray-300 text-indigo-600 shadow-sm focus:border-indigo-300 focus:ring focus:ring-offset-0 focus:ring-indigo-200 focus:ring-opacity-50">
+                    <span>{{.Page.T.show_only_sold}}</span>
                 </label>
-                <button type="submit" class="w-full sm:w-auto bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-md">Filter</button>
-                 {{if or .SearchQuery .SoldOnly}}
-                    <a href="/activity" class="text-sm text-red-500 hover:underline">[Clear Filters]</a>
+                <button type="submit" class="w-full sm:w-auto bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-md">{{.Page.T.filter}}</button>
+                 {{if or .Data.SearchQuery .Data.SoldOnly}}
+                    <a href="/activity" class="text-sm text-red-500 hover:underline">{{.Page.T.clear_filters}}</a>
                 {{end}}
             </form>
         </div>
 
         <div class="bg-white shadow-lg rounded-lg overflow-hidden">
-            {{if .MarketEvents}}
+            {{if .Data.MarketEvents}}
             <ul class="divide-y divide-gray-200">
-                {{range .MarketEvents}}
+                {{range .Data.MarketEvents}}
                 <li class="p-3 flex flex-col sm:flex-row sm:items-center sm:space-x-3 gap-1">
                     <span class="text-xs text-gray-500 w-24 flex-shrink-0 whitespace-nowrap">{{.Timestamp}}</span>
 
@@ -50,13 +50,19 @@
                                 <div class="flex items-center font-semibold">
                                     <img src="https://static.divine-pride.net/images/items/item/{{.ItemID}}.png" alt="" class="w-5 h-5 mr-1.5" style="image-rendering: pixelated;">
                                     <div>
-                                        <a href="/item?name={{.ItemName | urlquery}}" class="hover:underline">{{.ItemName}}</a>
-                                        {{if .NamePT.Valid}}
-                                        <div class="text-xs text-gray-500 mt-1 font-normal">{{.NamePT.String}}</div>
+                                        {{/* --- FIX 1 --- */}}
+                                        {{if and (eq $.Page.Lang "pt") .NamePT.Valid}}
+                                            <a href="/item?name={{.ItemName | urlquery}}" class="hover:underline">{{.NamePT.String}}</a>
+                                            <div class="text-xs text-gray-500 mt-1 font-normal">({{.ItemName}})</div>
+                                        {{else}}
+                                            <a href="/item?name={{.ItemName | urlquery}}" class="hover:underline">{{.ItemName}}</a>
+                                            {{if .NamePT.Valid}}
+                                            <div class="text-xs text-gray-500 mt-1 font-normal">({{.NamePT.String}})</div>
+                                            {{end}}
                                         {{end}}
                                     </div>
                                 </div>
-                                <span>was added for sale.</span>
+                                <span>{{$.Page.T.was_added}}</span>
                                 {{if .Details.price}}
                                 <small class="text-gray-500">({{.Details.price}} zeny, Qty: {{printf "%.0f" .Details.quantity}} by <a href="/character?name={{.Details.seller | urlquery}}" class="hover:underline text-blue-600">{{.Details.seller}}</a> in <a href="/store?name={{.Details.store_name | urlquery}}&seller={{.Details.seller | urlquery}}" class="hover:underline text-blue-600">{{.Details.store_name}}</a>)</small>
                                 {{end}}
@@ -70,13 +76,19 @@
                                 <div class="flex items-center font-semibold text-gray-800">
                                     <img src="https://static.divine-pride.net/images/items/item/{{.ItemID}}.png" alt="" class="w-5 h-5 mr-1.5" style="image-rendering: pixelated;">
                                     <div>
-                                        <a href="/item?name={{.ItemName | urlquery}}" class="hover:underline">{{.ItemName}}</a>
-                                        {{if .NamePT.Valid}}
-                                        <div class="text-xs text-gray-500 mt-1 font-normal">{{.NamePT.String}}</div>
+                                        {{/* --- FIX 2 --- */}}
+                                        {{if and (eq $.Page.Lang "pt") .NamePT.Valid}}
+                                            <a href="/item?name={{.ItemName | urlquery}}" class="hover:underline">{{.NamePT.String}}</a>
+                                            <div class="text-xs text-gray-500 mt-1 font-normal">({{.ItemName}})</div>
+                                        {{else}}
+                                            <a href="/item?name={{.ItemName | urlquery}}" class="hover:underline">{{.ItemName}}</a>
+                                            {{if .NamePT.Valid}}
+                                            <div class="text-xs text-gray-500 mt-1 font-normal">({{.NamePT.String}})</div>
+                                            {{end}}
                                         {{end}}
                                     </div>
                                 </div>
-                                <span>is no longer for sale.</span>
+                                <span>{{$.Page.T.no_longer_for_sale}}</span>
                                 {{if .Details.price}}
                                 <small class="text-gray-500">({{.Details.price}} zeny, Qty: {{printf "%.0f" .Details.quantity}} by <a href="/character?name={{.Details.seller | urlquery}}" class="hover:underline text-blue-600">{{.Details.seller}}</a> in <a href="/store?name={{.Details.store_name | urlquery}}&seller={{.Details.seller | urlquery}}" class="hover:underline text-blue-600">{{.Details.store_name}}</a>)</small>
                                 {{end}}
@@ -90,13 +102,19 @@
                                 <div class="flex items-center font-semibold text-gray-800">
                                     <img src="https://static.divine-pride.net/images/items/item/{{.ItemID}}.png" alt="" class="w-5 h-5 mr-1.5" style="image-rendering: pixelated;">
                                     <div>
-                                        <a href="/item?name={{.ItemName | urlquery}}" class="hover:underline">{{.ItemName}}</a>
-                                        {{if .NamePT.Valid}}
-                                        <div class="text-xs text-gray-500 mt-1 font-normal">{{.NamePT.String}}</div>
+                                        {{/* --- FIX 3 --- */}}
+                                        {{if and (eq $.Page.Lang "pt") .NamePT.Valid}}
+                                            <a href="/item?name={{.ItemName | urlquery}}" class="hover:underline">{{.NamePT.String}}</a>
+                                            <div class="text-xs text-gray-500 mt-1 font-normal">({{.ItemName}})</div>
+                                        {{else}}
+                                            <a href="/item?name={{.ItemName | urlquery}}" class="hover:underline">{{.ItemName}}</a>
+                                            {{if .NamePT.Valid}}
+                                            <div class="text-xs text-gray-500 mt-1 font-normal">({{.NamePT.String}})</div>
+                                            {{end}}
                                         {{end}}
                                     </div>
                                 </div>
-                                <span>was sold.</span>
+                                <span>{{$.Page.T.was_sold}}</span>
                                 {{if .Details.price}}
                                 <small class="text-gray-500">({{.Details.price}} zeny, Qty: {{printf "%.0f" .Details.quantity}} by <a href="/character?name={{.Details.seller | urlquery}}" class="hover:underline text-blue-600">{{.Details.seller}}</a> in <a href="/store?name={{.Details.store_name | urlquery}}&seller={{.Details.seller | urlquery}}" class="hover:underline text-blue-600">{{.Details.store_name}}</a>)</small>
                                 {{end}}
@@ -110,14 +128,20 @@
                                 <div class="flex items-center font-semibold text-gray-800">
                                     <img src="https://static.divine-pride.net/images/items/item/{{.ItemID}}.png" alt="" class="w-5 h-5 mr-1.5" style="image-rendering: pixelated;">
                                     <div>
-                                        <a href="/item?name={{.ItemName | urlquery}}" class="hover:underline">{{.ItemName}}</a>
-                                        {{if .NamePT.Valid}}
-                                        <div class="text-xs text-gray-500 mt-1 font-normal">{{.NamePT.String}}</div>
+                                        {{/* --- FIX 4 --- */}}
+                                        {{if and (eq $.Page.Lang "pt") .NamePT.Valid}}
+                                            <a href="/item?name={{.ItemName | urlquery}}" class="hover:underline">{{.NamePT.String}}</a>
+                                            <div class="text-xs text-gray-500 mt-1 font-normal">({{.ItemName}})</div>
+                                        {{else}}
+                                            <a href="/item?name={{.ItemName | urlquery}}" class="hover:underline">{{.ItemName}}</a>
+                                            {{if .NamePT.Valid}}
+                                            <div class="text-xs text-gray-500 mt-1 font-normal">({{.NamePT.String}})</div>
+                                            {{end}}
                                         {{end}}
                                     </div>
                                 </div>
-                                <span>is no longer for sale.</span>
-                                <small class="text-gray-400">({{.Details.price}} zeny, Qty: {{printf "%.0f" .Details.quantity}} by <a href="/character?name={{.Details.seller | urlquery}}" class="hover:underline text-blue-500">{{.Details.seller}}</a> in <a href="/store?name={{.Details.store_name | urlquery}}&seller={{.Details.seller | urlquery}}" class="hover:underline text-blue-500">{{.Details.store_name}}</a> — Vendor logged off or item was sold)</small>
+                                <span>{{$.Page.T.no_longer_for_sale}}</span>
+                                <small class="text-gray-400">({{.Details.price}} zeny, Qty: {{printf "%.0f" .Details.quantity}} by <a href="/character?name={{.Details.seller | urlquery}}" class="hover:underline text-blue-500">{{.Details.seller}}</a> in <a href="/store?name={{.Details.store_name | urlquery}}&seller={{.Details.seller | urlquery}}" class="hover:underline text-blue-500">{{.Details.store_name}}</a> — {{$.Page.T.vendor_logged_off}})</small>
                             </div>
                         </span>
 
@@ -125,14 +149,17 @@
                          <span class="flex items-start gap-2 text-xs">
                             <span class="mt-0.5">🏆</span>
                             <div class="flex flex-wrap items-center gap-x-2">
-                                <span class="bg-yellow-100 text-yellow-800 font-bold px-2 py-0.5 rounded-md">New historical low</span>
-                                <span>for</span>
+                                <span class="bg-yellow-100 text-yellow-800 font-bold px-2 py-0.5 rounded-md">{{$.Page.T.new_historical_low}}</span>
+                                <span>{{$.Page.T.for}}</span>
                                 <div class="flex items-center font-semibold">
                                     <img src="https://static.divine-pride.net/images/items/item/{{.ItemID}}.png" alt="" class="w-5 h-5 mr-1.5" style="image-rendering: pixelated;">
                                     <div>
                                         <a href="/item?name={{.ItemName | urlquery}}" class="hover:underline">{{.ItemName}}</a>!
-                                        {{if .NamePT.Valid}}
-                                        <div class="text-xs text-gray-500 mt-1 font-normal">{{.NamePT.String}}</div>
+                                        {{/* --- FIX 5 --- */}}
+                                        {{if and (eq $.Page.Lang "pt") .NamePT.Valid}}
+                                            <div class="text-xs text-gray-500 mt-1 font-normal">{{.NamePT.String}}</div>
+                                        {{else if .NamePT.Valid}}
+                                            <div class="text-xs text-gray-500 mt-1 font-normal">{{.NamePT.String}}</div>
                                         {{end}}
                                     </div>
                                 </div>
@@ -144,43 +171,40 @@
                 {{end}}
             </ul>
             {{else}}
-            <p class="text-center py-10 text-gray-500">No market activity has been recorded yet.</p>
+            <p class="text-center py-10 text-gray-500">{{.Page.T.no_market_activity}}</p>
             {{end}}
         </div>
 
-        {{if gt .Pagination.TotalPages 1}}
+        {{if gt .Data.Pagination.TotalPages 1}}
         <div class="flex items-center justify-between mt-6 bg-white px-4 py-3 sm:px-6 rounded-lg shadow">
             <div class="hidden sm:flex-1 sm:flex sm:items-center sm:justify-between">
                 <div>
                     <p class="text-sm text-gray-700">
-                        Page
-                        <span class="font-medium">{{.Pagination.CurrentPage}}</span>
-                        of
-                        <span class="font-medium">{{.Pagination.TotalPages}}</span>
+                        {{printf .Page.T.page_of .Data.Pagination.CurrentPage .Data.Pagination.TotalPages | TmplHTML}}
                     </p>
                 </div>
                 <div>
                     <nav class="relative z-0 inline-flex rounded-md shadow-sm -space-x-px" aria-label="Pagination">
-                        {{if .Pagination.HasPrevPage}}
-                            <a href="/activity?page={{.Pagination.PrevPage}}{{if .SearchQuery}}&query={{.SearchQuery | urlquery}}{{end}}{{if .SoldOnly}}&sold_only=true{{end}}" class="relative inline-flex items-center px-2 py-2 rounded-l-md border border-gray-300 bg-white text-sm font-medium text-gray-500 hover:bg-gray-50">
-                                <span class="sr-only">Previous</span>
+                        {{if .Data.Pagination.HasPrevPage}}
+                            <a href="/activity?page={{.Data.Pagination.PrevPage}}{{if .Data.SearchQuery}}&query={{.Data.SearchQuery | urlquery}}{{end}}{{if .Data.SoldOnly}}&sold_only=true{{end}}" class="relative inline-flex items-center px-2 py-2 rounded-l-md border border-gray-300 bg-white text-sm font-medium text-gray-500 hover:bg-gray-50">
+                                <span class="sr-only">{{$.Page.T.previous}}</span>
                                 <svg class="h-5 w-5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"><path fill-rule="evenodd" d="M12.707 5.293a1 1 0 010 1.414L9.414 10l3.293 3.293a1 1 0 01-1.414 1.414l-4-4a1 1 0 010-1.414l4-4a1 1 0 011.414 0z" clip-rule="evenodd" /></svg>
                             </a>
                         {{else}}
                              <span class="relative inline-flex items-center px-2 py-2 rounded-l-md border border-gray-300 bg-gray-50 text-sm font-medium text-gray-400 cursor-not-allowed">
-                                <span class="sr-only">Previous</span>
+                                <span class="sr-only">{{$.Page.T.previous}}</span>
                                 <svg class="h-5 w-5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"><path fill-rule="evenodd" d="M12.707 5.293a1 1 0 010 1.414L9.414 10l3.293 3.293a1 1 0 01-1.414 1.414l-4-4a1 1 0 010-1.414l4-4a1 1 0 011.414 0z" clip-rule="evenodd" /></svg>
                             </span>
                         {{end}}
                         
-                        {{if .Pagination.HasNextPage}}
-                            <a href="/activity?page={{.Pagination.NextPage}}{{if .SearchQuery}}&query={{.SearchQuery | urlquery}}{{end}}{{if .SoldOnly}}&sold_only=true{{end}}" class="relative inline-flex items-center px-2 py-2 rounded-r-md border border-gray-300 bg-white text-sm font-medium text-gray-500 hover:bg-gray-50">
-                                <span class="sr-only">Next</span>
+                        {{if .Data.Pagination.HasNextPage}}
+                            <a href="/activity?page={{.Data.Pagination.NextPage}}{{if .Data.SearchQuery}}&query={{.Data.SearchQuery | urlquery}}{{end}}{{if .Data.SoldOnly}}&sold_only=true{{end}}" class="relative inline-flex items-center px-2 py-2 rounded-r-md border border-gray-300 bg-white text-sm font-medium text-gray-500 hover:bg-gray-50">
+                                <span class="sr-only">{{$.Page.T.next}}</span>
                                 <svg class="h-5 w-5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"><path fill-rule="evenodd" d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z" clip-rule="evenodd" /></svg>
                             </a>
                         {{else}}
                             <span class="relative inline-flex items-center px-2 py-2 rounded-r-md border border-gray-300 bg-gray-50 text-sm font-medium text-gray-400 cursor-not-allowed">
-                                <span class="sr-only">Next</span>
+                                <span class="sr-only">{{$.Page.T.next}}</span>
                                 <svg class="h-5 w-5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"><path fill-rule="evenodd" d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z" clip-rule="evenodd" /></svg>
                             </span>
                         {{end}}
@@ -193,7 +217,12 @@
     </div>
     <script>
         document.addEventListener('DOMContentLoaded', () => {
-            // --- Page-Specific Logic ---
+            const lang = document.documentElement.lang || 'en';
+            const translations = {
+                updated_never: '{{.Page.T.updated_never}}',
+                updated_ago: '{{.Page.T.updated_ago}}'
+            };
+            
             document.querySelectorAll('[data-price]').forEach(elem => {
                 const price = parseInt(elem.dataset.price, 10);
                 if (!isNaN(price)) {
@@ -206,7 +235,7 @@
                 const timestampStr = lastUpdateElement.dataset.timestamp;
 
                 if (!timestampStr || timestampStr === 'Never' || timestampStr === '') {
-                    lastUpdateElement.textContent = 'Updated: never';
+                    lastUpdateElement.textContent = translations.updated_never;
                     return;
                 }
 
@@ -220,19 +249,23 @@
                     const now = new Date();
                     const secondsPast = Math.floor((now.getTime() - lastUpdateDate.getTime()) / 1000);
                     let timeAgoString;
-
-                    if (secondsPast < 5) {
-                        timeAgoString = 'just now';
-                    } else if (secondsPast < 60) {
-                        timeAgoString = `${secondsPast}s ago`;
-                    } else if (secondsPast < 3600) {
-                        timeAgoString = `${Math.floor(secondsPast / 60)}m ago`;
-                    } else if (secondsPast < 86400) {
-                        timeAgoString = `${Math.floor(secondsPast / 3600)}h ago`;
+                    
+                    if (lang === 'pt') {
+                        if (secondsPast < 5) timeAgoString = 'agora mesmo';
+                        else if (secondsPast < 60) timeAgoString = `${secondsPast}s atrás`;
+                        else if (secondsPast < 3600) timeAgoString = `${Math.floor(secondsPast / 60)}m atrás`;
+                        else if (secondsPast < 86400) timeAgoString = `${Math.floor(secondsPast / 3600)}h atrás`;
+                        else timeAgoString = `${Math.floor(secondsPast / 86400)}d atrás`;
                     } else {
-                        timeAgoString = `${Math.floor(secondsPast / 86400)}d ago`;
+                        if (secondsPast < 5) timeAgoString = 'just now';
+                        else if (secondsPast < 60) timeAgoString = `${secondsPast}s ago`;
+                        else if (secondsPast < 3600) timeAgoString = `${Math.floor(secondsPast / 60)}m ago`;
+                        else if (secondsPast < 86400) timeAgoString = `${Math.floor(secondsPast / 3600)}h ago`;
+                        else timeAgoString = `${Math.floor(secondsPast / 86400)}d ago`;
                     }
-                    lastUpdateElement.innerHTML = `Updated: ${timeAgoString} <span class="text-gray-400 font-normal">(${formattedTimestamp})</span>`;
+                    
+                    const fullString = translations.updated_ago.replace('%s', timeAgoString);
+                    lastUpdateElement.innerHTML = `${fullString} <span class="text-gray-400 font-normal">(${formattedTimestamp})</span>`;
                 };
 
                 updateTimeAgo();

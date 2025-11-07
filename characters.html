@@ -1,9 +1,9 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="{{.Page.Lang}}"> {{/* <-- MODIFIED */}}
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Characters - Yufa Market Tracker</title>
+    <title>{{.Page.T.characters_title}} - Yufa Market Tracker</title> {{/* <-- MODIFIED */}}
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
@@ -22,81 +22,82 @@
 
     <div class="container mx-auto px-4 py-6">
         <div class="flex flex-col sm:flex-row justify-between sm:items-center gap-2 mb-4 border-b border-gray-200 pb-3">
-            <h1 class="text-2xl font-bold text-gray-800">Characters</h1>
-            <div id="last-updated" class="text-sm text-gray-500" data-timestamp="{{.LastScrapeTime}}"></div>
+            <h1 class="text-2xl font-bold text-gray-800">{{.Page.T.characters_title}}</h1> {{/* <-- MODIFIED */}}
+            <div id="last-updated" class="text-sm text-gray-500" data-timestamp="{{.Data.LastScrapeTime}}"></div> {{/* <-- MODIFIED */}}
         </div>
 
         <form action="/characters" method="GET" id="filterForm">
             <div class="bg-white p-3 rounded-lg shadow mb-4">
                 <div class="grid grid-cols-1 md:grid-cols-4 gap-3 items-end">
                     <div class="md:col-span-2">
-                        <label for="name_query" class="block text-sm font-medium text-gray-700">Search by Name</label>
-                        <input type="text" name="name_query" id="name_query" value="{{.SearchName}}" placeholder="e.g., pardo" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-300 focus:ring focus:ring-indigo-200 focus:ring-opacity-50 text-sm">
+                        {{/* MODIFIED: Use .Data and .Page.T */}}
+                        <label for="name_query" class="block text-sm font-medium text-gray-700">{{.Page.T.search_by_name}}</label>
+                        <input type="text" name="name_query" id="name_query" value="{{.Data.SearchName}}" placeholder="e.g., pardo" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-300 focus:ring focus:ring-indigo-200 focus:ring-opacity-50 text-sm">
                     </div>
                     <div>
-                        <label for="class_filter" class="block text-sm font-medium text-gray-700">Filter by Class</label>
+                        <label for="class_filter" class="block text-sm font-medium text-gray-700">{{.Page.T.filter_by_class}}</label>
                         <select name="class_filter" id="class_filter" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-300 focus:ring focus:ring-indigo-200 focus:ring-opacity-50 text-sm">
-                            <option value="">All Classes</option>
-                            {{range .AllClasses}}
-                            <option value="{{.}}" {{if eq . $.SelectedClass}}selected{{end}}>{{.}}</option>
+                            <option value="">{{.Page.T.all_classes}}</option>
+                            {{range .Data.AllClasses}}
+                            <option value="{{.}}" {{if eq . $.Data.SelectedClass}}selected{{end}}>{{.}}</option>
                             {{end}}
                         </select>
                     </div>
                     <div class="flex items-center space-x-4">
-                        <button type="submit" class="w-full bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-md">Apply</button>
+                        <button type="submit" class="w-full bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-md">{{.Page.T.apply}}</button>
                     </div>
                 </div>
                  <div class="border-t border-gray-200 mt-3 pt-3">
                     <div class="flex flex-wrap items-center gap-x-4 gap-y-1">
-                        <div class="text-sm font-medium text-gray-700">Show Columns:</div>
-                         {{range .AllColumns}}
+                        <div class="text-sm font-medium text-gray-700">{{.Page.T.show_columns}}</div>
+                         {{range .Data.AllColumns}}
                         <div class="flex items-center">
-                           <input type="checkbox" name="cols" value="{{.ID}}" id="col_{{.ID}}" {{if index $.VisibleColumns .ID}}checked{{end}} class="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500">
+                           <input type="checkbox" name="cols" value="{{.ID}}" id="col_{{.ID}}" {{if index $.Data.VisibleColumns .ID}}checked{{end}} class="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500">
                            <label for="col_{{.ID}}" class="ml-2 block text-sm text-gray-900">{{.DisplayName}}</label>
                         </div>
                         {{end}}
                     </div>
                 </div>
-                {{if .SelectedGuild}}
+                {{if .Data.SelectedGuild}}
                 <div class="border-t border-gray-200 mt-3 pt-3">
                     <div class="text-sm">
-                        Filtering by Guild: <span class="font-semibold bg-blue-100 text-blue-800 py-0.5 px-2 rounded-full">{{.SelectedGuild}}</span>
-                        <a href="/characters?name_query={{.SearchName}}&class_filter={{.SelectedClass}}&{{.ColumnParams}}&{{.GraphFilterParams}}" class="ml-2 text-red-500 hover:underline text-xs">[Clear Filter]</a>
+                        {{.Page.T.filtering_by_guild}} <span class="font-semibold bg-blue-100 text-blue-800 py-0.5 px-2 rounded-full">{{.Data.SelectedGuild}}</span>
+                        <a href="/characters?name_query={{.Data.SearchName}}&class_filter={{.Data.SelectedClass}}&{{.Data.ColumnParams}}&{{.Data.GraphFilterParams}}" class="ml-2 text-red-500 hover:underline text-xs">{{.Page.T.clear_filter}}</a>
                     </div>
                 </div>
-                <input type="hidden" name="guild_filter" value="{{.SelectedGuild}}">
+                <input type="hidden" name="guild_filter" value="{{.Data.SelectedGuild}}">
                 {{end}}
             </div>
 
             <details class="mb-4">
                 <summary class="bg-white p-3 rounded-lg shadow font-semibold text-lg cursor-pointer hover:text-blue-600 list-none flex justify-between items-center">
-                    <span>📊 Statistics & Distribution</span>
+                    <span>{{.Page.T.stats_distribution | TmplHTML}}</span>
                     <span class="text-gray-500 transform transition-transform duration-200 open-marker">▶</span>
                 </summary>
 
                 <div class="grid grid-cols-1 lg:grid-cols-3 gap-4 mt-4">
                     <div class="bg-white p-3 rounded-lg shadow lg:col-span-2">
-                        <h3 class="font-semibold text-lg">Class Distribution</h3>
+                        <h3 class="font-semibold text-lg">{{.Page.T.class_distribution}}</h3>
                         <div class="mt-4">
                             <div class="flex flex-wrap items-center gap-4 mb-4 text-sm border-b pb-3">
-                                <strong class="text-gray-700">Show Types:</strong>
+                                <strong class="text-gray-700">{{.Page.T.show_types}}</strong>
                                 <label class="flex items-center space-x-2">
                                     <input type="checkbox" name="graph_filter" value="novice" onchange="this.form.submit();"
-                                        {{if index .GraphFilter "novice"}}checked{{end}}
+                                        {{if index .Data.GraphFilter "novice"}}checked{{end}}
                                         class="rounded border-gray-300 text-indigo-600 shadow-sm focus:ring-indigo-500">
-                                    <span>Novice</span>
+                                    <span>{{.Page.T.novice}}</span>
                                 </label>
                                 <label class="flex items-center space-x-2">
                                     <input type="checkbox" name="graph_filter" value="first" onchange="this.form.submit();"
-                                        {{if index .GraphFilter "first"}}checked{{end}}
+                                        {{if index .Data.GraphFilter "first"}}checked{{end}}
                                         class="rounded border-gray-300 text-indigo-600 shadow-sm focus:ring-indigo-500">
-                                    <span>First Class</span>
+                                    <span>{{.Page.T.first_class}}</span>
                                 </label>
                                 <label class="flex items-center space-x-2">
                                     <input type="checkbox" name="graph_filter" value="second" onchange="this.form.submit();"
-                                        {{if index .GraphFilter "second"}}checked{{end}}
+                                        {{if index .Data.GraphFilter "second"}}checked{{end}}
                                         class="rounded border-gray-300 text-indigo-600 shadow-sm focus:ring-indigo-500">
-                                    <span>Second Class</span>
+                                    <span>{{.Page.T.second_class}}</span>
                                 </label>
                             </div>
                             <div style="position: relative; height:300px">
@@ -107,12 +108,12 @@
                     <div class="bg-white p-3 rounded-lg shadow h-full">
                         <div class="flex flex-col justify-center items-center text-center h-full">
                             <div>
-                                <h3 class="text-lg font-semibold text-gray-700">Total Zeny (Filtered)</h3>
+                                <h3 class="text-lg font-semibold text-gray-700">{{.Page.T.total_zeny_filtered}}</h3>
                                 <p class="text-4xl font-bold text-green-600 mt-4 tracking-tight">
-                                    {{if .TotalZeny}}{{formatZeny .TotalZeny}} <span class="text-2xl font-medium">z</span>{{else}}N/A{{end}}
+                                    {{if .Data.TotalZeny}}{{formatZeny .Data.TotalZeny}} <span class="text-2xl font-medium">z</span>{{else}}N/A{{end}}
                                 </p>
                                 <p class="text-sm text-gray-500 mt-2">
-                                    Sum across {{.TotalPlayers}} characters (without bank).
+                                    {{printf .Page.T.sum_across_chars .Data.TotalPlayers | TmplHTML}}
                                 </p>
                             </div>
                         </div>
@@ -126,26 +127,27 @@
                 <table class="min-w-full leading-normal">
                     <thead>
                         <tr class="border-b-2 border-gray-200 bg-gray-50 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
-                            {{if index .VisibleColumns "rank"}}<th class="px-2 sm:px-3 py-2 whitespace-nowrap"><a href="/characters?sort_by=rank&order={{if eq .SortBy "rank"}}{{toggleOrder .Order}}{{else}}ASC{{end}}&name_query={{.SearchName}}&class_filter={{.SelectedClass}}&guild_filter={{.SelectedGuild}}&{{.ColumnParams}}&{{.GraphFilterParams}}">Rank {{if eq .SortBy "rank"}}{{if eq .Order "ASC"}}<span class="text-gray-400">▲</span>{{else}}<span class="text-gray-400">▼</span>{{end}}{{end}}</a></th>{{end}}
-                            <th class="px-2 sm:px-3 py-2 whitespace-nowrap"><a href="/characters?sort_by=name&order={{if eq .SortBy "name"}}{{toggleOrder .Order}}{{else}}ASC{{end}}&name_query={{.SearchName}}&class_filter={{.SelectedClass}}&guild_filter={{.SelectedGuild}}&{{.ColumnParams}}&{{.GraphFilterParams}}">Name {{if eq .SortBy "name"}}{{if eq .Order "ASC"}}<span class="text-gray-400">▲</span>{{else}}<span class="text-gray-400">▼</span>{{end}}{{end}}</a></th>
-                            {{if index .VisibleColumns "base_level"}}<th class="px-2 sm:px-3 py-2 whitespace-nowrap"><a href="/characters?sort_by=base_level&order={{if eq .SortBy "base_level"}}{{toggleOrder .Order}}{{else}}ASC{{end}}&name_query={{.SearchName}}&class_filter={{.SelectedClass}}&guild_filter={{.SelectedGuild}}&{{.ColumnParams}}&{{.GraphFilterParams}}">Base Lvl {{if eq .SortBy "base_level"}}{{if eq .Order "ASC"}}<span class="text-gray-400">▲</span>{{else}}<span class="text-gray-400">▼</span>{{end}}{{end}}</a></th>{{end}}
-                            {{if index .VisibleColumns "job_level"}}<th class="px-2 sm:px-3 py-2 whitespace-nowrap"><a href="/characters?sort_by=job_level&order={{if eq .SortBy "job_level"}}{{toggleOrder .Order}}{{else}}ASC{{end}}&name_query={{.SearchName}}&class_filter={{.SelectedClass}}&guild_filter={{.SelectedGuild}}&{{.ColumnParams}}&{{.GraphFilterParams}}">Job Lvl {{if eq .SortBy "job_level"}}{{if eq .Order "ASC"}}<span class="text-gray-400">▲</span>{{else}}<span class="text-gray-400">▼</span>{{end}}{{end}}</a></th>{{end}}
-                            {{if index .VisibleColumns "experience"}}<th class="px-2 sm:px-3 py-2 whitespace-nowrap"><a href="/characters?sort_by=experience&order={{if eq .SortBy "experience"}}{{toggleOrder .Order}}{{else}}ASC{{end}}&name_query={{.SearchName}}&class_filter={{.SelectedClass}}&guild_filter={{.SelectedGuild}}&{{.ColumnParams}}&{{.GraphFilterParams}}">Exp % {{if eq .SortBy "experience"}}{{if eq .Order "ASC"}}<span class="text-gray-400">▲</span>{{else}}<span class="text-gray-400">▼</span>{{end}}{{end}}</a></th>{{end}}
-                            {{if index .VisibleColumns "zeny"}}<th class="px-2 sm:px-3 py-2 whitespace-nowrap"><a href="/characters?sort_by=zeny&order={{if eq .SortBy "zeny"}}{{toggleOrder .Order}}{{else}}DESC{{end}}&name_query={{.SearchName}}&class_filter={{.SelectedClass}}&guild_filter={{.SelectedGuild}}&{{.ColumnParams}}&{{.GraphFilterParams}}">Zeny {{if eq .SortBy "zeny"}}{{if eq .Order "ASC"}}<span class="text-gray-400">▲</span>{{else}}<span class="text-gray-400">▼</span>{{end}}{{end}}</a></th>{{end}}
-                            {{if index .VisibleColumns "class"}}<th class="px-2 sm:px-3 py-2 whitespace-nowrap"><a href="/characters?sort_by=class&order={{if eq .SortBy "class"}}{{toggleOrder .Order}}{{else}}ASC{{end}}&name_query={{.SearchName}}&class_filter={{.SelectedClass}}&guild_filter={{.SelectedGuild}}&{{.ColumnParams}}&{{.GraphFilterParams}}">Class {{if eq .SortBy "class"}}{{if eq .Order "ASC"}}<span class="text-gray-400">▲</span>{{else}}<span class="text-gray-400">▼</span>{{end}}{{end}}</a></th>{{end}}
-                            {{if index .VisibleColumns "guild"}}<th class="px-2 sm:px-3 py-2 whitespace-nowrap"><a href="/characters?sort_by=guild&order={{if eq .SortBy "guild"}}{{toggleOrder .Order}}{{else}}ASC{{end}}&name_query={{.SearchName}}&class_filter={{.SelectedClass}}&guild_filter={{.SelectedGuild}}&{{.ColumnParams}}&{{.GraphFilterParams}}">Guild {{if eq .SortBy "guild"}}{{if eq .Order "ASC"}}<span class="text-gray-400">▲</span>{{else}}<span class="text-gray-400">▼</span>{{end}}{{end}}</a></th>{{end}}
-                            {{if index .VisibleColumns "last_updated"}}<th class="px-2 sm:px-3 py-2 whitespace-nowrap"><a href="/characters?sort_by=last_updated&order={{if eq .SortBy "last_updated"}}{{toggleOrder .Order}}{{else}}ASC{{end}}&name_query={{.SearchName}}&class_filter={{.SelectedClass}}&guild_filter={{.SelectedGuild}}&{{.ColumnParams}}&{{.GraphFilterParams}}">Last Updated {{if eq .SortBy "last_updated"}}{{if eq .Order "ASC"}}<span class="text-gray-400">▲</span>{{else}}<span class="text-gray-400">▼</span>{{end}}{{end}}</a></th>{{end}}
-                            {{if index .VisibleColumns "last_active"}}<th class="px-2 sm:px-3 py-2 whitespace-nowrap"><a href="/characters?sort_by=last_active&order={{if eq .SortBy "last_active"}}{{toggleOrder .Order}}{{else}}ASC{{end}}&name_query={{.SearchName}}&class_filter={{.SelectedClass}}&guild_filter={{.SelectedGuild}}&{{.ColumnParams}}&{{.GraphFilterParams}}" title="this is an estimate of when the character was last active on the server. to make the timestamp valid as active, if there is a change in the experience percentage and/or the amount of zeny between one scrape and another, it will be considered that the character was active during that time window.">Last Active *{{if eq .SortBy "last_active"}}{{if eq .Order "ASC"}}<span class="text-gray-400">▲</span>{{else}}<span class="text-gray-400">▼</span>{{end}}{{end}}</a></th>{{end}}
+                            {{/* MODIFIED: Use .Data and .Page.T */}}
+                            {{if index .Data.VisibleColumns "rank"}}<th class="px-2 sm:px-3 py-2 whitespace-nowrap"><a href="/characters?sort_by=rank&order={{if eq .Data.SortBy "rank"}}{{toggleOrder .Data.Order}}{{else}}ASC{{end}}&name_query={{.Data.SearchName}}&class_filter={{.Data.SelectedClass}}&guild_filter={{.Data.SelectedGuild}}&{{.Data.ColumnParams}}&{{.Data.GraphFilterParams}}">{{.Page.T.rank}} {{if eq .Data.SortBy "rank"}}{{if eq .Data.Order "ASC"}}<span class="text-gray-400">▲</span>{{else}}<span class="text-gray-400">▼</span>{{end}}{{end}}</a></th>{{end}}
+                            <th class="px-2 sm:px-3 py-2 whitespace-nowrap"><a href="/characters?sort_by=name&order={{if eq .Data.SortBy "name"}}{{toggleOrder .Data.Order}}{{else}}ASC{{end}}&name_query={{.Data.SearchName}}&class_filter={{.Data.SelectedClass}}&guild_filter={{.Data.SelectedGuild}}&{{.Data.ColumnParams}}&{{.Data.GraphFilterParams}}">{{.Page.T.name}} {{if eq .Data.SortBy "name"}}{{if eq .Data.Order "ASC"}}<span class="text-gray-400">▲</span>{{else}}<span class="text-gray-400">▼</span>{{end}}{{end}}</a></th>
+                            {{if index .Data.VisibleColumns "base_level"}}<th class="px-2 sm:px-3 py-2 whitespace-nowrap"><a href="/characters?sort_by=base_level&order={{if eq .Data.SortBy "base_level"}}{{toggleOrder .Data.Order}}{{else}}ASC{{end}}&name_query={{.Data.SearchName}}&class_filter={{.Data.SelectedClass}}&guild_filter={{.Data.SelectedGuild}}&{{.Data.ColumnParams}}&{{.Data.GraphFilterParams}}">{{.Page.T.base_lvl}} {{if eq .Data.SortBy "base_level"}}{{if eq .Data.Order "ASC"}}<span class="text-gray-400">▲</span>{{else}}<span class="text-gray-400">▼</span>{{end}}{{end}}</a></th>{{end}}
+                            {{if index .Data.VisibleColumns "job_level"}}<th class="px-2 sm:px-3 py-2 whitespace-nowrap"><a href="/characters?sort_by=job_level&order={{if eq .Data.SortBy "job_level"}}{{toggleOrder .Data.Order}}{{else}}ASC{{end}}&name_query={{.Data.SearchName}}&class_filter={{.Data.SelectedClass}}&guild_filter={{.Data.SelectedGuild}}&{{.Data.ColumnParams}}&{{.Data.GraphFilterParams}}">{{.Page.T.job_lvl}} {{if eq .Data.SortBy "job_level"}}{{if eq .Data.Order "ASC"}}<span class="text-gray-400">▲</span>{{else}}<span class="text-gray-400">▼</span>{{end}}{{end}}</a></th>{{end}}
+                            {{if index .Data.VisibleColumns "experience"}}<th class="px-2 sm:px-3 py-2 whitespace-nowrap"><a href="/characters?sort_by=experience&order={{if eq .Data.SortBy "experience"}}{{toggleOrder .Data.Order}}{{else}}ASC{{end}}&name_query={{.Data.SearchName}}&class_filter={{.Data.SelectedClass}}&guild_filter={{.Data.SelectedGuild}}&{{.Data.ColumnParams}}&{{.Data.GraphFilterParams}}">{{.Page.T.exp_perc}} {{if eq .Data.SortBy "experience"}}{{if eq .Data.Order "ASC"}}<span class="text-gray-400">▲</span>{{else}}<span class="text-gray-400">▼</span>{{end}}{{end}}</a></th>{{end}}
+                            {{if index .Data.VisibleColumns "zeny"}}<th class="px-2 sm:px-3 py-2 whitespace-nowrap"><a href="/characters?sort_by=zeny&order={{if eq .Data.SortBy "zeny"}}{{toggleOrder .Data.Order}}{{else}}DESC{{end}}&name_query={{.Data.SearchName}}&class_filter={{.Data.SelectedClass}}&guild_filter={{.Data.SelectedGuild}}&{{.Data.ColumnParams}}&{{.Data.GraphFilterParams}}">{{.Page.T.zeny}} {{if eq .Data.SortBy "zeny"}}{{if eq .Data.Order "ASC"}}<span class="text-gray-400">▲</span>{{else}}<span class="text-gray-400">▼</span>{{end}}{{end}}</a></th>{{end}}
+                            {{if index .Data.VisibleColumns "class"}}<th class="px-2 sm:px-3 py-2 whitespace-nowrap"><a href="/characters?sort_by=class&order={{if eq .Data.SortBy "class"}}{{toggleOrder .Data.Order}}{{else}}ASC{{end}}&name_query={{.Data.SearchName}}&class_filter={{.Data.SelectedClass}}&guild_filter={{.Data.SelectedGuild}}&{{.Data.ColumnParams}}&{{.Data.GraphFilterParams}}">{{.Page.T.class}} {{if eq .Data.SortBy "class"}}{{if eq .Data.Order "ASC"}}<span class="text-gray-400">▲</span>{{else}}<span class="text-gray-400">▼</span>{{end}}{{end}}</a></th>{{end}}
+                            {{if index .Data.VisibleColumns "guild"}}<th class="px-2 sm:px-3 py-2 whitespace-nowrap"><a href="/characters?sort_by=guild&order={{if eq .Data.SortBy "guild"}}{{toggleOrder .Data.Order}}{{else}}ASC{{end}}&name_query={{.Data.SearchName}}&class_filter={{.Data.SelectedClass}}&guild_filter={{.Data.SelectedGuild}}&{{.Data.ColumnParams}}&{{.Data.GraphFilterParams}}">{{.Page.T.guild}} {{if eq .Data.SortBy "guild"}}{{if eq .Data.Order "ASC"}}<span class="text-gray-400">▲</span>{{else}}<span class="text-gray-400">▼</span>{{end}}{{end}}</a></th>{{end}}
+                            {{if index .Data.VisibleColumns "last_updated"}}<th class="px-2 sm:px-3 py-2 whitespace-nowrap"><a href="/characters?sort_by=last_updated&order={{if eq .Data.SortBy "last_updated"}}{{toggleOrder .Data.Order}}{{else}}ASC{{end}}&name_query={{.Data.SearchName}}&class_filter={{.Data.SelectedClass}}&guild_filter={{.Data.SelectedGuild}}&{{.Data.ColumnParams}}&{{.Data.GraphFilterParams}}">{{.Page.T.last_updated}} {{if eq .Data.SortBy "last_updated"}}{{if eq .Data.Order "ASC"}}<span class="text-gray-400">▲</span>{{else}}<span class="text-gray-400">▼</span>{{end}}{{end}}</a></th>{{end}}
+                            {{if index .Data.VisibleColumns "last_active"}}<th class="px-2 sm:px-3 py-2 whitespace-nowrap"><a href="/characters?sort_by=last_active&order={{if eq .Data.SortBy "last_active"}}{{toggleOrder .Data.Order}}{{else}}ASC{{end}}&name_query={{.Data.SearchName}}&class_filter={{.Data.SelectedClass}}&guild_filter={{.Data.SelectedGuild}}&{{.Data.ColumnParams}}&{{.Data.GraphFilterParams}}" title="{{.Page.T.last_active_tooltip}}">{{.Page.T.last_active}} *{{if eq .Data.SortBy "last_active"}}{{if eq .Data.Order "ASC"}}<span class="text-gray-400">▲</span>{{else}}<span class="text-gray-400">▼</span>{{end}}{{end}}</a></th>{{end}}
                         </tr>
                     </thead>
                     <tbody class="text-gray-700 text-xs">
-                        {{range .Players}}
+                        {{range .Data.Players}} {{/* <-- MODIFIED */}}
                         <tr class="border-b border-gray-200 hover:bg-gray-50">
-                            {{if index $.VisibleColumns "rank"}}<td class="px-2 sm:px-3 py-2">{{.Rank}}</td>{{end}}
+                            {{if index $.Data.VisibleColumns "rank"}}<td class="px-2 sm:px-3 py-2">{{.Rank}}</td>{{end}}
                             <td class="px-2 sm:px-3 py-2 font-semibold">
                                 <div class="flex items-center">
                                     {{if .IsActive}}
-                                    <span class="h-2 w-2 mr-2 bg-green-500 rounded-full flex-shrink-0" title="Active"></span>
+                                    <span class="h-2 w-2 mr-2 bg-green-500 rounded-full flex-shrink-0" title="{{$.Page.T.active}}"></span> {{/* <-- MODIFIED */}}
                                     {{else}}
                                     <span class="h-2 w-2 mr-2" ></span>
                                     {{end}}
@@ -153,75 +155,76 @@
                                         <span>{{.Name}}</span>
                                     </a>
                                     {{if .IsSpecial}}
-                                    <span title="First 99 in your class" class="mr-1 flex-shrink-0">‎ 🥇</span>
+                                    <span title="{{$.Page.T.first_99_class}}" class="mr-1 flex-shrink-0">‎ 🥇</span> {{/* <-- MODIFIED */}}
                                     {{end}}
                                     {{if .IsGuildLeader}}
-                                    <span title="Guild Leader" class="mr-1 flex-shrink-0">‎ ⭐</span>
+                                    <span title="{{$.Page.T.guild_leader}}" class="mr-1 flex-shrink-0">‎ ⭐</span> {{/* <-- MODIFIED */}}
                                     {{end}}
                                 </div>
                             </td>
-                            {{if index $.VisibleColumns "base_level"}}<td class="px-2 sm:px-3 py-2">{{.BaseLevel}}</td>{{end}}
-                            {{if index $.VisibleColumns "job_level"}}<td class="px-2 sm:px-3 py-2">{{.JobLevel}}</td>{{end}}
-                            {{if index $.VisibleColumns "experience"}}<td class="px-2 sm:px-3 py-2">{{printf "%.2f" .Experience}}%</td>{{end}}
-                            {{if index $.VisibleColumns "zeny"}}<td class="px-2 sm:px-3 py-2">{{if .Zeny}}{{formatZeny .Zeny}}{{else}}N/A{{end}}</td>{{end}}
-                            {{if index $.VisibleColumns "class"}}<td class="px-2 sm:px-3 py-2">{{.Class}}</td>{{end}}
-                            {{if index $.VisibleColumns "guild"}}<td class="px-2 sm:px-3 py-2">{{if .GuildName.Valid}}<a href="/guild?name={{.GuildName.String | urlquery}}" class="text-blue-600 hover:underline">{{.GuildName.String}}</a>{{end}}</td>{{end}}
-                            {{if index $.VisibleColumns "last_updated"}}<td class="px-2 sm:px-3 py-2 whitespace-nowrap">{{.LastUpdated}}</td>{{end}}
-                            {{if index $.VisibleColumns "last_active"}}<td class="px-2 sm:px-3 py-2 whitespace-nowrap">{{.LastActive}}</td>{{end}}
+                            {{if index $.Data.VisibleColumns "base_level"}}<td class="px-2 sm:px-3 py-2">{{.BaseLevel}}</td>{{end}}
+                            {{if index $.Data.VisibleColumns "job_level"}}<td class="px-2 sm:px-3 py-2">{{.JobLevel}}</td>{{end}}
+                            {{if index $.Data.VisibleColumns "experience"}}<td class="px-2 sm:px-3 py-2">{{printf "%.2f" .Experience}}%</td>{{end}}
+                            {{if index $.Data.VisibleColumns "zeny"}}<td class="px-2 sm:px-3 py-2">{{if .Zeny}}{{formatZeny .Zeny}}{{else}}N/A{{end}}</td>{{end}}
+                            {{if index $.Data.VisibleColumns "class"}}<td class="px-2 sm:px-3 py-2">{{.Class}}</td>{{end}}
+                            {{if index $.Data.VisibleColumns "guild"}}<td class="px-2 sm:px-3 py-2">{{if .GuildName.Valid}}<a href="/guild?name={{.GuildName.String | urlquery}}" class="text-blue-600 hover:underline">{{.GuildName.String}}</a>{{end}}</td>{{end}}
+                            {{if index $.Data.VisibleColumns "last_updated"}}<td class="px-2 sm:px-3 py-2 whitespace-nowrap">{{.LastUpdated}}</td>{{end}}
+                            {{if index $.Data.VisibleColumns "last_active"}}<td class="px-2 sm:px-3 py-2 whitespace-nowrap">{{.LastActive}}</td>{{end}}
                         </tr>
                         {{else}}
                         <tr>
-                            <td colspan="10" class="text-center py-10 text-gray-500">No characters found matching your criteria.</td>
+                            <td colspan="10" class="text-center py-10 text-gray-500">{{.Page.T.no_chars_found}}</td> {{/* <-- MODIFIED */}}
                         </tr>
                         {{end}}
                     </tbody>
                 </table>
             </div>
 
-            {{if gt .Pagination.TotalPages 1}}
+            {{/* MODIFIED: Use .Data and .Page.T */}}
+            {{if gt .Data.Pagination.TotalPages 1}}
             <div class="px-3 py-3 bg-white border-t flex items-center justify-between">
                 <div class="flex-1 flex justify-between sm:hidden">
-                    {{if .Pagination.HasPrevPage}}
-                        <a href="/characters?page={{.Pagination.PrevPage}}&name_query={{.SearchName}}&class_filter={{.SelectedClass}}&guild_filter={{.SelectedGuild}}&sort_by={{.SortBy}}&order={{.Order}}&{{.ColumnParams}}&{{.GraphFilterParams}}" class="relative inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50"> Previous </a>
+                    {{if .Data.Pagination.HasPrevPage}}
+                        <a href="/characters?page={{.Data.Pagination.PrevPage}}&name_query={{.Data.SearchName}}&class_filter={{.Data.SelectedClass}}&guild_filter={{.Data.SelectedGuild}}&sort_by={{.Data.SortBy}}&order={{.Data.Order}}&{{.Data.ColumnParams}}&{{.Data.GraphFilterParams}}" class="relative inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50"> {{.Page.T.previous}} </a>
                     {{else}}
-                        <span class="relative inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-400 bg-gray-50 cursor-not-allowed"> Previous </span>
+                        <span class="relative inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-400 bg-gray-50 cursor-not-allowed"> {{.Page.T.previous}} </span>
                     {{end}}
-                    {{if .Pagination.HasNextPage}}
-                        <a href="/characters?page={{.Pagination.NextPage}}&name_query={{.SearchName}}&class_filter={{.SelectedClass}}&guild_filter={{.SelectedGuild}}&sort_by={{.SortBy}}&order={{.Order}}&{{.ColumnParams}}&{{.GraphFilterParams}}" class="ml-3 relative inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50"> Next </a>
+                    {{if .Data.Pagination.HasNextPage}}
+                        <a href="/characters?page={{.Data.Pagination.NextPage}}&name_query={{.Data.SearchName}}&class_filter={{.Data.SelectedClass}}&guild_filter={{.Data.SelectedGuild}}&sort_by={{.Data.SortBy}}&order={{.Data.Order}}&{{.Data.ColumnParams}}&{{.Data.GraphFilterParams}}" class="ml-3 relative inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50"> {{.Page.T.next}} </a>
                     {{else}}
-                        <span class="ml-3 relative inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-400 bg-gray-50 cursor-not-allowed"> Next </span>
+                        <span class="ml-3 relative inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-400 bg-gray-50 cursor-not-allowed"> {{.Page.T.next}} </span>
                     {{end}}
                 </div>
         
                 <div class="hidden sm:flex-1 sm:flex sm:items-center sm:justify-between">
                     <div>
                         <p class="text-sm text-gray-700">
-                            Page <span class="font-medium">{{.Pagination.CurrentPage}}</span> of <span class="font-medium">{{.Pagination.TotalPages}}</span>
-                            <span class="hidden lg:inline"> ({{.TotalPlayers}} total characters)</span>
+                            {{printf .Page.T.page_of .Data.Pagination.CurrentPage .Data.Pagination.TotalPages | TmplHTML}}
+                            <span class="hidden lg:inline"> {{printf .Page.T.total_chars .Data.TotalPlayers}}</span>
                         </p>
                     </div>
                     <div>
                         <nav class="relative z-0 inline-flex rounded-md shadow-sm -space-x-px" aria-label="Pagination">
-                            {{if .Pagination.HasPrevPage}}
-                                <a href="/characters?page={{.Pagination.PrevPage}}&name_query={{.SearchName}}&class_filter={{.SelectedClass}}&guild_filter={{.SelectedGuild}}&sort_by={{.SortBy}}&order={{.Order}}&{{.ColumnParams}}&{{.GraphFilterParams}}" class="relative inline-flex items-center px-2 py-2 rounded-l-md border border-gray-300 bg-white text-sm font-medium text-gray-500 hover:bg-gray-50">
-                                    <span class="sr-only">Previous</span>
+                            {{if .Data.Pagination.HasPrevPage}}
+                                <a href="/characters?page={{.Data.Pagination.PrevPage}}&name_query={{.Data.SearchName}}&class_filter={{.Data.SelectedClass}}&guild_filter={{.Data.SelectedGuild}}&sort_by={{.Data.SortBy}}&order={{.Data.Order}}&{{.Data.ColumnParams}}&{{.Data.GraphFilterParams}}" class="relative inline-flex items-center px-2 py-2 rounded-l-md border border-gray-300 bg-white text-sm font-medium text-gray-500 hover:bg-gray-50">
+                                    <span class="sr-only">{{.Page.T.previous}}</span>
                                     <svg class="h-5 w-5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"><path fill-rule="evenodd" d="M12.707 5.293a1 1 0 010 1.414L9.414 10l3.293 3.293a1 1 0 01-1.414 1.414l-4-4a1 1 0 010-1.414l4-4a1 1 0 011.414 0z" clip-rule="evenodd" /></svg>
                                 </a>
                             {{else}}
                                  <span class="relative inline-flex items-center px-2 py-2 rounded-l-md border border-gray-300 bg-gray-50 text-sm font-medium text-gray-400 cursor-not-allowed">
-                                    <span class="sr-only">Previous</span>
+                                    <span class="sr-only">{{.Page.T.previous}}</span>
                                     <svg class="h-5 w-5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"><path fill-rule="evenodd" d="M12.707 5.293a1 1 0 010 1.414L9.414 10l3.293 3.293a1 1 0 01-1.414 1.414l-4-4a1 1 0 010-1.414l4-4a1 1 0 011.414 0z" clip-rule="evenodd" /></svg>
                                 </span>
                             {{end}}
                             
-                            {{if .Pagination.HasNextPage}}
-                                <a href="/characters?page={{.Pagination.NextPage}}&name_query={{.SearchName}}&class_filter={{.SelectedClass}}&guild_filter={{.SelectedGuild}}&sort_by={{.SortBy}}&order={{.Order}}&{{.ColumnParams}}&{{.GraphFilterParams}}" class="relative inline-flex items-center px-2 py-2 rounded-r-md border border-gray-300 bg-white text-sm font-medium text-gray-500 hover:bg-gray-50">
-                                    <span class="sr-only">Next</span>
+                            {{if .Data.Pagination.HasNextPage}}
+                                <a href="/characters?page={{.Data.Pagination.NextPage}}&name_query={{.Data.SearchName}}&class_filter={{.Data.SelectedClass}}&guild_filter={{.Data.SelectedGuild}}&sort_by={{.Data.SortBy}}&order={{.Data.Order}}&{{.Data.ColumnParams}}&{{.Data.GraphFilterParams}}" class="relative inline-flex items-center px-2 py-2 rounded-r-md border border-gray-300 bg-white text-sm font-medium text-gray-500 hover:bg-gray-50">
+                                    <span class="sr-only">{{.Page.T.next}}</span>
                                     <svg class="h-5 w-5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"><path fill-rule="evenodd" d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z" clip-rule="evenodd" /></svg>
                                 </a>
                             {{else}}
                                 <span class="relative inline-flex items-center px-2 py-2 rounded-r-md border border-gray-300 bg-gray-50 text-sm font-medium text-gray-400 cursor-not-allowed">
-                                    <span class="sr-only">Next</span>
+                                    <span class="sr-only">{{.Page.T.next}}</span>
                                     <svg class="h-5 w-5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"><path fill-rule="evenodd" d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z" clip-rule="evenodd" /></svg>
                                 </span>
                             {{end}}
@@ -235,13 +238,21 @@
 
 <script>
 document.addEventListener('DOMContentLoaded', () => {
-    // --- Page-Specific Logic ---
+    // --- MODIFIED: Use translations ---
+    const lang = document.documentElement.lang || 'en';
+    const translations = {
+        updated_never: '{{.Page.T.updated_never}}',
+        updated_ago: '{{.Page.T.updated_ago}}',
+        // --- NEW: Chart fallback text ---
+        no_data_available: '{{if .Page.T.no_data_available}}{{.Page.T.no_data_available}}{{else}}No data available for the selected filters.{{end}}'
+    };
+
     const lastUpdateElement = document.getElementById('last-updated');
     if (lastUpdateElement) {
         const timestampStr = lastUpdateElement.dataset.timestamp;
 
         if (!timestampStr || timestampStr === 'Never' || timestampStr === '') {
-            lastUpdateElement.textContent = 'Updated: never';
+            lastUpdateElement.textContent = translations.updated_never; // Use translation
             return;
         }
 
@@ -256,21 +267,23 @@ document.addEventListener('DOMContentLoaded', () => {
             const secondsPast = Math.floor((now.getTime() - lastUpdateDate.getTime()) / 1000);
             let timeAgoString;
 
-            if (secondsPast < 5) {
-                timeAgoString = 'just now';
-            } else if (secondsPast < 60) {
-                timeAgoString = `${secondsPast}s ago`;
-            } else if (secondsPast < 3600) {
-                const minutes = Math.floor(secondsPast / 60);
-                timeAgoString = `${minutes}m ago`;
-            } else if (secondsPast < 86400) {
-                const hours = Math.floor(secondsPast / 3600);
-                timeAgoString = `${hours}h ago`;
+            // --- MODIFIED: Language-specific time ago ---
+            if (lang === 'pt') {
+                if (secondsPast < 5) timeAgoString = 'agora mesmo';
+                else if (secondsPast < 60) timeAgoString = `${secondsPast}s atrás`;
+                else if (secondsPast < 3600) timeAgoString = `${Math.floor(secondsPast / 60)}m atrás`;
+                else if (secondsPast < 86400) timeAgoString = `${Math.floor(secondsPast / 3600)}h atrás`;
+                else timeAgoString = `${Math.floor(secondsPast / 86400)}d atrás`;
             } else {
-                const days = Math.floor(secondsPast / 86400);
-                timeAgoString = `${days}d ago`;
+                if (secondsPast < 5) timeAgoString = 'just now';
+                else if (secondsPast < 60) timeAgoString = `${secondsPast}s ago`;
+                else if (secondsPast < 3600) timeAgoString = `${Math.floor(secondsPast / 60)}m ago`;
+                else if (secondsPast < 86400) timeAgoString = `${Math.floor(secondsPast / 3600)}h ago`;
+                else timeAgoString = `${Math.floor(secondsPast / 86400)}d ago`;
             }
-            lastUpdateElement.innerHTML = `Updated: ${timeAgoString} <span class="text-gray-400 font-normal">(${formattedTimestamp})</span>`;
+            
+            const fullString = translations.updated_ago.replace('%s', timeAgoString); // Use translation
+            lastUpdateElement.innerHTML = `${fullString} <span class="text-gray-400 font-normal">(${formattedTimestamp})</span>`;
         };
 
         updateTimeAgo();
@@ -280,7 +293,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const ctx = document.getElementById('classDistChart');
     if (ctx) {
         try {
-            const rawData = JSON.parse('{{.ClassDistributionJSON}}');
+            const rawData = JSON.parse('{{.Data.ClassDistributionJSON}}');
             const sortedData = Object.entries(rawData).sort(([, a], [, b]) => b - a);
             
             const labels = sortedData.map(item => item[0]);
@@ -329,11 +342,12 @@ document.addEventListener('DOMContentLoaded', () => {
                     }
                 });
             } else {
+                 // --- MODIFIED: Use translation for fallback text ---
                  const context = ctx.getContext('2d');
                  context.textAlign = 'center';
                  context.textBaseline = 'middle';
                  context.font = '16px sans-serif';
-                 context.fillText('No data available for the selected filters.', ctx.width / 2, ctx.height / 2);
+                 context.fillText(translations.no_data_available, ctx.width / 2, ctx.height / 2);
             }
         } catch (e) {
             console.error('Failed to parse or render chart data:', e);

@@ -1,9 +1,10 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="{{.Page.Lang}}"> {{/* <-- MODIFIED */}}
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=deivce-width, initial-scale=1.0">
-    <title>Price History for {{.ItemName}} - Yufa Market Tracker</title>
+    {{/* MODIFIED: Use .Data and .Page.T */}}
+    <title>{{.Page.T.price_history_for}} {{.Data.ItemName}} - Yufa Market Tracker</title>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
@@ -19,38 +20,41 @@
 
     <div class="container mx-auto px-4 py-6">
         <div class="flex flex-col sm:flex-row justify-between sm:items-center gap-2 mb-4 border-b border-gray-200 pb-3">
-            <h1 class="text-2xl font-bold text-gray-800">Price History: <span class="text-blue-600">{{.ItemName}}</span>{{if .ItemNamePT.Valid}}<span class="text-lg text-gray-500 font-normal ml-2">({{.ItemNamePT.String}})</span>{{end}}</h1>
-            <p class="text-sm text-gray-500">Last updated: <strong data-timestamp="{{.LastScrapeTime}}">{{.LastScrapeTime}}</strong> <span id="time-ago"></span></p>
+            {{/* MODIFIED: Use .Data and .Page.T */}}
+            <h1 class="text-2xl font-bold text-gray-800">{{.Page.T.price_history_for}} <span class="text-blue-600">{{.Data.ItemName}}</span>{{if .Data.ItemNamePT.Valid}}<span class="text-lg text-gray-500 font-normal ml-2">({{.Data.ItemNamePT.String}})</span>{{end}}</h1>
+            <p class="text-sm text-gray-500" id="last-updated-container">
+                <span data-timestamp="{{.Data.LastScrapeTime}}">{{.Data.LastScrapeTime}}</span> <span id="time-ago"></span>
+            </p>
         </div>
 
-        {{if .ItemDetails}}
+        {{if .Data.ItemDetails}}
         <div class="bg-white p-4 rounded-lg shadow mb-4 flex flex-col sm:flex-row items-start gap-4">
-            <img src="{{.ItemDetails.ImageURL}}" alt="{{.ItemName}}" class="w-20 h-20 flex-shrink-0 bg-white p-1 border rounded" style="image-rendering: pixelated;">
+            <img src="{{.Data.ItemDetails.ImageURL}}" alt="{{.Data.ItemName}}" class="w-20 h-20 flex-shrink-0 bg-white p-1 border rounded" style="image-rendering: pixelated;">
             <div>
-                <p class="text-gray-600 italic text-sm">{{.ItemDetails.Description}}</p>
+                <p class="text-gray-600 italic text-sm">{{.Data.ItemDetails.Description}}</p>
                 <div class="mt-3 grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-x-4 gap-y-1 text-xs">
-                    <div class="font-semibold text-gray-700">Type: <span class="font-normal text-gray-600">{{.ItemDetails.Type}}</span></div>
-                    <div class="font-semibold text-gray-700">Class: <span class="font-normal text-gray-600">{{.ItemDetails.Class}}</span></div>
-                    <div class="font-semibold text-gray-700">Buy: <span class="font-normal text-gray-600">{{.ItemDetails.Buy}}</span></div>
-                    <div class="font-semibold text-gray-700">Sell: <span class="font-normal text-gray-600">{{.ItemDetails.Sell}}</span></div>
-                    <div class="font-semibold text-gray-700">Weight: <span class="font-normal text-gray-600">{{.ItemDetails.Weight}}</span></div>
-                    <div class="font-semibold text-gray-700">Prefix: <span class="font-normal text-gray-600">{{.ItemDetails.Prefix}}</span></div>
+                    <div class="font-semibold text-gray-700">{{.Page.T.type}} <span class="font-normal text-gray-600">{{.Data.ItemDetails.Type}}</span></div>
+                    <div class="font-semibold text-gray-700">{{.Page.T.class}}: <span class="font-normal text-gray-600">{{.Data.ItemDetails.Class}}</span></div>
+                    <div class="font-semibold text-gray-700">{{.Page.T.buy}}: <span class="font-normal text-gray-600">{{.Data.ItemDetails.Buy}}</span></div>
+                    <div class="font-semibold text-gray-700">{{.Page.T.sell}}: <span class="font-normal text-gray-600">{{.Data.ItemDetails.Sell}}</span></div>
+                    <div class="font-semibold text-gray-700">{{.Page.T.weight}}: <span class="font-normal text-gray-600">{{.Data.ItemDetails.Weight}}</span></div>
+                    <div class="font-semibold text-gray-700">{{.Page.T.prefix}}: <span class="font-normal text-gray-600">{{.Data.ItemDetails.Prefix}}</span></div>
                 </div>
             </div>
         </div>
-        {{if .ItemDetails.Script}}
+        {{if .Data.ItemDetails.Script}}
         <div class="bg-white p-3 rounded-lg shadow mb-4">
-            <h3 class="text-lg font-semibold text-gray-800 mb-2">Item Script</h3>
-            <pre class="bg-gray-100 p-3 rounded text-xs text-gray-700 overflow-x-auto"><code>{{.ItemDetails.Script}}</code></pre>
+            <h3 class="text-lg font-semibold text-gray-800 mb-2">{{.Page.T.item_script}}</h3>
+            <pre class="bg-gray-100 p-3 rounded text-xs text-gray-700 overflow-x-auto"><code>{{.Data.ItemDetails.Script}}</code></pre>
         </div>
         {{end}}
         {{else}}
-        <p class="bg-white p-4 rounded-lg shadow mb-4 text-gray-500">No detailed item information could be found.</p>
+        <p class="bg-white p-4 rounded-lg shadow mb-4 text-gray-500">{{.Page.T.no_detailed_info}}</p>
         {{end}}
 
         <div class="bg-gray-200 p-2 rounded-lg text-center mb-4">
             <p class="text-lg text-gray-800">
-                All-Time Price Range: 
+                {{.Page.T.all_time_price_range}}
                 <strong id="overall-lowest-display" class="font-bold text-green-600">N/A</strong> &mdash; 
                 <strong id="overall-highest-display" class="font-bold text-red-600">N/A</strong>
             </p>
@@ -58,25 +62,25 @@
 
         <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
             <div class="bg-white p-3 rounded-lg shadow">
-                <h2 class="text-lg font-bold text-green-600 border-b pb-1 mb-2">Lowest Current Price</h2>
+                <h2 class="text-lg font-bold text-green-600 border-b pb-1 mb-2">{{.Page.T.lowest_current_price}}</h2>
                 <div class="space-y-1 text-xs">
-                    <p><strong>Price:</strong> <span id="lowest-price-val" class="font-semibold text-green-600">N/A</span></p>
-                    <p><strong>Quantity:</strong> <span id="lowest-quantity-val">N/A</span></p>
-                    <p class="flex"><strong>Store:</strong> <a id="lowest-store-val" class="ml-1 truncate hover:underline min-w-0" href="#">N/A</a></p>
-                    <p><strong>Seller:</strong> <span id="lowest-seller-val">N/A</span></p>
-                    <p><strong>Location:</strong> <span id="lowest-location-val">N/A</span></p>
-                    <p><strong>Date:</strong> <span id="lowest-date-val">N/A</span></p>
+                    <p><strong>{{.Page.T.price}}</strong> <span id="lowest-price-val" class="font-semibold text-green-600">N/A</span></p>
+                    <p><strong>{{.Page.T.quantity}}</strong> <span id="lowest-quantity-val">N/A</span></p>
+                    <p class="flex"><strong>{{.Page.T.store}}</strong> <a id="lowest-store-val" class="ml-1 truncate hover:underline min-w-0" href="#">N/A</a></p>
+                    <p><strong>{{.Page.T.seller}}</strong> <span id="lowest-seller-val">N/A</span></p>
+                    <p><strong>{{.Page.T.location}}</strong> <span id="lowest-location-val">N/A</span></p>
+                    <p><strong>{{.Page.T.date}}</strong> <span id="lowest-date-val">N/A</span></p>
                 </div>
             </div>
             <div class="bg-white p-3 rounded-lg shadow">
-                <h2 class="text-lg font-bold text-red-600 border-b pb-1 mb-2">Highest Current Price</h2>
+                <h2 class="text-lg font-bold text-red-600 border-b pb-1 mb-2">{{.Page.T.highest_current_price}}</h2>
                 <div class="space-y-1 text-xs">
-                    <p><strong>Price:</strong> <span id="highest-price-val" class="font-semibold text-red-600">N/A</span></p>
-                    <p><strong>Quantity:</strong> <span id="highest-quantity-val">N/A</span></p>
-                    <p class="flex"><strong>Store:</strong> <a id="highest-store-val" class="ml-1 truncate hover:underline min-w-0" href="#">N/A</a></p>
-                    <p><strong>Seller:</strong> <span id="highest-seller-val">N/A</span></p>
-                    <p><strong>Location:</strong> <span id="highest-location-val">N/A</span></p>
-                    <p><strong>Date:</strong> <span id="highest-date-val">N/A</span></p>
+                    <p><strong>{{.Page.T.price}}</strong> <span id="highest-price-val" class="font-semibold text-red-600">N/A</span></p>
+                    <p><strong>{{.Page.T.quantity}}</strong> <span id="highest-quantity-val">N/A</span></p>
+                    <p class="flex"><strong>{{.Page.T.store}}</strong> <a id="highest-store-val" class="ml-1 truncate hover:underline min-w-0" href="#">N/A</a></p>
+                    <p><strong>{{.Page.T.seller}}</strong> <span id="highest-seller-val">N/A</span></p>
+                    <p><strong>{{.Page.T.location}}</strong> <span id="highest-location-val">N/A</span></p>
+                    <p><strong>{{.Page.T.date}}</strong> <span id="highest-date-val">N/A</span></p>
                 </div>
             </div>
         </div>
@@ -85,61 +89,62 @@
             <canvas id="priceChart"></canvas>
         </div>
 
-        {{if .AllListings}}
+        {{if .Data.AllListings}} {{/* <-- MODIFIED */}}
         <div class="bg-white shadow-lg rounded-lg overflow-hidden">
-            <h3 class="text-lg font-bold text-gray-800 p-3">All Recorded Listings</h3>
+            <h3 class="text-lg font-bold text-gray-800 p-3">{{.Page.T.all_recorded_listings}}</h3>
             <div class="overflow-x-auto">
                 <table class="min-w-full leading-normal">
                     <thead>
                         <tr class="border-b-2 border-gray-200 bg-gray-50 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
-                            <th class="px-2 sm:px-3 py-2">Price</th>
-                            <th class="px-2 sm:px-3 py-2">Qty</th>
-                            <th class="px-2 sm:px-3 py-2">Store</th>
-                            <th class="px-2 sm:px-3 py-2">Seller</th>
-                            <th class="px-2 sm:px-3 py-2">Location</th>
-                            <th class="px-2 sm:px-3 py-2">Date Scanned</th>
-                            <th class="px-2 sm:px-3 py-2">Available</th>
+                            <th class="px-2 sm:px-3 py-2">{{.Page.T.price}}</th>
+                            <th class="px-2 sm:px-3 py-2">{{.Page.T.qty}}</th>
+                            <th class="px-2 sm:px-3 py-2">{{.Page.T.store}}</th>
+                            <th class="px-2 sm:px-3 py-2">{{.Page.T.seller}}</th>
+                            <th class="px-2 sm:px-3 py-2">{{.Page.T.location_coords}}</th>
+                            <th class="px-2 sm:px-3 py-2">{{.Page.T.date_scanned}}</th>
+                            <th class="px-2 sm:px-3 py-2">{{.Page.T.available}}</th>
                         </tr>
                     </thead>
                     <tbody class="text-gray-700 text-xs">
-                        {{range .AllListings}}
-                        <tr class="border-b border-gray-200 hover:bg-gray-50 {{if not .IsAvailable}}opacity-60{{end}}" title="{{if not .IsAvailable}}This specific listing is no longer available{{end}}">
+                        {{range .Data.AllListings}} {{/* <-- MODIFIED */}}
+                        <tr class="border-b border-gray-200 hover:bg-gray-50 {{if not .IsAvailable}}opacity-60{{end}}" title="{{if not .IsAvailable}}{{$.Page.T.listing_not_available}}{{end}}">
                             <td class="px-2 sm:px-3 py-2">{{.Price}}</td>
                             <td class="px-2 sm:px-3 py-2">{{.Quantity}}</td>
                             <td class="px-2 sm:px-3 py-2 max-w-48 truncate" title="{{.StoreName}}"><a href="/store?name={{.StoreName | urlquery}}&seller={{.SellerName | urlquery}}" class="hover:underline">{{.StoreName}}</a></td>
                             <td class="px-2 sm:px-3 py-2"><a href="/character?name={{.SellerName | urlquery}}" class="hover:underline">{{.SellerName}}</a></td>
-                            <td class="px-2 sm:px-3 py-2"><a href="#" onclick="copyNavi(event, '{{.MapName}}', '{{.MapCoordinates}}')" title="Click to copy /navi command" class="hover:underline">{{.MapName}} {{.MapCoordinates}}</a></td>
+                            <td class="px-2 sm:px-3 py-2"><a href="#" onclick="copyNavi(event, '{{.MapName}}', '{{.MapCoordinates}}')" title="{{$.Page.T.click_to_copy}}" class="hover:underline">{{.MapName}} {{.MapCoordinates}}</a></td>
                             <td class="px-2 sm:px-3 py-2">{{.Timestamp}}</td>
                             <td class="px-2 sm:px-3 py-2">
-                                {{if .IsAvailable}}<span class="font-semibold text-green-600">Yes</span>{{else}}<span class="font-semibold text-red-600">No</span>{{end}}
+                                {{if .IsAvailable}}<span class="font-semibold text-green-600">{{$.Page.T.yes}}</span>{{else}}<span class="font-semibold text-red-600">{{$.Page.T.no}}</span>{{end}}
                             </td>
                         </tr>
                         {{end}}
                     </tbody>
                 </table>
             </div>
-            {{if gt .Pagination.TotalPages 1}}
+            {{/* MODIFIED: Use .Data and .Page.T */}}
+            {{if gt .Data.Pagination.TotalPages 1}}
             <div class="px-3 py-3 bg-white border-t flex flex-col sm:flex-row items-center sm:justify-between text-xs">
                 <span class="text-gray-700">
-                    Page <strong>{{.Pagination.CurrentPage}}</strong> of <strong>{{.Pagination.TotalPages}}</strong> ({{.TotalListings}} total listings)
+                    {{printf .Page.T.page_of .Data.Pagination.CurrentPage .Data.Pagination.TotalPages | TmplHTML}} {{printf .Page.T.total_listings .Data.TotalListings}}
                 </span>
                 <div class="inline-flex mt-2 sm:mt-0">
-                    {{if .Pagination.HasPrevPage}}
-                        <a href="?name={{.ItemName | urlquery}}&page={{.Pagination.PrevPage}}" class="bg-gray-200 hover:bg-gray-300 text-gray-700 font-semibold py-1 px-3 rounded-l">
-                            &laquo; Prev
+                    {{if .Data.Pagination.HasPrevPage}}
+                        <a href="?name={{.Data.ItemName | urlquery}}&page={{.Data.Pagination.PrevPage}}" class="bg-gray-200 hover:bg-gray-300 text-gray-700 font-semibold py-1 px-3 rounded-l">
+                            &laquo; {{.Page.T.prev_short}}
                         </a>
                     {{else}}
                         <span class="bg-gray-100 text-gray-400 font-semibold py-1 px-3 rounded-l cursor-not-allowed">
-                            &laquo; Prev
+                            &laquo; {{.Page.T.prev_short}}
                         </span>
                     {{end}}
-                    {{if .Pagination.HasNextPage}}
-                        <a href="?name={{.ItemName | urlquery}}&page={{.Pagination.NextPage}}" class="bg-gray-200 hover:bg-gray-300 text-gray-700 font-semibold py-1 px-3 rounded-r">
-                            Next &raquo;
+                    {{if .Data.Pagination.HasNextPage}}
+                        <a href="?name={{.Data.ItemName | urlquery}}&page={{.Data.Pagination.NextPage}}" class="bg-gray-200 hover:bg-gray-300 text-gray-700 font-semibold py-1 px-3 rounded-r">
+                            {{.Page.T.next_short}} &raquo;
                         </a>
                     {{else}}
                         <span class="bg-gray-100 text-gray-400 font-semibold py-1 px-3 rounded-r cursor-not-allowed">
-                            Next &raquo;
+                            {{.Page.T.next_short}} &raquo;
                         </span>
                     {{end}}
                 </div>
@@ -151,6 +156,17 @@
     </div>
 
     <script>
+        // --- MODIFIED: Add translations ---
+        const lang = document.documentElement.lang || 'en';
+        const translations = {
+            updated_never: '{{.Page.T.updated_never}}',
+            last_updated_at_hist: '{{.Page.T.last_updated_at_hist}}',
+            copied: '{{.Page.T.copied}}',
+            click_to_copy: '{{.Page.T.click_to_copy}}',
+            js_lowest_price: '{{.Page.T.js_lowest_price}}',
+            js_highest_price: '{{.Page.T.js_highest_price}}'
+        };
+
         function copyNavi(event, mapName, coordinates) {
             event.preventDefault();
             const formattedCoords = coordinates.trim().replace(/[()]/g, '').replace(',', '/');
@@ -158,22 +174,23 @@
             navigator.clipboard.writeText(command).then(() => {
                 const el = event.target;
                 const originalText = el.innerText;
-                el.innerText = 'Copied!';
+                el.innerText = translations.copied; // Use translation
                 el.style.color = '#16a34a'; /* Tailwind green-600 */
                 setTimeout(() => {
                     el.innerText = originalText;
                     el.style.color = '';
+                    el.title = translations.click_to_copy; // Reset title
                 }, 1500);
             }).catch(err => console.error('Failed to copy command: ', err));
         }
 
         document.addEventListener('DOMContentLoaded', () => {
-            // --- Page-Specific Logic ---
-            const priceHistoryData = {{.PriceDataJSON}};
-            const currentLowestData = {{.CurrentLowestJSON}};
-            const currentHighestData = {{.CurrentHighestJSON}};
-            const overallLowest = {{.OverallLowest}};
-            const overallHighest = {{.OverallHighest}};
+            // --- MODIFIED: Use .Data ---
+            const priceHistoryData = {{.Data.PriceDataJSON}};
+            const currentLowestData = {{.Data.CurrentLowestJSON}};
+            const currentHighestData = {{.Data.CurrentHighestJSON}};
+            const overallLowest = {{.Data.OverallLowest}};
+            const overallHighest = {{.Data.OverallHighest}};
 
             if (overallLowest > 0) document.getElementById('overall-lowest-display').textContent = `${overallLowest.toLocaleString()}z`;
             if (overallHighest > 0) document.getElementById('overall-highest-display').textContent = `${overallHighest.toLocaleString()}z`;
@@ -187,7 +204,7 @@
                 storeLink.title = currentLowestData.StoreName;
                 storeLink.href = `/store?name=${encodeURIComponent(currentLowestData.StoreName)}&seller=${encodeURIComponent(currentLowestData.SellerName)}`;
                 document.getElementById('lowest-seller-val').innerHTML = `<a href="/character?name=${encodeURIComponent(currentLowestData.SellerName)}" class="hover:underline">${currentLowestData.SellerName}</a>`;
-                document.getElementById('lowest-location-val').innerHTML = `<a href="#" onclick="copyNavi(event, '${mapName.replace(/'/g, "\\'")}', '${mapCoords.replace(/'/g, "\\'")}')" title="Click to copy /navi command" class="hover:underline">${mapName} ${mapCoords}</a>`;
+                document.getElementById('lowest-location-val').innerHTML = `<a href="#" onclick="copyNavi(event, '${mapName.replace(/'/g, "\\'")}', '${mapCoords.replace(/'/g, "\\'")}')" title="${translations.click_to_copy}" class="hover:underline">${mapName} ${mapCoords}</a>`;
                 document.getElementById('lowest-date-val').textContent = currentLowestData.Timestamp;
             }
 
@@ -200,7 +217,7 @@
                 storeLink.title = currentHighestData.StoreName;
                 storeLink.href = `/store?name=${encodeURIComponent(currentHighestData.StoreName)}&seller=${encodeURIComponent(currentHighestData.SellerName)}`;
                 document.getElementById('highest-seller-val').innerHTML = `<a href="/character?name=${encodeURIComponent(currentHighestData.SellerName)}" class="hover:underline">${currentHighestData.SellerName}</a>`;
-                document.getElementById('highest-location-val').innerHTML = `<a href="#" onclick="copyNavi(event, '${mapName.replace(/'/g, "\\'")}', '${mapCoords.replace(/'/g, "\\'")}')" title="Click to copy /navi command" class="hover:underline">${mapName} ${mapCoords}</a>`;
+                document.getElementById('highest-location-val').innerHTML = `<a href="#" onclick="copyNavi(event, '${mapName.replace(/'/g, "\\'")}', '${mapCoords.replace(/'/g, "\\'")}')" title="${translations.click_to_copy}" class="hover:underline">${mapName} ${mapCoords}</a>`;
                 document.getElementById('highest-date-val').textContent = currentHighestData.Timestamp;
             }
 
@@ -214,8 +231,9 @@
                 data: {
                     labels: labels,
                     datasets: [
-                        { label: 'Lowest Price', data: lowestPrices, borderColor: 'rgba(22, 163, 74, 1)', backgroundColor: 'rgba(22, 163, 74, 0.2)', borderWidth: 2, fill: false, tension: 0.1 },
-                        { label: 'Highest Price', data: highestPrices, borderColor: 'rgba(220, 38, 38, 1)', backgroundColor: 'rgba(220, 38, 38, 0.2)', borderWidth: 2, fill: false, tension: 0.1 }
+                        // --- MODIFIED: Use translations for chart labels ---
+                        { label: translations.js_lowest_price, data: lowestPrices, borderColor: 'rgba(22, 163, 74, 1)', backgroundColor: 'rgba(22, 163, 74, 0.2)', borderWidth: 2, fill: false, tension: 0.1 },
+                        { label: translations.js_highest_price, data: highestPrices, borderColor: 'rgba(220, 38, 38, 1)', backgroundColor: 'rgba(220, 38, 38, 0.2)', borderWidth: 2, fill: false, tension: 0.1 }
                     ]
                 },
                 options: {
@@ -227,8 +245,9 @@
                                 afterLabel: context => {
                                     const dp = priceHistoryData[context.dataIndex];
                                     if (!dp) return '';
-                                    if (context.dataset.label === 'Lowest Price') return [`  Store: ${dp.LowestStoreName}`, `  Qty: ${dp.LowestQuantity.toLocaleString()}, Seller: ${dp.LowestSellerName}`];
-                                    if (context.dataset.label === 'Highest Price') return [`  Store: ${dp.HighestStoreName}`, `  Qty: ${dp.HighestQuantity.toLocaleString()}, Seller: ${dp.HighestSellerName}`];
+                                    // --- MODIFIED: Use translations for tooltip ---
+                                    if (context.dataset.label === translations.js_lowest_price) return [`  Store: ${dp.LowestStoreName}`, `  Qty: ${dp.LowestQuantity.toLocaleString()}, Seller: ${dp.LowestSellerName}`];
+                                    if (context.dataset.label === translations.js_highest_price) return [`  Store: ${dp.HighestStoreName}`, `  Qty: ${dp.HighestQuantity.toLocaleString()}, Seller: ${dp.HighestSellerName}`];
                                     return [];
                                 }
                             }
@@ -237,20 +256,44 @@
                 }
             });
 
+            // --- MODIFIED: Use translations for time ago ---
             const timeAgoSpan = document.getElementById('time-ago');
-            const lastUpdateElement = document.querySelector('[data-timestamp]');
+            const lastUpdateContainer = document.getElementById('last-updated-container');
+            const lastUpdateElement = lastUpdateContainer.querySelector('[data-timestamp]');
             if (!lastUpdateElement) return;
+
             const timestampStr = lastUpdateElement.dataset.timestamp;
-            if (!timestampStr || timestampStr === 'Never') { timeAgoSpan.textContent = '(never updated)'; return; }
+            if (!timestampStr || timestampStr === 'Never') { 
+                lastUpdateContainer.innerHTML = translations.updated_never;
+                return; 
+            }
             const lastUpdateDate = new Date(timestampStr);
+            const formattedTimestamp = lastUpdateDate.toLocaleString([], {
+                year: 'numeric', month: 'short', day: 'numeric',
+                hour: '2-digit', minute: '2-digit'
+            });
 
             function updateTimeAgo() {
                 const now = new Date();
                 const secondsPast = Math.floor((now.getTime() - lastUpdateDate.getTime()) / 1000);
-                if (secondsPast < 60) { timeAgoSpan.textContent = `(${secondsPast} second${secondsPast !== 1 ? 's' : ''} ago)`; }
-                else if (secondsPast < 3600) { const m = Math.floor(secondsPast / 60); timeAgoSpan.textContent = `(${m} minute${m !== 1 ? 's' : ''} ago)`; }
-                else if (secondsPast < 86400) { const h = Math.floor(secondsPast / 3600); timeAgoSpan.textContent = `(${h} hour${h !== 1 ? 's' : ''} ago)`; }
-                else { const d = Math.floor(secondsPast / 86400); timeAgoSpan.textContent = `(${d} day${d !== 1 ? 's' : ''} ago)`; }
+                let timeAgoString;
+
+                if (lang === 'pt') {
+                    if (secondsPast < 5) timeAgoString = 'agora mesmo';
+                    else if (secondsPast < 60) timeAgoString = `${secondsPast}s atrás`;
+                    else if (secondsPast < 3600) timeAgoString = `${Math.floor(secondsPast / 60)}m atrás`;
+                    else if (secondsPast < 86400) timeAgoString = `${Math.floor(secondsPast / 3600)}h atrás`;
+                    else timeAgoString = `${Math.floor(secondsPast / 86400)}d atrás`;
+                } else {
+                    if (secondsPast < 5) timeAgoString = 'just now';
+                    else if (secondsPast < 60) timeAgoString = `${secondsPast}s ago`;
+                    else if (secondsPast < 3600) timeAgoString = `${Math.floor(secondsPast / 60)}m ago`;
+                    else if (secondsPast < 86400) timeAgoString = `${Math.floor(secondsPast / 3600)}h ago`;
+                    else timeAgoString = `${Math.floor(secondsPast / 86400)}d ago`;
+                }
+                
+                const fullString = translations.last_updated_at_hist.replace('%s', timeAgoString);
+                lastUpdateContainer.innerHTML = `${fullString.replace('%s', `<span class="text-gray-400 font-normal">(${formattedTimestamp})</span>`)}`;
             }
             updateTimeAgo();
             setInterval(updateTimeAgo, 30000);

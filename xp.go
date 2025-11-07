@@ -136,14 +136,14 @@ func xpCalculatorHandler(w http.ResponseWriter, r *http.Request) {
 
 	// Handle GET request (show empty form)
 	if r.Method != http.MethodPost {
-		renderTemplate(w, "xp_calculator.html", data) //
+		renderTemplate(w, r, "xp_calculator.html", data) //
 		return
 	}
 
 	// Handle POST request (process form)
 	if err := r.ParseForm(); err != nil {
 		data.ErrorMessage = "Failed to parse form."
-		renderTemplate(w, "xp_calculator.html", data) //
+		renderTemplate(w, r, "xp_calculator.html", data) //
 		return
 	}
 
@@ -190,18 +190,18 @@ func xpCalculatorHandler(w http.ResponseWriter, r *http.Request) {
 	// --- CHANGED: Use dynamic maxLevel ---
 	if startLvl < 1 || startLvl > maxLevel || endLvl < 1 || endLvl > maxLevel {
 		data.ErrorMessage = fmt.Sprintf("Levels must be between 1 and %d for the selected type.", maxLevel)
-		renderTemplate(w, "xp_calculator.html", data) //
+		renderTemplate(w, r, "xp_calculator.html", data) //
 		return
 	}
 	// --- END CHANGE ---
 	if startPerc < 0 || startPerc > 100 || endPerc < 0 || endPerc > 100 {
 		data.ErrorMessage = "Percentage must be between 0 and 100."
-		renderTemplate(w, "xp_calculator.html", data) //
+		renderTemplate(w, r, "xp_calculator.html", data) //
 		return
 	}
 	if endLvl < startLvl || (endLvl == startLvl && endPerc <= startPerc) {
 		data.ErrorMessage = "Final level/percentage must be greater than the initial level/percentage."
-		renderTemplate(w, "xp_calculator.html", data) //
+		renderTemplate(w, r, "xp_calculator.html", data) //
 		return
 	}
 	// --- CHANGED: Calculate total time in hours ---
@@ -223,7 +223,7 @@ func xpCalculatorHandler(w http.ResponseWriter, r *http.Request) {
 	startXPDelt, ok2 := xpDeltaMap[startLvl]
 	if !ok1 || (startLvl < maxLevel && !ok2) { // Allow max level (no delta)
 		data.ErrorMessage = fmt.Sprintf("Could not find level data for level %d.", startLvl)
-		renderTemplate(w, "xp_calculator.html", data) //
+		renderTemplate(w, r, "xp_calculator.html", data) //
 		return
 	}
 	if startLvl == maxLevel {
@@ -236,7 +236,7 @@ func xpCalculatorHandler(w http.ResponseWriter, r *http.Request) {
 	endXPDelt, ok2 := xpDeltaMap[endLvl]
 	if !ok1 || (endLvl < maxLevel && !ok2) {
 		data.ErrorMessage = fmt.Sprintf("Could not find level data for level %d.", endLvl)
-		renderTemplate(w, "xp_calculator.html", data) //
+		renderTemplate(w, r, "xp_calculator.html", data) //
 		return
 	}
 	if endLvl == maxLevel {
@@ -254,5 +254,5 @@ func xpCalculatorHandler(w http.ResponseWriter, r *http.Request) {
 	data.XPPerHour = xpPerHour
 	data.ShowResults = true
 
-	renderTemplate(w, "xp_calculator.html", data) //
+	renderTemplate(w, r, "xp_calculator.html", data) //
 }

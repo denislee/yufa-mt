@@ -1,9 +1,9 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="{{.Page.Lang}}"> {{/* <-- MODIFIED */}}
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Player Count - Yufa Market Tracker</title>
+    <title>{{.Page.T.online_player_history}} - Yufa Market Tracker</title> {{/* <-- MODIFIED */}}
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/date-fns@3/index.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
@@ -22,45 +22,46 @@
 
     <div class="container mx-auto px-4 py-6">
         <div class="flex flex-col sm:flex-row justify-between sm:items-center gap-2 mb-4 border-b border-gray-200 pb-3">
-            <h1 class="text-2xl font-bold text-gray-800">Online Player History</h1>
-            <div id="last-updated" class="text-sm text-gray-500" data-timestamp="{{.LastScrapeTime}}"></div>
+            <h1 class="text-2xl font-bold text-gray-800">{{.Page.T.online_player_history}}</h1> {{/* <-- MODIFIED */}}
+            <div id="last-updated" class="text-sm text-gray-500" data-timestamp="{{.Data.LastScrapeTime}}"></div> {{/* <-- MODIFIED */}}
         </div>
 
         <div class="flex flex-wrap items-stretch gap-4 mb-4">
+            {{/* MODIFIED: Use .Data and .Page.T */}}
             <div class="bg-white p-3 rounded-lg shadow">
                 <div class="text-center h-full flex flex-col justify-center px-2">
-                    <span class="text-gray-500 text-xs block">Active Players Now</span>
-                    <strong class="text-2xl font-bold text-blue-600">{{.LatestActivePlayers}}</strong>
+                    <span class="text-gray-500 text-xs block">{{.Page.T.active_players_now}}</span>
+                    <strong class="text-2xl font-bold text-blue-600">{{.Data.LatestActivePlayers}}</strong>
                 </div>
             </div>
 
             <div class="bg-white p-3 rounded-lg shadow">
                 <div class="text-center h-full flex flex-col justify-center px-2">
-                    <span class="text-gray-500 text-xs block">Historical Max Active</span>
-                    <strong class="text-2xl font-bold text-green-600">{{.HistoricalMaxActivePlayers}}</strong>
-                    <span class="text-gray-400 text-xs mt-1">{{.HistoricalMaxActivePlayersTime}}</span>
+                    <span class="text-gray-500 text-xs block">{{.Page.T.historical_max_active}}</span>
+                    <strong class="text-2xl font-bold text-green-600">{{.Data.HistoricalMaxActivePlayers}}</strong>
+                    <span class="text-gray-400 text-xs mt-1">{{.Data.HistoricalMaxActivePlayersTime}}</span>
                 </div>
             </div>
 
             <div class="bg-white p-3 rounded-lg shadow">
                 <div class="text-center h-full flex flex-col justify-center px-2">
-                    <span class="text-gray-500 text-xs block">Peak Active ({{.SelectedInterval}})</span>
-                    <strong class="text-2xl font-bold text-orange-600">{{.IntervalPeakActive}}</strong>
-                    <span class="text-gray-400 text-xs mt-1">{{.IntervalPeakActiveTime}}</span>
+                    <span class="text-gray-500 text-xs block">{{printf .Page.T.peak_active_interval .Data.SelectedInterval}}</span>
+                    <strong class="text-2xl font-bold text-orange-600">{{.Data.IntervalPeakActive}}</strong>
+                    <span class="text-gray-400 text-xs mt-1">{{.Data.IntervalPeakActiveTime}}</span>
                 </div>
             </div>
 
             <div class="bg-white p-3 rounded-lg shadow">
                 <div class="text-center h-full flex flex-col justify-center px-2">
-                    <span class="text-gray-500 text-xs block">Avg Active ({{.SelectedInterval}})</span>
-                    <strong class="text-2xl font-bold text-indigo-600">{{.IntervalAvgActive}}</strong>
+                    <span class="text-gray-500 text-xs block">{{printf .Page.T.avg_active_interval .Data.SelectedInterval}}</span>
+                    <strong class="text-2xl font-bold text-indigo-600">{{.Data.IntervalAvgActive}}</strong>
                 </div>
             </div>
 
             <div class="bg-white p-3 rounded-lg shadow">
                 <div class="text-center h-full flex flex-col justify-center px-2">
-                    <span class="text-gray-500 text-xs block">Low Active ({{.SelectedInterval}})</span>
-                    <strong class="text-2xl font-bold text-gray-600">{{.IntervalLowActive}}</strong>
+                    <span class="text-gray-500 text-xs block">{{printf .Page.T.low_active_interval .Data.SelectedInterval}}</span>
+                    <strong class="text-2xl font-bold text-gray-600">{{.Data.IntervalLowActive}}</strong>
                 </div>
             </div>
 
@@ -68,18 +69,18 @@
                 <form id="playerFilterForm" class="h-full">
                     <div class="flex flex-wrap items-center justify-between gap-4 h-full">
                         <div class="flex flex-wrap items-center gap-2">
-                            <span class="text-sm font-medium text-gray-700 mr-2">Interval:</span>
-                            <a href="/players?interval=6h" class="filter-interval text-sm font-medium px-3 py-1 rounded-full {{if eq .SelectedInterval "6h"}}bg-blue-500 text-white{{else}}bg-gray-200 text-gray-700 hover:bg-gray-300{{end}}">6h</a>
-                            <a href="/players?interval=24h" class="filter-interval text-sm font-medium px-3 py-1 rounded-full {{if eq .SelectedInterval "24h"}}bg-blue-500 text-white{{else}}bg-gray-200 text-gray-700 hover:bg-gray-300{{end}}">24h</a>
-                            <a href="/players?interval=7d" class="filter-interval text-sm font-medium px-3 py-1 rounded-full {{if eq .SelectedInterval "7d"}}bg-blue-500 text-white{{else}}bg-gray-200 text-gray-700 hover:bg-gray-300{{end}}">7d</a>
-                            <a href="/players?interval=30d" class="filter-interval text-sm font-medium px-3 py-1 rounded-full {{if eq .SelectedInterval "30d"}}bg-blue-500 text-white{{else}}bg-gray-200 text-gray-700 hover:bg-gray-300{{end}}">30d</a>
+                            <span class="text-sm font-medium text-gray-700 mr-2">{{.Page.T.interval}}</span>
+                            <a href="/players?interval=6h" class="filter-interval text-sm font-medium px-3 py-1 rounded-full {{if eq .Data.SelectedInterval "6h"}}bg-blue-500 text-white{{else}}bg-gray-200 text-gray-700 hover:bg-gray-300{{end}}">6h</a>
+                            <a href="/players?interval=24h" class="filter-interval text-sm font-medium px-3 py-1 rounded-full {{if eq .Data.SelectedInterval "24h"}}bg-blue-500 text-white{{else}}bg-gray-200 text-gray-700 hover:bg-gray-300{{end}}">24h</a>
+                            <a href="/players?interval=7d" class="filter-interval text-sm font-medium px-3 py-1 rounded-full {{if eq .Data.SelectedInterval "7d"}}bg-blue-500 text-white{{else}}bg-gray-200 text-gray-700 hover:bg-gray-300{{end}}">7d</a>
+                            <a href="/players?interval=30d" class="filter-interval text-sm font-medium px-3 py-1 rounded-full {{if eq .Data.SelectedInterval "30d"}}bg-blue-500 text-white{{else}}bg-gray-200 text-gray-700 hover:bg-gray-300{{end}}">30d</a>
                         </div>
                         <div class="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm">
-                            <strong class="text-gray-700">Show:</strong>
-                            <label class="flex items-center gap-2"><input type="checkbox" id="togglePlayers" class="rounded"> Players</label>
-                            <label class="flex items-center gap-2"><input type="checkbox" id="toggleSellers" class="rounded"> Sellers</label>
-                            <label class="flex items-center gap-2"><input type="checkbox" id="toggleDelta" checked class="rounded"> Active (Δ)</label>
-                            <label class="flex items-center gap-2"><input type="checkbox" id="toggleEvents" checked class="rounded"> Events</label>
+                            <strong class="text-gray-700">{{.Page.T.show}}</strong>
+                            <label class="flex items-center gap-2"><input type="checkbox" id="togglePlayers" class="rounded"> {{.Page.T.players}}</label>
+                            <label class="flex items-center gap-2"><input type="checkbox" id="toggleSellers" class="rounded"> {{.Page.T.sellers}}</label>
+                            <label class="flex items-center gap-2"><input type="checkbox" id="toggleDelta" checked class="rounded"> {{.Page.T.active_delta}}</label>
+                            <label class="flex items-center gap-2"><input type="checkbox" id="toggleEvents" checked class="rounded"> {{.Page.T.events}}</label>
                         </div>
                     </div>
                 </form>
@@ -92,17 +93,30 @@
     </div>
 
     <script>
-        const playerData = {{.PlayerDataJSON}};
-        const eventData = {{.EventDataJSON}};
+        {{/* MODIFIED: Use .Data */}}
+        const playerData = {{.Data.PlayerDataJSON}};
+        const eventData = {{.Data.EventDataJSON}};
 
         document.addEventListener('DOMContentLoaded', () => {
-            // --- Page-Specific Logic ---
+            // --- MODIFIED: Use translations ---
+            const lang = document.documentElement.lang || 'en';
+            const translations = {
+                updated_never: '{{.Page.T.updated_never}}',
+                updated_ago: '{{.Page.T.updated_ago}}',
+                js_online_players: '{{.Page.T.js_online_players}}',
+                js_sellers: '{{.Page.T.sellers}}',
+                js_active_players: '{{.Page.T.js_active_players}}',
+                js_count: '{{.Page.T.js_count}}',
+                js_date_time: '{{.Page.T.js_date_time}}'
+            };
+
+            // --- MODIFIED: Use translations for last-updated ---
             const lastUpdateElement = document.getElementById('last-updated');
             if (lastUpdateElement) {
                 const timestampStr = lastUpdateElement.dataset.timestamp;
 
                 if (!timestampStr || timestampStr === 'Never' || timestampStr === '') {
-                    lastUpdateElement.textContent = 'Updated: never';
+                    lastUpdateElement.textContent = translations.updated_never;
                     return;
                 }
 
@@ -116,41 +130,48 @@
                     const now = new Date();
                     const secondsPast = Math.floor((now.getTime() - lastUpdateDate.getTime()) / 1000);
                     let timeAgoString;
-                    if (secondsPast < 5) timeAgoString = 'just now';
-                    else if (secondsPast < 60) timeAgoString = `${secondsPast}s ago`;
-                    else if (secondsPast < 3600) timeAgoString = `${Math.floor(secondsPast / 60)}m ago`;
-                    else if (secondsPast < 86400) timeAgoString = `${Math.floor(secondsPast / 3600)}h ago`;
-                    else timeAgoString = `${Math.floor(secondsPast / 86400)}d ago`;
 
-                    lastUpdateElement.innerHTML = `Updated: ${timeAgoString} <span class="text-gray-400 font-normal">(${formattedTimestamp})</span>`;
+                    if (lang === 'pt') {
+                        if (secondsPast < 5) timeAgoString = 'agora mesmo';
+                        else if (secondsPast < 60) timeAgoString = `${secondsPast}s atrás`;
+                        else if (secondsPast < 3600) timeAgoString = `${Math.floor(secondsPast / 60)}m atrás`;
+                        else if (secondsPast < 86400) timeAgoString = `${Math.floor(secondsPast / 3600)}h atrás`;
+                        else timeAgoString = `${Math.floor(secondsPast / 86400)}d atrás`;
+                    } else {
+                        if (secondsPast < 5) timeAgoString = 'just now';
+                        else if (secondsPast < 60) timeAgoString = `${secondsPast}s ago`;
+                        else if (secondsPast < 3600) timeAgoString = `${Math.floor(secondsPast / 60)}m ago`;
+                        else if (secondsPast < 86400) timeAgoString = `${Math.floor(secondsPast / 3600)}h ago`;
+                        else timeAgoString = `${Math.floor(secondsPast / 86400)}d ago`;
+                    }
+
+                    const fullString = translations.updated_ago.replace('%s', timeAgoString);
+                    lastUpdateElement.innerHTML = `${fullString} <span class="text-gray-400 font-normal">(${formattedTimestamp})</span>`;
                 };
 
                 updateTimeAgo();
                 setInterval(updateTimeAgo, 30000);
             }
 
+            // ... (Chart filter logic is unchanged) ...
             const togglePlayers = document.getElementById('togglePlayers');
             const toggleSellers = document.getElementById('toggleSellers');
             const toggleDelta = document.getElementById('toggleDelta');
             const toggleEvents = document.getElementById('toggleEvents');
-
             const urlParams = new URLSearchParams(window.location.search);
             const hasViewParams = urlParams.has('showPlayers') || urlParams.has('showSellers') || urlParams.has('showDelta') || urlParams.has('showEvents');
-
             if (hasViewParams) {
                 togglePlayers.checked = urlParams.has('showPlayers');
                 toggleSellers.checked = urlParams.has('showSellers');
                 toggleDelta.checked = urlParams.has('showDelta');
                 toggleEvents.checked = urlParams.has('showEvents');
             }
-
             function updateFilterLinks() {
                 const viewParams = new URLSearchParams();
                 if (togglePlayers.checked) viewParams.set('showPlayers', '1');
                 if (toggleSellers.checked) viewParams.set('showSellers', '1');
                 if (toggleDelta.checked) viewParams.set('showDelta', '1');
                 if (toggleEvents.checked) viewParams.set('showEvents', '1');
-
                 document.querySelectorAll('a.filter-interval').forEach(link => {
                     const linkUrl = new URL(link.href, window.location.origin);
                     const interval = linkUrl.searchParams.get('interval');
@@ -162,24 +183,21 @@
                     link.href = `${linkUrl.pathname}?${newParams.toString()}`;
                 });
             }
-
             [togglePlayers, toggleSellers, toggleDelta, toggleEvents].forEach(el => el.addEventListener('change', updateFilterLinks));
             updateFilterLinks();
 
+            // --- (Chart data mapping is unchanged) ---
             const chartDataPlayers = playerData.map(p => ({ x: new Date(p.Timestamp), y: p.Count }));
             const chartDataSellers = playerData.map(p => ({ x: new Date(p.Timestamp), y: p.SellerCount }));
             const chartDataDelta = playerData.map(p => ({ x: new Date(p.Timestamp), y: p.Delta }));
-
             const allCounts = playerData.flatMap(p => [p.Count, p.SellerCount, p.Delta]).filter(c => c !== null);
             const maxDataValue = allCounts.length > 0 ? Math.max(...allCounts) : 0;
             const chartMaxY = Math.ceil((maxDataValue * 1.05) / 10) * 10;
-
             const eventColors = {
                 'Battlegrounds': 'rgba(255, 159, 64, 0.2)',
                 'War of Emperium': 'rgba(255, 99, 132, 0.2)',
                 'Default': 'rgba(153, 102, 255, 0.2)'
             };
-
             function createAnnotations(events) {
                 if (!events) return {};
                 return events.map(event => ({
@@ -190,27 +208,29 @@
                 }));
             }
             const initialAnnotations = toggleEvents.checked ? createAnnotations(eventData) : {};
+            
+            // --- MODIFIED: Use translations in Chart ---
             const ctx = document.getElementById('playerChart').getContext('2d');
             const playerChart = new Chart(ctx, {
                 type: 'line',
                 data: {
                     datasets: [{
-                        label: 'Online Players', data: chartDataPlayers, borderColor: 'rgba(0, 123, 255, 1)', backgroundColor: 'rgba(0, 123, 255, 0.2)',
+                        label: translations.js_online_players, data: chartDataPlayers, borderColor: 'rgba(0, 123, 255, 1)', backgroundColor: 'rgba(0, 123, 255, 0.2)',
                         borderWidth: 2, fill: true, tension: 0.1, pointRadius: 2, pointHoverRadius: 5,
                     }, {
-                        label: 'Sellers', data: chartDataSellers, borderColor: 'rgba(40, 167, 69, 1)', backgroundColor: 'rgba(40, 167, 69, 0.2)',
+                        label: translations.js_sellers, data: chartDataSellers, borderColor: 'rgba(40, 167, 69, 1)', backgroundColor: 'rgba(40, 167, 69, 0.2)',
                         borderWidth: 2, fill: true, tension: 0.1, pointRadius: 2, pointHoverRadius: 5,
                     }, {
-                        label: 'Active Players (Delta)', data: chartDataDelta, borderColor: 'rgba(255, 193, 7, 1)', backgroundColor: 'rgba(255, 193, 7, 0.2)',
+                        label: translations.js_active_players, data: chartDataDelta, borderColor: 'rgba(255, 193, 7, 1)', backgroundColor: 'rgba(255, 193, 7, 0.2)',
                         borderWidth: 2, fill: true, tension: 0.1, pointRadius: 2, pointHoverRadius: 5,
                     }]
                 },
                 options: {
                     scales: {
-                        y: { min: 0, max: chartMaxY, title: { display: true, text: 'Count' } },
+                        y: { min: 0, max: chartMaxY, title: { display: true, text: translations.js_count } },
                         x: {
                             type: 'time',
-                            title: { display: true, text: 'Date & Time' },
+                            title: { display: true, text: translations.js_date_time },
                             time: {
                                 unit: 'day',
                                 tooltipFormat: 'yyyy-MM-dd HH:mm',
@@ -225,6 +245,7 @@
                 }
             });
 
+            // ... (Chart visibility update logic is unchanged) ...
             function updateChartVisibility() {
                 const vis = [togglePlayers.checked, toggleSellers.checked, toggleDelta.checked];
                 playerChart.setDatasetVisibility(0, vis[0]);
@@ -233,7 +254,6 @@
                 playerChart.options.scales.y.display = vis.some(v => v);
                 playerChart.update();
             }
-            
             [togglePlayers, toggleSellers, toggleDelta].forEach(el => el.addEventListener('change', updateChartVisibility));
             toggleEvents.addEventListener('change', (e) => {
                 playerChart.options.plugins.annotation.annotations = e.target.checked ? createAnnotations(eventData) : {};

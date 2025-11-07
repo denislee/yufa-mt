@@ -1,9 +1,9 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="{{.Page.Lang}}"> {{/* <-- MODIFIED */}}
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Guilds - Yufa Market Tracker</title>
+    <title>{{.Page.T.guilds_title}} - Yufa Market Tracker</title> {{/* <-- MODIFIED */}}
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
         html { font-size: 110%; }
@@ -18,18 +18,19 @@
 
     <div class="container mx-auto px-4 py-6">
         <div class="flex flex-col sm:flex-row justify-between sm:items-center gap-2 mb-4 border-b border-gray-200 pb-3">
-            <h1 class="text-2xl font-bold text-gray-800">Guilds</h1>
-            <div id="last-updated" class="text-sm text-gray-500" data-timestamp="{{.LastGuildUpdateTime}}"></div>
+            <h1 class="text-2xl font-bold text-gray-800">{{.Page.T.guilds_title}}</h1> {{/* <-- MODIFIED */}}
+            <div id="last-updated" class="text-sm text-gray-500" data-timestamp="{{.Data.LastGuildUpdateTime}}"></div> {{/* <-- MODIFIED */}}
         </div>
 
         <div class="bg-white p-3 rounded-lg shadow mb-4">
             <form action="/guilds" method="GET" class="grid grid-cols-1 md:grid-cols-4 gap-3 items-end">
                 <div class="md:col-span-3">
-                    <label for="name_query" class="block text-sm font-medium text-gray-700">Search by Guild Name</label>
-                    <input type="text" name="name_query" id="name_query" value="{{.SearchName}}" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-300 focus:ring focus:ring-indigo-200 focus:ring-opacity-50 text-sm">
+                    {{/* MODIFIED: Use .Data and .Page.T */}}
+                    <label for="name_query" class="block text-sm font-medium text-gray-700">{{.Page.T.search_by_guild_name}}</label>
+                    <input type="text" name="name_query" id="name_query" value="{{.Data.SearchName}}" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-300 focus:ring focus:ring-indigo-200 focus:ring-opacity-50 text-sm">
                 </div>
                 <div>
-                    <button type="submit" class="w-full bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-md">Apply</button>
+                    <button type="submit" class="w-full bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-md">{{.Page.T.apply}}</button>
                 </div>
             </form>
         </div>
@@ -40,46 +41,47 @@
                 <table class="min-w-full leading-normal">
                     <thead>
                         <tr class="border-b-2 border-gray-200 bg-gray-50 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                            {{/* MODIFIED: Use .Data and .Page.T */}}
                             <th class="px-2 sm:px-3 py-2">
-                                <a href="/guilds?sort_by=name&order={{if eq .SortBy "name"}}{{toggleOrder .Order}}{{else}}ASC{{end}}&name_query={{.SearchName}}" class="hover:text-blue-600">
-                                    Name
-                                    {{if eq .SortBy "name"}}{{- if eq .Order "ASC"}}&#9650;{{else}}&#9660;{{end}}{{- end}}
+                                <a href="/guilds?sort_by=name&order={{if eq .Data.SortBy "name"}}{{toggleOrder .Data.Order}}{{else}}ASC{{end}}&name_query={{.Data.SearchName}}" class="hover:text-blue-600">
+                                    {{.Page.T.name}}
+                                    {{if eq .Data.SortBy "name"}}{{- if eq .Data.Order "ASC"}}&#9650;{{else}}&#9660;{{end}}{{- end}}
                                 </a>
                             </th>
                             <th class="px-2 sm:px-3 py-2">
-                                <a href="/guilds?sort_by=level&order={{if eq .SortBy "level"}}{{toggleOrder .Order}}{{else}}DESC{{end}}&name_query={{.SearchName}}" class="hover:text-blue-600">
-                                    Level
-                                    {{if eq .SortBy "level"}}{{- if eq .Order "ASC"}}&#9650;{{else}}&#9660;{{end}}{{- end}}
+                                <a href="/guilds?sort_by=level&order={{if eq .Data.SortBy "level"}}{{toggleOrder .Data.Order}}{{else}}DESC{{end}}&name_query={{.Data.SearchName}}" class="hover:text-blue-600">
+                                    {{.Page.T.level}}
+                                    {{if eq .Data.SortBy "level"}}{{- if eq .Data.Order "ASC"}}&#9650;{{else}}&#9660;{{end}}{{- end}}
                                 </a>
                             </th>
                             <th class="px-2 sm:px-3 py-2">
-                                <a href="/guilds?sort_by=master&order={{if eq .SortBy "master"}}{{toggleOrder .Order}}{{else}}ASC{{end}}&name_query={{.SearchName}}" class="hover:text-blue-600">
-                                    Master
-                                    {{if eq .SortBy "master"}}{{- if eq .Order "ASC"}}&#9650;{{else}}&#9660;{{end}}{{- end}}
+                                <a href="/guilds?sort_by=master&order={{if eq .Data.SortBy "master"}}{{toggleOrder .Data.Order}}{{else}}ASC{{end}}&name_query={{.Data.SearchName}}" class="hover:text-blue-600">
+                                    {{.Page.T.master}}
+                                    {{if eq .Data.SortBy "master"}}{{- if eq .Data.Order "ASC"}}&#9650;{{else}}&#9660;{{end}}{{- end}}
                                 </a>
                             </th>
                             <th class="px-2 sm:px-3 py-2">
-                                <a href="/guilds?sort_by=members&order={{if eq .SortBy "members"}}{{toggleOrder .Order}}{{else}}DESC{{end}}&name_query={{.SearchName}}" class="hover:text-blue-600">
-                                    Members
-                                    {{if eq .SortBy "members"}}{{- if eq .Order "ASC"}}&#9650;{{else}}&#9660;{{end}}{{- end}}
+                                <a href="/guilds?sort_by=members&order={{if eq .Data.SortBy "members"}}{{toggleOrder .Data.Order}}{{else}}DESC{{end}}&name_query={{.Data.SearchName}}" class="hover:text-blue-600">
+                                    {{.Page.T.members}}
+                                    {{if eq .Data.SortBy "members"}}{{- if eq .Data.Order "ASC"}}&#9650;{{else}}&#9660;{{end}}{{- end}}
                                 </a>
                             </th>
                              <th class="px-2 sm:px-3 py-2">
-                                <a href="/guilds?sort_by=zeny&order={{if eq .SortBy "zeny"}}{{toggleOrder .Order}}{{else}}DESC{{end}}&name_query={{.SearchName}}" class="hover:text-blue-600">
-                                    Total Zeny
-                                    {{if eq .SortBy "zeny"}}{{- if eq .Order "ASC"}}&#9650;{{else}}&#9660;{{end}}{{- end}}
+                                <a href="/guilds?sort_by=zeny&order={{if eq .Data.SortBy "zeny"}}{{toggleOrder .Data.Order}}{{else}}DESC{{end}}&name_query={{.Data.SearchName}}" class="hover:text-blue-600">
+                                    {{.Page.T.total_zeny}}
+                                    {{if eq .Data.SortBy "zeny"}}{{- if eq .Data.Order "ASC"}}&#9650;{{else}}&#9660;{{end}}{{- end}}
                                 </a>
                             </th>
                              <th class="px-2 sm:px-3 py-2">
-                                <a href="/guilds?sort_by=avg_level&order={{if eq .SortBy "avg_level"}}{{toggleOrder .Order}}{{else}}DESC{{end}}&name_query={{.SearchName}}" class="hover:text-blue-600">
-                                    Avg Base Lvl
-                                    {{if eq .SortBy "avg_level"}}{{- if eq .Order "ASC"}}&#9650;{{else}}&#9660;{{end}}{{- end}}
+                                <a href="/guilds?sort_by=avg_level&order={{if eq .Data.SortBy "avg_level"}}{{toggleOrder .Data.Order}}{{else}}DESC{{end}}&name_query={{.Data.SearchName}}" class="hover:text-blue-600">
+                                    {{.Page.T.avg_base_lvl}}
+                                    {{if eq .Data.SortBy "avg_level"}}{{- if eq .Data.Order "ASC"}}&#9650;{{else}}&#9660;{{end}}{{- end}}
                                 </a>
                             </th>
                         </tr>
                     </thead>
                     <tbody class="text-gray-700 text-xs">
-                        {{range .Guilds}}
+                        {{range .Data.Guilds}} {{/* <-- MODIFIED */}}
                         <tr class="border-b border-gray-200 hover:bg-gray-50">
                             <td class="px-2 sm:px-3 py-2 font-semibold">
                                 <div class="flex items-center">
@@ -99,36 +101,37 @@
                         </tr>
                         {{else}}
                         <tr>
-                            <td colspan="6" class="text-center py-10 text-gray-500">No guilds found matching your criteria.</td>
+                            <td colspan="6" class="text-center py-10 text-gray-500">{{.Page.T.no_guilds_found}}</td> {{/* <-- MODIFIED */}}
                         </tr>
                         {{end}}
                     </tbody>
                 </table>
             </div>
 
-             {{if gt .Pagination.TotalPages 1}}
+             {{/* MODIFIED: Use .Data and .Page.T */}}
+             {{if gt .Data.Pagination.TotalPages 1}}
             <div class="px-3 py-3 bg-white border-t flex flex-col xs:flex-row items-center xs:justify-between">
                 <span class="text-xs xs:text-sm text-gray-900">
-                    Showing page {{.Pagination.CurrentPage}} of {{.Pagination.TotalPages}} ({{.TotalGuilds}} total guilds)
+                    {{printf .Page.T.showing_page_guilds .Data.Pagination.CurrentPage .Data.Pagination.TotalPages .Data.TotalGuilds | TmplHTML}}
                 </span>
                 <div class="inline-flex mt-2 xs:mt-0">
-                    {{if .Pagination.HasPrevPage}}
-                        <a href="/guilds?page={{.Pagination.PrevPage}}&name_query={{.SearchName}}&sort_by={{.SortBy}}&order={{.Order}}" class="text-sm bg-gray-300 hover:bg-gray-400 text-gray-800 font-semibold py-1 px-3 rounded-l">
-                            Prev
+                    {{if .Data.Pagination.HasPrevPage}}
+                        <a href="/guilds?page={{.Data.Pagination.PrevPage}}&name_query={{.Data.SearchName}}&sort_by={{.Data.SortBy}}&order={{.Data.Order}}" class="text-sm bg-gray-300 hover:bg-gray-400 text-gray-800 font-semibold py-1 px-3 rounded-l">
+                            {{.Page.T.prev_short}}
                         </a>
                     {{else}}
                          <span class="text-sm bg-gray-200 text-gray-500 font-semibold py-1 px-3 rounded-l cursor-not-allowed">
-                            Prev
+                            {{.Page.T.prev_short}}
                         </span>
                     {{end}}
 
-                    {{if .Pagination.HasNextPage}}
-                        <a href="/guilds?page={{.Pagination.NextPage}}&name_query={{.SearchName}}&sort_by={{.SortBy}}&order={{.Order}}" class="text-sm bg-gray-300 hover:bg-gray-400 text-gray-800 font-semibold py-1 px-3 rounded-r">
-                            Next
+                    {{if .Data.Pagination.HasNextPage}}
+                        <a href="/guilds?page={{.Data.Pagination.NextPage}}&name_query={{.Data.SearchName}}&sort_by={{.Data.SortBy}}&order={{.Data.Order}}" class="text-sm bg-gray-300 hover:bg-gray-400 text-gray-800 font-semibold py-1 px-3 rounded-r">
+                            {{.Page.T.next_short}}
                         </a>
                     {{else}}
                         <span class="text-sm bg-gray-200 text-gray-500 font-semibold py-1 px-3 rounded-r cursor-not-allowed">
-                            Next
+                            {{.Page.T.next_short}}
                         </span>
                     {{end}}
                 </div>
@@ -138,14 +141,19 @@
     </div>
     <script>
         document.addEventListener('DOMContentLoaded', () => {
+            // --- MODIFIED: Use translations ---
+            const lang = document.documentElement.lang || 'en';
+            const translations = {
+                updated_never: '{{.Page.T.updated_never}}',
+                updated_ago: '{{.Page.T.updated_ago}}'
+            };
 
-            // --- Page-Specific Logic ---
             const lastUpdateElement = document.getElementById('last-updated');
             if (lastUpdateElement) {
                 const timestampStr = lastUpdateElement.dataset.timestamp;
 
                 if (!timestampStr || timestampStr === 'Never' || timestampStr === '') {
-                    lastUpdateElement.textContent = 'Updated: never';
+                    lastUpdateElement.textContent = translations.updated_never; // Use translation
                     return;
                 }
 
@@ -160,18 +168,23 @@
                     const secondsPast = Math.floor((now.getTime() - lastUpdateDate.getTime()) / 1000);
                     let timeAgoString;
 
-                    if (secondsPast < 5) {
-                        timeAgoString = 'just now';
-                    } else if (secondsPast < 60) {
-                        timeAgoString = `${secondsPast}s ago`;
-                    } else if (secondsPast < 3600) {
-                        timeAgoString = `${Math.floor(secondsPast / 60)}m ago`;
-                    } else if (secondsPast < 86400) {
-                        timeAgoString = `${Math.floor(secondsPast / 3600)}h ago`;
+                    // --- MODIFIED: Language-specific time ago ---
+                    if (lang === 'pt') {
+                        if (secondsPast < 5) timeAgoString = 'agora mesmo';
+                        else if (secondsPast < 60) timeAgoString = `${secondsPast}s atrás`;
+                        else if (secondsPast < 3600) timeAgoString = `${Math.floor(secondsPast / 60)}m atrás`;
+                        else if (secondsPast < 86400) timeAgoString = `${Math.floor(secondsPast / 3600)}h atrás`;
+                        else timeAgoString = `${Math.floor(secondsPast / 86400)}d atrás`;
                     } else {
-                        timeAgoString = `${Math.floor(secondsPast / 86400)}d ago`;
+                        if (secondsPast < 5) timeAgoString = 'just now';
+                        else if (secondsPast < 60) timeAgoString = `${secondsPast}s ago`;
+                        else if (secondsPast < 3600) timeAgoString = `${Math.floor(secondsPast / 60)}m ago`;
+                        else if (secondsPast < 86400) timeAgoString = `${Math.floor(secondsPast / 3600)}h ago`;
+                        else timeAgoString = `${Math.floor(secondsPast / 86400)}d ago`;
                     }
-                    lastUpdateElement.innerHTML = `Updated: ${timeAgoString} <span class="text-gray-400 font-normal">(${formattedTimestamp})</span>`;
+                    
+                    const fullString = translations.updated_ago.replace('%s', timeAgoString); // Use translation
+                    lastUpdateElement.innerHTML = `${fullString} <span class="text-gray-400 font-normal">(${formattedTimestamp})</span>`;
                 };
 
                 updateTimeAgo();

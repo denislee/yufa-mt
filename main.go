@@ -272,6 +272,7 @@ func main() {
 	mux.HandleFunc("/chat", visitorTracker(chatHandler))
 	mux.HandleFunc("/xp-calculator", visitorTracker(xpCalculatorHandler))
 	mux.HandleFunc("/about", visitorTracker(aboutHandler))
+	mux.HandleFunc("/set-lang", setLangHandler)
 
 	// --- Admin Routes ---
 	// All routes under /admin/ are protected by basicAuth

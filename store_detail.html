@@ -1,9 +1,9 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="{{.Page.Lang}}">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Store: {{.StoreName}} - Yufa Market Tracker</title>
+    <title>{{printf .Page.T.store_title .Data.StoreName}} - Yufa Market Tracker</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
         html { font-size: 110%; }
@@ -19,39 +19,46 @@
     <div class="container mx-auto px-4 py-6">
         <div class="flex flex-col sm:flex-row justify-between sm:items-center gap-2 mb-4 border-b border-gray-200 pb-3">
             <div>
-                <h1 class="text-2xl font-bold text-gray-800">Store Details</h1>
-                <p class="text-lg text-gray-600">{{.StoreName}}</p>
+                <h1 class="text-2xl font-bold text-gray-800">{{.Page.T.store_details}}</h1>
+                <p class="text-lg text-gray-600">{{.Data.StoreName}}</p>
             </div>
-            <div id="last-updated" class="text-sm text-gray-500" data-timestamp="{{.LastScrapeTime}}"></div>
+            <div id="last-updated" class="text-sm text-gray-500" data-timestamp="{{.Data.LastScrapeTime}}"></div>
         </div>
 
-        {{if .Items}}
+        {{if .Data.Items}}
         <div class="flex flex-col md:flex-row gap-6">
 
             <div class="flex-1 min-w-0">
-                <p class="text-sm text-gray-600 mb-3">Showing the <strong>{{ len .Items }}</strong> items last seen in this store. Faded items are no longer available.</p>
+                <p class="text-sm text-gray-600 mb-3">{{printf .Page.T.showing_last_seen (len .Data.Items) | TmplHTML}}</p>
                 <div class="bg-white shadow-lg rounded-lg overflow-hidden">
                     <div class="overflow-x-auto">
                         <table class="min-w-full leading-normal">
                             <thead>
                                 <tr class="border-b-2 border-gray-200 bg-gray-50 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
-                                    {{$storeName := .StoreName}}{{$currentSort := .SortBy}}{{$currentOrder := .Order}}{{$revOrder := "ASC"}}{{if eq $currentOrder "ASC"}}{{$revOrder = "DESC"}}{{end}}
-                                    <th class="px-2 sm:px-3 py-2"><a href="/store?name={{$storeName | urlquery}}&sort_by=name&order={{if eq $currentSort "name"}}{{$revOrder}}{{else}}ASC{{end}}">Item Name {{if eq $currentSort "name"}}{{if eq $currentOrder "ASC"}}<span class="text-gray-400">▲</span>{{else}}<span class="text-gray-400">▼</span>{{end}}{{end}}</a></th>
-                                    <th class="px-2 sm:px-3 py-2"><a href="/store?name={{$storeName | urlquery}}&sort_by=quantity&order={{if eq $currentSort "quantity"}}{{$revOrder}}{{else}}ASC{{end}}">Qty {{if eq $currentSort "quantity"}}{{if eq $currentOrder "ASC"}}<span class="text-gray-400">▲</span>{{else}}<span class="text-gray-400">▼</span>{{end}}{{end}}</a></th>
-                                    <th class="px-2 sm:px-3 py-2"><a href="/store?name={{$storeName | urlquery}}&sort_by=price&order={{if eq $currentSort "price"}}{{$revOrder}}{{else}}DESC{{end}}">Price {{if eq $currentSort "price"}}{{if eq $currentOrder "ASC"}}<span class="text-gray-400">▲</span>{{else}}<span class="text-gray-400">▼</span>{{end}}{{end}}</a></th>
+                                    {{$storeName := .Data.StoreName}}{{$currentSort := .Data.SortBy}}{{$currentOrder := .Data.Order}}{{$revOrder := "ASC"}}{{if eq $currentOrder "ASC"}}{{$revOrder = "DESC"}}{{end}}
+                                    <th class="px-2 sm:px-3 py-2"><a href="/store?name={{$storeName | urlquery}}&sort_by=name&order={{if eq $currentSort "name"}}{{$revOrder}}{{else}}ASC{{end}}">{{.Page.T.item_name}} {{if eq $currentSort "name"}}{{if eq $currentOrder "ASC"}}<span class="text-gray-400">▲</span>{{else}}<span class="text-gray-400">▼</span>{{end}}{{end}}</a></th>
+                                    <th class="px-2 sm:px-3 py-2"><a href="/store?name={{$storeName | urlquery}}&sort_by=quantity&order={{if eq $currentSort "quantity"}}{{$revOrder}}{{else}}ASC{{end}}">{{.Page.T.qty_short}} {{if eq $currentSort "quantity"}}{{if eq $currentOrder "ASC"}}<span class="text-gray-400">▲</span>{{else}}<span class="text-gray-400">▼</span>{{end}}{{end}}</a></th>
+                                    <th class="px-2 sm:px-3 py-2"><a href="/store?name={{$storeName | urlquery}}&sort_by=price&order={{if eq $currentSort "price"}}{{$revOrder}}{{else}}DESC{{end}}">{{.Page.T.price}} {{if eq $currentSort "price"}}{{if eq $currentOrder "ASC"}}<span class="text-gray-400">▲</span>{{else}}<span class="text-gray-400">▼</span>{{end}}{{end}}</a></th>
                                 </tr>
                             </thead>
                             <tbody class="text-gray-700 text-xs">
-                                {{range .Items}}
-                                <tr class="border-b border-gray-200 hover:bg-gray-50 {{if not .IsAvailable}}opacity-60{{end}}" {{if not .IsAvailable}}title="This item is no longer available"{{end}}>
+                                {{range .Data.Items}}
+                                <tr class="border-b border-gray-200 hover:bg-gray-50 {{if not .IsAvailable}}opacity-60{{end}}" {{if not .IsAvailable}}title="{{$.Page.T.listing_not_available}}"{{end}}>
                                     <td class="px-2 sm:px-3 py-2">
                                         <div class="flex items-center">
                                             <img src="https://static.divine-pride.net/images/items/item/{{.ItemID}}.png" alt="" class="w-6 h-6 mr-2" style="image-rendering: pixelated;">
                                             <div>
-                                                <a href="/item?name={{.Name | urlquery}}" class="font-semibold hover:underline">{{.Name}}</a>
-                                                {{if .NamePT.Valid}}
-                                                <div class="text-xs text-gray-500 mt-1">{{.NamePT.String}}</div>
+                                                {{/* --- THIS IS THE FIX --- */}}
+                                                {{if and (eq $.Page.Lang "pt") .NamePT.Valid}}
+                                                    <a href="/item?name={{.Name | urlquery}}" class="font-semibold hover:underline">{{.NamePT.String}}</a>
+                                                    <div class="text-xs text-gray-500 mt-1">({{.Name}})</div>
+                                                {{else}}
+                                                    <a href="/item?name={{.Name | urlquery}}" class="font-semibold hover:underline">{{.Name}}</a>
+                                                    {{if .NamePT.Valid}}
+                                                    <div class="text-xs text-gray-500 mt-1">({{.NamePT.String}})</div>
+                                                    {{end}}
                                                 {{end}}
+                                                {{/* --- END FIX --- */}}
                                             </div>
                                         </div>
                                     </td>
@@ -68,29 +75,29 @@
             <div class="md:w-72 flex-shrink-0">
                 <div class="bg-white shadow-md rounded-lg p-4 sticky top-20">
                     <div>
-                        <h3 class="text-xs font-semibold text-gray-500 uppercase tracking-wider">Seller</h3>
-                        <a href="/character?name={{.SellerName | urlquery}}" class="text-lg font-medium text-gray-800 hover:underline hover:text-blue-600">{{.SellerName}}</a>
+                        <h3 class="text-xs font-semibold text-gray-500 uppercase tracking-wider">{{.Page.T.seller}}</h3>
+                        <a href="/character?name={{.Data.SellerName | urlquery}}" class="text-lg font-medium text-gray-800 hover:underline hover:text-blue-600">{{.Data.SellerName}}</a>
                     </div>
                     <div class="mt-4">
-                        <h3 class="text-xs font-semibold text-gray-500 uppercase tracking-wider">Last Seen</h3>
-                        <p class="text-lg font-medium text-gray-800">{{ (index .Items 0).Timestamp }}</p>
+                        <h3 class="text-xs font-semibold text-gray-500 uppercase tracking-wider">{{.Page.T.last_seen}}</h3>
+                        <p class="text-lg font-medium text-gray-800">{{ (index .Data.Items 0).Timestamp }}</p>
                     </div>
                     <div class="mt-4">
-                        <h3 class="text-xs font-semibold text-gray-500 uppercase tracking-wider">Location</h3>
+                        <h3 class="text-xs font-semibold text-gray-500 uppercase tracking-wider">{{.Page.T.location}}</h3>
                         <div class="flex items-center gap-3 mt-1">
-                            <div class="relative w-24 h-24 bg-gray-200 border border-gray-300 map-container flex-shrink-0" data-coords="{{.MapCoordinates}}">
+                            <div class="relative w-24 h-24 bg-gray-200 border border-gray-300 map-container flex-shrink-0" data-coords="{{.Data.MapCoordinates}}">
                                 <img
-                                    src="https://projetoyufa.com/_next/image?url=%2Fimages%2Fmap%2F{{.MapName}}.png&w=1080&q=75"
-                                    alt="Map of {{.MapName}}"
+                                    src="https://projetoyufa.com/_next/image?url=%2Fimages%2Fmap%2F{{.Data.MapName}}.png&w=1080&q=75"
+                                    alt="Map of {{.Data.MapName}}"
                                     class="w-full h-full object-cover"
                                     onerror="this.style.visibility='hidden'; this.parentElement.querySelector('.marker').style.display='none';"
                                     style="image-rendering: pixelated;"
                                 >
-                                <div class="marker absolute w-2 h-2 bg-red-600 border border-white rounded-full -ml-1 -mt-1" style="display: none;" title="{{.MapCoordinates}}"></div>
+                                <div class="marker absolute w-2 h-2 bg-red-600 border border-white rounded-full -ml-1 -mt-1" style="display: none;" title="{{.Data.MapCoordinates}}"></div>
                             </div>
                             <div>
-                                <div class="font-semibold text-gray-800">{{.MapName}}</div>
-                                <a href="#" onclick="copyNavi(event, '{{.MapName}}', '{{.MapCoordinates}}')" title="Click to copy /navi command" class="text-sm text-blue-600 hover:underline">{{.MapCoordinates}}</a>
+                                <div class="font-semibold text-gray-800">{{.Data.MapName}}</div>
+                                <a href="#" onclick="copyNavi(event, '{{.Data.MapName}}', '{{.Data.MapCoordinates}}')" title="{{.Page.T.click_to_copy}}" class="text-sm text-blue-600 hover:underline">{{.Data.MapCoordinates}}</a>
                             </div>
                         </div>
                     </div>
@@ -103,6 +110,14 @@
     </div>
     
     <script>
+        const lang = document.documentElement.lang || 'en';
+        const translations = {
+            updated_never: '{{.Page.T.updated_never}}',
+            updated_ago: '{{.Page.T.updated_ago}}',
+            copied: '{{.Page.T.copied}}',
+            click_to_copy: '{{.Page.T.click_to_copy}}'
+        };
+
         function copyNavi(event, mapName, coordinates) {
             event.preventDefault();
             const formattedCoords = coordinates.trim().replace('(', '').replace(')', '').replace(',', '/');
@@ -110,11 +125,12 @@
             navigator.clipboard.writeText(command).then(() => {
                 const originalElement = event.target;
                 const originalText = originalElement.innerText;
-                originalElement.innerText = 'Copied!';
-                originalElement.style.color = '#16a34a'; /* Tailwind green-600 */
+                originalElement.innerText = translations.copied;
+                originalElement.style.color = '#16a34a';
                 setTimeout(() => {
                     originalElement.innerText = originalText;
                     originalElement.style.color = '';
+                    originalElement.title = translations.click_to_copy;
                 }, 1500);
             }).catch(err => {
                 console.error('Failed to copy command: ', err);
@@ -167,7 +183,6 @@
         }
 
         document.addEventListener('DOMContentLoaded', () => {
-            // --- Page-Specific Logic ---
             positionMapMarkers();
 
             const lastUpdateElement = document.getElementById('last-updated');
@@ -175,7 +190,7 @@
                 const timestampStr = lastUpdateElement.dataset.timestamp;
 
                 if (!timestampStr || timestampStr === 'Never' || timestampStr === '') {
-                    lastUpdateElement.textContent = 'Updated: never';
+                    lastUpdateElement.textContent = translations.updated_never;
                     return;
                 }
 
@@ -189,13 +204,23 @@
                     const now = new Date();
                     const secondsPast = Math.floor((now.getTime() - lastUpdateDate.getTime()) / 1000);
                     let timeAgoString;
-                    if (secondsPast < 5) timeAgoString = 'just now';
-                    else if (secondsPast < 60) timeAgoString = `${secondsPast}s ago`;
-                    else if (secondsPast < 3600) timeAgoString = `${Math.floor(secondsPast / 60)}m ago`;
-                    else if (secondsPast < 86400) timeAgoString = `${Math.floor(secondsPast / 3600)}h ago`;
-                    else timeAgoString = `${Math.floor(secondsPast / 86400)}d ago`;
+
+                    if (lang === 'pt') {
+                        if (secondsPast < 5) timeAgoString = 'agora mesmo';
+                        else if (secondsPast < 60) timeAgoString = `${secondsPast}s atrás`;
+                        else if (secondsPast < 3600) timeAgoString = `${Math.floor(secondsPast / 60)}m atrás`;
+                        else if (secondsPast < 86400) timeAgoString = `${Math.floor(secondsPast / 3600)}h atrás`;
+                        else timeAgoString = `${Math.floor(secondsPast / 86400)}d atrás`;
+                    } else {
+                        if (secondsPast < 5) timeAgoString = 'just now';
+                        else if (secondsPast < 60) timeAgoString = `${secondsPast}s ago`;
+                        else if (secondsPast < 3600) timeAgoString = `${Math.floor(secondsPast / 60)}m ago`;
+                        else if (secondsPast < 86400) timeAgoString = `${Math.floor(secondsPast / 3600)}h ago`;
+                        else timeAgoString = `${Math.floor(secondsPast / 86400)}d ago`;
+                    }
                     
-                    lastUpdateElement.innerHTML = `Updated: ${timeAgoString} <span class="text-gray-400 font-normal">(${formattedTimestamp})</span>`;
+                    const fullString = translations.updated_ago.replace('%s', timeAgoString);
+                    lastUpdateElement.innerHTML = `${fullString} <span class="text-gray-400 font-normal">(${formattedTimestamp})</span>`;
                 };
 
                 updateTimeAgo();
