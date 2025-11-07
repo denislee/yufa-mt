@@ -285,11 +285,9 @@ func initDB(filepath string) (*sql.DB, error) {
 
 	// Sequentially execute all table creation queries
 	queries := map[string]string{
-		"items":          createItemsTableSQL,
-		"market_events":  createEventsTableSQL,
-		"scrape_history": createHistoryTableSQL,
-		// "rms_item_cache":        createRMSCacheTableSQL, // REMOVED
-		// "rms_item_cache_fts":    createRMSFTSSTableSQL,  // REMOVED
+		"items":                  createItemsTableSQL,
+		"market_events":          createEventsTableSQL,
+		"scrape_history":         createHistoryTableSQL,
 		"player_history":         createPlayerHistoryTableSQL,
 		"guilds":                 createGuildsTableSQL,
 		"characters":             createCharactersTableSQL,
@@ -300,10 +298,10 @@ func initDB(filepath string) (*sql.DB, error) {
 		"idx_page_path":          createPageIndexSQL,
 		"trading_posts":          createTradingPostsTableSQL,
 		"trading_post_items":     createTradingPostItemsTableSQL,
-		"internal_item_db":       createInternalItemDBTableSQL, // Exists
+		"internal_item_db":       createInternalItemDBTableSQL,
 		"woe_character_rankings": createWoeCharRankingsTableSQL,
-		"chat":                   createChatTableSQL,            // <-- ADD THIS ENTRY
-		"chat_activity_log":      createChatActivityLogTableSQL, // <-- ADD THIS ENTRY
+		"chat":                   createChatTableSQL,
+		"chat_activity_log":      createChatActivityLogTableSQL,
 	}
 
 	for name, query := range queries {
@@ -312,14 +310,53 @@ func initDB(filepath string) (*sql.DB, error) {
 		}
 	}
 
-	// --- FTS Triggers (Combined into one Exec) ---
-	// REMOVED: The triggers for rms_item_cache_fts are no longer needed.
-	// if _, err = db.Exec(createTriggersSQL); err != nil {
-	// 	return nil, fmt.Errorf("could not create FTS triggers: %w", err)
-	// }
+	// This list contains all the recommended indexes for performance.
+	indexQueries := []string{
+		// 'items' table
+		`CREATE INDEX IF NOT EXISTS idx_items_name_available ON items (name_of_the_item, is_available);`,
+		`CREATE INDEX IF NOT EXISTS idx_items_item_id ON items (item_id);`,
+		`CREATE INDEX IF NOT EXISTS idx_items_available_seller ON items (is_available, seller_name);`,
+		`CREATE INDEX IF NOT EXISTS idx_items_timestamp_desc ON items (date_and_time_retrieved DESC);`,
+		`CREATE INDEX IF NOT EXISTS idx_items_store_seller ON items (store_name, seller_name);`,
+		// 'market_events' table
+		`CREATE INDEX IF NOT EXISTS idx_events_timestamp_desc ON market_events (event_timestamp DESC);`,
+		`CREATE INDEX IF NOT EXISTS idx_events_item_id_type ON market_events (item_id, event_type);`,
+		// 'characters' table
+		`CREATE INDEX IF NOT EXISTS idx_chars_guild_name ON characters (guild_name);`,
+		`CREATE INDEX IF NOT EXISTS idx_chars_class ON characters (class);`,
+		// 'character_changelog' table
+		`CREATE INDEX IF NOT EXISTS idx_changelog_char_time_desc ON character_changelog (character_name, change_time DESC);`,
+		`CREATE INDEX IF NOT EXISTS idx_changelog_time_desc ON character_changelog (change_time DESC);`,
+		// 'page_views' table
+		`CREATE INDEX IF NOT EXISTS idx_page_views_visitor_timestamp ON page_views (visitor_hash, view_timestamp DESC);`,
+		`CREATE INDEX IF NOT EXISTS idx_page_views_timestamp_desc ON page_views (view_timestamp DESC);`,
+		// 'trading_posts' table
+		`CREATE INDEX IF NOT EXISTS idx_trading_posts_created_desc ON trading_posts (created_at DESC);`,
+		`CREATE INDEX IF NOT EXISTS idx_trading_posts_lookup ON trading_posts (character_name, contact_info, post_type);`,
+		// 'trading_post_items' table
+		`CREATE INDEX IF NOT EXISTS idx_trading_items_post_id ON trading_post_items (post_id);`,
+		`CREATE INDEX IF NOT EXISTS idx_trading_items_item_id ON trading_post_items (item_id);`,
+		`CREATE INDEX IF NOT EXISTS idx_trading_items_item_name ON trading_post_items (item_name);`,
+		// 'internal_item_db' table
+		`CREATE INDEX IF NOT EXISTS idx_internal_db_type ON internal_item_db (type);`,
+		`CREATE INDEX IF NOT EXISTS idx_internal_db_slots ON internal_item_db (slots);`,
+		`CREATE INDEX IF NOT EXISTS idx_internal_db_lower_name ON internal_item_db (LOWER(name));`,
+		`CREATE INDEX IF NOT EXISTS idx_internal_db_lower_name_pt ON internal_item_db (LOWER(name_pt));`,
+		// 'woe_character_rankings' table
+		`CREATE INDEX IF NOT EXISTS idx_woe_guild_name ON woe_character_rankings (guild_name);`,
+		// 'chat' table
+		`CREATE INDEX IF NOT EXISTS idx_chat_channel_timestamp_desc ON chat (channel, timestamp DESC);`,
+		`CREATE INDEX IF NOT EXISTS idx_chat_timestamp_desc ON chat (timestamp DESC);`,
+	}
+
+	// Execute all index creation queries
+	for i, query := range indexQueries {
+		if _, err = db.Exec(query); err != nil {
+			return nil, fmt.Errorf("could not create index #%d: %w", i, err)
+		}
+	}
 
 	// --- Dynamic Table Creation (MVP Kills) ---
-	// ... (rest of the function is unchanged) ...
 	var mvpColumns []string
 	mvpColumns = append(mvpColumns, `"character_name" TEXT NOT NULL PRIMARY KEY`)
 	for _, mobID := range mvpMobIDs {
