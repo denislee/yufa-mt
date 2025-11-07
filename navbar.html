@@ -5,7 +5,7 @@
             
             {{/* Define variables to check if the current page is active */}}
             {{ $isRankingPage := (or (eq .PageTitle "Characters") (eq .PageTitle "Guilds") (eq .PageTitle "MVP Kills") (eq .PageTitle "WoE Rankings")) }}
-            {{ $isMiscPage := (or (eq .PageTitle "Player Count") (eq .PageTitle "XP Calculator")) }}
+            {{ $isMiscPage := (or (eq .PageTitle "Player Count") (eq .PageTitle "XP Calculator") (eq .PageTitle "Sobre")) }}
 
             <div class="hidden md:flex items-center space-x-1">
                 <a href="/" class="text-sm px-3 py-2 rounded-md {{if eq .PageTitle "Summary"}}font-semibold text-blue-600 bg-blue-50{{else}}text-gray-600 hover:bg-gray-100{{end}}">Summary</a>
@@ -22,6 +22,7 @@
                     <div id="misc-dropdown-content" class="dropdown-content hidden absolute right-0 mt-2 w-48 bg-white rounded-md shadow-lg py-1 z-20 ring-1 ring-black ring-opacity-5">
                         <a href="/players" class="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">Player Count</a>
                         <a href="/xp-calculator" class="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">XP Calculator</a>
+                        <a href="/about" class="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">Sobre</a>
                     </div>
                 </div>
                 <div class="relative" id="ranking-dropdown-menu">
@@ -67,6 +68,7 @@
             <div class="pl-4">
                 <a href="/players" class="block py-2 px-4 text-sm {{if eq .PageTitle "Player Count"}}bg-blue-50 text-blue-600 font-semibold{{else}}text-gray-600 hover:bg-gray-50{{end}}">Player Count</a>
                 <a href="/xp-calculator" class="block py-2 px-4 text-sm {{if eq .PageTitle "XP Calculator"}}bg-blue-50 text-blue-600 font-semibold{{else}}text-gray-600 hover:bg-gray-50{{end}}">XP Calculator</a>
+                <a href="/about" class="block py-2 px-4 text-sm {{if eq .PageTitle "Sobre"}}bg-blue-50 text-blue-600 font-semibold{{else}}text-gray-600 hover:bg-gray-50{{end}}">Sobre</a>
             </div>
         </details>
         <details class="group" {{if $isRankingPage}}open{{end}}>
@@ -76,7 +78,10 @@
             </summary>
             <div class="pl-4">
                 <a href="/characters" class="block py-2 px-4 text-sm {{if eq .PageTitle "Characters"}}bg-blue-50 text-blue-600 font-semibold{{else}}text-gray-600 hover:bg-gray-50{{end}}">Characters</a>
+                
+                {{/* --- LINHA COM ERRO CORRIGIDA --- */}}
                 <a href="/guilds" class="block py-2 px-4 text-sm {{if eq .PageTitle "Guilds"}}bg-blue-50 text-blue-600 font-semibold{{else}}text-gray-600 hover:bg-gray-50{{end}}">Guilds</a>
+                
                 <a href="/mvp-kills" class="block py-2 px-4 text-sm {{if eq .PageTitle "MVP Kills"}}bg-blue-50 text-blue-600 font-semibold{{else}}text-gray-600 hover:bg-gray-50{{end}}">MVP Kills</a>
                 <a href="/woe" class="block py-2 px-4 text-sm {{if eq .PageTitle "WoE Rankings"}}bg-blue-50 text-blue-600 font-semibold{{else}}text-gray-600 hover:bg-gray-50{{end}}">WoE Rankings</a>
             </div>

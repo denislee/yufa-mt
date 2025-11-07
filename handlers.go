@@ -511,6 +511,7 @@ func init() {
 		"woe_rankings.html",
 		"chat.html",
 		"xp_calculator.html",
+		"about.html",
 	}
 
 	navbarPath := "navbar.html"
@@ -2812,6 +2813,15 @@ func chatHandler(w http.ResponseWriter, r *http.Request) {
 		ActivityGraphJSON: activityGraphJSON,
 	}
 	renderTemplate(w, "chat.html", data)
+}
+
+// aboutHandler displays the static "About" page.
+func aboutHandler(w http.ResponseWriter, r *http.Request) {
+	// We pass the PageTitle so the navbar can highlight the correct link.
+	data := map[string]interface{}{
+		"PageTitle": "About",
+	}
+	renderTemplate(w, "about.html", data)
 }
 
 // findItemIDByName orchestrates searching the cache and online for an item ID.

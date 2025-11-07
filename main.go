@@ -268,9 +268,10 @@ func main() {
 	mux.HandleFunc("/character-changelog", visitorTracker(characterChangelogHandler))
 	mux.HandleFunc("/store", visitorTracker(storeDetailHandler))
 	mux.HandleFunc("/discord", visitorTracker(tradingPostListHandler))
-	mux.HandleFunc("/woe", visitorTracker(woeRankingsHandler))            // --- ADD THIS LINE ---
-	mux.HandleFunc("/chat", visitorTracker(chatHandler))                  // --- ADD THIS LINE ---
-	mux.HandleFunc("/xp-calculator", visitorTracker(xpCalculatorHandler)) // <-- ADD THIS LINE
+	mux.HandleFunc("/woe", visitorTracker(woeRankingsHandler))
+	mux.HandleFunc("/chat", visitorTracker(chatHandler))
+	mux.HandleFunc("/xp-calculator", visitorTracker(xpCalculatorHandler))
+	mux.HandleFunc("/about", visitorTracker(aboutHandler))
 
 	// --- Admin Routes ---
 	// All routes under /admin/ are protected by basicAuth

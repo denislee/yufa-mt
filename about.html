@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sobre - Yufa Market Tracker</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        html { font-size: 110%; }
+        .container {
+            max-width: 95% !important;
+        }
+        /* Adiciona um pouco de espaço para os parágrafos e listas para melhor legibilidade */
+        .content-box p, .content-box ul {
+            margin-bottom: 1.25rem; /* Um pouco mais de espaço */
+        }
+        .content-box ul {
+            list-style-type: disc;
+            padding-left: 2rem;
+        }
+        .content-box li {
+            margin-bottom: 0.75rem; /* Mais espaço entre os itens da lista */
+        }
+        .content-box h3 {
+            border-bottom: 1px solid #eee;
+            padding-bottom: 4px;
+        }
+    </style>
+</head>
+<body class="bg-gray-100 text-gray-800 text-sm sm:text-base">
+
+    {{/* Inclui a barra de navegação. O handler Go deve passar {"PageTitle": "Sobre"} */}}
+    {{template "navbar.html" .}}
+
+    <div class="container mx-auto px-4 py-6">
+        <div class="flex flex-col sm:flex-row justify-between sm:items-center gap-2 mb-4 border-b border-gray-200 pb-3">
+            <h1 class="text-2xl font-bold text-gray-800">Sobre Esta Aplicação</h1>
+            <div id="last-updated" class="text-sm text-gray-500"></div>
+        </div>
+
+        <div class="bg-white p-6 md:p-8 rounded-lg shadow-lg mb-6 content-box">
+            <h2 class="text-xl font-semibold text-gray-800 mb-3">🏛️ O Que é Este Site?</h2>
+            
+            <p>Bem-vindo! O objetivo deste site é coletar todas as informações públicas do Projeto Yufa, seja no site oficial, no jogo ou no Discord, e organizá-las em um só lugar, de forma fácil de pesquisar e consultar.</p>
+
+            <p>Todas as informações aqui são publicamente acessíveis. Porém, algumas delas são difíceis de encontrar ou exigem um grande trabalho para se extrair certas informações. Por esse motivo, criei este site, que está sendo atualizado constantemente.</p>
+        </div>
+
+        <div class="bg-white p-6 md:p-8 rounded-lg shadow-lg mb-6 content-box">
+            <h2 class="text-xl font-semibold text-yellow-600 mb-4">⚠️ Avisos Importantes</h2>
+            
+            <p>Por favor, leia os seguintes pontos com atenção:</p>
+            
+            <ul class="list-disc pl-5 space-y-3 text-gray-700">
+                <li>
+                    <strong>Não</strong> considere como fonte única da verdade as informações contidas neste site, pois aqui podem existir <strong>inconsistências</strong>, já que ele coleta informações em lugares diferentes, em diferentes horários e dias.
+                </li>
+                <li>
+                    Algumas <strong>presunções são</strong> cruzamentos de dados que o site faz, mas que <strong>também</strong> podem <strong>conter equívocos</strong> (<strong>por exemplo</strong>: se um item foi vendido ou se a loja fechou, a interpretação da IA sobre as mensagens do Discord, a última vez que o personagem esteve ativo, etc.).
+                </li>
+                <li>
+                    As informações podem estar atrasadas. Como o site tira uma "fotografia" de diversos estados das suas fontes em diferentes intervalos, podem existir informações desatualizadas que <strong>não</strong> refletem o presente. Sempre verifique o indicador no canto superior direito para ver quando a informação foi atualizada.
+                </li>
+                <li>
+                    <strong>Este</strong> site <strong>é</strong> completamente independente e <strong>não</strong> possui nenhum envolvimento de qualquer pessoa da <strong>administração</strong> do Projeto Yufa. A única <strong>concessão</strong> por parte dos administradores foi a de <strong>não</strong> bloquear o acesso deste site ao site oficial do Projeto Yufa. <strong>Caso</strong> eles entendam que este site prejudica de alguma maneira o servidor, a comunidade ou o <strong>funcionamento</strong> do Projeto Yufa, <strong>retirarei</strong> o site do ar prontamente.
+                </li>
+            </ul>
+        </div>
+
+    </div>
+    
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            // --- Logic to update the "Last Updated" timestamp for the page ---
+            const lastUpdateElement = document.getElementById('last-updated');
+            if (lastUpdateElement) {
+                // Since this is a static page, we just show when it was loaded.
+                const now = new Date();
+                const formattedTimestamp = now.toLocaleString([], {
+                    year: 'numeric', month: 'short', day: 'numeric',
+                    hour: '2-digit', minute: '2-digit'
+                });
+                lastUpdateElement.innerHTML = `Informações carregadas: ${formattedTimestamp}`;
+            }
+        });
+    </script>
+</body>
+</html>
