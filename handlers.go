@@ -345,11 +345,11 @@ var translations = map[string]map[string]string{
 		"next":                   "Próxima",
 
 		// --- NEW for about.html ---
-		"about_title":           "Sobre Esta Aplicação",
-		"about_what_is_this":    "🏛️ O Que é Este Site?",
+		"about_title":           "Sobre",
+		"about_what_is_this":    "🏛️ O que é esse site?",
 		"about_welcome":         "Bem-vindo! O objetivo deste site é coletar todas as informações públicas do Projeto Yufa, seja no site oficial, no jogo ou no Discord, e organizá-las em um só lugar, de forma fácil de pesquisar e consultar.",
 		"about_all_info_public": "Todas as informações aqui são publicamente acessíveis. Porém, algumas delas são difíceis de encontrar ou exigem um grande trabalho para se extrair certas informações. Por esse motivo, criei este site, que está sendo atualizado constantemente.",
-		"about_warnings":        "⚠️ Avisos Importantes",
+		"about_warnings":        "⚠️ Avisos",
 		"about_please_read":     "Por favor, leia os seguintes pontos com atenção:",
 		"about_warning_1":       "<strong>Não</strong> considere como fonte única da verdade as informações contidas neste site, pois aqui podem existir <strong>inconsistências</strong>, já que ele coleta informações em lugares diferentes, em diferentes horários e dias.",
 		"about_warning_2":       "Algumas <strong>presunções são</strong> cruzamentos de dados que o site faz, mas que <strong>também</strong> podem <strong>conter equívocos</strong> (<strong>por exemplo</strong>: se um item foi vendido ou se a loja fechou, a interpretação da IA sobre as mensagens do Discord, a última vez que o personagem esteve ativo, etc.).",
