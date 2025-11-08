@@ -2817,7 +2817,7 @@ func startBackgroundJobs(ctx context.Context) {
 		{Name: "Guild", Func: scrapeGuilds, Interval: 1 * time.Hour},
 		{Name: "Zeny", Func: scrapeZeny, Interval: 6 * time.Hour},
 		{Name: "MVP Kill", Func: scrapeMvpKills, Interval: 5 * time.Minute},
-		{Name: "PT-Name-Populator", Func: populateMissingPortugueseNames, Interval: 6 * time.Hour},
+		//		{Name: "PT-Name-Populator", Func: populateMissingPortugueseNames, Interval: 6 * time.Hour},
 		{Name: "WoE-Char-Rankings", Func: scrapeWoeCharacterRankings, Interval: 12 * time.Hour},
 	}
 

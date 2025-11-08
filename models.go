@@ -546,6 +546,8 @@ type AdminDashboardData struct {
 	MostVisitedPageCount  int
 	RecentPageViews       []PageViewEntry
 
+	PageVisitCounts []PageViewSummary // <-- ADD THIS LINE
+
 	PageViewsCurrentPage int
 	PageViewsTotalPages  int
 	PageViewsHasPrevPage bool
@@ -715,4 +717,9 @@ type XPCalculatorPageData struct {
 	XPPerHour     int64
 	ShowResults   bool
 	ErrorMessage  string
+}
+
+type PageViewSummary struct {
+	Path string
+	Hits int
 }

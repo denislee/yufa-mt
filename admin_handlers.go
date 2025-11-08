@@ -91,6 +91,31 @@ func getDashboardStats(stats *AdminDashboardData) error {
 	return nil
 }
 
+// getDashboardPageVisitCounts populates the page view summary.
+func getDashboardPageVisitCounts(stats *AdminDashboardData) error {
+	rows, err := db.Query(`
+		SELECT page_path, COUNT(page_path) as Cnt
+		FROM page_views
+		GROUP BY page_path
+		ORDER BY Cnt DESC
+		LIMIT 25
+	`)
+	if err != nil {
+		return fmt.Errorf("could not query for page view counts: %w", err)
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var entry PageViewSummary
+		if err := rows.Scan(&entry.Path, &entry.Hits); err != nil {
+			log.Printf("[W] [Admin/Stats] Failed to scan page view count row: %v", err)
+			continue
+		}
+		stats.PageVisitCounts = append(stats.PageVisitCounts, entry)
+	}
+	return nil
+}
+
 // getDashboardGuilds populates the guild list for the emblem editor.
 func getDashboardGuilds(stats *AdminDashboardData) error {
 	guildRows, err := db.Query("SELECT name, COALESCE(emblem_url, '') FROM guilds ORDER BY name ASC")
@@ -358,6 +383,14 @@ func getAdminDashboardData(r *http.Request) (AdminDashboardData, error) {
 	// Task 6: RMS Live Search (Not Critical)
 	g.Go(func() error {
 		performRMSLiveSearch(r, &stats)
+		return nil
+	})
+
+	g.Go(func() error {
+		if err := getDashboardPageVisitCounts(&stats); err != nil {
+			// Log but don't fail the whole page.
+			log.Printf("[W] [Admin] Could not load page visit counts: %v", err)
+		}
 		return nil
 	})
 

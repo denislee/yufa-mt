@@ -157,6 +157,31 @@
                         </div>
                     </div>
                     <div>
+                        <div class="bg-white p-6 rounded-lg shadow mb-8">
+                            <h2 class="text-xl font-bold mb-4">Page View Summary (Top 25)</h2>
+                            <div class="overflow-x-auto max-h-96 overflow-y-auto">
+                                <table class="min-w-full text-sm table-fixed">
+                                    <thead>
+                                        <tr class="border-b-2 border-gray-200">
+                                            <th class="text-left font-semibold text-gray-600 uppercase tracking-wider py-2 w-10/12">Page Path</th>
+                                            <th class="text-right font-semibold text-gray-600 uppercase tracking-wider py-2 w-2/12">Hits</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody class="divide-y divide-gray-200">
+                                        {{range .PageVisitCounts}}
+                                        <tr>
+                                            <td class="py-2 pr-2 font-mono truncate" title="{{.Path}}">{{.Path}}</td>
+                                            <td class="py-2 pr-2 text-gray-800 font-mono text-right">{{.Hits}}</td>
+                                        </tr>
+                                        {{else}}
+                                        <tr>
+                                            <td colspan="2" class="py-4 text-center text-gray-500">No page views found.</td>
+                                        </tr>
+                                        {{end}}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
                         <div class="bg-white p-6 rounded-lg shadow">
                             <h2 class="text-xl font-bold mb-4">Recent Page Views</h2>
                             <div class="overflow-x-auto">
@@ -466,6 +491,7 @@
                                     </table>
                                 </div>
                                 <button type="submit" class="mt-4 bg-red-600 hover:bg-red-800 text-white font-bold py-2 px-4 rounded">Delete Selected Entries</button>
+
                             </form>
                             {{else}}
                                 {{if .RMSCacheSearchQuery}}
