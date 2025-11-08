@@ -69,7 +69,7 @@
                             <th class="px-3 py-2" style="width: 100px;">{{.Page.T.channel}}</th>
                             {{end}}
                             
-                            {{if and (ne .Data.ActiveChannel "Drop") (ne .Data.ActiveChannel "Announcement")}}
+                            {{if and (ne .Data.ActiveChannel "Drop") (ne .Data.ActiveChannel "Announcement") (ne .Data.ActiveChannel "Event")}}
                             <th class="px-3 py-2" style="width: 150px;">{{.Page.T.character}}</th>
                             {{end}}
 
@@ -90,7 +90,7 @@
                             </td>
                             {{end}}
                             
-                            {{if and (ne $.Data.ActiveChannel "Drop") (ne $.Data.ActiveChannel "Announcement")}} {{/* <-- MODIFIED */}}
+                            {{if and (ne $.Data.ActiveChannel "Drop") (ne $.Data.ActiveChannel "Announcement") (ne $.Data.ActiveChannel "Event")}} {{/* <-- MODIFIED */}}
                             <td class="px-3 py-2 whitespace-nowrap font-semibold text-xs">
                                 {{if ne .CharacterName "System"}}
                                     <a href="/character?name={{.CharacterName}}" class="hover:underline {{if or (eq .Channel "Drop") (eq .CharacterName "System")}}text-yellow-300 hover:text-yellow-200{{else}}text-blue-600 hover:text-blue-800{{end}}">
@@ -120,7 +120,7 @@
                         {{else}}
                         <tr>
                             {{/* MODIFIED: Use .Data and .Page.T */}}
-                            <td colspan="{{if eq .Data.ActiveChannel "all"}}4{{else if or (eq .Data.ActiveChannel "Drop") (eq .Data.ActiveChannel "Announcement")}}2{{else}}3{{end}}" class="px-3 py-4 text-center text-gray-500">{{.Page.T.no_chat_messages}}</td>
+                            <td colspan="{{if eq .Data.ActiveChannel "all"}}4{{else if or (eq .Data.ActiveChannel "Drop") (eq .Data.ActiveChannel "Announcement") (eq .Data.ActiveChannel "Event")}}2{{else}}3{{end}}" class="px-3 py-4 text-center text-gray-500">{{.Page.T.no_chat_messages}}</td>
                         </tr>
                         {{end}}
                     </tbody>
