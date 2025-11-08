@@ -354,7 +354,7 @@ var translations = map[string]map[string]string{
 		"about_warning_1":       "<strong>Não</strong> considere como fonte única da verdade as informações contidas neste site, pois aqui podem existir <strong>inconsistências</strong>, já que ele coleta informações em lugares diferentes, em diferentes horários e dias.",
 		"about_warning_2":       "Algumas <strong>presunções são</strong> cruzamentos de dados que o site faz, mas que <strong>também</strong> podem <strong>conter equívocos</strong> (<strong>por exemplo</strong>: se um item foi vendido ou se a loja fechou, a interpretação da IA sobre as mensagens do Discord, a última vez que o personagem esteve ativo, etc.).",
 		"about_warning_3":       "As informações podem estar atrasadas. Como o site tira uma \"fotografia\" de diversos estados das suas fontes em diferentes intervalos, podem existir informações desatualizadas que <strong>não</strong> refletem o presente. Sempre verifique o indicador no canto superior direito para ver quando a informação foi atualizada.",
-		"about_warning_4":       "<strong>Este</strong> site <strong>é</strong> completely independente e <strong>não</strong> possui nenhum envolvimento de qualquer pessoa da <strong>administração</strong> do Projeto Yufa. A única <strong>concessão</strong> por parte dos administradores foi a de <strong>não</strong> bloquear o acesso deste site ao site oficial do Projeto Yufa. <strong>Caso</strong> eles entendam que este site prejudica de alguma maneira o servidor, a comunidade ou o <strong>funcionamento</strong> do Projeto Yufa, <strong>retirarei</strong> o site do ar prontamente.",
+		"about_warning_4":       "<strong>Este</strong> site <strong>é</strong> completamente independente e <strong>não</strong> possui nenhum envolvimento de qualquer pessoa da <strong>administração</strong> do Projeto Yufa. A única <strong>concessão</strong> por parte dos administradores foi a de <strong>não</strong> bloquear o acesso deste site ao site oficial do Projeto Yufa. <strong>Caso</strong> eles entendam que este site prejudica de alguma maneira o servidor, a comunidade ou o <strong>funcionamento</strong> do Projeto Yufa, <strong>retirarei</strong> o site do ar prontamente.",
 		"info_loaded_at":        "Informações carregadas: %s",
 
 		// --- NEW for character_detail.html ---
@@ -1981,7 +1981,13 @@ func playerCountHandler(w http.ResponseWriter, r *http.Request) {
 			continue
 		}
 		point.SellerCount = int(sellerCount.Int64)
+
+		// --- MODIFICATION: Clamp Delta to 0 ---
 		point.Delta = point.Count - point.SellerCount
+		if point.Delta < 0 {
+			point.Delta = 0
+		}
+		// --- END MODIFICATION ---
 
 		if parsedTime, err := time.Parse(time.RFC3339, timestampStr); err == nil {
 			point.Timestamp = parsedTime.Format("2006-01-02 15:04")
@@ -1992,7 +1998,7 @@ func playerCountHandler(w http.ResponseWriter, r *http.Request) {
 		playerHistory = append(playerHistory, point)
 
 		// --- NEW: Calculate interval stats ---
-		activePlayers := point.Delta
+		activePlayers := point.Delta // This now uses the clamped (>= 0) delta
 		if maxActiveInterval == -1 || activePlayers > maxActiveInterval {
 			maxActiveInterval = activePlayers
 			maxActiveIntervalTime = point.Timestamp
@@ -2010,11 +2016,23 @@ func playerCountHandler(w http.ResponseWriter, r *http.Request) {
 
 	var latestCount, latestSellerCount int
 	db.QueryRow("SELECT count, seller_count FROM player_history ORDER BY timestamp DESC LIMIT 1").Scan(&latestCount, &latestSellerCount)
+
+	// --- MODIFICATION: Clamp Latest Active Players to 0 ---
 	latestActivePlayers := latestCount - latestSellerCount
+	if latestActivePlayers < 0 {
+		latestActivePlayers = 0
+	}
+	// --- END MODIFICATION ---
 
 	var historicalMaxActive int
 	var historicalMaxTimestampStr sql.NullString
 	db.QueryRow("SELECT (count - COALESCE(seller_count, 0)), timestamp FROM player_history ORDER BY 1 DESC LIMIT 1").Scan(&historicalMaxActive, &historicalMaxTimestampStr)
+
+	// --- MODIFICATION: Clamp Historical Max to 0 ---
+	if historicalMaxActive < 0 {
+		historicalMaxActive = 0
+	}
+	// --- END MODIFICATION ---
 
 	historicalMaxTime := "N/A"
 	if historicalMaxTimestampStr.Valid {
