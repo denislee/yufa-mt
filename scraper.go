@@ -87,6 +87,8 @@ type chatPacketDefinition struct {
 	headerLength  int    // The length of the header to subtract from the packet length field
 }
 
+// in scraper.go
+
 var (
 	knownChatPackets = []chatPacketDefinition{
 		// Standard chat
@@ -96,7 +98,9 @@ var (
 		// Channel chat (e.g., [Trade], [Global])
 		{prefix: []byte{0xc1, 0x02}, messageOffset: 12, headerLength: 12},
 		// Drop notification
-		{prefix: []byte{0x9a, 0x00}, messageOffset: 4, headerLength: 4}, // <-- ADD THIS LINE
+		{prefix: []byte{0x9a, 0x00}, messageOffset: 4, headerLength: 4},
+		// System/Event Announcement (Invasion, WoE, etc.)
+		{prefix: []byte{0xc3, 0x01}, messageOffset: 16, headerLength: 16}, // <-- ADD THIS LINE
 	}
 )
 
@@ -2704,6 +2708,11 @@ func startChatPacketCapture(ctx context.Context) {
 							// Otherwise, it's a general announcement.
 							channel = "Announcement"
 						}
+						charName = "System"
+						chatMsg = message
+					} else if bytes.Equal(def.prefix, []byte{0xc3, 0x01}) {
+						// This is a System/Event announcement packet (e.g., Invasion)
+						channel = "Event"
 						charName = "System"
 						chatMsg = message
 					} else if strings.HasPrefix(message, "[") && strings.Contains(message, "] ") {
