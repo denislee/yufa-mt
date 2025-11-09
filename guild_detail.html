@@ -131,7 +131,7 @@
                     </div>
 
                     {{if gt .Data.ChangelogPagination.TotalPages 1}}
-                        {{$filter := (print "&name=" .Data.Guild.Name | urlquery "&sort_by=" .Data.SortBy "&order=" .Data.Order)}}
+                        {{$filter := .Data.Filter}}
                         {{template "pagination" (dict "Page" .Page "Pagination" .Data.ChangelogPagination "Filter" $filter)}}
                     {{end}}
                     {{else}}

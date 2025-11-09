@@ -359,6 +359,7 @@ type GuildDetailPageData struct {
 	ChangelogEntries    []CharacterChangelog
 	ChangelogPagination PaginationData
 	PageTitle           string
+	Filter              template.URL // <-- ADD THIS
 }
 
 // --- NEW STRUCT for WoE Guild Rankings ---

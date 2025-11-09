@@ -2770,6 +2770,20 @@ func guildDetailHandler(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	// --- ADD THIS BLOCK ---
+	// This filter is for the changelog pagination. It must preserve
+	// the guild name and the member list's sort order.
+	filterValues := url.Values{}
+	filterValues.Set("name", guildName) // 'name' is the required param for this page
+	filterValues.Set("sort_by", sortBy) // Add the member list sort params
+	filterValues.Set("order", order)
+
+	var filterString string
+	if encodedFilter := filterValues.Encode(); encodedFilter != "" {
+		filterString = "&" + encodedFilter
+	}
+	// --- END BLOCK ---
+
 	data := GuildDetailPageData{
 		Guild:                 g,
 		Members:               members,
@@ -2781,6 +2795,7 @@ func guildDetailHandler(w http.ResponseWriter, r *http.Request) {
 		ChangelogEntries:      changelogEntries,
 		ChangelogPagination:   pagination,
 		PageTitle:             g.Name,
+		Filter:                template.URL(filterString), // <-- ADD THIS
 	}
 	renderTemplate(w, r, "guild_detail.html", data)
 }
