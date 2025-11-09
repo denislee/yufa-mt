@@ -6,7 +6,7 @@
     <title>{{.Page.T.recent_market_activity}} - Yufa Market Tracker</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
-        html { font-size: 110%; }
+        html { font-size: 100%; }
         .container {
             max-width: 95% !important;
         }
@@ -43,12 +43,12 @@
         
         <div class="space-y-4">
             {{range .Data.MarketEvents}}
-                <div class="bg-white shadow rounded-lg p-3 flex flex-col sm:flex-row items-start sm:items-center gap-3">
+                <div class="bg-white shadow rounded-lg p-3 flex flex-col sm:flex-row items-start sm:items-center gap-3 text-xs">
                     <div class="flex-shrink-0">
                         <img src="https://static.divine-pride.net/images/items/item/{{.ItemID}}.png" alt="" class="w-8 h-8" style="image-rendering: pixelated;">
                     </div>
                     <div class="flex-1 min-w-0">
-                        <div class="text-sm">
+                        <div>
                             <a href="/item?name={{.ItemName | urlquery}}" class="font-semibold text-gray-800 hover:text-blue-600 hover:underline">
                                 {{if and (eq $.Page.Lang "pt") .NamePT.Valid}}
                                     {{.NamePT.String}}
@@ -69,7 +69,7 @@
                         </div>
                         
                         {{if .Details.price}}
-                        <div class="text-sm text-gray-500 mt-1">
+                        <div class="text-gray-500 mt-1">
                             {{if or (eq .EventType "REMOVED") (eq .EventType "SOLD")}}
                                 <span class="line-through">{{.Details.price}}z</span>
                             {{else}}
@@ -131,6 +131,7 @@
                     const secondsPast = Math.floor((now.getTime() - lastUpdateDate.getTime()) / 1000);
                     let timeAgoString;
                     
+                    // --- MODIFIED: Removed 'atrás' to fix duplicate word ---
                     if (lang === 'pt') {
                         if (secondsPast < 5) timeAgoString = 'agora mesmo';
                         else if (secondsPast < 60) timeAgoString = `${secondsPast}s`;
@@ -138,6 +139,7 @@
                         else if (secondsPast < 86400) timeAgoString = `${Math.floor(secondsPast / 3600)}h`;
                         else timeAgoString = `${Math.floor(secondsPast / 86400)}d`;
                     } else {
+                    // --- END MODIFICATION ---
                         if (secondsPast < 5) timeAgoString = 'just now';
                         else if (secondsPast < 60) timeAgoString = `${secondsPast}s ago`;
                         else if (secondsPast < 3600) timeAgoString = `${Math.floor(secondsPast / 60)}m ago`;
