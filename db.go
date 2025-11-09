@@ -11,6 +11,7 @@ import (
 var db *sql.DB
 
 const (
+	// Core Market Tables
 	createItemsTableSQL = `
 	CREATE TABLE IF NOT EXISTS items (
 		"id" INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
@@ -25,7 +26,6 @@ const (
 		"map_coordinates" TEXT,
 		"is_available" INTEGER DEFAULT 1
 	);`
-
 	createEventsTableSQL = `
 	CREATE TABLE IF NOT EXISTS market_events (
 		"id" INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
@@ -35,12 +35,14 @@ const (
 		"item_id" INTEGER,
 		"details" TEXT
 	);`
-
 	createHistoryTableSQL = `
 	CREATE TABLE IF NOT EXISTS scrape_history (
 		"timestamp" TEXT NOT NULL PRIMARY KEY
 	);`
+)
 
+const (
+	// Item Definition & Cache Tables
 	createRMSCacheTableSQL = `
 	CREATE TABLE IF NOT EXISTS rms_item_cache (
 		"item_id" INTEGER NOT NULL PRIMARY KEY,
@@ -60,7 +62,6 @@ const (
 		"obtainable_from_json" TEXT,
 		"last_checked" TEXT
 	);`
-
 	createRMSFTSSTableSQL = `
 	CREATE VIRTUAL TABLE IF NOT EXISTS rms_item_cache_fts USING fts5(
 		name, 
@@ -68,7 +69,6 @@ const (
 		content='rms_item_cache', 
 		content_rowid='item_id'
 	);`
-
 	createTriggersSQL = `
 	CREATE TRIGGER IF NOT EXISTS rms_item_cache_ai AFTER INSERT ON rms_item_cache BEGIN
 		INSERT INTO rms_item_cache_fts(rowid, name, name_pt) 
@@ -85,14 +85,33 @@ const (
 		VALUES (new.item_id, new.name, new.name_pt);
 	END;
 	`
+	createInternalItemDBTableSQL = `
+	CREATE TABLE IF NOT EXISTS internal_item_db (
+		"item_id" INTEGER NOT NULL PRIMARY KEY,
+		"aegis_name" TEXT,
+		"name" TEXT,
+		"name_pt" TEXT,
+		"type" TEXT,
+		"buy" INTEGER,
+		"sell" INTEGER,
+		"weight" INTEGER,
+		"slots" INTEGER,
+		"jobs" TEXT,
+		"locations" TEXT,
+		"script" TEXT,
+		"equip_script" TEXT,
+		"unequip_script" TEXT
+	);`
+)
 
+const (
+	// Player & Guild Tables
 	createPlayerHistoryTableSQL = `
 	CREATE TABLE IF NOT EXISTS player_history (
 		"timestamp" TEXT NOT NULL PRIMARY KEY,
 		"count" INTEGER NOT NULL,
 		"seller_count" INTEGER
 	);`
-
 	createGuildsTableSQL = `
 	CREATE TABLE IF NOT EXISTS guilds (
 		"rank" INTEGER NOT NULL,
@@ -103,7 +122,6 @@ const (
 		"emblem_url" TEXT,
 		"last_updated" TEXT NOT NULL
 	);`
-
 	createCharactersTableSQL = `
 	CREATE TABLE IF NOT EXISTS characters (
 		"rank" INTEGER NOT NULL,
@@ -117,7 +135,6 @@ const (
 		"last_active" TEXT NOT NULL,
 		FOREIGN KEY(guild_name) REFERENCES guilds(name) ON DELETE SET NULL ON UPDATE CASCADE
 	);`
-
 	createChangelogTableSQL = `
 	CREATE TABLE IF NOT EXISTS character_changelog (
 		"id" INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
@@ -126,7 +143,6 @@ const (
 		"activity_description" TEXT NOT NULL,
 		FOREIGN KEY(character_name) REFERENCES characters(name) ON DELETE CASCADE ON UPDATE CASCADE
 	);`
-
 	createChangelogViewSQL = `
 	CREATE VIEW IF NOT EXISTS v_character_changelog AS
 		SELECT
@@ -138,14 +154,31 @@ const (
 			character_changelog
 		ORDER BY
 			change_time DESC;`
+	createWoeCharRankingsTableSQL = `
+	CREATE TABLE IF NOT EXISTS woe_character_rankings (
+		"name" TEXT NOT NULL PRIMARY KEY, -- Changed from char_id
+		"class" TEXT NOT NULL,
+		"guild_id" INTEGER,
+		"guild_name" TEXT,
+		"kill_count" INTEGER NOT NULL,
+		"death_count" INTEGER NOT NULL,
+		"damage_done" INTEGER NOT NULL,
+		"emperium_kill" INTEGER NOT NULL,
+		"healing_done" INTEGER NOT NULL,
+		"score" INTEGER NOT NULL,
+		"points" INTEGER NOT NULL,
+		"last_updated" TEXT NOT NULL
+	);`
+)
 
+const (
+	// Visitor Tracking Tables
 	createVisitorsTableSQL = `
 	CREATE TABLE IF NOT EXISTS visitors (
 		"visitor_hash" TEXT NOT NULL PRIMARY KEY,
 		"first_visit" TEXT NOT NULL,
 		"last_visit" TEXT NOT NULL
 	);`
-
 	createPageViewsTableSQL = `
 	CREATE TABLE IF NOT EXISTS page_views (
 		"id" INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
@@ -153,10 +186,12 @@ const (
 		"page_path" TEXT NOT NULL,
 		"view_timestamp" TEXT NOT NULL
 	);`
-
 	createPageIndexSQL = `
 	CREATE INDEX IF NOT EXISTS idx_page_path ON page_views (page_path);`
+)
 
+const (
+	// Discord Trading Post Tables
 	createTradingPostsTableSQL = `
 	CREATE TABLE IF NOT EXISTS trading_posts (
 		"id" INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
@@ -168,7 +203,6 @@ const (
 		"created_at" TEXT NOT NULL,
 		"edit_token_hash" TEXT NOT NULL
 	);`
-
 	createTradingPostItemsTableSQL = `
 	CREATE TABLE IF NOT EXISTS trading_post_items (
 		"id" INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
@@ -187,42 +221,10 @@ const (
 		"card4" TEXT,
 		FOREIGN KEY(post_id) REFERENCES trading_posts(id) ON DELETE CASCADE
 	);`
+)
 
-	// --- NEW TABLE for YAML Item DB ---
-	createInternalItemDBTableSQL = `
-	CREATE TABLE IF NOT EXISTS internal_item_db (
-		"item_id" INTEGER NOT NULL PRIMARY KEY,
-		"aegis_name" TEXT,
-		"name" TEXT,
-		"name_pt" TEXT,
-		"type" TEXT,
-		"buy" INTEGER,
-		"sell" INTEGER,
-		"weight" INTEGER,
-		"slots" INTEGER,
-		"jobs" TEXT,
-		"locations" TEXT,
-		"script" TEXT,
-		"equip_script" TEXT,
-		"unequip_script" TEXT
-	);`
-
-	createWoeCharRankingsTableSQL = `
-	CREATE TABLE IF NOT EXISTS woe_character_rankings (
-		"name" TEXT NOT NULL PRIMARY KEY, -- Changed from char_id
-		"class" TEXT NOT NULL,
-		"guild_id" INTEGER,
-		"guild_name" TEXT,
-		"kill_count" INTEGER NOT NULL,
-		"death_count" INTEGER NOT NULL,
-		"damage_done" INTEGER NOT NULL,
-		"emperium_kill" INTEGER NOT NULL,
-		"healing_done" INTEGER NOT NULL,
-		"score" INTEGER NOT NULL,
-		"points" INTEGER NOT NULL,
-		"last_updated" TEXT NOT NULL
-	);`
-
+const (
+	// Chat Tables
 	createChatTableSQL = `
 	CREATE TABLE IF NOT EXISTS chat (
 		"id" INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
@@ -231,7 +233,6 @@ const (
 		"character_name" TEXT NOT NULL,
 		"message" TEXT NOT NULL
 	);`
-
 	createChatActivityLogTableSQL = `
 	CREATE TABLE IF NOT EXISTS chat_activity_log (
 		"timestamp" TEXT NOT NULL PRIMARY KEY -- Stores the timestamp truncated to the minute
@@ -276,6 +277,7 @@ func applyMigrations(db *sql.DB) error {
 	return nil
 }
 
+// initDB opens the database connection and orchestrates the schema setup.
 func initDB(filepath string) (*sql.DB, error) {
 	var err error
 	db, err = sql.Open("sqlite3", filepath)
@@ -283,7 +285,27 @@ func initDB(filepath string) (*sql.DB, error) {
 		return nil, err
 	}
 
-	// Sequentially execute all table creation queries
+	if err := createTables(db); err != nil {
+		return nil, fmt.Errorf("failed to create tables: %w", err)
+	}
+
+	if err := createIndexes(db); err != nil {
+		return nil, fmt.Errorf("failed to create indexes: %w", err)
+	}
+
+	if err := createDynamicTables(db); err != nil {
+		return nil, fmt.Errorf("failed to create dynamic tables: %w", err)
+	}
+
+	if err := applyMigrations(db); err != nil {
+		return nil, fmt.Errorf("failed to apply migrations: %w", err)
+	}
+
+	return db, nil
+}
+
+// createTables executes all the CREATE TABLE and CREATE VIEW statements.
+func createTables(db *sql.DB) error {
 	queries := map[string]string{
 		"items":                  createItemsTableSQL,
 		"market_events":          createEventsTableSQL,
@@ -295,23 +317,30 @@ func initDB(filepath string) (*sql.DB, error) {
 		"v_character_changelog":  createChangelogViewSQL,
 		"visitors":               createVisitorsTableSQL,
 		"page_views":             createPageViewsTableSQL,
-		"idx_page_path":          createPageIndexSQL,
 		"trading_posts":          createTradingPostsTableSQL,
 		"trading_post_items":     createTradingPostItemsTableSQL,
 		"internal_item_db":       createInternalItemDBTableSQL,
 		"woe_character_rankings": createWoeCharRankingsTableSQL,
 		"chat":                   createChatTableSQL,
 		"chat_activity_log":      createChatActivityLogTableSQL,
+		// RMS FTS tables and triggers are not in the original map, adding them.
+		"rms_item_cache":     createRMSCacheTableSQL,
+		"rms_item_cache_fts": createRMSFTSSTableSQL,
+		"rms_triggers":       createTriggersSQL,
 	}
 
 	for name, query := range queries {
-		if _, err = db.Exec(query); err != nil {
-			return nil, fmt.Errorf("could not create table/view '%s': %w", name, err)
+		if _, err := db.Exec(query); err != nil {
+			return fmt.Errorf("could not create table/view '%s': %w", name, err)
 		}
 	}
+	return nil
+}
 
-	// This list contains all the recommended indexes for performance.
+// createIndexes executes all the CREATE INDEX statements.
+func createIndexes(db *sql.DB) error {
 	indexQueries := []string{
+		createPageIndexSQL, // This was missed in the original map
 		// 'items' table
 		`CREATE INDEX IF NOT EXISTS idx_items_name_available ON items (name_of_the_item, is_available);`,
 		`CREATE INDEX IF NOT EXISTS idx_items_item_id ON items (item_id);`,
@@ -349,13 +378,16 @@ func initDB(filepath string) (*sql.DB, error) {
 		`CREATE INDEX IF NOT EXISTS idx_chat_timestamp_desc ON chat (timestamp DESC);`,
 	}
 
-	// Execute all index creation queries
 	for i, query := range indexQueries {
-		if _, err = db.Exec(query); err != nil {
-			return nil, fmt.Errorf("could not create index #%d: %w", i, err)
+		if _, err := db.Exec(query); err != nil {
+			return fmt.Errorf("could not create index #%d: %w", i, err)
 		}
 	}
+	return nil
+}
 
+// createDynamicTables creates tables whose schemas depend on runtime variables.
+func createDynamicTables(db *sql.DB) error {
 	// --- Dynamic Table Creation (MVP Kills) ---
 	var mvpColumns []string
 	mvpColumns = append(mvpColumns, `"character_name" TEXT NOT NULL PRIMARY KEY`)
@@ -369,14 +401,9 @@ func initDB(filepath string) (*sql.DB, error) {
 		FOREIGN KEY(character_name) REFERENCES characters(name) ON DELETE CASCADE ON UPDATE CASCADE
 	);`, strings.Join(mvpColumns, ",\n\t\t"))
 
-	if _, err = db.Exec(createMvpKillsTableSQL); err != nil {
-		return nil, fmt.Errorf("could not create character_mvp_kills table: %w", err)
+	if _, err := db.Exec(createMvpKillsTableSQL); err != nil {
+		return fmt.Errorf("could not create character_mvp_kills table: %w", err)
 	}
 
-	// --- Migrations ---
-	if err := applyMigrations(db); err != nil {
-		return nil, err
-	}
-
-	return db, nil
+	return nil
 }
