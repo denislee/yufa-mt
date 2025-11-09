@@ -403,6 +403,8 @@ type WoePageData struct {
 	SearchQuery    string
 	PageTitle      string
 	Filter         template.URL // <-- ADD THIS
+	AllClasses     []string     // <-- ADD THIS LINE
+	SelectedClass  string       // <-- ADD THIS LINE
 }
 
 type FlatTradingPostItem struct {

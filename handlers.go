@@ -418,7 +418,7 @@ var (
 			"inactive":         "Inativo",
 			"last_active":      "Visto por último",
 			"mvp_kills_total":  "MVPs Mortos (%d Total)",
-			"kills":            "mortes",
+			"kills":            "abates",
 			"no_mvp_kills":     "Este jogador não tem mortes de MVP registradas.",
 			"char_changelog":   "Histórico do Personagem",
 			"timestamp":        "Data/Hora",
@@ -597,6 +597,7 @@ var (
 			"kd_ratio":           "K/D",
 			"total_damage":       "Dano Total",
 			"total_healing":      "Cura Total",
+			"deaths":             "Mortes",
 
 			// --- NEW for xp_calculator.html ---
 			"xp_calc_title":    "Calculadora XP",
@@ -2718,6 +2719,7 @@ func woeRankingsHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	searchQuery := r.FormValue("query")
 	activeTab := r.FormValue("tab")
+	selectedClass := r.FormValue("class_filter") // <-- ADD THIS
 	if activeTab == "" {
 		activeTab = "characters" // Default to character view
 	}
@@ -2829,6 +2831,11 @@ func woeRankingsHandler(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	// --- ADD THIS ---
+	// Fetch all classes for the filter dropdown
+	allClasses := getAllClasses()
+	// --- END ADDITION ---
+
 	// Build Filter URL
 	filterValues := url.Values{}
 	filterValues.Set("tab", activeTab)
@@ -2850,7 +2857,9 @@ func woeRankingsHandler(w http.ResponseWriter, r *http.Request) {
 		Order:          order,
 		SearchQuery:    searchQuery,
 		PageTitle:      "WoE Rankings",
-		Filter:         template.URL(filterString), // <-- ADDED
+		Filter:         template.URL(filterString),
+		AllClasses:     allClasses,    // <-- ADDED
+		SelectedClass:  selectedClass, // <-- ADD THIS
 	}
 	renderTemplate(w, r, "woe_rankings.html", data)
 }
