@@ -80,29 +80,23 @@ func storeItemsInDB(items []ItemDBEntry) error {
 
 	var successCount int
 	for _, item := range items {
-		// --- MODIFICATION: Remove query to rms_item_cache ---
-		var namePT sql.NullString // Will be NULL by default
-		// err = tx.QueryRow("SELECT name_pt FROM rms_item_cache WHERE item_id = ?", item.ID).Scan(&namePT)
-		// if err != nil && err != sql.ErrNoRows {
-		// 	// Log the error but continue, as this isn't fatal
-		// 	log.Printf("[W] [ItemDB] Could not query rms_item_cache for item %d: %v", item.ID, err)
-		// }
-		// --- END MODIFICATION ---
+		// name_pt is now populated by a separate background job (populateMissingPortugueseNames)
+		// We insert NULL here.
+		var namePT sql.NullString
 
-		// Convert maps to JSON strings for storage
 		jobsJSON, err := json.Marshal(item.Jobs)
 		if err != nil {
 			log.Printf("[W] [ItemDB] Could not marshal Jobs for item %d: %v", item.ID, err)
-			jobsJSON = []byte("{}") // Store empty JSON object
+			jobsJSON = []byte("{}")
 		}
 
 		locationsJSON, err := json.Marshal(item.Locations)
 		if err != nil {
 			log.Printf("[W] [ItemDB] Could not marshal Locations for item %d: %v", item.ID, err)
-			locationsJSON = []byte("{}") // Store empty JSON object
+			locationsJSON = []byte("{}")
 		}
 
-		// --- MODIFIED: Convert *int64 to sql.NullInt64 ---
+		// Convert pointer types to sql.NullInt64 for safe insertion
 		nullBuy := toNullInt64(item.Buy)
 		nullSell := toNullInt64(item.Sell)
 		nullWeight := toNullInt64(item.Weight)
@@ -113,19 +107,17 @@ func storeItemsInDB(items []ItemDBEntry) error {
 			item.AegisName,
 			item.Name,
 			item.Type,
-			nullBuy,    // Use the converted value
-			nullSell,   // Use the converted value
-			nullWeight, // Use the converted value
-			nullSlots,  // Use the converted value
+			nullBuy,
+			nullSell,
+			nullWeight,
+			nullSlots,
 			string(jobsJSON),
 			string(locationsJSON),
 			item.Script,
 			item.EquipScript,
 			item.UnEquipScript,
-			namePT, // Added the Portuguese name (which is now NULL)
+			namePT, // Insert NULL for name_pt
 		)
-		// --- END MODIFICATION ---
-
 		if err != nil {
 			log.Printf("[W] [ItemDB] Failed to insert item %d (%s): %v", item.ID, item.Name, err)
 			continue
@@ -141,14 +133,10 @@ func storeItemsInDB(items []ItemDBEntry) error {
 	return tx.Commit()
 }
 
-// --- NEW HELPER FUNCTION ---
-// toNullInt64 converts a *int64 pointer to a sql.NullInt64 struct
-// for safe database insertion.
+// toNullInt64 converts a *int64 pointer to a sql.NullInt64 struct.
 func toNullInt64(ptr *int64) sql.NullInt64 {
 	if ptr == nil {
 		return sql.NullInt64{Valid: false}
 	}
 	return sql.NullInt64{Int64: *ptr, Valid: true}
 }
-
-// --- END NEW HELPER FUNCTION ---

@@ -1,7 +1,6 @@
 package main
 
 import (
-	"fmt"
 	"log"
 	"net/http"
 	"strconv"
@@ -82,6 +81,10 @@ var levelXPCumulative = make(map[int]int64)
 // --- ADDED: Job Level Cumulative Map ---
 var jobLevelXPCumulative = make(map[int]int64)
 
+// --- ADDED: Slices for the calculator ---
+var baseXPTable []int64
+var jobXPTable []int64
+
 // init function to populate the cumulative map
 // This will run automatically as it's part of the 'main' package
 func init() {
@@ -116,143 +119,124 @@ func init() {
 	}
 	log.Println("[I] [XP] Cumulative Job XP table populated.")
 	// --- END ADDITION ---
+
+	// --- ADDED: Populate the delta slices for the calculator ---
+	// baseXPTable[0] will be XP for 1->2 (which is levelXPDelta[1])
+	// Max base level is 99, so there are 98 deltas (1->2, 2->3, ... 98->99)
+	baseXPTable = make([]int64, 98)
+	for i := 0; i < 98; i++ {
+		baseXPTable[i] = levelXPDelta[i+1]
+	}
+
+	// jobXPTable[0] will be XP for 1->2 (which is jobLevelXPDelta[1])
+	// Max job level is 50, so there are 49 deltas (1->2, 2->3, ... 49->50)
+	jobXPTable = make([]int64, 49)
+	for i := 0; i < 49; i++ {
+		jobXPTable[i] = jobLevelXPDelta[i+1]
+	}
+	log.Println("[I] [XP] Delta slices populated.")
+	// --- END ADDITION ---
 }
 
 // xpCalculatorHandler handles the new XP calculator page
 func xpCalculatorHandler(w http.ResponseWriter, r *http.Request) {
 	data := XPCalculatorPageData{
 		PageTitle:      "XP Calculator",
-		LastScrapeTime: GetLastScrapeTime(), //
-		ShowResults:    false,
-		// Default values
+		LastScrapeTime: GetLastScrapeTime(),
+		// Default form values
 		StartLevel:  1,
-		StartPerc:   0.0,
-		EndLevel:    1,
-		EndPerc:     0.0,
-		TimeHours:   1,      // <-- CHANGED
-		TimeMinutes: 0,      // <-- ADDED
-		CalcType:    "base", // <-- ADDED
+		StartPerc:   0,
+		EndLevel:    99,
+		EndPerc:     0,
+		TimeHours:   0,
+		TimeMinutes: 0,
+		CalcType:    "base", // Default to Base Level
 	}
 
-	// Handle GET request (show empty form)
-	if r.Method != http.MethodPost {
-		renderTemplate(w, r, "xp_calculator.html", data) //
-		return
+	if r.Method == http.MethodPost {
+		if err := r.ParseForm(); err != nil {
+			data.ErrorMessage = "Error parsing form."
+			renderTemplate(w, r, "xp_calculator.html", data)
+			return
+		}
+
+		// Parse form values with error handling
+		data.StartLevel, _ = strconv.Atoi(r.FormValue("start_level"))
+		data.StartPerc, _ = strconv.ParseFloat(r.FormValue("start_perc"), 64)
+		data.EndLevel, _ = strconv.Atoi(r.FormValue("end_level"))
+		data.EndPerc, _ = strconv.ParseFloat(r.FormValue("end_perc"), 64)
+		data.TimeHours, _ = strconv.Atoi(r.FormValue("time_hours"))
+		data.TimeMinutes, _ = strconv.Atoi(r.FormValue("time_minutes"))
+		data.CalcType = r.FormValue("calc_type")
+
+		// Get the correct XP table
+		var xpTable []int64
+		if data.CalcType == "job" {
+			xpTable = jobXPTable
+		} else {
+			xpTable = baseXPTable
+		}
+
+		// Validate inputs
+		// Max level (99 or 50) is allowed as Start or End
+		maxLevel := len(xpTable) + 1 // 98 deltas -> max level 99
+		if data.CalcType == "job" {
+			maxLevel = len(jobXPTable) + 1 // 49 deltas -> max level 50
+		}
+
+		if data.StartLevel < 1 || data.StartLevel > maxLevel ||
+			data.EndLevel < 1 || data.EndLevel > maxLevel ||
+			data.EndLevel < data.StartLevel {
+			data.ErrorMessage = "Invalid level range."
+			renderTemplate(w, r, "xp_calculator.html", data)
+			return
+		}
+		// (Further validation for perc, time, etc. could be added)
+
+		// Calculate total XP
+		startXp := calculateXPTotal(xpTable, data.StartLevel, data.StartPerc)
+		endXp := calculateXPTotal(xpTable, data.EndLevel, data.EndPerc)
+
+		data.TotalXPGained = endXp - startXp
+		if data.TotalXPGained < 0 {
+			data.ErrorMessage = "Final level/XP is lower than initial level/XP."
+			renderTemplate(w, r, "xp_calculator.html", data)
+			return
+		}
+
+		// Calculate time and XP/hr
+		totalMinutes := (data.TimeHours * 60) + data.TimeMinutes
+		if totalMinutes > 0 {
+			totalHours := float64(totalMinutes) / 60.0
+			data.XPPerHour = int64(float64(data.TotalXPGained) / totalHours)
+		}
+
+		data.ShowResults = true
 	}
 
-	// Handle POST request (process form)
-	if err := r.ParseForm(); err != nil {
-		data.ErrorMessage = "Failed to parse form."
-		renderTemplate(w, r, "xp_calculator.html", data) //
-		return
-	}
-
-	// Parse inputs
-	startLvl, _ := strconv.Atoi(r.FormValue("start_level"))
-	startPerc, _ := strconv.ParseFloat(r.FormValue("start_perc"), 64)
-	endLvl, _ := strconv.Atoi(r.FormValue("end_level"))
-	endPerc, _ := strconv.ParseFloat(r.FormValue("end_perc"), 64)
-	// --- CHANGED: Parse new time fields ---
-	timeHours, _ := strconv.Atoi(r.FormValue("time_hours"))
-	timeMinutes, _ := strconv.Atoi(r.FormValue("time_minutes"))
-	calcType := r.FormValue("calc_type")
-	// --- END CHANGE ---
-
-	// Persist form values even if there's an error
-	data.StartLevel = startLvl
-	data.StartPerc = startPerc
-	data.EndLevel = endLvl
-	data.EndPerc = endPerc
-	// --- CHANGED: Persist new fields ---
-	data.TimeHours = timeHours
-	data.TimeMinutes = timeMinutes
-	data.CalcType = calcType
-	// --- END CHANGE ---
-
-	// --- ADDED: Select correct XP maps and max level ---
-	var xpDeltaMap map[int]int64
-	var xpCumulativeMap map[int]int64
-	var maxLevel int
-
-	if calcType == "job" {
-		xpDeltaMap = jobLevelXPDelta
-		xpCumulativeMap = jobLevelXPCumulative
-		maxLevel = 50
-	} else {
-		xpDeltaMap = levelXPDelta
-		xpCumulativeMap = levelXPCumulative
-		maxLevel = 99
-		calcType = "base" // Default to base if value is invalid
-	}
-	// --- END ADDITION ---
-
-	// --- Validation ---
-	// --- CHANGED: Use dynamic maxLevel ---
-	if startLvl < 1 || startLvl > maxLevel || endLvl < 1 || endLvl > maxLevel {
-		data.ErrorMessage = fmt.Sprintf("Levels must be between 1 and %d for the selected type.", maxLevel)
-		renderTemplate(w, r, "xp_calculator.html", data) //
-		return
-	}
-	// --- END CHANGE ---
-	if startPerc < 0 || startPerc > 100 || endPerc < 0 || endPerc > 100 {
-		data.ErrorMessage = "Percentage must be between 0 and 100."
-		renderTemplate(w, r, "xp_calculator.html", data) //
-		return
-	}
-	if endLvl < startLvl || (endLvl == startLvl && endPerc <= startPerc) {
-		data.ErrorMessage = "Final level/percentage must be greater than the initial level/percentage."
-		renderTemplate(w, r, "xp_calculator.html", data) //
-		return
-	}
-	// --- CHANGED: Calculate total time in hours ---
-	timeHoursFloat, _ := strconv.ParseFloat(r.FormValue("time_hours"), 64)
-	timeMinutesFloat, _ := strconv.ParseFloat(r.FormValue("time_minutes"), 64)
-	totalTimeHours := timeHoursFloat + (timeMinutesFloat / 60.0)
-
-	if totalTimeHours <= 0 {
-		totalTimeHours = 1.0 // Default to 1 hour if invalid
-		data.TimeHours = 1
-		data.TimeMinutes = 0
-	}
-	// --- END CHANGE ---
-
-	// --- Calculation ---
-	// 1. Get total XP at start
-	// --- CHANGED: Use selected maps ---
-	startXPCumulative, ok1 := xpCumulativeMap[startLvl]
-	startXPDelt, ok2 := xpDeltaMap[startLvl]
-	if !ok1 || (startLvl < maxLevel && !ok2) { // Allow max level (no delta)
-		data.ErrorMessage = fmt.Sprintf("Could not find level data for level %d.", startLvl)
-		renderTemplate(w, r, "xp_calculator.html", data) //
-		return
-	}
-	if startLvl == maxLevel {
-		startXPDelt = 0
-	} // No delta XP at max level
-	totalStartX := startXPCumulative + int64(float64(startXPDelt)*(startPerc/100.0))
-
-	// 2. Get total XP at end
-	endXPCumulative, ok1 := xpCumulativeMap[endLvl]
-	endXPDelt, ok2 := xpDeltaMap[endLvl]
-	if !ok1 || (endLvl < maxLevel && !ok2) {
-		data.ErrorMessage = fmt.Sprintf("Could not find level data for level %d.", endLvl)
-		renderTemplate(w, r, "xp_calculator.html", data) //
-		return
-	}
-	if endLvl == maxLevel {
-		endXPDelt = 0
-	} // No delta XP at max level
-	totalEndX := endXPCumulative + int64(float64(endXPDelt)*(endPerc/100.0))
-	// --- END CHANGE ---
-
-	// 3. Calculate results
-	totalGained := totalEndX - totalStartX
-	xpPerHour := int64(float64(totalGained) / totalTimeHours)
-
-	// 4. Set data for template
-	data.TotalXPGained = totalGained
-	data.XPPerHour = xpPerHour
-	data.ShowResults = true
-
-	renderTemplate(w, r, "xp_calculator.html", data) //
+	renderTemplate(w, r, "xp_calculator.html", data)
 }
+
+// calculateXPTotal is a helper for the XP calculator.
+func calculateXPTotal(xpTable []int64, level int, percentage float64) int64 {
+	var totalXp int64
+
+	// Add XP from all previous levels
+	// We use level-1 because xpTable is 0-indexed (level 1 is index 0)
+	for i := 0; i < level-1; i++ {
+		totalXp += xpTable[i]
+	}
+
+	// Add the percentage of the current level
+	// Check if level is valid AND not max level (e.g., level-1 must be a valid index)
+	if level > 0 && level-1 < len(xpTable) {
+		currentLevelXp := xpTable[level-1]
+		percentageXp := (percentage / 100.0) * float64(currentLevelXp)
+		totalXp += int64(percentageXp)
+	}
+	// If level-1 is not in the table (i.e., it's max level), we add 0% extra,
+	// which is correct.
+
+	return totalXp
+}
+

@@ -612,29 +612,19 @@ func processPlayerData(playerChan <-chan PlayerCharacter) {
 	log.Printf("[I] [Scraper/Char] Scrape and update process complete.")
 }
 
-// scrapePlayerCharacters is the modified "producer" function.
+// scrapePlayerCharacters is the concurrent "producer" for character data.
 func scrapePlayerCharacters() {
 	log.Println("[I] [Scraper/Char] Starting player character scrape...")
 
-	// Regex definitions (unchanged)
-	rankRegex := regexp.MustCompile(`p\-1 text\-center font\-medium\\",\\"children\\":(\d+)\}\]`)
-	nameRegex := regexp.MustCompile(`max-w-10 truncate p-1 font-semibold">([^<]+)</td>`)
-	baseLevelRegex := regexp.MustCompile(`\\"level\\":(\d+),`)
-	jobLevelRegex := regexp.MustCompile(`\\"job_level\\":(\d+),\\"exp`)
-	expRegex := regexp.MustCompile(`\\"exp\\":(\d+)`)
-	classRegex := regexp.MustCompile(`"hidden text\-sm sm:inline\\",\\"children\\":\\"([^"]+)\\"`)
-
-	// Use the helper to find the last page
 	const firstPageURL = "https://projetoyufa.com/rankings?page=1"
 	lastPage := scraperClient.findLastPage(firstPageURL, "[Characters]")
 
-	// --- Producer-Consumer setup ---
-	playerChan := make(chan PlayerCharacter, 100) // Buffered channel
+	playerChan := make(chan PlayerCharacter, 100)
 	var wg sync.WaitGroup
-	sem := make(chan struct{}, 5) // Concurrency semaphore for scraping
+	sem := make(chan struct{}, 5) // Concurrency semaphore
 
 	// Start the single DB consumer goroutine
-	go processPlayerData(playerChan) // Pass only the channel
+	go processPlayerData(playerChan)
 
 	log.Printf("[I] [Scraper/Char] Scraping all %d pages...", lastPage)
 	for page := 1; page <= lastPage; page++ {
@@ -644,116 +634,34 @@ func scrapePlayerCharacters() {
 			defer wg.Done()
 			defer func() { <-sem }()
 
-			// --- ADDED LOGGING ---
-			if enableCharacterScraperDebugLogs {
-				log.Printf("[D] [Scraper/Char] Goroutine started for page %d.", pageIndex)
-			}
-			// --- END ADDED LOGGING ---
-
-			var bodyContent string
-			var err error
-			var numChars int
+			url := fmt.Sprintf("https://projetoyufa.com/rankings?page=%d", pageIndex)
 			var pagePlayers []PlayerCharacter
 
-			// --- MODIFICATION: Added retry loop for parsing ---
 			for attempt := 1; attempt <= maxParseRetries; attempt++ {
-				url := fmt.Sprintf("https://projetoyufa.com/rankings?page=%d", pageIndex)
-
-				// --- ADDED LOGGING ---
-				if enableCharacterScraperDebugLogs {
-					log.Printf("[D] [Scraper/Char] [Page %d, Att %d] Fetching URL: %s", pageIndex, attempt, url)
-				}
-				// --- END ADDED LOGGING ---
-
-				bodyContent, err = scraperClient.getPage(url, "[Characters]")
+				bodyContent, err := scraperClient.getPage(url, "[Characters]")
 				if err != nil {
 					log.Printf("[E] [Scraper/Char] Network/HTTP error for page %d (attempt %d/%d): %v. Retrying...", pageIndex, attempt, maxParseRetries, err)
-					// This error is from getPage, which *already* retried network issues.
-					// We'll retry the whole thing just in case.
 					time.Sleep(parseRetryDelay)
 					continue
 				}
 
-				// --- ADDED LOGGING ---
-				if enableCharacterScraperDebugLogs {
-					log.Printf("[D] [Scraper/Char] [Page %d, Att %d] Fetched successfully. Body size: %d bytes", pageIndex, attempt, len(bodyContent))
-					log.Printf("[D] [Scraper/Char] [Page %d, Att %d] Parsing content with regex...", pageIndex, attempt)
-				}
-				// --- END ADDED LOGGING ---
-
-				// --- Parsing logic (unchanged from original) ---
-				rankMatches := rankRegex.FindAllStringSubmatch(bodyContent, -1)
-				nameMatches := nameRegex.FindAllStringSubmatch(bodyContent, -1)
-				baseLevelMatches := baseLevelRegex.FindAllStringSubmatch(bodyContent, -1)
-				jobLevelMatches := jobLevelRegex.FindAllStringSubmatch(bodyContent, -1)
-				expMatches := expRegex.FindAllStringSubmatch(bodyContent, -1)
-				classMatches := classRegex.FindAllStringSubmatch(bodyContent, -1)
-
-				// --- ADDED LOGGING ---
-				if enableCharacterScraperDebugLogs {
-					log.Printf("[D] [Scraper/Char] [Page %d, Att %d] Regex match counts: Ranks: %d, Names: %d, BaseLvl: %d, JobLvl: %d, Exp: %d, Class: %d",
-						pageIndex, attempt,
-						len(rankMatches),
-						len(nameMatches),
-						len(baseLevelMatches),
-						len(jobLevelMatches),
-						len(expMatches),
-						len(classMatches))
-				}
-				// --- END ADDED LOGGING ---
-
-				numChars = len(nameMatches)
-				pagePlayers = nil // Reset for this attempt
-
-				if numChars == 0 {
-					// --- THIS IS THE NEW LOGIC ---
-					log.Printf("[W] [Scraper/Char] Page %d returned 0 characters on parse attempt %d/%d. Retrying...", pageIndex, attempt, maxParseRetries)
+				pagePlayers, err = parseCharacterPage(bodyContent, pageIndex, attempt)
+				if err != nil {
+					// Error was a parsing failure (e.g., 0 items)
+					log.Printf("[W] [Scraper/Char] %v. Retrying...", err)
 					time.Sleep(parseRetryDelay)
 					continue // Try fetching and parsing again
 				}
 
-				if len(rankMatches) != numChars || len(baseLevelMatches) != numChars || len(jobLevelMatches) != numChars || len(expMatches) != numChars || len(classMatches) != numChars {
-					log.Printf("[W] [Scraper/Char] Mismatch in regex match counts on page %d. Skipping page. (Ranks: %d, Names: %d, Classes: %d)", pageIndex, len(rankMatches), len(nameMatches), len(classMatches))
-					// This is a data integrity issue, not a "0 items" issue. Don't retry.
-					numChars = 0 // Set to 0 to prevent sending partial data
-					break        // Break from retry loop
-				}
-
-				for i := 0; i < numChars; i++ {
-					rank, _ := strconv.Atoi(rankMatches[i][1])
-					name := nameMatches[i][1]
-					baseLevel, _ := strconv.Atoi(baseLevelMatches[i][1])
-					jobLevel, _ := strconv.Atoi(jobLevelMatches[i][1])
-					rawExp, _ := strconv.ParseFloat(expMatches[i][1], 64)
-					class := classMatches[i][1]
-
-					player := PlayerCharacter{
-						Rank:       rank,
-						BaseLevel:  baseLevel,
-						JobLevel:   jobLevel,
-						Experience: rawExp / 1000000.0,
-						Class:      class,
-						Name:       name,
-					}
-					pagePlayers = append(pagePlayers, player)
-				}
-				// --- End parsing logic ---
-
-				// If we got here, we have data or a mismatch. Break from the retry loop.
+				// Success
 				break
 			}
-			// --- END MODIFICATION ---
 
-			// Send found players to the consumer
+			// Send found players (if any) to the consumer
 			if len(pagePlayers) > 0 {
 				for _, player := range pagePlayers {
 					playerChan <- player
 				}
-			}
-
-			// Log final status for this page
-			if numChars > 0 {
-				// This existing log is good and will only show if debug is enabled
 				log.Printf("[D] [Scraper/Char] Scraped page %d/%d, sent %d chars to DB worker.", pageIndex, lastPage, len(pagePlayers))
 			} else {
 				log.Printf("[E] [Scraper/Char] Failed to scrape page %d/%d after all retries.", pageIndex, lastPage)
@@ -761,24 +669,56 @@ func scrapePlayerCharacters() {
 		}(page)
 	}
 
-	// --- ADDED LOGGING ---
-	if enableCharacterScraperDebugLogs {
-		log.Println("[D] [Scraper/Char] All page-scraping goroutines launched. Waiting for completion...")
-	}
-	// --- END ADDED LOGGING ---
-
-	// Wait for all *scraping* goroutines to finish
 	wg.Wait()
-
-	// --- ADDED LOGGING ---
-	if enableCharacterScraperDebugLogs {
-		log.Println("[D] [Scraper/Char] wg.Wait() complete. Closing player channel.")
-	}
-	// --- END ADDED LOGGING ---
-
-	// Close the channel to signal the *consumer* that no more data is coming
-	close(playerChan)
+	close(playerChan) // Signal consumer that all scraping is done
 	log.Printf("[I] [Scraper/Char] Finished scraping all pages. DB worker is now processing data...")
+}
+
+// parseCharacterPage contains all the parsing logic for a character page.
+func parseCharacterPage(bodyContent string, pageIndex, attempt int) ([]PlayerCharacter, error) {
+	rankRegex := regexp.MustCompile(`p\-1 text\-center font\-medium\\",\\"children\\":(\d+)\}\]`)
+	nameRegex := regexp.MustCompile(`max-w-10 truncate p-1 font-semibold">([^<]+)</td>`)
+	baseLevelRegex := regexp.MustCompile(`\\"level\\":(\d+),`)
+	jobLevelRegex := regexp.MustCompile(`\\"job_level\\":(\d+),\\"exp`)
+	expRegex := regexp.MustCompile(`\\"exp\\":(\d+)`)
+	classRegex := regexp.MustCompile(`"hidden text\-sm sm:inline\\",\\"children\\":\\"([^"]+)\\"`)
+
+	rankMatches := rankRegex.FindAllStringSubmatch(bodyContent, -1)
+	nameMatches := nameRegex.FindAllStringSubmatch(bodyContent, -1)
+	baseLevelMatches := baseLevelRegex.FindAllStringSubmatch(bodyContent, -1)
+	jobLevelMatches := jobLevelRegex.FindAllStringSubmatch(bodyContent, -1)
+	expMatches := expRegex.FindAllStringSubmatch(bodyContent, -1)
+	classMatches := classRegex.FindAllStringSubmatch(bodyContent, -1)
+
+	numChars := len(nameMatches)
+	if numChars == 0 {
+		return nil, fmt.Errorf("page %d returned 0 characters on parse attempt %d/%d", pageIndex, attempt, maxParseRetries)
+	}
+
+	if len(rankMatches) != numChars || len(baseLevelMatches) != numChars || len(jobLevelMatches) != numChars || len(expMatches) != numChars || len(classMatches) != numChars {
+		log.Printf("[W] [Scraper/Char] Mismatch in regex match counts on page %d. Skipping page. (Ranks: %d, Names: %d, Classes: %d)", pageIndex, len(rankMatches), len(nameMatches), len(classMatches))
+		return nil, nil // Data integrity issue, don't retry, just return no players
+	}
+
+	pagePlayers := make([]PlayerCharacter, 0, numChars)
+	for i := 0; i < numChars; i++ {
+		rank, _ := strconv.Atoi(rankMatches[i][1])
+		name := nameMatches[i][1]
+		baseLevel, _ := strconv.Atoi(baseLevelMatches[i][1])
+		jobLevel, _ := strconv.Atoi(jobLevelMatches[i][1])
+		rawExp, _ := strconv.ParseFloat(expMatches[i][1], 64)
+		class := classMatches[i][1]
+
+		pagePlayers = append(pagePlayers, PlayerCharacter{
+			Rank:       rank,
+			BaseLevel:  baseLevel,
+			JobLevel:   jobLevel,
+			Experience: rawExp / 1000000.0,
+			Class:      class,
+			Name:       name,
+		})
+	}
+	return pagePlayers, nil
 }
 
 // processGuildData handles all database transactions for updating guilds and member associations.
@@ -905,25 +845,21 @@ func processGuildData(allGuilds map[string]Guild, allMembers map[string]string) 
 	log.Printf("[I] [Scraper/Guild] Scrape and update complete. Saved %d guild records and updated character associations.", len(allGuilds))
 }
 
-// scrapeGuilds is now only responsible for concurrent scraping.
+// scrapeGuilds is the concurrent "producer" for guild data.
 func scrapeGuilds() {
 	log.Println("[I] [Scraper/Guild] Starting guild and character-guild association scrape...")
-
-	// Regex definitions
-	nameRegex := regexp.MustCompile(`<span class="font-medium">([^<]+)</span>`)
-	levelRegex := regexp.MustCompile(`\\"guild_lv\\":(\d+),\\"connect_member\\"`)
-	masterRegex := regexp.MustCompile(`\\"master\\":\\"([^"]+)\\",\\"members\\"`)
-	membersRegex := regexp.MustCompile(`\\"members\\":\[(.*?)\]\}`)
-	memberNameRegex := regexp.MustCompile(`\\"name\\":\\"([^"]+)\\",\\"base_level\\"`)
 
 	const firstPageURL = "https://projetoyufa.com/rankings/guild?page=1"
 	lastPage := scraperClient.findLastPage(firstPageURL, "[Guilds]")
 
+	// These maps are safe for concurrent writes because each goroutine
+	// writes to a *different* key (guild name / member name).
+	// For this specific use case, a mutex is sufficient.
 	allGuilds := make(map[string]Guild)
 	allMembers := make(map[string]string) // Map[characterName]guildName
 	var mu sync.Mutex
 	var wg sync.WaitGroup
-	sem := make(chan struct{}, 5) // Concurrency semaphore
+	sem := make(chan struct{}, 5)
 
 	log.Printf("[I] [Scraper/Guild] Scraping all %d pages...", lastPage)
 	for page := 1; page <= lastPage; page++ {
@@ -933,66 +869,28 @@ func scrapeGuilds() {
 			defer wg.Done()
 			defer func() { <-sem }()
 
-			var bodyContent string
-			var err error
-			var numGuilds int
 			var pageGuilds []Guild
 			var pageMembers map[string]string
 
-			// --- MODIFICATION: Added retry loop for parsing ---
 			for attempt := 1; attempt <= maxParseRetries; attempt++ {
 				url := fmt.Sprintf("https://projetoyufa.com/rankings/guild?page=%d", pageIndex)
-
-				bodyContent, err = scraperClient.getPage(url, "[Guilds]")
+				bodyContent, err := scraperClient.getPage(url, "[Guilds]")
 				if err != nil {
 					log.Printf("[E] [Scraper/Guild] Network/HTTP error for page %d (attempt %d/%d): %v. Retrying...", pageIndex, attempt, maxParseRetries, err)
 					time.Sleep(parseRetryDelay)
 					continue
 				}
 
-				// --- Parsing logic ---
-				nameMatches := nameRegex.FindAllStringSubmatch(bodyContent, -1)
-				levelMatches := levelRegex.FindAllStringSubmatch(bodyContent, -1)
-				masterMatches := masterRegex.FindAllStringSubmatch(bodyContent, -1)
-				membersMatches := membersRegex.FindAllStringSubmatch(bodyContent, -1)
-
-				numGuilds = len(nameMatches)
-				pageGuilds = nil // Reset
-				pageMembers = make(map[string]string)
-
-				if numGuilds == 0 {
-					// --- THIS IS THE NEW LOGIC ---
-					log.Printf("[W] [Scraper/Guild] Page %d returned 0 guilds on parse attempt %d/%d. Retrying...", pageIndex, attempt, maxParseRetries)
+				pageGuilds, pageMembers, err = parseGuildPage(bodyContent, pageIndex, attempt)
+				if err != nil {
+					log.Printf("[W] [Scraper/Guild] %v. Retrying...", err)
 					time.Sleep(parseRetryDelay)
-					continue // Try fetching and parsing again
+					continue
 				}
 
-				if len(levelMatches) != numGuilds || len(masterMatches) != numGuilds || len(membersMatches) != numGuilds {
-					log.Printf("[W] [Scraper/Guild] Mismatch in regex match counts on page %d. Skipping page. (Names: %d, Levels: %d, Masters: %d, Members: %d)",
-						pageIndex, len(nameMatches), len(levelMatches), len(masterMatches), len(membersMatches))
-					numGuilds = 0 // Prevent sending partial data
-					break         // Break from retry loop
-				}
-
-				for i := 0; i < numGuilds; i++ {
-					name := nameMatches[i][1]
-					level, _ := strconv.Atoi(levelMatches[i][1])
-					master := masterMatches[i][1]
-
-					guild := Guild{Name: name, Level: level, Master: master}
-					pageGuilds = append(pageGuilds, guild)
-
-					members := memberNameRegex.FindAllStringSubmatch(membersMatches[i][1], -1)
-					for _, member := range members {
-						pageMembers[member[1]] = name // charName -> guildName
-					}
-				}
-				// --- End of parsing logic ---
-
-				// Success, break from retry loop
+				// Success
 				break
 			}
-			// --- END MODIFICATION ---
 
 			if len(pageGuilds) > 0 {
 				mu.Lock()
@@ -1003,10 +901,6 @@ func scrapeGuilds() {
 					allMembers[memberName] = guildName
 				}
 				mu.Unlock()
-			}
-
-			// Log final status for this page
-			if numGuilds > 0 {
 				log.Printf("[D] [Scraper/Guild] Scraped page %d/%d, found %d guilds.", pageIndex, lastPage, len(pageGuilds))
 			} else {
 				log.Printf("[E] [Scraper/Guild] Failed to scrape page %d/%d after all retries.", pageIndex, lastPage)
@@ -1016,7 +910,6 @@ func scrapeGuilds() {
 	wg.Wait()
 
 	log.Printf("[I] [Scraper/Guild] Finished scraping all pages. Found %d unique guilds.", len(allGuilds))
-
 	if len(allGuilds) == 0 {
 		log.Println("[W] [Scraper/Guild] Scrape finished with 0 total guilds found. Guild/character tables will not be updated.")
 		return
@@ -1024,6 +917,48 @@ func scrapeGuilds() {
 
 	// Call the dedicated database function
 	processGuildData(allGuilds, allMembers)
+}
+
+// parseGuildPage contains all the parsing logic for a guild page.
+func parseGuildPage(bodyContent string, pageIndex, attempt int) ([]Guild, map[string]string, error) {
+	nameRegex := regexp.MustCompile(`<span class="font-medium">([^<]+)</span>`)
+	levelRegex := regexp.MustCompile(`\\"guild_lv\\":(\d+),\\"connect_member\\"`)
+	masterRegex := regexp.MustCompile(`\\"master\\":\\"([^"]+)\\",\\"members\\"`)
+	membersRegex := regexp.MustCompile(`\\"members\\":\[(.*?)\]\}`)
+	memberNameRegex := regexp.MustCompile(`\\"name\\":\\"([^"]+)\\",\\"base_level\\"`)
+
+	nameMatches := nameRegex.FindAllStringSubmatch(bodyContent, -1)
+	levelMatches := levelRegex.FindAllStringSubmatch(bodyContent, -1)
+	masterMatches := masterRegex.FindAllStringSubmatch(bodyContent, -1)
+	membersMatches := membersRegex.FindAllStringSubmatch(bodyContent, -1)
+
+	numGuilds := len(nameMatches)
+	if numGuilds == 0 {
+		return nil, nil, fmt.Errorf("page %d returned 0 guilds on parse attempt %d/%d", pageIndex, attempt, maxParseRetries)
+	}
+
+	if len(levelMatches) != numGuilds || len(masterMatches) != numGuilds || len(membersMatches) != numGuilds {
+		log.Printf("[W] [Scraper/Guild] Mismatch in regex match counts on page %d. Skipping page. (Names: %d, Levels: %d, Masters: %d, Members: %d)",
+			pageIndex, len(nameMatches), len(levelMatches), len(masterMatches), len(membersMatches))
+		return nil, nil, nil // Data integrity issue, don't retry
+	}
+
+	pageGuilds := make([]Guild, 0, numGuilds)
+	pageMembers := make(map[string]string)
+
+	for i := 0; i < numGuilds; i++ {
+		name := nameMatches[i][1]
+		level, _ := strconv.Atoi(levelMatches[i][1])
+		master := masterMatches[i][1]
+
+		pageGuilds = append(pageGuilds, Guild{Name: name, Level: level, Master: master})
+
+		members := memberNameRegex.FindAllStringSubmatch(membersMatches[i][1], -1)
+		for _, member := range members {
+			pageMembers[member[1]] = name // charName -> guildName
+		}
+	}
+	return pageGuilds, pageMembers, nil
 }
 
 type CharacterZenyInfo struct {

@@ -174,15 +174,14 @@ func scrapeRMSItemDetails(itemID int) (*RMSItem, error) {
 	return item, nil
 }
 
+// getItemDetailsFromCache queries the new local item database (internal_item_db).
 func getItemDetailsFromCache(itemID int) (*RMSItem, error) {
-	// Query the new local item database
 	row := db.QueryRow(`
 		SELECT name, name_pt, type, buy, sell, weight, slots, script
 		FROM internal_item_db WHERE item_id = ?`, itemID)
 
 	var item RMSItem
 	item.ID = itemID
-	// Hardcode the image URL format as before
 	item.ImageURL = fmt.Sprintf("https://divine-pride.net/img/items/collection/iRO/%d", itemID)
 
 	var namePT sql.NullString
@@ -193,7 +192,6 @@ func getItemDetailsFromCache(itemID int) (*RMSItem, error) {
 		&item.Name, &namePT, &item.Type, &buy, &sell,
 		&weight, &slots, &script,
 	)
-
 	if err != nil {
 		if err == sql.ErrNoRows {
 			return nil, fmt.Errorf("item %d not found in internal_item_db", itemID)
@@ -201,7 +199,7 @@ func getItemDetailsFromCache(itemID int) (*RMSItem, error) {
 		return nil, fmt.Errorf("error querying internal_item_db for item %d: %w", itemID, err)
 	}
 
-	// --- Populate the RMSItem struct from internal_item_db data ---
+	// Populate the RMSItem struct from the data
 	if namePT.Valid {
 		item.NamePT = namePT.String
 	}
@@ -212,7 +210,7 @@ func getItemDetailsFromCache(itemID int) (*RMSItem, error) {
 		item.Sell = strconv.FormatInt(sell.Int64, 10)
 	}
 	if weight.Valid {
-		// Weight in YAML is 10x the displayed weight (e.g., 100 = 10.0)
+		// Weight in YAML is 10x (e.g., 100 = 10.0)
 		item.Weight = fmt.Sprintf("%.1f", float64(weight.Int64)/10.0)
 	}
 	if slots.Valid {
@@ -222,12 +220,12 @@ func getItemDetailsFromCache(itemID int) (*RMSItem, error) {
 		item.Script = script.String
 	}
 
-	// These fields do not exist in internal_item_db and will be empty
+	// These fields are not in internal_item_db and will be empty
 	item.Class = ""
 	item.Prefix = ""
 	item.Description = ""
-	item.DroppedBy = []RMSDrop{}
-	item.ObtainableFrom = []string{}
+	item.DroppedBy = nil
+	item.ObtainableFrom = nil
 
 	return &item, nil
 }

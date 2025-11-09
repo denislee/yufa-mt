@@ -335,15 +335,13 @@ type CharacterPageData struct {
 type GuildPageData struct {
 	Guilds              []Guild
 	LastGuildUpdateTime string
-
-	SearchName string
-
-	SortBy string
-	Order  string
-
-	Pagination  PaginationData
-	TotalGuilds int
-	PageTitle   string
+	SearchQuery         string // <-- RENAMED
+	SortBy              string
+	Order               string
+	Pagination          PaginationData
+	TotalGuilds         int
+	PageTitle           string
+	Filter              template.URL // <-- ADDED
 }
 
 type GuildDetailPageData struct {
@@ -395,17 +393,16 @@ type WoeCharacterRank struct {
 	LastUpdated  string
 }
 
-// WoePageData is modified to hold both character and guild data,
-// plus the active tab.
 type WoePageData struct {
 	Characters     []WoeCharacterRank
-	Guilds         []WoeGuildRank // <-- ADDED
-	ActiveTab      string         // <-- ADDED
+	Guilds         []WoeGuildRank
+	ActiveTab      string
 	LastScrapeTime string
 	SortBy         string
 	Order          string
 	SearchQuery    string
 	PageTitle      string
+	Filter         template.URL // <-- ADD THIS
 }
 
 type FlatTradingPostItem struct {
@@ -442,6 +439,7 @@ type StoreDetailPageData struct {
 	SortBy    string
 	Order     string
 	PageTitle string
+	Filter    template.URL // <-- ADD THIS
 }
 
 type MvpKillPageData struct {
@@ -477,9 +475,9 @@ type CharacterChangelog struct {
 type CharacterChangelogPageData struct {
 	ChangelogEntries []CharacterChangelog
 	LastScrapeTime   string
-
-	Pagination PaginationData
-	PageTitle  string
+	Pagination       PaginationData
+	PageTitle        string
+	Filter           template.URL // <-- ADD THIS
 }
 
 type GuildInfo struct {
@@ -620,6 +618,7 @@ type TradingPostPageData struct {
 	SortBy         string
 	Order          string
 	PageTitle      string
+	Filter         template.URL // <-- ADD THIS
 }
 
 func (tp TradingPost) CreatedAgo() string {

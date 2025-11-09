@@ -28,7 +28,7 @@
                 <div class="flex flex-wrap items-end gap-3">
                     <div class="flex-grow">
                         <label for="name_query" class="block text-xs font-medium text-gray-700">{{.Page.T.search_by_guild_name}}</label>
-                        <input type="text" name="name_query" id="name_query" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-300 focus:ring focus:ring-indigo-200 focus:ring-opacity-50 text-sm" value="{{.Data.SearchName}}">
+                        <input type="text" name="name_query" id="name_query" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-300 focus:ring focus:ring-indigo-200 focus:ring-opacity-50 text-sm" value="{{.Data.SearchQuery}}">
                     </div>
                     <button type="submit" class="w-full md:w-auto bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-md">{{.Page.T.search}}</button>
                 </div>
@@ -40,7 +40,7 @@
                 <table class="min-w-full leading-normal">
                     <thead>
                         <tr class="border-b-2 border-gray-200 bg-gray-50 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
-                            {{$query := .Data.SearchName}}{{$currentSort := .Data.SortBy}}{{$currentOrder := .Data.Order}}{{$revOrder := "ASC"}}{{if eq $currentOrder "ASC"}}{{$revOrder = "DESC"}}{{end}}
+                            {{$query := .Data.SearchQuery}}{{$currentSort := .Data.SortBy}}{{$currentOrder := .Data.Order}}{{$revOrder := "ASC"}}{{if eq $currentOrder "ASC"}}{{$revOrder = "DESC"}}{{end}}
                             <th class="px-2 sm:px-3 py-2"></th>
                             <th class="px-2 sm:px-3 py-2"><a href="/guilds?name_query={{$query}}&sort_by=name&order={{if eq $currentSort "name"}}{{$revOrder}}{{else}}ASC{{end}}">{{.Page.T.name}} {{if eq $currentSort "name"}}{{if eq $currentOrder "ASC"}}<span class="text-gray-400">▲</span>{{else}}<span class="text-gray-400">▼</span>{{end}}{{end}}</a></th>
                             <th class="px-2 sm:px-3 py-2"><a href="/guilds?name_query={{$query}}&sort_by=level&order={{if eq $currentSort "level"}}{{$revOrder}}{{else}}DESC{{end}}">{{.Page.T.level}} {{if eq $currentSort "level"}}{{if eq $currentOrder "ASC"}}<span class="text-gray-400">▲</span>{{else}}<span class="text-gray-400">▼</span>{{end}}{{end}}</a></th>
@@ -79,9 +79,7 @@
         </div>
 
         {{if gt .Data.Pagination.TotalPages 1}}
-            {{$filter := ""}}
-            {{if .Data.SearchName}}{{$filter = (print $filter "&name_query=" .Data.SearchName | urlquery)}}{{end}}
-            {{if .Data.SortBy}}{{$filter = (print $filter "&sort_by=" .Data.SortBy "&order=" .Data.Order)}}{{end}}
+            {{$filter := .Data.Filter}}
             {{template "pagination" (dict "Page" .Page "Pagination" .Data.Pagination "Filter" $filter)}}
 
             <div class="text-center text-gray-500 text-xs mt-2">
