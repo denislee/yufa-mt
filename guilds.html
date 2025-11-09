@@ -1,9 +1,9 @@
 <!DOCTYPE html>
-<html lang="{{.Page.Lang}}"> {{/* <-- MODIFIED */}}
+<html lang="{{.Page.Lang}}">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{{.Page.T.guilds_title}} - Yufa Market Tracker</title> {{/* <-- MODIFIED */}}
+    <title>{{.Page.T.guilds_title}} - Yufa Market Tracker</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
         html { font-size: 110%; }
@@ -17,131 +17,82 @@
     {{template "navbar.html" .}}
 
     <div class="container mx-auto px-4 py-6">
+
         <div class="flex flex-col sm:flex-row justify-between sm:items-center gap-2 mb-4 border-b border-gray-200 pb-3">
-            <h1 class="text-2xl font-bold text-gray-800">{{.Page.T.guilds_title}}</h1> {{/* <-- MODIFIED */}}
-            <div id="last-updated" class="text-sm text-gray-500" data-timestamp="{{.Data.LastGuildUpdateTime}}"></div> {{/* <-- MODIFIED */}}
+            <h1 class="text-2xl font-bold text-gray-800">{{.Page.T.guilds_title}}</h1>
+            <div id="last-updated" class="text-sm text-gray-500" data-timestamp="{{.Data.LastGuildUpdateTime}}"></div>
         </div>
-
-        <div class="bg-white p-3 rounded-lg shadow mb-4">
-            <form action="/guilds" method="GET" class="grid grid-cols-1 md:grid-cols-4 gap-3 items-end">
-                <div class="md:col-span-3">
-                    {{/* MODIFIED: Use .Data and .Page.T */}}
-                    <label for="name_query" class="block text-sm font-medium text-gray-700">{{.Page.T.search_by_guild_name}}</label>
-                    <input type="text" name="name_query" id="name_query" value="{{.Data.SearchName}}" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-300 focus:ring focus:ring-indigo-200 focus:ring-opacity-50 text-sm">
+        
+        <form action="/guilds" method="GET">
+            <div class="bg-white p-3 rounded-lg shadow mb-4">
+                <div class="flex flex-wrap items-end gap-3">
+                    <div class="flex-grow">
+                        <label for="name_query" class="block text-xs font-medium text-gray-700">{{.Page.T.search_by_guild_name}}</label>
+                        <input type="text" name="name_query" id="name_query" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-300 focus:ring focus:ring-indigo-200 focus:ring-opacity-50 text-sm" value="{{.Data.SearchName}}">
+                    </div>
+                    <button type="submit" class="w-full md:w-auto bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-md">{{.Page.T.search}}</button>
                 </div>
-                <div>
-                    <button type="submit" class="w-full bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-md">{{.Page.T.apply}}</button>
-                </div>
-            </form>
-        </div>
-
+            </div>
+        </form>
 
         <div class="bg-white shadow-lg rounded-lg overflow-hidden">
             <div class="overflow-x-auto">
                 <table class="min-w-full leading-normal">
                     <thead>
                         <tr class="border-b-2 border-gray-200 bg-gray-50 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
-                            {{/* MODIFIED: Use .Data and .Page.T */}}
-                            <th class="px-2 sm:px-3 py-2">
-                                <a href="/guilds?sort_by=name&order={{if eq .Data.SortBy "name"}}{{toggleOrder .Data.Order}}{{else}}ASC{{end}}&name_query={{.Data.SearchName}}" class="hover:text-blue-600">
-                                    {{.Page.T.name}}
-                                    {{if eq .Data.SortBy "name"}}{{- if eq .Data.Order "ASC"}}&#9650;{{else}}&#9660;{{end}}{{- end}}
-                                </a>
-                            </th>
-                            <th class="px-2 sm:px-3 py-2">
-                                <a href="/guilds?sort_by=level&order={{if eq .Data.SortBy "level"}}{{toggleOrder .Data.Order}}{{else}}DESC{{end}}&name_query={{.Data.SearchName}}" class="hover:text-blue-600">
-                                    {{.Page.T.level}}
-                                    {{if eq .Data.SortBy "level"}}{{- if eq .Data.Order "ASC"}}&#9650;{{else}}&#9660;{{end}}{{- end}}
-                                </a>
-                            </th>
-                            <th class="px-2 sm:px-3 py-2">
-                                <a href="/guilds?sort_by=master&order={{if eq .Data.SortBy "master"}}{{toggleOrder .Data.Order}}{{else}}ASC{{end}}&name_query={{.Data.SearchName}}" class="hover:text-blue-600">
-                                    {{.Page.T.master}}
-                                    {{if eq .Data.SortBy "master"}}{{- if eq .Data.Order "ASC"}}&#9650;{{else}}&#9660;{{end}}{{- end}}
-                                </a>
-                            </th>
-                            <th class="px-2 sm:px-3 py-2">
-                                <a href="/guilds?sort_by=members&order={{if eq .Data.SortBy "members"}}{{toggleOrder .Data.Order}}{{else}}DESC{{end}}&name_query={{.Data.SearchName}}" class="hover:text-blue-600">
-                                    {{.Page.T.members}}
-                                    {{if eq .Data.SortBy "members"}}{{- if eq .Data.Order "ASC"}}&#9650;{{else}}&#9660;{{end}}{{- end}}
-                                </a>
-                            </th>
-                             <th class="px-2 sm:px-3 py-2">
-                                <a href="/guilds?sort_by=zeny&order={{if eq .Data.SortBy "zeny"}}{{toggleOrder .Data.Order}}{{else}}DESC{{end}}&name_query={{.Data.SearchName}}" class="hover:text-blue-600">
-                                    {{.Page.T.total_zeny}}
-                                    {{if eq .Data.SortBy "zeny"}}{{- if eq .Data.Order "ASC"}}&#9650;{{else}}&#9660;{{end}}{{- end}}
-                                </a>
-                            </th>
-                             <th class="px-2 sm:px-3 py-2">
-                                <a href="/guilds?sort_by=avg_level&order={{if eq .Data.SortBy "avg_level"}}{{toggleOrder .Data.Order}}{{else}}DESC{{end}}&name_query={{.Data.SearchName}}" class="hover:text-blue-600">
-                                    {{.Page.T.avg_base_lvl}}
-                                    {{if eq .Data.SortBy "avg_level"}}{{- if eq .Data.Order "ASC"}}&#9650;{{else}}&#9660;{{end}}{{- end}}
-                                </a>
-                            </th>
+                            {{$query := .Data.SearchName}}{{$currentSort := .Data.SortBy}}{{$currentOrder := .Data.Order}}{{$revOrder := "ASC"}}{{if eq $currentOrder "ASC"}}{{$revOrder = "DESC"}}{{end}}
+                            <th class="px-2 sm:px-3 py-2"></th>
+                            <th class="px-2 sm:px-3 py-2"><a href="/guilds?name_query={{$query}}&sort_by=name&order={{if eq $currentSort "name"}}{{$revOrder}}{{else}}ASC{{end}}">{{.Page.T.name}} {{if eq $currentSort "name"}}{{if eq $currentOrder "ASC"}}<span class="text-gray-400">▲</span>{{else}}<span class="text-gray-400">▼</span>{{end}}{{end}}</a></th>
+                            <th class="px-2 sm:px-3 py-2"><a href="/guilds?name_query={{$query}}&sort_by=level&order={{if eq $currentSort "level"}}{{$revOrder}}{{else}}DESC{{end}}">{{.Page.T.level}} {{if eq $currentSort "level"}}{{if eq $currentOrder "ASC"}}<span class="text-gray-400">▲</span>{{else}}<span class="text-gray-400">▼</span>{{end}}{{end}}</a></th>
+                            <th class="px-2 sm:px-3 py-2"><a href="/guilds?name_query={{$query}}&sort_by=master&order={{if eq $currentSort "master"}}{{$revOrder}}{{else}}ASC{{end}}">{{.Page.T.master}} {{if eq $currentSort "master"}}{{if eq $currentOrder "ASC"}}<span class="text-gray-400">▲</span>{{else}}<span class="text-gray-400">▼</span>{{end}}{{end}}</a></th>
+                            <th class="px-2 sm:px-3 py-2"><a href="/guilds?name_query={{$query}}&sort_by=members&order={{if eq $currentSort "members"}}{{$revOrder}}{{else}}DESC{{end}}">{{.Page.T.members}} {{if eq $currentSort "members"}}{{if eq $currentOrder "ASC"}}<span class="text-gray-400">▲</span>{{else}}<span class="text-gray-400">▼</span>{{end}}{{end}}</a></th>
+                            <th class="px-2 sm:px-3 py-2"><a href="/guilds?name_query={{$query}}&sort_by=zeny&order={{if eq $currentSort "zeny"}}{{$revOrder}}{{else}}DESC{{end}}">{{.Page.T.total_zeny}} {{if eq $currentSort "zeny"}}{{if eq $currentOrder "ASC"}}<span class="text-gray-400">▲</span>{{else}}<span class="text-gray-400">▼</span>{{end}}{{end}}</a></th>
+                            <th class="px-2 sm:px-3 py-2"><a href="/guilds?name_query={{$query}}&sort_by=avg_level&order={{if eq $currentSort "avg_level"}}{{$revOrder}}{{else}}DESC{{end}}">{{.Page.T.avg_base_lvl}} {{if eq $currentSort "avg_level"}}{{if eq $currentOrder "ASC"}}<span class="text-gray-400">▲</span>{{else}}<span class="text-gray-400">▼</span>{{end}}{{end}}</a></th>
                         </tr>
                     </thead>
                     <tbody class="text-gray-700 text-xs">
-                        {{range .Data.Guilds}} {{/* <-- MODIFIED */}}
+                        {{range .Data.Guilds}}
                         <tr class="border-b border-gray-200 hover:bg-gray-50">
-                            <td class="px-2 sm:px-3 py-2 font-semibold">
-                                <div class="flex items-center">
-                                    {{if .EmblemURL}}
-                                    <img src="{{.EmblemURL}}" alt="Emblem" class="w-6 h-6 mr-2">
-                                    {{else}}
-                                    <div class="w-6 h-6 mr-2 bg-gray-200 rounded-sm"></div>
-                                    {{end}}
-                                    <a href="/guild?name={{.Name | urlquery}}" class="text-blue-600 hover:underline">{{.Name}}</a>
-                                </div>
+                            <td class="px-2 sm:px-3 py-2 text-center">
+                                <img src="{{.EmblemURL}}" alt="Emblem" class="w-6 h-6" style="image-rendering: pixelated;" onerror="this.style.visibility='hidden'">
+                            </td>
+                            <td class="px-2 sm:px-3 py-2">
+                                <a href="/guild?name={{.Name | urlquery}}" class="font-semibold hover:underline">{{.Name}}</a>
                             </td>
                             <td class="px-2 sm:px-3 py-2">{{.Level}}</td>
-                            <td class="px-2 sm:px-3 py-2"><a href="/character?name={{.Master | urlquery}}" class="text-blue-600 hover:underline">{{.Master}}</a></td>
+                            <td class="px-2 sm:px-3 py-2">
+                                <a href="/character?name={{.Master | urlquery}}" class="hover:underline">{{.Master}}</a>
+                            </td>
                             <td class="px-2 sm:px-3 py-2">{{.MemberCount}}</td>
-                            <td class="px-2 sm:px-3 py-2">{{formatZeny .TotalZeny}}</td>
+                            <td class="px-2 sm:px-3 py-2 font-mono">{{formatZeny .TotalZeny}}z</td>
                             <td class="px-2 sm:px-3 py-2">{{formatAvgLevel .AvgBaseLevel}}</td>
-                        </tr>
-                        {{else}}
-                        <tr>
-                            <td colspan="6" class="text-center py-10 text-gray-500">{{.Page.T.no_guilds_found}}</td> {{/* <-- MODIFIED */}}
                         </tr>
                         {{end}}
                     </tbody>
                 </table>
-            </div>
-
-             {{/* MODIFIED: Use .Data and .Page.T */}}
-             {{if gt .Data.Pagination.TotalPages 1}}
-            <div class="px-3 py-3 bg-white border-t flex flex-col xs:flex-row items-center xs:justify-between">
-                <span class="text-xs xs:text-sm text-gray-900">
-                    {{printf .Page.T.showing_page_guilds .Data.Pagination.CurrentPage .Data.Pagination.TotalPages .Data.TotalGuilds | TmplHTML}}
-                </span>
-                <div class="inline-flex mt-2 xs:mt-0">
-                    {{if .Data.Pagination.HasPrevPage}}
-                        <a href="/guilds?page={{.Data.Pagination.PrevPage}}&name_query={{.Data.SearchName}}&sort_by={{.Data.SortBy}}&order={{.Data.Order}}" class="text-sm bg-gray-300 hover:bg-gray-400 text-gray-800 font-semibold py-1 px-3 rounded-l">
-                            {{.Page.T.prev_short}}
-                        </a>
-                    {{else}}
-                         <span class="text-sm bg-gray-200 text-gray-500 font-semibold py-1 px-3 rounded-l cursor-not-allowed">
-                            {{.Page.T.prev_short}}
-                        </span>
-                    {{end}}
-
-                    {{if .Data.Pagination.HasNextPage}}
-                        <a href="/guilds?page={{.Data.Pagination.NextPage}}&name_query={{.Data.SearchName}}&sort_by={{.Data.SortBy}}&order={{.Data.Order}}" class="text-sm bg-gray-300 hover:bg-gray-400 text-gray-800 font-semibold py-1 px-3 rounded-r">
-                            {{.Page.T.next_short}}
-                        </a>
-                    {{else}}
-                        <span class="text-sm bg-gray-200 text-gray-500 font-semibold py-1 px-3 rounded-r cursor-not-allowed">
-                            {{.Page.T.next_short}}
-                        </span>
-                    {{end}}
+                {{if not .Data.Guilds}}
+                <div class="text-center py-10 px-4">
+                    <p class="text-gray-500">{{.Page.T.no_guilds_found}}</p>
                 </div>
+                {{end}}
             </div>
-            {{end}}
         </div>
+
+        {{if gt .Data.Pagination.TotalPages 1}}
+            {{$filter := ""}}
+            {{if .Data.SearchName}}{{$filter = (print $filter "&name_query=" .Data.SearchName | urlquery)}}{{end}}
+            {{if .Data.SortBy}}{{$filter = (print $filter "&sort_by=" .Data.SortBy "&order=" .Data.Order)}}{{end}}
+            {{template "pagination" (dict "Page" .Page "Pagination" .Data.Pagination "Filter" $filter)}}
+
+            <div class="text-center text-gray-500 text-xs mt-2">
+                {{printf .Page.T.showing_page_guilds .Data.Pagination.CurrentPage .Data.Pagination.TotalPages .Data.TotalGuilds}}
+            </div>
+        {{end}}
+        
     </div>
+    
     <script>
         document.addEventListener('DOMContentLoaded', () => {
-            // --- MODIFIED: Use translations ---
             const lang = document.documentElement.lang || 'en';
             const translations = {
                 updated_never: '{{.Page.T.updated_never}}',
@@ -153,7 +104,7 @@
                 const timestampStr = lastUpdateElement.dataset.timestamp;
 
                 if (!timestampStr || timestampStr === 'Never' || timestampStr === '') {
-                    lastUpdateElement.textContent = translations.updated_never; // Use translation
+                    lastUpdateElement.textContent = translations.updated_never;
                     return;
                 }
 
@@ -168,7 +119,6 @@
                     const secondsPast = Math.floor((now.getTime() - lastUpdateDate.getTime()) / 1000);
                     let timeAgoString;
 
-                    // --- MODIFIED: Language-specific time ago ---
                     if (lang === 'pt') {
                         if (secondsPast < 5) timeAgoString = 'agora mesmo';
                         else if (secondsPast < 60) timeAgoString = `${secondsPast}s atrás`;
@@ -183,14 +133,13 @@
                         else timeAgoString = `${Math.floor(secondsPast / 86400)}d ago`;
                     }
                     
-                    const fullString = translations.updated_ago.replace('%s', timeAgoString); // Use translation
+                    const fullString = translations.updated_ago.replace('%s', timeAgoString);
                     lastUpdateElement.innerHTML = `${fullString} <span class="text-gray-400 font-normal">(${formattedTimestamp})</span>`;
                 };
 
                 updateTimeAgo();
                 setInterval(updateTimeAgo, 30000);
             }
-
         });
     </script>
 </body>

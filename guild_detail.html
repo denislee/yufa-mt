@@ -1,22 +1,15 @@
 <!DOCTYPE html>
-<html lang="{{.Page.Lang}}"> {{/* <-- MODIFIED */}}
+<html lang="{{.Page.Lang}}">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    {{/* MODIFIED: Use .Data and .Page.T */}}
-    <title>{{printf .Page.T.guild_detail_title .Data.Guild.Name}}</title>
+    <title>{{printf .Page.T.guild_detail_title .Data.Guild.Name}} - Yufa Market Tracker</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.2.0"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
     <style>
         html { font-size: 110%; }
-        .container { max-width: 95% !important; }
-        .chart-container {
-            position: relative;
-            margin: auto;
-            height: 350px;
-            width: 100%;
-            max-width: 450px;
+        .container {
+            max-width: 95% !important;
         }
     </style>
 </head>
@@ -26,184 +19,158 @@
 
     <div class="container mx-auto px-4 py-6">
         <div class="flex flex-col sm:flex-row justify-between sm:items-center gap-2 mb-4 border-b border-gray-200 pb-3">
-            <div>
-                <h1 class="text-2xl font-bold text-gray-800 flex items-center gap-3">
-                    {{/* MODIFIED: Use .Data */}}
-                    {{if .Data.Guild.EmblemURL}}
-                    <img src="{{.Data.Guild.EmblemURL}}" alt="{{.Data.Guild.Name}} Emblem" class="h-10 w-10 object-contain bg-gray-200 rounded-sm p-0.5">
-                    {{end}}
-                    <span>{{.Data.Guild.Name}}</span>
-                </h1>
-                <p class="text-gray-600">{{.Page.T.led_by}} <a href="/character?name={{.Data.Guild.Master | urlquery}}" class="text-blue-600 hover:underline font-semibold">{{.Data.Guild.Master}}</a></p> {{/* <-- MODIFIED */}}
-            </div>
-            <div id="last-updated" class="text-sm text-gray-500" data-timestamp="{{.Data.LastScrapeTime}}"></div> {{/* <-- MODIFIED */}}
-        </div>
-
-        <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-            {{/* MODIFIED: Use .Data and .Page.T */}}
-            <div class="bg-white p-4 rounded-lg shadow text-center">
-                <p class="text-sm text-gray-500 uppercase">{{.Page.T.guild_level}}</p>
-                <p class="text-2xl font-bold text-blue-600">{{.Data.Guild.Level}}</p>
-            </div>
-            <div class="bg-white p-4 rounded-lg shadow text-center">
-                <p class="text-sm text-gray-500 uppercase">{{.Page.T.members}}</p>
-                <p class="text-2xl font-bold text-blue-600">{{.Data.Guild.MemberCount}}</p>
-            </div>
-            <div class="bg-white p-4 rounded-lg shadow text-center">
-                <p class="text-sm text-gray-500 uppercase">{{.Page.T.avg_base_lvl}}</p>
-                <p class="text-2xl font-bold text-blue-600">{{.Data.Guild.AvgBaseLevel | formatAvgLevel}}</p>
-            </div>
-            <div class="bg-white p-4 rounded-lg shadow text-center">
-                <p class="text-sm text-gray-500 uppercase">{{.Page.T.combined_zeny}}</p>
-                <p class="text-2xl font-bold text-green-600">{{.Data.Guild.TotalZeny | formatZeny}}z</p>
-            </div>
-        </div>
-
-        <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
-            <div class="lg:col-span-2 bg-white shadow-lg rounded-lg overflow-hidden">
-                <h2 class="text-xl font-bold p-4 border-b">{{.Page.T.guild_members}}</h2> {{/* <-- MODIFIED */}}
-                <div class="overflow-x-auto">
-                    <table class="min-w-full leading-normal">
-                        <thead>
-                            <tr class="border-b-2 border-gray-200 bg-gray-50 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
-                                {{/* MODIFIED: Use .Data and .Page.T */}}
-                                <th class="px-3 py-2"><a href="/guild?name={{.Data.Guild.Name | urlquery}}&sort_by=name&order={{if eq .Data.SortBy "name"}}{{toggleOrder .Data.Order}}{{else}}ASC{{end}}&page={{.Data.ChangelogPagination.CurrentPage}}">{{.Page.T.name}} {{if eq .Data.SortBy "name"}}{{if eq .Data.Order "ASC"}}▲{{else}}▼{{end}}{{end}}</a></th>
-                                <th class="px-3 py-2"><a href="/guild?name={{.Data.Guild.Name | urlquery}}&sort_by=class&order={{if eq .Data.SortBy "class"}}{{toggleOrder .Data.Order}}{{else}}ASC{{end}}&page={{.Data.ChangelogPagination.CurrentPage}}">{{.Page.T.class}} {{if eq .Data.SortBy "class"}}{{if eq .Data.Order "ASC"}}▲{{else}}▼{{end}}{{end}}</a></th>
-                                <th class="px-3 py-2"><a href="/guild?name={{.Data.Guild.Name | urlquery}}&sort_by=base_level&order={{if eq .Data.SortBy "base_level"}}{{toggleOrder .Data.Order}}{{else}}DESC{{end}}&page={{.Data.ChangelogPagination.CurrentPage}}">{{.Page.T.base_short}} {{if eq .Data.SortBy "base_level"}}{{if eq .Data.Order "ASC"}}▲{{else}}▼{{end}}{{end}}</a></th>
-                                <th class="px-3 py-2"><a href="/guild?name={{.Data.Guild.Name | urlquery}}&sort_by=job_level&order={{if eq .Data.SortBy "job_level"}}{{toggleOrder .Data.Order}}{{else}}DESC{{end}}&page={{.Data.ChangelogPagination.CurrentPage}}">{{.Page.T.job_short}} {{if eq .Data.SortBy "job_level"}}{{if eq .Data.Order "ASC"}}▲{{else}}▼{{end}}{{end}}</a></th>
-                                <th class="px-3 py-2"><a href="/guild?name={{.Data.Guild.Name | urlquery}}&sort_by=zeny&order={{if eq .Data.SortBy "zeny"}}{{toggleOrder .Data.Order}}{{else}}DESC{{end}}&page={{.Data.ChangelogPagination.CurrentPage}}">{{.Page.T.zeny}} {{if eq .Data.SortBy "zeny"}}{{if eq .Data.Order "ASC"}}▲{{else}}▼{{end}}{{end}}</a></th>
-                                <th class="px-3 py-2"><a href="/guild?name={{.Data.Guild.Name | urlquery}}&sort_by=last_active&order={{if eq .Data.SortBy "last_active"}}{{toggleOrder .Data.Order}}{{else}}DESC{{end}}&page={{.Data.ChangelogPagination.CurrentPage}}">{{.Page.T.last_active}} {{if eq .Data.SortBy "last_active"}}{{if eq .Data.Order "ASC"}}▲{{else}}▼{{end}}{{end}}</a></th>
-                            </tr>
-                        </thead>
-                        <tbody class="text-gray-700 text-xs">
-                            {{range .Data.Members}} {{/* <-- MODIFIED */}}
-                            <tr class="border-b border-gray-200 hover:bg-gray-50">
-                                <td class="px-3 py-2">
-                                    <a href="/character?name={{.Name | urlquery}}" class="font-semibold hover:underline">{{.Name}}</a>
-                                    {{if .IsGuildLeader}}<span title="{{$.Page.T.guild_leader}}" class="ml-1"> ⭐</span>{{end}} {{/* <-- MODIFIED */}}
-                                </td>
-                                <td class="px-3 py-2">{{.Class}}</td>
-                                <td class="px-3 py-2">{{.BaseLevel}}</td>
-                                <td class="px-3 py-2">{{.JobLevel}}</td>
-                                <td class="px-3 py-2" data-zeny="{{.Zeny}}"></td>
-                                <td class="px-3 py-2">{{.LastActive}}</td>
-                            </tr>
-                            {{end}}
-                        </tbody>
-                    </table>
+            <div class="flex items-center gap-4">
+                <img src="{{.Data.Guild.EmblemURL}}" alt="Guild Emblem" class="h-16 w-16 bg-gray-200 p-1 rounded-md" onerror="this.style.display='none'">
+                <div>
+                    <h1 class="text-3xl font-bold text-gray-800">{{.Data.Guild.Name}}</h1>
+                    <p class="text-lg text-gray-600">{{.Page.T.led_by}} <a href="/character?name={{.Data.Guild.Master | urlquery}}" class="font-semibold hover:underline">{{.Data.Guild.Master}}</a></p>
                 </div>
             </div>
-
-            <div class="bg-white shadow-lg rounded-lg p-4">
-                <h2 class="text-xl font-bold border-b pb-2 mb-4 text-center">{{.Page.T.class_distribution}}</h2> {{/* <-- MODIFIED */}}
-                {{if .Data.HasChartData}} {{/* <-- MODIFIED */}}
-                <div class="chart-container">
-                    <canvas id="classDistributionChart"></canvas>
-                </div>
-                {{else}}
-                <p class="text-center text-gray-500 mt-8">{{.Page.T.no_chart_data}}</p> {{/* <-- MODIFIED */}}
-                {{end}}
-            </div>
+            <div id="last-updated" class="text-sm text-gray-500" data-timestamp="{{.Data.LastScrapeTime}}"></div>
         </div>
 
-        {{if .Data.ChangelogEntries}} {{/* <-- MODIFIED */}}
-        <div class="mt-6 bg-white shadow-lg rounded-lg overflow-hidden">
-            <h2 class="text-xl font-bold p-4 border-b">{{.Page.T.guild_activity_log}}</h2> {{/* <-- MODIFIED */}}
-            <div class="overflow-x-auto">
-                <table class="min-w-full leading-normal">
-                    <thead>
-                        <tr class="border-b-2 border-gray-200 bg-gray-50 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
-                            {{/* MODIFIED: Use .Page.T */}}
-                            <th class="px-3 py-2">{{.Page.T.timestamp}}</th>
-                            <th class="px-3 py-2">{{.Page.T.character}}</th>
-                            <th class="px-3 py-2">{{.Page.T.activity}}</th>
-                        </tr>
-                    </thead>
-                    <tbody class="text-gray-700 text-xs">
-                        {{range .Data.ChangelogEntries}} {{/* <-- MODIFIED */}}
-                        <tr class="border-b border-gray-200 hover:bg-gray-50">
-                            <td class="px-3 py-2 whitespace-nowrap">{{.ChangeTime}}</td>
-                            <td class="px-3 py-2">
-                                <a href="/character?name={{.CharacterName | urlquery}}" class="font-semibold hover:underline">{{.CharacterName}}</a>
-                            </td>
-                            <td class="px-3 py-2">{{.ActivityDescription}}</td>
-                        </tr>
+        <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-4">
+            <div class="bg-white p-3 rounded-lg shadow text-center">
+                <span class="text-gray-500 text-xs block">{{.Page.T.guild_level}}</span>
+                <strong class="text-2xl font-bold text-blue-600">{{.Data.Guild.Level}}</strong>
+            </div>
+            <div class="bg-white p-3 rounded-lg shadow text-center">
+                <span class="text-gray-500 text-xs block">{{.Page.T.members}}</span>
+                <strong class="text-2xl font-bold text-gray-800">{{.Data.Guild.MemberCount}}</strong>
+            </div>
+            <div class="bg-white p-3 rounded-lg shadow text-center">
+                <span class="text-gray-500 text-xs block">{{.Page.T.avg_base_lvl}}</span>
+                <strong class="text-2xl font-bold text-gray-800">{{formatAvgLevel .Data.Guild.AvgBaseLevel}}</strong>
+            </div>
+            <div class="bg-white p-3 rounded-lg shadow text-center">
+                <span class="text-gray-500 text-xs block">{{.Page.T.combined_zeny}}</span>
+                <strong class="text-2xl font-bold text-green-700">{{formatZeny .Data.Guild.TotalZeny}} z</strong>
+            </div>
+        </div>
+        
+        <div class="grid grid-cols-1 xl:grid-cols-3 gap-6">
+            <div class="xl:col-span-2">
+                <div class="bg-white shadow-lg rounded-lg overflow-hidden">
+                    <h2 class="text-xl font-semibold p-4 border-b border-gray-200">{{.Page.T.guild_members}} ({{.Data.Guild.MemberCount}})</h2>
+                    <div class="overflow-x-auto">
+                        <table class="min-w-full leading-normal">
+                            <thead>
+                                <tr class="border-b-2 border-gray-200 bg-gray-50 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                                    {{$name := .Data.Guild.Name}}{{$currentSort := .Data.SortBy}}{{$currentOrder := .Data.Order}}{{$revOrder := "ASC"}}{{if eq $currentOrder "ASC"}}{{$revOrder = "DESC"}}{{end}}
+                                    
+                                    <th class="px-2 sm:px-3 py-2"><a href="/guild?name={{$name | urlquery}}&sort_by=rank&order={{if eq $currentSort "rank"}}{{$revOrder}}{{else}}ASC{{end}}">{{.Page.T.rank}} {{if eq $currentSort "rank"}}{{if eq $currentOrder "ASC"}}<span class="text-gray-400">▲</span>{{else}}<span class="text-gray-400">▼</span>{{end}}{{end}}</a></th>
+                                    <th class="px-2 sm:px-3 py-2"><a href="/guild?name={{$name | urlquery}}&sort_by=name&order={{if eq $currentSort "name"}}{{$revOrder}}{{else}}ASC{{end}}">{{.Page.T.name}} {{if eq $currentSort "name"}}{{if eq $currentOrder "ASC"}}<span class="text-gray-400">▲</span>{{else}}<span class="text-gray-400">▼</span>{{end}}{{end}}</a></th>
+                                    <th class="px-2 sm:px-3 py-2"><a href="/guild?name={{$name | urlquery}}&sort_by=base_level&order={{if eq $currentSort "base_level"}}{{$revOrder}}{{else}}DESC{{end}}">{{.Page.T.base_short}} {{if eq $currentSort "base_level"}}{{if eq $currentOrder "ASC"}}<span class="text-gray-400">▲</span>{{else}}<span class="text-gray-400">▼</span>{{end}}{{end}}</a></th>
+                                    <th class="px-2 sm:px-3 py-2"><a href="/guild?name={{$name | urlquery}}&sort_by=job_level&order={{if eq $currentSort "job_level"}}{{$revOrder}}{{else}}DESC{{end}}">{{.Page.T.job_short}} {{if eq $currentSort "job_level"}}{{if eq $currentOrder "ASC"}}<span class="text-gray-400">▲</span>{{else}}<span class="text-gray-400">▼</span>{{end}}{{end}}</a></th>
+                                    <th class="px-2 sm:px-3 py-2"><a href="/guild?name={{$name | urlquery}}&sort_by=class&order={{if eq $currentSort "class"}}{{$revOrder}}{{else}}ASC{{end}}">{{.Page.T.class}} {{if eq $currentSort "class"}}{{if eq $currentOrder "ASC"}}<span class="text-gray-400">▲</span>{{else}}<span class="text-gray-400">▼</span>{{end}}{{end}}</a></th>
+                                    <th class="px-2 sm:px-3 py-2"><a href="/guild?name={{$name | urlquery}}&sort_by=zeny&order={{if eq $currentSort "zeny"}}{{$revOrder}}{{else}}DESC{{end}}">{{.Page.T.zeny}} {{if eq $currentSort "zeny"}}{{if eq $currentOrder "ASC"}}<span class="text-gray-400">▲</span>{{else}}<span class="text-gray-400">▼</span>{{end}}{{end}}</a></th>
+                                    <th class="px-2 sm:px-3 py-2"><a href="/guild?name={{$name | urlquery}}&sort_by=last_active&order={{if eq $currentSort "last_active"}}{{$revOrder}}{{else}}DESC{{end}}">{{.Page.T.last_active}} {{if eq $currentSort "last_active"}}{{if eq $currentOrder "ASC"}}<span class="text-gray-400">▲</span>{{else}}<span class="text-gray-400">▼</span>{{end}}{{end}}</a></th>
+                                </tr>
+                            </thead>
+                            <tbody class="text-gray-700 text-xs">
+                                {{range .Data.Members}}
+                                <tr class="border-b border-gray-200 hover:bg-gray-50 {{if .IsGuildLeader}}font-bold text-gray-900 bg-yellow-50 hover:bg-yellow-100{{end}}">
+                                    <td class="px-2 sm:px-3 py-2">{{.Rank}}</td>
+                                    <td class="px-2 sm:px-3 py-2">
+                                        <div class="flex items-center">
+                                            <img src="{{.Class | getClassImageURL}}" alt="{{.Class}}" class="w-6 h-6 mr-2" style="image-rendering: pixelated;">
+                                            <a href="/character?name={{.Name | urlquery}}" class="hover:underline">{{.Name}}</a>
+                                            {{if .IsGuildLeader}}
+                                                <span title="{{$.Page.T.guild_leader}}" class="ml-1.5 text-xs">⭐</span>
+                                            {{end}}
+                                        </div>
+                                    </td>
+                                    <td class="px-2 sm:px-3 py-2">{{.BaseLevel}}</td>
+                                    <td class="px-2 sm:px-3 py-2">{{.JobLevel}}</td>
+                                    <td class="px-2 sm:px-3 py-2">{{.Class}}</td>
+                                    <td class="px-2 sm:px-3 py-2 font-mono">{{if .Zeny}}{{formatZeny .Zeny}}z{{else}}N/A{{end}}</td>
+                                    <td class="px-2 sm:px-3 py-2 whitespace-nowrap">{{.LastActive}}</td>
+                                </tr>
+                                {{end}}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="xl:col-span-1">
+                <div class="bg-white p-4 rounded-lg shadow">
+                    <h2 class="text-xl font-semibold mb-2">{{.Page.T.class_distribution}}</h2>
+                    <div style="height: 250px;">
+                        {{if .Data.HasChartData}}
+                        <canvas id="classChart" data-chart-json="{{.Data.ClassDistributionJSON}}"></canvas>
+                        {{else}}
+                        <div class="flex items-center justify-center h-full text-gray-500">{{.Page.T.no_chart_data}}</div>
                         {{end}}
-                    </tbody>
-                </table>
-            </div>
-            {{/* MODIFIED: Use .Data and .Page.T */}}
-            {{if gt .Data.ChangelogPagination.TotalPages 1}}
-            <div class="px-5 py-3 bg-white border-t flex flex-col xs:flex-row items-center xs:justify-between">
-                <div class="flex items-center">
-                    {{if .Data.ChangelogPagination.HasPrevPage}}
-                        <a href="/guild?name={{$.Data.Guild.Name | urlquery}}&sort_by={{$.Data.SortBy}}&order={{$.Data.Order}}&page={{.Data.ChangelogPagination.PrevPage}}" class="text-sm bg-gray-200 hover:bg-gray-300 text-gray-800 font-semibold py-1 px-3 rounded-l">
-                            {{.Page.T.prev_short}}
-                        </a>
-                    {{else}}
-                        <span class="text-sm bg-gray-100 text-gray-400 font-semibold py-1 px-3 rounded-l cursor-not-allowed">
-                            {{.Page.T.prev_short}}
-                        </span>
-                    {{end}}
-                    
-                    <span class="text-xs xs:text-sm text-gray-700 px-4">
-                        {{printf .Page.T.page_of .Data.ChangelogPagination.CurrentPage .Data.ChangelogPagination.TotalPages | TmplHTML}}
-                    </span>
+                    </div>
+                </div>
 
-                    {{if .Data.ChangelogPagination.HasNextPage}}
-                        <a href="/guild?name={{$.Data.Guild.Name | urlquery}}&sort_by={{$.Data.SortBy}}&order={{$.Data.Order}}&page={{.Data.ChangelogPagination.NextPage}}" class="text-sm bg-gray-200 hover:bg-gray-300 text-gray-800 font-semibold py-1 px-3 rounded-r">
-                            {{.Page.T.next_short}}
-                        </a>
+                <div class="bg-white p-4 rounded-lg shadow mt-6">
+                    <h2 class="text-xl font-semibold mb-2">{{.Page.T.guild_activity_log}}</h2>
+                    {{if .Data.ChangelogEntries}}
+                    <div class="overflow-y-auto max-h-96">
+                        <table class="min-w-full divide-y divide-gray-200 mt-4">
+                            <thead class="bg-gray-50">
+                                <tr>
+                                    <th scope="col" class="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">{{.Page.T.timestamp}}</th>
+                                    <th scope="col" class="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">{{.Page.T.activity}}</th>
+                                </tr>
+                            </thead>
+                            <tbody class="bg-white divide-y divide-gray-200 text-xs">
+                                {{range .Data.ChangelogEntries}}
+                                <tr>
+                                    <td class="px-3 py-2 whitespace-nowrap text-gray-500 font-mono">{{.ChangeTime}}</td>
+                                    <td class="px-3 py-2 text-gray-800">
+                                        <a href="/character?name={{.CharacterName | urlquery}}" class="font-semibold hover:underline">{{.CharacterName}}</a>
+                                        {{.ActivityDescription}}
+                                    </td>
+                                </tr>
+                                {{end}}
+                            </tbody>
+                        </table>
+                    </div>
+
+                    {{if gt .Data.ChangelogPagination.TotalPages 1}}
+                        {{$filter := (print "&name=" .Data.Guild.Name | urlquery "&sort_by=" .Data.SortBy "&order=" .Data.Order)}}
+                        {{template "pagination" (dict "Page" .Page "Pagination" .Data.ChangelogPagination "Filter" $filter)}}
+                    {{end}}
                     {{else}}
-                        <span class="text-sm bg-gray-100 text-gray-400 font-semibold py-1 px-3 rounded-r cursor-not-allowed">
-                            {{.Page.T.next_short}}
-                        </span>
+                    <p class="text-gray-500 mt-4">{{.Page.T.no_char_activity}}</p>
                     {{end}}
                 </div>
             </div>
-            {{end}}
         </div>
-        {{end}}
-
     </div>
-
+    
     <script>
         document.addEventListener('DOMContentLoaded', () => {
-            // --- MODIFIED: Use translations ---
             const lang = document.documentElement.lang || 'en';
             const translations = {
                 updated_never: '{{.Page.T.updated_never}}',
                 updated_ago: '{{.Page.T.updated_ago}}',
-                js_num_of_members: '{{.Page.T.js_num_of_members}}',
-                class_count: '{{.Page.T.class_distribution}}' // Assuming 'class_distribution' is "Class Count"
+                js_num_of_members: '{{.Page.T.js_num_of_members}}'
             };
 
-            // --- (Zeny formatting logic is unchanged) ---
-            document.querySelectorAll('[data-zeny]').forEach(cell => {
-                const zeny = parseInt(cell.dataset.zeny, 10);
-                if (!isNaN(zeny)) {
-                    cell.textContent = zeny.toLocaleString('en-US') + 'z';
-                }
-            });
-
-            // --- MODIFIED: Use translations for last-updated ---
             const lastUpdateElement = document.getElementById('last-updated');
             if (lastUpdateElement) {
                 const timestampStr = lastUpdateElement.dataset.timestamp;
+
                 if (!timestampStr || timestampStr === 'Never' || timestampStr === '') {
                     lastUpdateElement.textContent = translations.updated_never;
                     return;
                 }
+
                 const lastUpdateDate = new Date(timestampStr);
                 const formattedTimestamp = lastUpdateDate.toLocaleString([], {
                     year: 'numeric', month: 'short', day: 'numeric',
                     hour: '2-digit', minute: '2-digit'
                 });
+
                 const updateTimeAgo = () => {
                     const now = new Date();
                     const secondsPast = Math.floor((now.getTime() - lastUpdateDate.getTime()) / 1000);
                     let timeAgoString;
-                    
+
                     if (lang === 'pt') {
                         if (secondsPast < 5) timeAgoString = 'agora mesmo';
                         else if (secondsPast < 60) timeAgoString = `${secondsPast}s atrás`;
@@ -221,77 +188,56 @@
                     const fullString = translations.updated_ago.replace('%s', timeAgoString);
                     lastUpdateElement.innerHTML = `${fullString} <span class="text-gray-400 font-normal">(${formattedTimestamp})</span>`;
                 };
+
                 updateTimeAgo();
                 setInterval(updateTimeAgo, 30000);
             }
 
-            // --- MODIFIED: Use .Data and translations for Chart.js ---
-            {{if .Data.HasChartData}}
-            const ctx = document.getElementById('classDistributionChart');
-            const chartData = {{.Data.ClassDistributionJSON}};
+            // Class Distribution Chart
+            const chartCanvas = document.getElementById('classChart');
+            if (chartCanvas) {
+                try {
+                    const chartData = JSON.parse(chartCanvas.dataset.chartJson || '{}');
+                    const labels = Object.keys(chartData);
+                    const data = Object.values(chartData);
 
-            const sortedChartData = Object.entries(chartData).sort(([, a], [, b]) => b - a);
-            const labels = sortedChartData.map(([label, value]) => `${label} (${value})`);
-            const data = sortedChartData.map(([, value]) => value);
-
-            const colors = [
-                '#4A5568', '#718096', '#A0AEC0', '#CBD5E0', '#EDF2F7',
-                '#2B6CB0', '#3182CE', '#4299E1', '#63B3ED', '#90CDF4',
-                '#2C7A7B', '#38B2AC', '#4FD1C5', '#81E6D9', '#B2F5EA',
-                '#C05621', '#DD6B20', '#ED8936', '#F6AD55', '#FBD38D'
-            ];
-
-            new Chart(ctx, {
-                type: 'bar',
-                data: {
-                    labels: labels,
-                    datasets: [{
-                        label: translations.class_count,
-                        data: data,
-                        backgroundColor: colors,
-                        borderColor: colors,
-                        borderWidth: 1
-                    }]
-                },
-                options: {
-                    indexAxis: 'y',
-                    responsive: true,
-                    maintainAspectRatio: false,
-                    scales: {
-                        x: {
-                            beginAtZero: true,
-                            title: { display: true, text: translations.js_num_of_members },
-                            ticks: { precision: 0 }
-                        },
-                        y: { grid: { display: false } }
-                    },
-                    plugins: {
-                        legend: { display: false },
-                        tooltip: {
-                            callbacks: {
-                                label: function(context) {
-                                    let label = context.dataset.label || '';
-                                    if (label) { label += ': '; }
-                                    if (context.parsed.x !== null) { label += context.parsed.x; }
-                                    return label;
+                    if (labels.length > 1) {
+                        const ctx = chartCanvas.getContext('2d');
+                        new Chart(ctx, {
+                            type: 'doughnut',
+                            data: {
+                                labels: labels,
+                                datasets: [{
+                                    label: translations.js_num_of_members,
+                                    data: data,
+                                    borderWidth: 1,
+                                    backgroundColor: [
+                                        '#4F46E5', '#D946EF', '#10B981', '#F59E0B', '#EF4444', '#3B82F6', '#6366F1',
+                                        '#EC4899', '#14B8A6', '#F97316', '#DC2626', '#2563EB', '#818CF8', '#F472B6',
+                                        '#0D9488', '#EA580C', '#B91C1C', '#60A5FA'
+                                    ],
+                                }]
+                            },
+                            options: {
+                                responsive: true,
+                                maintainAspectRatio: false,
+                                plugins: {
+                                    legend: {
+                                        position: 'right',
+                                        labels: {
+                                            boxWidth: 20,
+                                            font: { size: 10 }
+                                        }
+                                    }
                                 }
                             }
-                        },
-                        datalabels: {
-                            formatter: (value, ctx) => { return value; },
-                            color: '#374151',
-                             font: { weight: 'bold', size: 12, },
-                            anchor: 'end',
-                            align: 'end',
-                            offset: 4
-                        }
+                        });
                     }
-                },
-                plugins: [ChartDataLabels]
-            });
-            {{end}}
+                } catch (e) {
+                    console.error('Failed to parse chart data:', e);
+                }
+            }
         });
     </script>
-
 </body>
 </html>

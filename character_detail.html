@@ -122,33 +122,11 @@
                         </table>
                     </div>
 
-                    {{if gt .Data.ChangelogPagination.TotalPages 1}} {{/* <-- MODIFIED */}}
-                    <div class="mt-4 flex justify-between items-center">
-                        <div>
-                            <p class="text-sm text-gray-700">
-                                {{/* MODIFIED: Use .Data and .Page.T */}}
-                                {{printf .Page.T.page_of .Data.ChangelogPagination.CurrentPage .Data.ChangelogPagination.TotalPages | TmplHTML}}
-                            </p>
-                        </div>
-                        <div class="flex items-center space-x-2">
-                            {{if .Data.ChangelogPagination.HasPrevPage}}
-                            <a href="/character?name={{$.Data.Character.Name}}&page=1" class="px-3 py-1 border border-gray-300 bg-white text-sm font-medium rounded-md text-gray-700 hover:bg-gray-50">&laquo; {{.Page.T.first}}</a>
-                            <a href="/character?name={{$.Data.Character.Name}}&page={{.Data.ChangelogPagination.PrevPage}}" class="px-3 py-1 border border-gray-300 bg-white text-sm font-medium rounded-md text-gray-700 hover:bg-gray-50">{{.Page.T.previous}}</a>
-                            {{else}}
-                            <span class="px-3 py-1 border border-gray-200 bg-gray-50 text-sm font-medium rounded-md text-gray-400 cursor-not-allowed">&laquo; {{.Page.T.first}}</span>
-                            <span class="px-3 py-1 border border-gray-200 bg-gray-50 text-sm font-medium rounded-md text-gray-400 cursor-not-allowed">{{.Page.T.previous}}</span>
-                            {{end}}
-
-                            {{if .Data.ChangelogPagination.HasNextPage}}
-                            <a href="/character?name={{$.Data.Character.Name}}&page={{.Data.ChangelogPagination.NextPage}}" class="px-3 py-1 border border-gray-300 bg-white text-sm font-medium rounded-md text-gray-700 hover:bg-gray-50">{{.Page.T.next}}</a>
-                            <a href="/character?name={{$.Data.Character.Name}}&page={{.Data.ChangelogPagination.TotalPages}}" class="px-3 py-1 border border-gray-300 bg-white text-sm font-medium rounded-md text-gray-700 hover:bg-gray-50">{{.Page.T.last}} &raquo;</a>
-                            {{else}}
-                            <span class="px-3 py-1 border border-gray-200 bg-gray-50 text-sm font-medium rounded-md text-gray-400 cursor-not-allowed">{{.Page.T.next}}</span>
-                            <span class="px-3 py-1 border border-gray-200 bg-gray-50 text-sm font-medium rounded-md text-gray-400 cursor-not-allowed">{{.Page.T.last}} &raquo;</span>
-                            {{end}}
-                        </div>
-                    </div>
+                    {{if gt .Data.ChangelogPagination.TotalPages 1}}
+                        {{$filter := (print "&name=" .Data.Character.Name | urlquery)}}
+                        {{template "pagination" (dict "Page" .Page "Pagination" .Data.ChangelogPagination "Filter" $filter)}}
                     {{end}}
+
                     {{else}}
                     <p class="text-gray-500 mt-4">{{.Page.T.no_char_activity}}</p> {{/* <-- MODIFIED */}}
                     {{end}}

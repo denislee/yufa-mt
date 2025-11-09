@@ -119,7 +119,7 @@ type ItemSummary struct {
 }
 
 type ItemListing struct {
-	Price          int    `json:"Price"`
+	Price          int64  `json:"Price"` // <-- CHANGED
 	Quantity       int    `json:"Quantity"`
 	StoreName      string `json:"StoreName"`
 	SellerName     string `json:"SellerName"`
@@ -267,10 +267,10 @@ type HistoryPageData struct {
 	ItemName           string
 	ItemNamePT         sql.NullString
 	PriceDataJSON      template.JS
-	CurrentLowestJSON  template.JS // <-- ADDED
-	CurrentHighestJSON template.JS // <-- ADDED
-	OverallLowest      int
-	OverallHighest     int
+	CurrentLowestJSON  template.JS  // <-- ADDED
+	CurrentHighestJSON template.JS  // <-- ADDED
+	OverallLowest      int64        // <-- CHANGED
+	OverallHighest     int64        // <-- CHANGED
 	CurrentLowest      *ItemListing // Kept for HTML fields
 	CurrentHighest     *ItemListing // Kept for HTML fields
 	ItemDetails        *RMSItem
@@ -279,6 +279,7 @@ type HistoryPageData struct {
 	Pagination         PaginationData
 	TotalListings      int
 	PageTitle          string
+	Filter             template.URL // <-- ADD THIS
 }
 
 type PlayerCountPoint struct {
@@ -309,7 +310,7 @@ type CharacterPageData struct {
 	Players        []PlayerCharacter
 	LastScrapeTime string
 
-	SearchName    string
+	SearchQuery   string // This is the correct field
 	SelectedClass string
 	SelectedGuild string
 	AllClasses    []string
@@ -319,7 +320,7 @@ type CharacterPageData struct {
 
 	VisibleColumns map[string]bool
 	AllColumns     []Column
-	ColumnParams   template.URL
+	Filter         template.URL // <-- ADDED
 
 	Pagination   PaginationData
 	TotalPlayers int
@@ -327,7 +328,6 @@ type CharacterPageData struct {
 
 	ClassDistributionJSON template.JS
 	GraphFilter           map[string]bool
-	GraphFilterParams     template.URL
 	HasChartData          bool
 	PageTitle             string
 }

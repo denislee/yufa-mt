@@ -751,6 +751,20 @@ var templateFuncs = template.FuncMap{
 	"TmplHTML": func(s string) template.HTML {
 		return template.HTML(s)
 	},
+	"dict": func(values ...interface{}) (map[string]interface{}, error) {
+		if len(values)%2 != 0 {
+			return nil, fmt.Errorf("invalid dict call: odd number of arguments")
+		}
+		dict := make(map[string]interface{}, len(values)/2)
+		for i := 0; i < len(values); i += 2 {
+			key, ok := values[i].(string)
+			if !ok {
+				return nil, fmt.Errorf("dict keys must be strings")
+			}
+			dict[key] = values[i+1]
+		}
+		return dict, nil
+	},
 }
 
 type PaginationData struct {
@@ -1111,8 +1125,6 @@ func mapItemTypeToTabData(typeName string) ItemTypeTab {
 	return tab
 }
 
-// in handlers.go
-
 var templateCache = make(map[string]*template.Template)
 
 func init() {
@@ -1137,12 +1149,36 @@ func init() {
 		"about.html",
 	}
 
+	// --- MODIFICATION START ---
+	// Define which common files to include.
 	navbarPath := "navbar.html"
+	paginationPath := "pagination.html" // <-- ADD THIS
+
+	// Define which templates need which partials.
+	// All templates get the navbar.
+	templatesWithPagination := map[string]bool{
+		"activity.html":            true,
+		"character_changelog.html": true,
+		"character_detail.html":    true,
+		"characters.html":          true,
+		"chat.html":                true,
+		"guild_detail.html":        true,
+		"guilds.html":              true,
+		"history.html":             true,
+	}
 
 	log.Println("[I] [HTTP] Parsing all application templates...")
 	for _, tmplName := range templates {
 
-		tmpl, err := template.New(tmplName).Funcs(templateFuncs).ParseFiles(tmplName, navbarPath)
+		// Start with the base files
+		filesToParse := []string{tmplName, navbarPath}
+
+		// Add pagination only if this template needs it
+		if templatesWithPagination[tmplName] {
+			filesToParse = append(filesToParse, paginationPath) // <-- ADD THIS
+		}
+
+		tmpl, err := template.New(tmplName).Funcs(templateFuncs).ParseFiles(filesToParse...)
 		if err != nil {
 			// --- REFACTOR ---
 			// The old code had a complex if/else if block here to check for
@@ -1160,6 +1196,7 @@ func init() {
 		templateCache[tmplName] = tmpl
 	}
 	log.Println("[I] [HTTP] All templates parsed and cached successfully.")
+	// --- MODIFICATION END ---
 }
 
 func summaryHandler(w http.ResponseWriter, r *http.Request) {
@@ -1557,8 +1594,10 @@ func activityHandler(w http.ResponseWriter, r *http.Request) {
         ORDER BY me.event_timestamp DESC LIMIT ? OFFSET ?`, whereClause)
 	// --- END MODIFICATION ---
 
-	finalParams := append(params, eventsPerPage, pagination.Offset)
-	eventRows, err := db.Query(query, finalParams...)
+	queryArgs := params
+	queryArgs = append(queryArgs, eventsPerPage, pagination.Offset)
+	// --- END FIX ---
+	eventRows, err := db.Query(query, queryArgs...)
 	if err != nil {
 		// --- THIS IS THE FIX ---
 		log.Printf("[E] [HTTP] Could not query for market events: %v", err)
@@ -1684,24 +1723,42 @@ func itemHistoryHandler(w http.ResponseWriter, r *http.Request) {
 	log.Printf("[D] [HTTP/History] Step 5: Found Overall Lowest: %d z, Overall Highest: %d z", overallLowest.Int64, overallHighest.Int64)
 
 	const listingsPerPage = 50
-	pagination := newPaginationData(r, 0, listingsPerPage) // Initial
-	allListings, totalListings, err := fetchAllListings(itemName, pagination, listingsPerPage)
+
+	// --- FIX: Get total count FIRST ---
+	var totalListings int
+	err = db.QueryRow("SELECT COUNT(*) FROM items WHERE name_of_the_item = ?", itemName).Scan(&totalListings)
+	if err != nil {
+		log.Printf("[E] [HTTP/History] Failed to count all listings: %v", err)
+		http.Error(w, "Database query for all listings failed", http.StatusInternalServerError)
+		return
+	}
+	log.Printf("[D] [HTTP/History] Step 6a: Found %d total historical listings.", totalListings)
+
+	// --- FIX: Create pagination ONCE with the correct total ---
+	pagination := newPaginationData(r, totalListings, listingsPerPage)
+
+	// --- FIX: Pass pagination to the fetcher ---
+	allListings, err := fetchAllListings(itemName, pagination, listingsPerPage)
 	if err != nil {
 		log.Printf("[E] [HTTP/History] All listings query error: %v", err)
 		http.Error(w, "Database query for all listings failed", http.StatusInternalServerError)
 		return
 	}
-	log.Printf("[D] [HTTP/History] Step 6: Found %d total historical listings. Returning %d for this page.", totalListings, len(allListings))
-	pagination = newPaginationData(r, totalListings, listingsPerPage) // Recalculate
+	log.Printf("[D] [HTTP/History] Step 6b: Returning %d listings for this page.", len(allListings))
+	// --- END FIX ---
+
+	// --- FIX: Create filter string for pagination ---
+	filterString := "&name=" + url.QueryEscape(itemName)
+	// --- END FIX ---
 
 	data := HistoryPageData{
 		ItemName:           itemName,
 		ItemNamePT:         itemNamePT,
 		PriceDataJSON:      template.JS(priceHistoryJSON),
-		CurrentLowestJSON:  template.JS(currentLowestJSON),  // <-- ADDED
-		CurrentHighestJSON: template.JS(currentHighestJSON), // <-- ADDED
-		OverallLowest:      int(overallLowest.Int64),
-		OverallHighest:     int(overallHighest.Int64),
+		CurrentLowestJSON:  template.JS(currentLowestJSON),
+		CurrentHighestJSON: template.JS(currentHighestJSON),
+		OverallLowest:      overallLowest.Int64,
+		OverallHighest:     overallHighest.Int64,
 		CurrentLowest:      currentLowest,
 		CurrentHighest:     currentHighest,
 		ItemDetails:        rmsItemDetails,
@@ -1710,6 +1767,7 @@ func itemHistoryHandler(w http.ResponseWriter, r *http.Request) {
 		TotalListings:      totalListings,
 		Pagination:         pagination,
 		PageTitle:          itemName,
+		Filter:             template.URL(filterString), // <-- ADDED
 	}
 
 	log.Printf("[D] [HTTP/History] Rendering template for '%s' with all data.", itemName)
@@ -1865,15 +1923,8 @@ func fetchPriceHistory(itemName string) ([]PricePointDetails, error) {
 }
 
 // fetchAllListings retrieves a paginated list of all historical listings for an item.
-// --- FIX IS HERE: Added listingsPerPage parameter ---
-func fetchAllListings(itemName string, pagination PaginationData, listingsPerPage int) ([]Item, int, error) {
-	var totalListings int
-	err := db.QueryRow("SELECT COUNT(*) FROM items WHERE name_of_the_item = ?", itemName).Scan(&totalListings)
-	if err != nil {
-		return nil, 0, fmt.Errorf("failed to count all listings: %w", err)
-	}
-
-	// --- MODIFICATION: Join internal_item_db ---
+func fetchAllListings(itemName string, pagination PaginationData, listingsPerPage int) ([]Item, error) {
+	// --- FIX: Total count is now done in the handler ---
 	query := `
 		SELECT i.id, i.name_of_the_item, local_db.name_pt, i.item_id, i.quantity, i.price, 
 		       i.store_name, i.seller_name, i.date_and_time_retrieved, i.map_name, 
@@ -1884,11 +1935,9 @@ func fetchAllListings(itemName string, pagination PaginationData, listingsPerPag
 		ORDER BY i.is_available DESC, i.date_and_time_retrieved DESC 
 		LIMIT ? OFFSET ?;
 	`
-	// --- END MODIFICATION ---
-	// --- FIX IS HERE: Use the listingsPerPage parameter ---
 	rows, err := db.Query(query, itemName, listingsPerPage, pagination.Offset)
 	if err != nil {
-		return nil, totalListings, fmt.Errorf("all listings query error: %w", err)
+		return nil, fmt.Errorf("all listings query error: %w", err) // <-- FIX: Return nil, error
 	}
 	defer rows.Close()
 
@@ -1907,7 +1956,7 @@ func fetchAllListings(itemName string, pagination PaginationData, listingsPerPag
 		}
 		allListings = append(allListings, listing)
 	}
-	return allListings, totalListings, nil
+	return allListings, nil // <-- FIX: Return listings, nil
 }
 
 func playerCountHandler(w http.ResponseWriter, r *http.Request) {
@@ -2111,24 +2160,30 @@ func characterHandler(w http.ResponseWriter, r *http.Request) {
 		{ID: "guild", DisplayName: "Guild"}, {ID: "last_updated", DisplayName: "Last Updated"}, {ID: "last_active", DisplayName: "Last Active"},
 	}
 	visibleColumns := make(map[string]bool)
-	columnParams := url.Values{}
-	graphFilterParams := url.Values{}
+	columnParams := url.Values{}      // This is kept for the form, but not for pagination filter
+	graphFilterParams := url.Values{} // This is kept for the form, but not for pagination filter
 
 	if isInitialLoad {
 		visibleColumns["base_level"], visibleColumns["job_level"], visibleColumns["experience"] = true, true, true
 		visibleColumns["class"], visibleColumns["guild"], visibleColumns["last_active"] = true, true, true
+
+		// --- FIX: Populate selectedCols with the defaults ---
+		selectedCols = []string{} // Initialize the slice
 		for colID := range visibleColumns {
-			columnParams.Add("cols", colID)
+			columnParams.Add("cols", colID)            // Still needed for header links
+			selectedCols = append(selectedCols, colID) // Add default col to the slice
 		}
+		// --- END FIX ---
+
 		graphFilter = []string{"second"}
 	} else {
 		for _, col := range selectedCols {
 			visibleColumns[col] = true
-			columnParams.Add("cols", col)
+			columnParams.Add("cols", col) // Still needed for header links
 		}
 	}
 	for _, f := range graphFilter {
-		graphFilterParams.Add("graph_filter", f)
+		graphFilterParams.Add("graph_filter", f) // Still needed for header links
 	}
 
 	var allClasses []string
@@ -2213,9 +2268,11 @@ func characterHandler(w http.ResponseWriter, r *http.Request) {
 	pagination := newPaginationData(r, totalPlayers, playersPerPage)
 	query := fmt.Sprintf(`SELECT rank, name, base_level, job_level, experience, class, guild_name, zeny, last_updated, last_active
 		FROM characters %s %s LIMIT ? OFFSET ?`, whereClause, orderByClause)
-	finalParams := append(params, playersPerPage, pagination.Offset)
 
-	rows, err := db.Query(query, finalParams...)
+	queryArgs := params
+	queryArgs = append(queryArgs, playersPerPage, pagination.Offset)
+
+	rows, err := db.Query(query, queryArgs...)
 	if err != nil {
 		http.Error(w, "Could not query for player characters", http.StatusInternalServerError)
 		return
@@ -2242,12 +2299,46 @@ func characterHandler(w http.ResponseWriter, r *http.Request) {
 		players = append(players, p)
 	}
 
+	// --- ADD THIS BLOCK to build the filter string ---
+	filterValues := url.Values{}
+	if searchName != "" {
+		filterValues.Set("name_query", searchName)
+	}
+	if selectedClass != "" {
+		filterValues.Set("class_filter", selectedClass)
+	}
+	if selectedGuild != "" {
+		filterValues.Set("guild_filter", selectedGuild)
+	}
+	// 'selectedCols' is the []string of column names
+	for _, col := range selectedCols {
+		filterValues.Add("cols", col)
+	}
+	// 'graphFilter' is the []string of graph filters
+	for _, f := range graphFilter {
+		filterValues.Add("graph_filter", f)
+	}
+	// Add sort parameters
+	// filterValues.Set("sort_by", sortBy)
+	// filterValues.Set("order", order)
+
+	var filterString string
+	if encodedFilter := filterValues.Encode(); encodedFilter != "" {
+		filterString = "&" + encodedFilter
+	}
+	// --- END OF NEW BLOCK ---
+
+	// --- NOW, UPDATE the data block: ---
 	data := CharacterPageData{
 		Players: players, LastScrapeTime: GetLastScrapeTime(),
+		SearchQuery:   searchName,
 		SelectedClass: selectedClass, SelectedGuild: selectedGuild, AllClasses: allClasses, SortBy: sortBy, Order: order,
-		VisibleColumns: visibleColumns, AllColumns: allCols, ColumnParams: template.URL(columnParams.Encode()),
+		VisibleColumns: visibleColumns, AllColumns: allCols,
+		// ColumnParams: template.URL(columnParams.Encode()), // <-- REMOVED
+		// GraphFilterParams: template.URL(graphFilterParams.Encode()), // <-- REMOVED
+		Filter:     template.URL(filterString), // <-- ADDED
 		Pagination: pagination, TotalPlayers: totalPlayers, TotalZeny: totalZeny.Int64,
-		ClassDistributionJSON: template.JS(classDistJSON), GraphFilter: graphFilterMap, GraphFilterParams: template.URL(graphFilterParams.Encode()),
+		ClassDistributionJSON: template.JS(classDistJSON), GraphFilter: graphFilterMap,
 		HasChartData: len(chartData) > 1,
 		PageTitle:    "Characters",
 	}
@@ -3404,8 +3495,11 @@ func chatHandler(w http.ResponseWriter, r *http.Request) {
 		ORDER BY timestamp DESC 
 		LIMIT ? OFFSET ?`, whereClause)
 
-	finalParams := append(params, messagesPerPage, pagination.Offset)
-	rows, err := db.Query(query, finalParams...)
+	queryArgs := params
+	queryArgs = append(queryArgs, messagesPerPage, pagination.Offset)
+	// --- END FIX ---
+	rows, err := db.Query(query, queryArgs...)
+
 	if err != nil {
 		log.Printf("[E] [HTTP/Chat] Could not query for chat messages: %v", err)
 		http.Error(w, "Could not query for chat messages", http.StatusInternalServerError)
@@ -3430,13 +3524,21 @@ func chatHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	queryFilter := url.Values{}
+	// --- FIX: Always add the channel filter if it's not the default "all" ---
 	if activeChannel != "all" {
 		queryFilter.Set("channel", activeChannel)
 	}
+	// --- END FIX ---
 	if searchQuery != "" {
 		queryFilter.Set("query", searchQuery)
 	}
+
 	// --- END UNCHANGED SECTION ---
+
+	var filterString string
+	if encodedFilter := queryFilter.Encode(); encodedFilter != "" {
+		filterString = "&" + encodedFilter
+	}
 
 	// --- MODIFICATION: Get graph data ---
 	activityGraphJSON := getChatActivityGraphData()
@@ -3449,7 +3551,7 @@ func chatHandler(w http.ResponseWriter, r *http.Request) {
 		PageTitle:      "Chat",
 		AllChannels:    allChannels,
 		ActiveChannel:  activeChannel,
-		QueryFilter:    template.URL(queryFilter.Encode()),
+		QueryFilter:    template.URL(filterString), // <-- Use the corrected string
 		SearchQuery:    searchQuery,
 		// --- MODIFICATION: Pass data to template ---
 		ActivityGraphJSON: activityGraphJSON,

@@ -1,9 +1,9 @@
 <!DOCTYPE html>
-<html lang="{{.Page.Lang}}"> {{/* <-- MODIFIED */}}
+<html lang="{{.Page.Lang}}">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{{.Page.T.char_changelog_title}} - Yufa Market Tracker</title> {{/* <-- MODIFIED */}}
+    <title>{{.Page.T.char_changelog_title}} - Yufa Market Tracker</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
         html { font-size: 110%; }
@@ -18,8 +18,8 @@
 
     <div class="container mx-auto px-4 py-6">
         <div class="flex flex-col sm:flex-row justify-between sm:items-center gap-2 mb-4 border-b border-gray-200 pb-3">
-            <h1 class="text-2xl font-bold text-gray-800">{{.Page.T.char_changelog_title}}</h1> {{/* <-- MODIFIED */}}
-            <div id="last-updated" class="text-sm text-gray-500" data-timestamp="{{.Data.LastScrapeTime}}"></div> {{/* <-- MODIFIED */}}
+            <h1 class="text-2xl font-bold text-gray-800">{{.Page.T.char_changelog_title}}</h1>
+            <div id="last-updated" class="text-sm text-gray-500" data-timestamp="{{.Data.LastScrapeTime}}"></div>
         </div>
 
         <div class="bg-white shadow-lg rounded-lg overflow-hidden">
@@ -27,56 +27,39 @@
                 <table class="min-w-full leading-normal">
                     <thead>
                         <tr class="border-b-2 border-gray-200 bg-gray-50 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
-                            <th class="px-3 py-3">{{.Page.T.timestamp}}</th> {{/* <-- MODIFIED */}}
-                            <th class="px-3 py-3">{{.Page.T.character}}</th> {{/* <-- MODIFIED */}}
-                            <th class="px-3 py-3">{{.Page.T.activity}}</th> {{/* <-- MODIFIED */}}
+                            <th class="px-3 py-2" style="width: 170px;">{{.Page.T.timestamp}}</th>
+                            <th class="px-3 py-2" style="width: 150px;">{{.Page.T.character}}</th>
+                            <th class="px-3 py-2">{{.Page.T.activity}}</th>
                         </tr>
                     </thead>
-                    <tbody class="text-gray-700 text-sm">
-                        {{range .Data.ChangelogEntries}} {{/* <-- MODIFIED */}}
+                    <tbody class="text-gray-700 text-xs">
+                        {{range .Data.ChangelogEntries}}
                         <tr class="border-b border-gray-200 hover:bg-gray-50">
-                            <td class="px-3 py-3 whitespace-nowrap text-gray-600">{{.ChangeTime}}</td>
-                            <td class="px-3 py-3">
+                            <td class="px-3 py-2 whitespace-nowrap text-gray-500 font-mono">{{.ChangeTime}}</td>
+                            <td class="px-3 py-2 whitespace-nowrap">
                                 <a href="/character?name={{.CharacterName | urlquery}}" class="font-semibold hover:underline text-blue-600">{{.CharacterName}}</a>
                             </td>
-                            <td class="px-3 py-3">{{.ActivityDescription}}</td>
+                            <td class="px-3 py-2 text-gray-800">{{.ActivityDescription}}</td>
                         </tr>
                         {{else}}
                         <tr>
-                            <td colspan="3" class="text-center py-10 text-gray-500">{{.Page.T.no_changelog_entries}}</td> {{/* <-- MODIFIED */}}
+                            <td colspan="3" class="px-3 py-4 text-center text-gray-500">{{.Page.T.no_changelog_entries}}</td>
                         </tr>
                         {{end}}
                     </tbody>
                 </table>
             </div>
-            
-            {{/* --- MODIFIED: Fixed pagination bug and added translations --- */}}
-            {{if gt .Data.Pagination.TotalPages 1}}
-            <div class="px-5 py-3 bg-white border-t flex flex-col xs:flex-row items-center xs:justify-between">
-                <div class="flex items-center">
-                    {{if .Data.Pagination.HasPrevPage}}
-                        <a href="?page={{.Data.Pagination.PrevPage}}" class="text-sm bg-gray-200 hover:bg-gray-300 text-gray-800 font-semibold py-2 px-4 rounded-l">{{.Page.T.prev_short}}</a>
-                    {{else}}
-                        <span class="text-sm bg-gray-100 text-gray-400 font-semibold py-2 px-4 rounded-l cursor-not-allowed">{{.Page.T.prev_short}}</span>
-                    {{end}}
-                    <span class="text-sm text-gray-700 px-4">
-                        {{printf .Page.T.page_of .Data.Pagination.CurrentPage .Data.Pagination.TotalPages | TmplHTML}}
-                    </span>
-                    {{if .Data.Pagination.HasNextPage}}
-                        <a href="?page={{.Data.Pagination.NextPage}}" class="text-sm bg-gray-200 hover:bg-gray-300 text-gray-800 font-semibold py-2 px-4 rounded-r">{{.Page.T.next_short}}</a>
-                    {{else}}
-                         <span class="text-sm bg-gray-100 text-gray-400 font-semibold py-2 px-4 rounded-r cursor-not-allowed">{{.Page.T.next_short}}</span>
-                    {{end}}
-                </div>
-            </div>
-            {{end}}
-            {{/* --- END MODIFICATION --- */}}
         </div>
+
+        {{if gt .Data.Pagination.TotalPages 1}}
+            {{$filter := ""}}
+            {{template "pagination" (dict "Page" .Page "Pagination" .Data.Pagination "Filter" $filter)}}
+        {{end}}
+
     </div>
     
     <script>
         document.addEventListener('DOMContentLoaded', () => {
-            // --- MODIFIED: Use .Page.T translations ---
             const lang = document.documentElement.lang || 'en';
             const translations = {
                 updated_never: '{{.Page.T.updated_never}}',
@@ -86,21 +69,23 @@
             const lastUpdateElement = document.getElementById('last-updated');
             if (lastUpdateElement) {
                 const timestampStr = lastUpdateElement.dataset.timestamp;
+
                 if (!timestampStr || timestampStr === 'Never' || timestampStr === '') {
-                    lastUpdateElement.textContent = translations.updated_never; // Use translation
+                    lastUpdateElement.textContent = translations.updated_never;
                     return;
                 }
+
                 const lastUpdateDate = new Date(timestampStr);
                 const formattedTimestamp = lastUpdateDate.toLocaleString([], {
                     year: 'numeric', month: 'short', day: 'numeric',
                     hour: '2-digit', minute: '2-digit'
                 });
+
                 const updateTimeAgo = () => {
                     const now = new Date();
                     const secondsPast = Math.floor((now.getTime() - lastUpdateDate.getTime()) / 1000);
                     let timeAgoString;
 
-                    // --- MODIFIED: Language-specific time ago ---
                     if (lang === 'pt') {
                         if (secondsPast < 5) timeAgoString = 'agora mesmo';
                         else if (secondsPast < 60) timeAgoString = `${secondsPast}s atrás`;
@@ -115,9 +100,10 @@
                         else timeAgoString = `${Math.floor(secondsPast / 86400)}d ago`;
                     }
                     
-                    const fullString = translations.updated_ago.replace('%s', timeAgoString); // Use translation
+                    const fullString = translations.updated_ago.replace('%s', timeAgoString);
                     lastUpdateElement.innerHTML = `${fullString} <span class="text-gray-400 font-normal">(${formattedTimestamp})</span>`;
                 };
+
                 updateTimeAgo();
                 setInterval(updateTimeAgo, 30000);
             }
