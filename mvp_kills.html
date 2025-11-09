@@ -112,10 +112,10 @@
 
                     if (lang === 'pt') {
                         if (secondsPast < 5) timeAgoString = 'agora mesmo';
-                        else if (secondsPast < 60) timeAgoString = `${secondsPast}s atrás`;
-                        else if (secondsPast < 3600) timeAgoString = `${Math.floor(secondsPast / 60)}m atrás`;
-                        else if (secondsPast < 86400) timeAgoString = `${Math.floor(secondsPast / 3600)}h atrás`;
-                        else timeAgoString = `${Math.floor(secondsPast / 86400)}d atrás`;
+                        else if (secondsPast < 60) timeAgoString = `${secondsPast}s`;
+                        else if (secondsPast < 3600) timeAgoString = `${Math.floor(secondsPast / 60)}m`;
+                        else if (secondsPast < 86400) timeAgoString = `${Math.floor(secondsPast / 3600)}h`;
+                        else timeAgoString = `${Math.floor(secondsPast / 86400)}d`;
                     } else {
                         if (secondsPast < 5) timeAgoString = 'just now';
                         else if (secondsPast < 60) timeAgoString = `${secondsPast}s ago`;

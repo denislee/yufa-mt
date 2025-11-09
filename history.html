@@ -52,7 +52,39 @@
 
         {{if .Data.ItemDetails}}
         <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
-            <div class="md:col-span-2">
+            
+            <div class="md:col-span-2 space-y-6">
+                
+                <div class="bg-white p-4 rounded-lg shadow">
+                    <h3 class="text-lg font-semibold text-gray-700 mb-3">{{.Page.T.item_details}}</h3>
+                    
+                    <div class="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-4 text-sm">
+                        <div>
+                            <span class="block text-xs font-medium text-gray-500">{{.Page.T.type}}</span>
+                            <span class="text-gray-800 font-medium">{{if .Data.ItemDetails.Type}}{{.Data.ItemDetails.Type}}{{else}}N/A{{end}}</span>
+                        </div>
+                        <div>
+                            <span class="block text-xs font-medium text-gray-500">{{.Page.T.weight}}</span>
+                            <span class="text-gray-800 font-medium">{{if .Data.ItemDetails.Weight}}{{.Data.ItemDetails.Weight}}{{else}}N/A{{end}}</span>
+                        </div>
+                        <div>
+                            <span class="block text-xs font-medium text-gray-500">{{.Page.T.slots}}</span>
+                            <span class="text-gray-800 font-medium">{{.Data.ItemDetails.Slots}}</span>
+                        </div>
+                        <div>
+                            <span class="block text-xs font-medium text-gray-500">{{.Page.T.buy_sell}}</span>
+                            <span class="text-gray-800 font-medium">{{if .Data.ItemDetails.Buy}}{{.Data.ItemDetails.Buy}}{{else}}N/A{{end}} / {{if .Data.ItemDetails.Sell}}{{.Data.ItemDetails.Sell}}{{else}}N/A{{end}}</span>
+                        </div>
+                    </div>
+
+                    {{if .Data.ItemDetails.Script}}
+                    <div>
+                        <h3 class="font-medium text-gray-500">{{.Page.T.item_script}}</h3>
+                        <pre class="mt-2 bg-gray-800 text-white text-xs rounded-md p-3 overflow-auto max-h-48 font-mono">{{.Data.ItemDetails.Script}}</pre>
+                    </div>
+                    {{end}}
+                </div>
+
                 <div class="bg-white p-4 rounded-lg shadow">
                     <canvas id="priceChart" data-price-json="{{.Data.PriceDataJSON}}" data-lowest-json="{{.Data.CurrentLowestJSON}}" data-highest-json="{{.Data.CurrentHighestJSON}}"></canvas>
                 </div>
@@ -81,14 +113,8 @@
                 </div>
                 {{end}}
                 
-                {{if .Data.ItemDetails.Script}}
-                <div class="bg-white p-4 rounded-lg shadow">
-                    <h3 class="font-medium text-gray-500">{{.Page.T.item_script}}</h3>
-                    <pre class="mt-2 bg-gray-800 text-white text-xs rounded-md p-3 overflow-auto max-h-48 font-mono">{{.Data.ItemDetails.Script}}</pre>
                 </div>
-                {{end}}
             </div>
-        </div>
         {{else}}
         <div class="bg-white p-6 rounded-lg shadow text-center text-gray-500">
             <p>{{.Page.T.no_detailed_info}}</p>
@@ -171,10 +197,10 @@
 
                     if (lang === 'pt') {
                         if (secondsPast < 5) timeAgoString = 'agora mesmo';
-                        else if (secondsPast < 60) timeAgoString = `${secondsPast}s atrás`;
-                        else if (secondsPast < 3600) timeAgoString = `${Math.floor(secondsPast / 60)}m atrás`;
-                        else if (secondsPast < 86400) timeAgoString = `${Math.floor(secondsPast / 3600)}h atrás`;
-                        else timeAgoString = `${Math.floor(secondsPast / 86400)}d atrás`;
+                        else if (secondsPast < 60) timeAgoString = `${secondsPast}s`;
+                        else if (secondsPast < 3600) timeAgoString = `${Math.floor(secondsPast / 60)}m`;
+                        else if (secondsPast < 86400) timeAgoString = `${Math.floor(secondsPast / 3600)}h`;
+                        else timeAgoString = `${Math.floor(secondsPast / 86400)}d`;
                     } else {
                         if (secondsPast < 5) timeAgoString = 'just now';
                         else if (secondsPast < 60) timeAgoString = `${secondsPast}s ago`;

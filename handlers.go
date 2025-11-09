@@ -299,6 +299,12 @@ var translations = map[string]map[string]string{
 		"store_details":     "Store Details",
 		"showing_last_seen": "Showing the <strong>%d</strong> items last seen in this store. Faded items are no longer available.",
 		"last_seen":         "Last Seen",
+
+		// ... (inside "en" map)
+		"item_details": "Item Details",
+		"weight":       "Weight",
+		"slots":        "Slots",
+		"buy_sell":     "Buy / Sell",
 	},
 	"pt": {
 		"market_summary":       "Resumo do Mercado",
@@ -572,6 +578,12 @@ var translations = map[string]map[string]string{
 		"store_details":     "Detalhes da Loja",
 		"showing_last_seen": "Mostrando os <strong>%d</strong> itens vistos por último nesta loja. Itens esmaecidos não estão mais disponíveis.",
 		"last_seen":         "Visto por Último",
+
+		// ... (inside "pt" map)
+		"item_details": "Detalhes do Item",
+		"weight":       "Peso",
+		"slots":        "Slots",
+		"buy_sell":     "Compra / Venda",
 	},
 }
 
