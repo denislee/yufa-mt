@@ -17,6 +17,15 @@ import (
 	"github.com/joho/godotenv"
 )
 
+// flushBatchIfFull flushes the batch if it's full and returns a new (nil) batch.
+func flushBatchIfFull(batch []pageViewLog, maxSize int) []pageViewLog {
+	if len(batch) >= maxSize {
+		flushVisitorBatchToDB(batch)
+		return nil // Return a new, empty batch
+	}
+	return batch
+}
+
 func getVisitorHash(r *http.Request) string {
 	// This function remains unchanged, but is included for context
 	// as it's a small function in the same file.
@@ -112,8 +121,6 @@ func flushVisitorBatchToDB(batch []pageViewLog) {
 }
 
 // startVisitorLogger runs the main loop for batch-processing page views.
-// This version's 'ctx.Done()' case is now functional and will be
-// triggered by the graceful shutdown in main().
 func startVisitorLogger(ctx context.Context) {
 	var batch []pageViewLog
 	ticker := time.NewTicker(10 * time.Second)
@@ -126,8 +133,6 @@ func startVisitorLogger(ctx context.Context) {
 		case <-ctx.Done():
 			// Shutdown signal received.
 			log.Println("[I] [Logger] Shutdown signal received. Draining channel...")
-
-			// Stop the ticker immediately
 			ticker.Stop()
 
 			// Drain any remaining items in the channel
@@ -135,10 +140,8 @@ func startVisitorLogger(ctx context.Context) {
 				select {
 				case logEntry := <-pageViewChannel:
 					batch = append(batch, logEntry)
-					if len(batch) >= batchSize {
-						flushVisitorBatchToDB(batch)
-						batch = nil // Clear the batch
-					}
+					// Use the helper here as well
+					batch = flushBatchIfFull(batch, batchSize)
 				default:
 					// Channel is empty
 					log.Println("[I] [Logger] Flushing final batch...")
@@ -150,10 +153,8 @@ func startVisitorLogger(ctx context.Context) {
 
 		case logEntry := <-pageViewChannel:
 			batch = append(batch, logEntry)
-			if len(batch) >= batchSize {
-				flushVisitorBatchToDB(batch)
-				batch = nil // Clear the batch
-			}
+			// Use the helper
+			batch = flushBatchIfFull(batch, batchSize)
 
 		case <-ticker.C:
 			flushVisitorBatchToDB(batch)
@@ -187,70 +188,8 @@ func visitorTracker(next http.HandlerFunc) http.HandlerFunc {
 	}
 }
 
-func main() {
-	if err := godotenv.Load(); err != nil {
-		log.Println("[I] [Main] No .env file found, relying on system environment variables.")
-	}
-
-	var err error
-	db, err = initDB("./market_data.db")
-	if err != nil {
-		log.Fatalf("[F] [DB] Failed to initialize database: %v", err)
-	}
-	defer db.Close()
-
-	// --- NEW: Populate Item DB from YAMLs ---
-	// Run this synchronously on startup before starting other services
-	// It's critical data and should be loaded before the app is "ready"
-	populateItemDBOnStartup()
-	// --- END NEW ---
-
-	// Create a context that gets cancelled on OS signals (SIGINT, SIGTERM)
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
-	sigChan := make(chan os.Signal, 1)
-	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
-
-	// Goroutine to listen for OS signals
-	go func() {
-		<-sigChan
-		log.Println("[I] [Main] Shutdown signal received. Initiating graceful shutdown...")
-		cancel() // Trigger context cancellation
-	}()
-
-	// --- MODIFICATION: Admin Password Logic ---
-	adminPass = os.Getenv("ADMIN_PASSWORD")
-	if adminPass == "" {
-		log.Println("[I] [Main] ADMIN_PASSWORD not set. Generating a new random password.")
-		adminPass = generateRandomPassword(16)
-		if err := os.WriteFile("pwd.txt", []byte(adminPass), 0644); err != nil {
-			log.Printf("[W] [Main] Could not write generated admin password to file: %v", err)
-		} else {
-			log.Println("[I] [Main] Generated admin password saved to pwd.txt")
-		}
-	} else {
-		log.Println("[I] [Main] Loaded admin password from ADMIN_PASSWORD environment variable.")
-	}
-	// --- END MODIFICATION ---
-
-	go func() {
-		time.Sleep(5 * time.Second) // Give server time to start
-		log.Println("==================================================")
-		log.Printf("[I] [Main] Admin User: %s", adminUser)
-		log.Printf("[I] [Main] Admin Pass: %s", adminPass)
-		log.Println("==================================================")
-	}()
-
-	// Start Background Services with the cancellable context
-	// --- MODIFICATION: Removed call to populateMissingCachesOnStartup() ---
-	// go populateMissingCachesOnStartup() // This function no longer exists
-	// --- END MODIFICATION ---
-	go startBackgroundJobs(ctx)
-	go startDiscordBot(ctx)
-	go startVisitorLogger(ctx)
-
-	// --- Setup Routers ---
+// registerRoutes sets up all the HTTP handlers for the application.
+func registerRoutes() *http.ServeMux {
 	mux := http.NewServeMux()
 
 	// --- Public Routes ---
@@ -275,8 +214,20 @@ func main() {
 	mux.HandleFunc("/set-lang", setLangHandler)
 
 	// --- Admin Routes ---
-	// All routes under /admin/ are protected by basicAuth
+	adminRouter := registerAdminRoutes()
+
+	// Apply the basicAuth middleware to the entire admin router
+	// Note the trailing slash on "/admin/" is important for sub-path matching
+	mux.Handle("/admin/", basicAuth(http.StripPrefix("/admin", adminRouter)))
+
+	return mux
+}
+
+// registerAdminRoutes creates a sub-router for all admin-facing endpoints.
+func registerAdminRoutes() *http.ServeMux {
 	adminRouter := http.NewServeMux()
+
+	// Core Admin
 	adminRouter.HandleFunc("/", adminHandler) // Handles /admin/
 	adminRouter.HandleFunc("/parse-trade", adminParseTradeHandler)
 	adminRouter.HandleFunc("/views/delete-visitor", adminDeleteVisitorViewsHandler)
@@ -303,22 +254,73 @@ func main() {
 	adminRouter.HandleFunc("/scrape/guilds", adminTriggerScrapeHandler(scrapeGuilds, "Guild"))
 	adminRouter.HandleFunc("/scrape/zeny", adminTriggerScrapeHandler(scrapeZeny, "Zeny"))
 	adminRouter.HandleFunc("/scrape/mvp", adminTriggerScrapeHandler(scrapeMvpKills, "MVP"))
-	// --- MODIFICATION: Removed the admin trigger for rms-cache ---
-	// adminRouter.HandleFunc("/scrape/rms-cache", adminTriggerScrapeHandler(runFullRMSCacheJob, "RMS-Cache-Refresh"))
-	// --- END MODIFICATION ---
-
-	// --- ADDITIONS START ---
 	adminRouter.HandleFunc("/scrape/pt-names", adminTriggerScrapeHandler(populateMissingPortugueseNames, "PT-Name-Populator"))
 	adminRouter.HandleFunc("/scrape/woe", adminTriggerScrapeHandler(scrapeWoeCharacterRankings, "WoE-Char-Rankings"))
-	// --- ADDITIONS END ---
 
-	// Apply the basicAuth middleware to the entire admin router
-	// Note the trailing slash on "/admin/" is important for sub-path matching
-	mux.Handle("/admin/", basicAuth(http.StripPrefix("/admin", adminRouter)))
+	return adminRouter
+}
+
+func main() {
+	if err := godotenv.Load(); err != nil {
+		log.Println("[I] [Main] No .env file found, relying on system environment variables.")
+	}
+
+	var err error
+	db, err = initDB("./market_data.db")
+	if err != nil {
+		log.Fatalf("[F] [DB] Failed to initialize database: %v", err)
+	}
+	defer db.Close()
+
+	// Run this synchronously on startup before starting other services
+	populateItemDBOnStartup()
+
+	// Create a context that gets cancelled on OS signals (SIGINT, SIGTERM)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	sigChan := make(chan os.Signal, 1)
+	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
+
+	// Goroutine to listen for OS signals
+	go func() {
+		<-sigChan
+		log.Println("[I] [Main] Shutdown signal received. Initiating graceful shutdown...")
+		cancel() // Trigger context cancellation
+	}()
+
+	// --- Admin Password Logic ---
+	adminPass = os.Getenv("ADMIN_PASSWORD")
+	if adminPass == "" {
+		log.Println("[I] [Main] ADMIN_PASSWORD not set. Generating a new random password.")
+		adminPass = generateRandomPassword(16)
+		if err := os.WriteFile("pwd.txt", []byte(adminPass), 0644); err != nil {
+			log.Printf("[W] [Main] Could not write generated admin password to file: %v", err)
+		} else {
+			log.Println("[I] [Main] Generated admin password saved to pwd.txt")
+		}
+	} else {
+		log.Println("[I] [Main] Loaded admin password from ADMIN_PASSWORD environment variable.")
+	}
+
+	go func() {
+		time.Sleep(5 * time.Second) // Give server time to start
+		log.Println("==================================================")
+		log.Printf("[I] [Main] Admin User: %s", adminUser)
+		log.Printf("[I] [Main] Admin Pass: %s", adminPass)
+		log.Println("==================================================")
+	}()
+
+	// Start Background Services with the cancellable context
+	go startBackgroundJobs(ctx)
+	go startDiscordBot(ctx)
+	go startVisitorLogger(ctx)
+
+	// --- Setup Routers ---
+	mux := registerRoutes()
 
 	// --- Server Start and Shutdown ---
 	port := "8080"
-	// Assign the main router to the server
 	server := &http.Server{Addr: ":" + port, Handler: mux}
 
 	// Goroutine to handle server shutdown when context is cancelled
@@ -326,7 +328,6 @@ func main() {
 		<-ctx.Done() // Wait for the cancel() signal
 		log.Println("[I] [HTTP] Shutting down web server...")
 
-		// Create a new context for the shutdown, with a timeout
 		shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer shutdownCancel()
 
@@ -341,6 +342,5 @@ func main() {
 		log.Fatalf("[F] [HTTP] Web server failed to start: %v", err)
 	}
 
-	// This line will be reached after server.Shutdown() completes
 	log.Println("[I] [Main] All services shut down. Exiting.")
 }
