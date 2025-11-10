@@ -198,40 +198,60 @@
             if (chartCanvas) {
                 try {
                     const chartData = JSON.parse(chartCanvas.dataset.chartJson || '{}');
-                    const labels = Object.keys(chartData);
-                    const data = Object.values(chartData);
+                    
+                    // --- MODIFICATION: Sort data ---
+                    // 1. Convert object to array
+                    let dataArray = Object.keys(chartData).map(key => {
+                        return { label: key, data: chartData[key] };
+                    });
+
+                    // 2. Sort array by data (descending)
+                    dataArray.sort((a, b) => b.data - a.data);
+
+                    // 3. Extract sorted labels and data
+                    const labels = dataArray.map(item => item.label);
+                    const data = dataArray.map(item => item.data);
+                    // --- END MODIFICATION ---
+
 
                     if (labels.length > 1) {
                         const ctx = chartCanvas.getContext('2d');
+
+                        // --- MODIFICATION: Changed to horizontal 'bar' ---
                         new Chart(ctx, {
-                            type: 'doughnut',
+                            type: 'bar', // <-- CHANGED
                             data: {
-                                labels: labels,
+                                labels: labels, // Use sorted labels
                                 datasets: [{
                                     label: translations.js_num_of_members,
-                                    data: data,
+                                    data: data, // Use sorted data
                                     borderWidth: 1,
-                                    backgroundColor: [
-                                        '#4F46E5', '#D946EF', '#10B981', '#F59E0B', '#EF4444', '#3B82F6', '#6366F1',
-                                        '#EC4899', '#14B8A6', '#F97316', '#DC2626', '#2563EB', '#818CF8', '#F472B6',
-                                        '#0D9488', '#EA580C', '#B91C1C', '#60A5FA'
-                                    ],
+                                    // CHANGED: Single color for bar chart
+                                    backgroundColor: 'rgba(59, 130, 246, 0.5)',
+                                    borderColor: 'rgba(59, 130, 246, 1)',
                                 }]
                             },
                             options: {
+                                indexAxis: 'y', // <-- ADDED: Makes it horizontal
                                 responsive: true,
                                 maintainAspectRatio: false,
+                                scales: { // <-- ADDED: Configure axes
+                                    x: { // 'x' is now the value axis
+                                        beginAtZero: true,
+                                        ticks: {
+                                            stepSize: 1 // Show whole numbers for member counts
+                                        }
+                                    }
+                                    // 'y' axis (category) requires no special config
+                                },
                                 plugins: {
                                     legend: {
-                                        position: 'right',
-                                        labels: {
-                                            boxWidth: 20,
-                                            font: { size: 10 }
-                                        }
+                                        display: false // <-- CHANGED: No legend needed
                                     }
                                 }
                             }
                         });
+                        // --- END MODIFICATION ---
                     }
                 } catch (e) {
                     console.error('Failed to parse chart data:', e);
