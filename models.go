@@ -360,7 +360,18 @@ type GuildDetailPageData struct {
 	Filter              template.URL // <-- ADD THIS
 }
 
-// --- NEW STRUCT for WoE Guild Rankings ---
+type WoeGuildClassRank struct {
+	Class          string
+	MemberCount    int64
+	TotalKills     int64
+	TotalDeaths    int64
+	TotalDamage    int64
+	TotalHealing   int64
+	TotalEmpKills  int64
+	TotalPoints    int64
+	KillDeathRatio float64
+}
+
 // WoeGuildRank holds aggregated WoE stats for an entire guild.
 type WoeGuildRank struct {
 	GuildName      sql.NullString
@@ -394,17 +405,18 @@ type WoeCharacterRank struct {
 }
 
 type WoePageData struct {
-	Characters     []WoeCharacterRank
-	Guilds         []WoeGuildRank
-	ActiveTab      string
-	LastScrapeTime string
-	SortBy         string
-	Order          string
-	SearchQuery    string
-	PageTitle      string
-	Filter         template.URL // <-- ADD THIS
-	AllClasses     []string     // <-- ADD THIS LINE
-	SelectedClass  string       // <-- ADD THIS LINE
+	Characters         []WoeCharacterRank
+	Guilds             []WoeGuildRank
+	GuildClassRanksMap map[string][]WoeGuildClassRank // <-- ADD THIS LINE
+	ActiveTab          string
+	LastScrapeTime     string
+	SortBy             string
+	Order              string
+	SearchQuery        string
+	PageTitle          string
+	Filter             template.URL // <-- ADD THIS
+	AllClasses         []string     // <-- ADD THIS LINE
+	SelectedClass      string       // <-- ADD THIS LINE
 }
 
 type FlatTradingPostItem struct {

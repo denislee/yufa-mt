@@ -28,7 +28,7 @@
                 <select id="tabs" name="tabs" onchange="window.location.href = this.value;" class="block w-full rounded-md border-gray-300 focus:border-blue-500 focus:ring-blue-500">
                     <option value="/woe?tab=characters" {{if eq .Data.ActiveTab "characters"}}selected{{end}}>{{.Page.T.char_rankings}}</option>
                     <option value="/woe?tab=guilds" {{if eq .Data.ActiveTab "guilds"}}selected{{end}}>{{.Page.T.guild_rankings}}</option>
-                </select>
+                    <option value="/woe?tab=guilds_by_class" {{if eq .Data.ActiveTab "guilds_by_class"}}selected{{end}}>{{.Page.T.nav_woe_guild_by_class}}</option> </select>
             </div>
             <div class="hidden sm:block">
                 <div class="border-b border-gray-200">
@@ -38,6 +38,9 @@
                         </a>
                         <a href="/woe?tab=guilds" class="whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm {{if eq .Data.ActiveTab "guilds"}}border-blue-500 text-blue-600{{else}}border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300{{end}}">
                             {{.Page.T.guild_rankings}}
+                        </a>
+                        <a href="/woe?tab=guilds_by_class" class="whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm {{if eq .Data.ActiveTab "guilds_by_class"}}border-blue-500 text-blue-600{{else}}border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300{{end}}">
+                            {{.Page.T.nav_woe_guild_by_class}}
                         </a>
                         </nav>
                 </div>
@@ -59,7 +62,7 @@
                     <input type="text" name="query" id="name_query" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-300 focus:ring focus:ring-indigo-200 focus:ring-opacity-50 text-sm" value="{{.Data.SearchQuery}}">
                 </div>
                 
-                {{if eq .Data.ActiveTab "characters"}}
+                {{if or (eq .Data.ActiveTab "characters") (eq .Data.ActiveTab "guilds_by_class")}}
                 <div class="flex-grow">
                     <label for="class_filter" class="block text-xs font-medium text-gray-700">{{.Page.T.filter_by_class}}</label>
                     <select name="class_filter" id="class_filter" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-300 focus:ring focus:ring-indigo-200 focus:ring-opacity-50 text-sm">
@@ -175,6 +178,60 @@
                         <tr>
                             <td colspan="9" class="px-3 py-4 text-center text-gray-500">{{.Page.T.no_guilds_found}}</td>
                         </tr>
+                        {{end}}
+                    </tbody>
+                </table>
+                
+                {{else if eq .Data.ActiveTab "guilds_by_class"}}
+                <table class="min-w-full leading-normal">
+                    <thead>
+                        <tr class="border-b-2 border-gray-200 bg-gray-50 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                            {{$filter := .Data.Filter}}
+                            {{$currentSort := .Data.SortBy}}
+                            {{$currentOrder := .Data.Order}}
+                            {{$revOrder := "ASC"}}{{if eq $currentOrder "ASC"}}{{$revOrder = "DESC"}}{{end}}
+
+                            <th class="px-2 sm:px-3 py-2">{{.Page.T.class}}</th>
+                            <th class="px-2 sm:px-3 py-2">{{.Page.T.members}}</th>
+                            <th class="px-2 sm:px-3 py-2">{{.Page.T.total_kills}}</th>
+                            <th class="px-2 sm:px-3 py-2">{{.Page.T.total_deaths}}</th>
+                            <th class="px-2 sm:px-3 py-2">{{.Page.T.kd_ratio}}</th>
+                            <th class="px-2 sm:px-3 py-2">{{.Page.T.total_damage}}</th>
+                            <th class="px-2 sm:px-3 py-2">{{.Page.T.total_healing}}</th>
+                            <th class="px-2 sm:px-3 py-2">{{.Page.T.emperium}}</th>
+                            <th class="px-2 sm:px-3 py-2">{{.Page.T.points}}</th>
+                        </tr>
+                    </thead>
+                    <tbody class="text-gray-700 text-xs">
+                        {{if .Data.GuildClassRanksMap}}
+                            {{range $guildName, $classes := .Data.GuildClassRanksMap}}
+                                <tr class="bg-gray-100 font-semibold border-b-2 border-gray-300">
+                                    <td colspan="9" class="px-2 sm:px-3 py-2 text-sm">
+                                        <a href="/guild?name={{$guildName | urlquery}}" class="hover:underline">{{$guildName}}</a>
+                                    </td>
+                                </tr>
+                                {{range $class := $classes}}
+                                <tr class="border-b border-gray-200 hover:bg-gray-50">
+                                    <td class="px-2 sm:px-3 py-2 pl-6"> <div class="flex items-center">
+                                            <img src="{{.Class | getClassImageURL}}" alt="{{.Class}}" class="w-6 h-6 mr-2" style="image-rendering: pixelated;">
+                                            {{.Class}}
+                                        </div>
+                                    </td>
+                                    <td class="px-2 sm:px-3 py-2 font-semibold">{{.MemberCount}}</td>
+                                    <td class="px-2 sm:px-3 py-2 font-semibold text-green-600">{{.TotalKills | formatZeny}}</td>
+                                    <td class="px-2 sm:px-3 py-2 font-semibold text-red-600">{{.TotalDeaths | formatZeny}}</td>
+                                    <td class="px-2 sm:px-3 py-2 font-semibold">{{.KillDeathRatio | formatAvgLevel}}</td>
+                                    <td class="px-2 sm:px-3 py-2 font-semibold">{{.TotalDamage | formatZeny}}</td>
+                                    <td class="px-2 sm:px-3 py-2 font-semibold">{{.TotalHealing | formatZeny}}</td>
+                                    <td class="px-2 sm:px-3 py-2 font-semibold">{{.TotalEmpKills | formatZeny}}</td>
+                                    <td class="px-2 sm:px-3 py-2 font-semibold">{{.TotalPoints | formatZeny}}</td>
+                                </tr>
+                                {{end}}
+                            {{end}}
+                        {{else}}
+                            <tr>
+                                <td colspan="9" class="px-3 py-4 text-center text-gray-500">{{.Page.T.no_guilds_found}}</td>
+                            </tr>
                         {{end}}
                     </tbody>
                 </table>

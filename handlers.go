@@ -71,33 +71,34 @@ var (
 
 	translations = map[string]map[string]string{
 		"en": {
-			"market_summary":       "Market Summary",
-			"search_by_item_name":  "Search by item name or ID...",
-			"show_only_available":  "Show only available",
-			"search":               "Search",
-			"all_items":            "All Items",
-			"showing_unique_items": "Showing <strong>%d</strong> unique items.",
-			"item_name":            "Item Name",
-			"item_id":              "Item ID",
-			"available":            "Available",
-			"lowest_price":         "Lowest Price",
-			"highest_price":        "Highest Price",
-			"updated_never":        "Updated: never",
-			"updated_ago":          "Updated: %s ago",
-			"nav_summary":          "Summary",
-			"nav_full_list":        "Full List",
-			"nav_activity":         "Activity",
-			"nav_discord":          "Discord",
-			"nav_chat":             "Chat",
-			"nav_misc":             "Misc.",
-			"nav_player_count":     "Player Count",
-			"nav_xp_calculator":    "XP Calculator",
-			"nav_about":            "About",
-			"nav_rankings":         "Rankings",
-			"nav_characters":       "Characters",
-			"nav_guilds":           "Guilds",
-			"nav_mvp_kills":        "MVP Kills",
-			"nav_woe_rankings":     "WoE Rankings",
+			"market_summary":         "Market Summary",
+			"search_by_item_name":    "Search by item name or ID...",
+			"show_only_available":    "Show only available",
+			"search":                 "Search",
+			"all_items":              "All Items",
+			"showing_unique_items":   "Showing <strong>%d</strong> unique items.",
+			"item_name":              "Item Name",
+			"item_id":                "Item ID",
+			"available":              "Available",
+			"lowest_price":           "Lowest Price",
+			"highest_price":          "Highest Price",
+			"updated_never":          "Updated: never",
+			"updated_ago":            "Updated: %s ago",
+			"nav_summary":            "Summary",
+			"nav_full_list":          "Full List",
+			"nav_activity":           "Activity",
+			"nav_discord":            "Discord",
+			"nav_chat":               "Chat",
+			"nav_misc":               "Misc.",
+			"nav_player_count":       "Player Count",
+			"nav_xp_calculator":      "XP Calculator",
+			"nav_about":              "About",
+			"nav_rankings":           "Rankings",
+			"nav_characters":         "Characters",
+			"nav_guilds":             "Guilds",
+			"nav_mvp_kills":          "MVP Kills",
+			"nav_woe_rankings":       "WoE Rankings",
+			"nav_woe_guild_by_class": "Guilds by Class", // <-- ADD THIS
 			// --- NEW for activity.html ---
 			"recent_market_activity": "Recent Market Activity",
 			"show_only_sold":         "Show only sold items",
@@ -349,33 +350,34 @@ var (
 			"buy_sell":     "Buy / Sell",
 		},
 		"pt": {
-			"market_summary":       "Resumo do Mercado",
-			"search_by_item_name":  "Buscar por nome ou ID do item...",
-			"show_only_available":  "Mostrar apenas disponíveis",
-			"search":               "Buscar",
-			"all_items":            "Todos os Itens",
-			"showing_unique_items": "Mostrando <strong>%d</strong> itens únicos.",
-			"item_name":            "Nome do Item",
-			"item_id":              "ID do Item",
-			"available":            "Disponíveis",
-			"lowest_price":         "Menor Preço",
-			"highest_price":        "Maior Preço",
-			"updated_never":        "Atualizado: nunca",
-			"updated_ago":          "Atualizado: %s atrás",
-			"nav_summary":          "Resumo",
-			"nav_full_list":        "Lista Completa",
-			"nav_activity":         "Atividade",
-			"nav_discord":          "Discord",
-			"nav_chat":             "Chat",
-			"nav_misc":             "Outros",
-			"nav_player_count":     "Jogadores Online",
-			"nav_xp_calculator":    "Calculadora XP",
-			"nav_about":            "Sobre",
-			"nav_rankings":         "Rankings",
-			"nav_characters":       "Personagens",
-			"nav_guilds":           "Guilds",
-			"nav_mvp_kills":        "MVPs Mortos",
-			"nav_woe_rankings":     "Rankings WoE",
+			"market_summary":         "Resumo do Mercado",
+			"search_by_item_name":    "Buscar por nome ou ID do item...",
+			"show_only_available":    "Mostrar apenas disponíveis",
+			"search":                 "Buscar",
+			"all_items":              "Todos os Itens",
+			"showing_unique_items":   "Mostrando <strong>%d</strong> itens únicos.",
+			"item_name":              "Nome do Item",
+			"item_id":                "ID do Item",
+			"available":              "Disponíveis",
+			"lowest_price":           "Menor Preço",
+			"highest_price":          "Maior Preço",
+			"updated_never":          "Atualizado: nunca",
+			"updated_ago":            "Atualizado: %s atrás",
+			"nav_summary":            "Resumo",
+			"nav_full_list":          "Lista Completa",
+			"nav_activity":           "Atividade",
+			"nav_discord":            "Discord",
+			"nav_chat":               "Chat",
+			"nav_misc":               "Outros",
+			"nav_player_count":       "Jogadores Online",
+			"nav_xp_calculator":      "Calculadora XP",
+			"nav_about":              "Sobre",
+			"nav_rankings":           "Rankings",
+			"nav_characters":         "Personagens",
+			"nav_guilds":             "Guilds",
+			"nav_mvp_kills":          "MVPs Mortos",
+			"nav_woe_rankings":       "Rankings WoE",
+			"nav_woe_guild_by_class": "Guilds por Classe", // <-- ADD THIS
 			// --- NEW for activity.html ---
 			"recent_market_activity": "Atividade Recente do Mercado",
 			"show_only_sold":         "Mostrar apenas vendidos",
@@ -544,7 +546,7 @@ var (
 			"mvp_kills_title":   "MVPs Mortos",
 			"showing_chars_mvp": "Mostrando <strong>%d</strong> personagens com mortes de MVP.",
 			"character_name":    "Nome do Personagem",
-			"total_kills":       "Total de Mortes",
+			"total_kills":       "Total de Abates",
 
 			// --- NEW for players.html ---
 			"online_player_history": "Histórico de Jogadores Online",
@@ -2726,6 +2728,7 @@ func woeRankingsHandler(w http.ResponseWriter, r *http.Request) {
 
 	var characters []WoeCharacterRank
 	var guilds []WoeGuildRank
+	var guildsByClassMap map[string][]WoeGuildClassRank // <-- ADD THIS
 	var allowedSorts map[string]string
 	var orderByClause, sortBy, order string
 	var whereConditions []string
@@ -2783,6 +2786,83 @@ func woeRankingsHandler(w http.ResponseWriter, r *http.Request) {
 				continue
 			}
 			guilds = append(guilds, g)
+		}
+
+	} else if activeTab == "guilds_by_class" {
+		// --- NEW: GUILD BY CLASS RANKING LOGIC ---
+		allowedSorts = map[string]string{
+			"guild":    "guild_name",
+			"class":    "class",
+			"members":  "member_count",
+			"kills":    "total_kills",
+			"deaths":   "total_deaths",
+			"kd":       "kd_ratio",
+			"damage":   "total_damage",
+			"healing":  "total_healing",
+			"emperium": "total_emp_kills",
+			"points":   "total_points",
+		}
+		// Default sort by guild name, then by most kills within that guild
+		orderByClause, sortBy, order = getSortClause(r, allowedSorts, "guild", "ASC")
+		if sortBy == "guild" {
+			orderByClause = fmt.Sprintf("ORDER BY guild_name %s, total_kills DESC", order)
+		}
+
+		// Always filter out characters not in a guild
+		whereConditions = append(whereConditions, "guild_name IS NOT NULL AND guild_name != ''")
+
+		if searchQuery != "" {
+			whereConditions = append(whereConditions, "guild_name LIKE ?")
+			queryParams = append(queryParams, "%"+searchQuery+"%")
+		}
+
+		if selectedClass != "" {
+			whereConditions = append(whereConditions, "class = ?")
+			queryParams = append(queryParams, selectedClass)
+		}
+
+		whereClause = "WHERE " + strings.Join(whereConditions, " AND ")
+
+		query := fmt.Sprintf(`
+			SELECT
+				guild_name, class,
+				COUNT(name) AS member_count,
+				SUM(kill_count) AS total_kills,
+				SUM(death_count) AS total_deaths,
+				SUM(damage_done) AS total_damage,
+				SUM(healing_done) AS total_healing,
+				SUM(emperium_kill) AS total_emp_kills,
+				SUM(points) AS total_points,
+				CASE
+					WHEN SUM(death_count) = 0 THEN SUM(kill_count)
+					ELSE CAST(SUM(kill_count) AS REAL) / SUM(death_count)
+				END AS kd_ratio
+			FROM woe_character_rankings
+			%s -- whereClause
+			GROUP BY guild_name, class
+			%s -- orderByClause
+		`, whereClause, orderByClause)
+
+		rows, err := db.Query(query, queryParams...)
+		if err != nil {
+			log.Printf("[E] [HTTP/WoE] Could not query for WoE guild-by-class rankings: %v", err)
+			http.Error(w, "Could not query WoE guild-by-class rankings", http.StatusInternalServerError)
+			return
+		}
+		defer rows.Close()
+
+		guildsByClassMap = make(map[string][]WoeGuildClassRank)
+		for rows.Next() {
+			var guildName string
+			var g WoeGuildClassRank
+			if err := rows.Scan(
+				&guildName, &g.Class, &g.MemberCount, &g.TotalKills, &g.TotalDeaths,
+				&g.TotalDamage, &g.TotalHealing, &g.TotalEmpKills, &g.TotalPoints, &g.KillDeathRatio,
+			); err != nil {
+				log.Printf("[W] [HTTP/WoE] Failed to scan WoE guild-by-class row: %v", err)
+				continue
+			}
+			guildsByClassMap[guildName] = append(guildsByClassMap[guildName], g)
 		}
 
 	} else {
@@ -2854,17 +2934,18 @@ func woeRankingsHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	data := WoePageData{
-		Characters:     characters,
-		Guilds:         guilds,
-		ActiveTab:      activeTab,
-		LastScrapeTime: GetLastUpdateTime("last_updated", "woe_character_rankings"),
-		SortBy:         sortBy,
-		Order:          order,
-		SearchQuery:    searchQuery,
-		PageTitle:      "WoE Rankings",
-		Filter:         template.URL(filterString),
-		AllClasses:     allClasses,
-		SelectedClass:  selectedClass,
+		Characters:         characters,
+		Guilds:             guilds,
+		GuildClassRanksMap: guildsByClassMap, // <-- MODIFIED
+		ActiveTab:          activeTab,
+		LastScrapeTime:     GetLastUpdateTime("last_updated", "woe_character_rankings"),
+		SortBy:             sortBy,
+		Order:              order,
+		SearchQuery:        searchQuery,
+		PageTitle:          "WoE Rankings",
+		Filter:             template.URL(filterString),
+		AllClasses:         allClasses,    // <-- MODIFIED
+		SelectedClass:      selectedClass, // <-- MODIFIED
 	}
 	renderTemplate(w, r, "woe_rankings.html", data)
 }
