@@ -2799,6 +2799,12 @@ func woeRankingsHandler(w http.ResponseWriter, r *http.Request) {
 			whereConditions = append(whereConditions, "name LIKE ?")
 			queryParams = append(queryParams, "%"+searchQuery+"%")
 		}
+
+		if selectedClass != "" {
+			whereConditions = append(whereConditions, "class = ?")
+			queryParams = append(queryParams, selectedClass)
+		}
+
 		if len(whereConditions) > 0 {
 			whereClause = "WHERE " + strings.Join(whereConditions, " AND ")
 		}
@@ -2831,16 +2837,15 @@ func woeRankingsHandler(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// --- ADD THIS ---
-	// Fetch all classes for the filter dropdown
 	allClasses := getAllClasses()
-	// --- END ADDITION ---
 
-	// Build Filter URL
 	filterValues := url.Values{}
 	filterValues.Set("tab", activeTab)
 	if searchQuery != "" {
 		filterValues.Set("query", searchQuery)
+	}
+	if selectedClass != "" {
+		filterValues.Set("class_filter", selectedClass)
 	}
 
 	filterString := ""
@@ -2858,8 +2863,8 @@ func woeRankingsHandler(w http.ResponseWriter, r *http.Request) {
 		SearchQuery:    searchQuery,
 		PageTitle:      "WoE Rankings",
 		Filter:         template.URL(filterString),
-		AllClasses:     allClasses,    // <-- ADDED
-		SelectedClass:  selectedClass, // <-- ADD THIS
+		AllClasses:     allClasses,
+		SelectedClass:  selectedClass,
 	}
 	renderTemplate(w, r, "woe_rankings.html", data)
 }
