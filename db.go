@@ -154,9 +154,25 @@ const (
 			character_changelog
 		ORDER BY
 			change_time DESC;`
-	createWoeCharRankingsTableSQL = `
-	CREATE TABLE IF NOT EXISTS woe_character_rankings (
-		"name" TEXT NOT NULL PRIMARY KEY, -- Changed from char_id
+	// --- NEW WOE TABLES ---
+	createWoeSeasonsTableSQL = `
+	CREATE TABLE IF NOT EXISTS woe_seasons (
+		"season_id" INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+		"start_date" TEXT NOT NULL,
+		"end_date" TEXT -- Can be NULL if season is ongoing
+	);`
+	createWoeEventsTableSQL = `
+	CREATE TABLE IF NOT EXISTS woe_events (
+		"event_id" INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+		"season_id" INTEGER NOT NULL,
+		"event_date" TEXT NOT NULL,
+		"is_season_summary" INTEGER NOT NULL DEFAULT 0,
+		FOREIGN KEY("season_id") REFERENCES "woe_seasons"("season_id") ON DELETE CASCADE
+	);`
+	createWoeEventRankingsTableSQL = `
+	CREATE TABLE IF NOT EXISTS woe_event_rankings (
+		"event_id" INTEGER NOT NULL,
+		"character_name" TEXT NOT NULL,
 		"class" TEXT NOT NULL,
 		"guild_id" INTEGER,
 		"guild_name" TEXT,
@@ -167,8 +183,10 @@ const (
 		"healing_done" INTEGER NOT NULL,
 		"score" INTEGER NOT NULL,
 		"points" INTEGER NOT NULL,
-		"last_updated" TEXT NOT NULL
+		PRIMARY KEY("event_id", "character_name"),
+		FOREIGN KEY("event_id") REFERENCES "woe_events"("event_id") ON DELETE CASCADE
 	);`
+	// --- END NEW WOE TABLES ---
 )
 
 const (
@@ -307,22 +325,24 @@ func initDB(filepath string) (*sql.DB, error) {
 // createTables executes all the CREATE TABLE and CREATE VIEW statements.
 func createTables(db *sql.DB) error {
 	queries := map[string]string{
-		"items":                  createItemsTableSQL,
-		"market_events":          createEventsTableSQL,
-		"scrape_history":         createHistoryTableSQL,
-		"player_history":         createPlayerHistoryTableSQL,
-		"guilds":                 createGuildsTableSQL,
-		"characters":             createCharactersTableSQL,
-		"character_changelog":    createChangelogTableSQL,
-		"v_character_changelog":  createChangelogViewSQL,
-		"visitors":               createVisitorsTableSQL,
-		"page_views":             createPageViewsTableSQL,
-		"trading_posts":          createTradingPostsTableSQL,
-		"trading_post_items":     createTradingPostItemsTableSQL,
-		"internal_item_db":       createInternalItemDBTableSQL,
-		"woe_character_rankings": createWoeCharRankingsTableSQL,
-		"chat":                   createChatTableSQL,
-		"chat_activity_log":      createChatActivityLogTableSQL,
+		"items":                 createItemsTableSQL,
+		"market_events":         createEventsTableSQL,
+		"scrape_history":        createHistoryTableSQL,
+		"player_history":        createPlayerHistoryTableSQL,
+		"guilds":                createGuildsTableSQL,
+		"characters":            createCharactersTableSQL,
+		"character_changelog":   createChangelogTableSQL,
+		"v_character_changelog": createChangelogViewSQL,
+		"visitors":              createVisitorsTableSQL,
+		"page_views":            createPageViewsTableSQL,
+		"trading_posts":         createTradingPostsTableSQL,
+		"trading_post_items":    createTradingPostItemsTableSQL,
+		"internal_item_db":      createInternalItemDBTableSQL,
+		"woe_seasons":           createWoeSeasonsTableSQL,       // ADDED
+		"woe_events":            createWoeEventsTableSQL,        // ADDED
+		"woe_event_rankings":    createWoeEventRankingsTableSQL, // ADDED
+		"chat":                  createChatTableSQL,
+		"chat_activity_log":     createChatActivityLogTableSQL,
 		// RMS FTS tables and triggers are not in the original map, adding them.
 		"rms_item_cache":     createRMSCacheTableSQL,
 		"rms_item_cache_fts": createRMSFTSSTableSQL,
@@ -371,8 +391,13 @@ func createIndexes(db *sql.DB) error {
 		`CREATE INDEX IF NOT EXISTS idx_internal_db_slots ON internal_item_db (slots);`,
 		`CREATE INDEX IF NOT EXISTS idx_internal_db_lower_name ON internal_item_db (LOWER(name));`,
 		`CREATE INDEX IF NOT EXISTS idx_internal_db_lower_name_pt ON internal_item_db (LOWER(name_pt));`,
-		// 'woe_character_rankings' table
-		`CREATE INDEX IF NOT EXISTS idx_woe_guild_name ON woe_character_rankings (guild_name);`,
+		// 'woe_events' table
+		`CREATE INDEX IF NOT EXISTS idx_woe_events_season_id ON woe_events (season_id);`,
+		`CREATE INDEX IF NOT EXISTS idx_woe_events_date_desc ON woe_events (event_date DESC);`,
+		// 'woe_event_rankings' table
+		`CREATE INDEX IF NOT EXISTS idx_woe_rankings_event_id ON woe_event_rankings (event_id);`,
+		`CREATE INDEX IF NOT EXISTS idx_woe_rankings_guild_name ON woe_event_rankings (guild_name);`,
+		`CREATE INDEX IF NOT EXISTS idx_woe_rankings_char_name ON woe_event_rankings (character_name);`,
 		// 'chat' table
 		`CREATE INDEX IF NOT EXISTS idx_chat_channel_timestamp_desc ON chat (channel, timestamp DESC);`,
 		`CREATE INDEX IF NOT EXISTS idx_chat_timestamp_desc ON chat (timestamp DESC);`,

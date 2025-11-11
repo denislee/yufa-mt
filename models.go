@@ -404,19 +404,42 @@ type WoeCharacterRank struct {
 	LastUpdated  string
 }
 
+// WoeSeasonInfo holds basic info for the season dropdown
+type WoeSeasonInfo struct {
+	SeasonID  int
+	StartDate string
+	EndDate   sql.NullString
+}
+
+// WoeEventInfo holds basic info for the event dropdown
+type WoeEventInfo struct {
+	EventID         int
+	EventDate       string
+	IsSeasonSummary bool
+}
+
 type WoePageData struct {
+	// New Season/Event Data
+	AllSeasons        []WoeSeasonInfo
+	SelectedSeasonID  int
+	EventsForSeason   []WoeEventInfo
+	SelectedEventID   int
+	SelectedEventDate string // Replaces LastScrapeTime
+
+	// Data for the selected event
 	Characters         []WoeCharacterRank
 	Guilds             []WoeGuildRank
-	GuildClassRanksMap map[string][]WoeGuildClassRank // <-- ADD THIS LINE
-	ActiveTab          string
-	LastScrapeTime     string
-	SortBy             string
-	Order              string
-	SearchQuery        string
-	PageTitle          string
-	Filter             template.URL // <-- ADD THIS
-	AllClasses         []string     // <-- ADD THIS LINE
-	SelectedClass      string       // <-- ADD THIS LINE
+	GuildClassRanksMap map[string][]WoeGuildClassRank
+
+	// Page state
+	ActiveTab     string
+	SortBy        string
+	Order         string
+	SearchQuery   string
+	PageTitle     string
+	Filter        template.URL
+	AllClasses    []string
+	SelectedClass string
 }
 
 type FlatTradingPostItem struct {

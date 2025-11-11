@@ -5,7 +5,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/binary"
-	"encoding/hex" // <-- ADD THIS LINE
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -17,7 +17,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
-	"sync/atomic" // --- ADDED THIS IMPORT ---
+	"sync/atomic"
 	"time"
 	"unicode"
 
@@ -25,8 +25,8 @@ import (
 	"github.com/google/gopacket"
 	"github.com/google/gopacket/layers"
 	"github.com/google/gopacket/pcap"
-	"golang.org/x/text/encoding/charmap" // <-- ADD THIS
-	"golang.org/x/text/transform"        // <-- ADD THIS
+	"golang.org/x/text/encoding/charmap"
+	"golang.org/x/text/transform"
 )
 
 const (
@@ -36,11 +36,10 @@ const (
 	enableMvpScraperDebugLogs       = false
 	enableZenyScraperDebugLogs      = false
 	enableMarketScraperDebugLogs    = false
-	enableWoeScraperDebugLogs       = false // --- ADD THIS ---
-	enableChatScraperDebugLogs      = true  // <-- ADD THIS LINE
+	enableWoeScraperDebugLogs       = true
+	enableChatScraperDebugLogs      = true
 )
 
-// in scraper.go, after var(...) block
 var jobIDToClassName = map[string]string{
 	"0":    "Aprendiz",
 	"4001": "Super Aprendiz",
@@ -53,17 +52,16 @@ var jobIDToClassName = map[string]string{
 	"18":   "Alquimista",
 	"17":   "Arruaceiro",
 	"19":   "Bardo",
-	"9":    "Bruxo", // This is ID 9 from the log
+	"9":    "Bruxo",
 	"7":    "Cavaleiro",
 	"11":   "Caçador",
 	"10":   "Ferreiro",
 	"12":   "Mercenário",
-	"15":   "Monge", // This is ID 15 from the log
+	"15":   "Monge",
 	"20":   "Odalisca",
 	"8":    "Sacerdote",
 	"16":   "Sábio",
-	"14":   "Templário", // This is ID 14 from the log
-	// Add other mappings if needed based on observed image URLs
+	"14":   "Templário",
 }
 
 var jobIconRegex = regexp.MustCompile(`icon_jobs_(\d+)\.png`) // Regex to extract ID from URL
@@ -100,7 +98,7 @@ var (
 		// Drop notification
 		{prefix: []byte{0x9a, 0x00}, messageOffset: 4, headerLength: 4},
 		// System/Event Announcement (Invasion, WoE, etc.)
-		{prefix: []byte{0xc3, 0x01}, messageOffset: 16, headerLength: 16}, // <-- ADD THIS LINE
+		{prefix: []byte{0xc3, 0x01}, messageOffset: 16, headerLength: 16},
 	}
 )
 
@@ -1800,21 +1798,84 @@ func processMvpKills(allMvpKills map[string]map[string]int) {
 	log.Printf("[I] [Scraper/MVP] Scrape and update process complete.")
 }
 
-// in scraper.go
+// WoEEventStats holds summary info about a WoE event for season detection.
+type WoEEventStats struct {
+	EventID        int64
+	SeasonID       int64
+	TotalKills     int64
+	TotalDamage    int64
+	CharacterCount int
+}
 
-// processWoeCharacterData handles saving the scraped WoE rankings to the database.
-// --- MODIFICATION ---
+// getLastWoeEventStats retrieves the stats for the most recent WoE event from the DB.
+func getLastWoeEventStats(tx *sql.Tx) (WoEEventStats, error) {
+	var stats WoEEventStats
+	var latestEventID sql.NullInt64
+	var latestSeasonID sql.NullInt64
+
+	// Find the most recent event
+	err := tx.QueryRow(`
+		SELECT event_id, season_id
+		FROM woe_events
+		ORDER BY event_date DESC
+		LIMIT 1
+	`).Scan(&latestEventID, &latestSeasonID)
+
+	if err != nil {
+		if err == sql.ErrNoRows {
+			// No events ever recorded
+			return stats, nil
+		}
+		return stats, fmt.Errorf("failed to query latest event: %w", err)
+	}
+
+	if !latestEventID.Valid {
+		// Should not happen if a row was found, but good to check
+		return stats, nil
+	}
+
+	stats.EventID = latestEventID.Int64
+	stats.SeasonID = latestSeasonID.Int64 // Will be 0 if not set, which is fine
+
+	// Get the summary stats for that event
+	err = tx.QueryRow(`
+		SELECT SUM(kill_count), SUM(damage_done), COUNT(character_name)
+		FROM woe_event_rankings
+		WHERE event_id = ?
+	`, stats.EventID).Scan(&stats.TotalKills, &stats.TotalDamage, &stats.CharacterCount)
+
+	if err != nil {
+		return stats, fmt.Errorf("failed to query stats for event %d: %w", stats.EventID, err)
+	}
+
+	return stats, nil
+}
+
+// --- END NEW HELPER ---
+
+// processWoeCharacterData handles saving the scraped WoE rankings to the database,
+// now with season detection logic.
 func processWoeCharacterData(allWoeChars map[string]WoeCharacterRank) {
-	// --- END MODIFICATION ---
 	characterMutex.Lock() // Using characterMutex as WoE data relates to characters
 	defer characterMutex.Unlock()
 
-	// --- MODIFICATION ---
-	// Timestamp is generated *after* scraping is complete.
-	updateTime := time.Now().Format(time.RFC3339)
-	// --- END MODIFICATION ---
+	eventTime := time.Now().Format(time.RFC3339)
 
-	log.Println("[D] [Scraper/WoE] Starting database update for WoE Character rankings...")
+	log.Println("[D] [Scraper/WoE] Starting database update for new WoE Event...")
+
+	if len(allWoeChars) == 0 {
+		log.Println("[W] [Scraper/WoE] Scraped 0 WoE characters. Aborting event save.")
+		return
+	}
+
+	// Calculate stats for the *newly scraped* data
+	var currentTotalKills, currentTotalDamage int64
+	var currentCharacterCount int
+	for _, char := range allWoeChars {
+		currentTotalKills += int64(char.KillCount)
+		currentTotalDamage += char.DamageDone
+		currentCharacterCount++
+	}
 
 	tx, err := db.Begin()
 	if err != nil {
@@ -1823,61 +1884,110 @@ func processWoeCharacterData(allWoeChars map[string]WoeCharacterRank) {
 	}
 	defer tx.Rollback()
 
-	// Clear the table for a fresh import
-	if _, err := tx.Exec("DELETE FROM woe_character_rankings"); err != nil {
-		log.Printf("[W] [Scraper/WoE] Could not clear old WoE rankings: %v", err)
+	// 1. Get stats from the *last* saved event
+	lastEventStats, err := getLastWoeEventStats(tx)
+	if err != nil {
+		log.Printf("[E] [Scraper/WoE] Could not get last event stats: %v", err)
+		return // Don't proceed if we can't check
 	}
 
-	// *** MODIFIED SQL STATEMENT ***
+	// 2. Season Detection Logic
+	currentSeasonID := lastEventStats.SeasonID
+	isNewSeason := false
+
+	if lastEventStats.EventID == 0 {
+		// This is the first WoE event ever recorded. It must be a new season.
+		log.Println("[I] [Scraper/WoE] No previous WoE event found. Starting new season.")
+		isNewSeason = true
+	} else {
+		// Compare current stats to last saved stats to detect a reset
+		// A "reset" means significantly fewer kills OR damage than the previous summary.
+		// We add a character count check to avoid false positives if only 1 player joined.
+		if (currentTotalKills < lastEventStats.TotalKills || currentTotalDamage < lastEventStats.TotalDamage) &&
+			(currentCharacterCount > 10 && lastEventStats.CharacterCount > 10) {
+
+			log.Printf("[I] [Scraper/WoE] WoE data reset detected! (Last Kills: %d, New Kills: %d). Starting new season.", lastEventStats.TotalKills, currentTotalKills)
+			isNewSeason = true
+		} else {
+			if enableWoeScraperDebugLogs {
+				log.Printf("[D] [Scraper/WoE] No data reset detected. (Last Kills: %d, New Kills: %d). Continuing season %d.", lastEventStats.TotalKills, currentTotalKills, currentSeasonID)
+			}
+		}
+	}
+
+	// 3. Create new Season if needed
+	if isNewSeason || currentSeasonID == 0 {
+		res, err := tx.Exec(`INSERT INTO woe_seasons (start_date) VALUES (?)`, eventTime)
+		if err != nil {
+			log.Printf("[E] [Scraper/WoE] Failed to create new woe_season entry: %v", err)
+			return
+		}
+		newSeasonID, err := res.LastInsertId()
+		if err != nil {
+			log.Printf("[E] [Scraper/WoE] Failed to get new season_id: %v", err)
+			return
+		}
+		currentSeasonID = newSeasonID
+		log.Printf("[I] [Scraper/WoE] Created new WoE Season with ID: %d", currentSeasonID)
+	}
+
+	// 4. Create the new WoE Event entry, linked to the season
+	res, err := tx.Exec(`INSERT INTO woe_events (season_id, event_date, is_season_summary) VALUES (?, ?, 0)`, currentSeasonID, eventTime)
+	if err != nil {
+		log.Printf("[E] [Scraper/WoE] Failed to create new woe_event entry: %v", err)
+		return
+	}
+
+	newEventID, err := res.LastInsertId()
+	if err != nil {
+		log.Printf("[E] [Scraper/WoE] Failed to get new event_id: %v", err)
+		return
+	}
+
+	if enableWoeScraperDebugLogs {
+		log.Printf("[D] [Scraper/WoE] Created new WoE event (ID: %d) for season %d", newEventID, currentSeasonID)
+	}
+
+	// 5. Prepare statement for inserting the rankings for this event
 	stmt, err := tx.Prepare(`
-		INSERT INTO woe_character_rankings (
-			name, class, guild_id, guild_name,
+		INSERT INTO woe_event_rankings (
+			event_id, character_name, class, guild_id, guild_name,
 			kill_count, death_count, damage_done, emperium_kill,
-			healing_done, score, points, last_updated
+			healing_done, score, points
 		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-		ON CONFLICT(name) DO UPDATE SET
-			class = excluded.class,
-			guild_id = excluded.guild_id,
-			guild_name = excluded.guild_name,
-			kill_count = excluded.kill_count,
-			death_count = excluded.death_count,
-			damage_done = excluded.damage_done,
-			emperium_kill = excluded.emperium_kill,
-			healing_done = excluded.healing_done,
-			score = excluded.score,
-			points = excluded.points,
-			last_updated = excluded.last_updated
 	`)
 	if err != nil {
-		log.Printf("[E] [Scraper/WoE] Failed to prepare upsert statement: %v", err)
+		log.Printf("[E] [Scraper/WoE] Failed to prepare event rankings insert statement: %v", err)
 		return
 	}
 	defer stmt.Close()
 
 	updateCount := 0
-	for name, char := range allWoeChars { // Iterate using name as key
-		char.LastUpdated = updateTime // Use the new timestamp
-		// *** MODIFIED EXEC PARAMETERS (removed CharID) ***
+	for charName, char := range allWoeChars {
+		// 6. Insert each character's stats for this new event
 		_, err := stmt.Exec(
-			name, char.Class, char.GuildID, char.GuildName, // Use name from map key
+			newEventID, charName, char.Class, char.GuildID, char.GuildName,
 			char.KillCount, char.DeathCount, char.DamageDone, char.EmperiumKill,
-			char.HealingDone, char.Score, char.Points, char.LastUpdated,
+			char.HealingDone, char.Score, char.Points,
 		)
 		if err != nil {
-			log.Printf("[W] [Scraper/WoE] Failed to upsert WoE data for char '%s': %v", name, err)
+			log.Printf("[W] [Scraper/WoE] Failed to insert WoE data for char '%s' into event %d: %v", charName, newEventID, err)
 			continue
 		}
 		updateCount++
 	}
 
+	// 7. Commit
 	if err := tx.Commit(); err != nil {
 		log.Printf("[E] [Scraper/WoE] Failed to commit transaction: %v", err)
 		return
 	}
-	log.Printf("[I] [Scraper/WoE] Database update complete. Upserted %d WoE character records.", updateCount)
+	log.Printf("[I] [Scraper/WoE] Database update complete. Saved %d WoE character records for new event ID %d in season %d.", updateCount, newEventID, currentSeasonID)
 }
 
 // scrapeWoeCharacterRankings scrapes the WoE character rankings from the website using goquery, handling pagination.
+// This function's logic remains the same, as it's the "producer".
+// The "consumer" (processWoeCharacterData) has been changed.
 func scrapeWoeCharacterRankings() {
 	log.Println("[I] [Scraper/WoE] Starting WoE character ranking scrape...")
 

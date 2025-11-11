@@ -19,27 +19,35 @@
     <div class="container mx-auto px-4 py-6">
         <div class="flex flex-col sm:flex-row justify-between sm:items-center gap-2 mb-4 border-b border-gray-200 pb-3">
             <h1 class="text-2xl font-bold text-gray-800">{{.Page.T.woe_rankings_title}}</h1>
-            <div id="last-updated" class="text-sm text-gray-500" data-timestamp="{{.Data.LastScrapeTime}}"></div>
+            <!-- NEW: Show selected event date instead of last scrape time -->
+            {{if .Data.SelectedEventDate}}
+                <div id="last-updated" class="text-sm text-gray-500">
+                    {{.Page.T.info_loaded_at | printf .Data.SelectedEventDate}}
+                </div>
+            {{end}}
         </div>
 
         <div class="mb-4">
             <div class="sm:hidden">
                 <label for="tabs" class="sr-only">Select a tab</label>
+                <!-- NEW: Added season_id and event_id to tab links -->
                 <select id="tabs" name="tabs" onchange="window.location.href = this.value;" class="block w-full rounded-md border-gray-300 focus:border-blue-500 focus:ring-blue-500">
-                    <option value="/woe?tab=characters" {{if eq .Data.ActiveTab "characters"}}selected{{end}}>{{.Page.T.char_rankings}}</option>
-                    <option value="/woe?tab=guilds" {{if eq .Data.ActiveTab "guilds"}}selected{{end}}>{{.Page.T.guild_rankings}}</option>
-                    <option value="/woe?tab=guilds_by_class" {{if eq .Data.ActiveTab "guilds_by_class"}}selected{{end}}>{{.Page.T.nav_woe_guild_by_class}}</option> </select>
+                    <option value="/woe?tab=characters&season_id={{.Data.SelectedSeasonID}}&event_id={{.Data.SelectedEventID}}" {{if eq .Data.ActiveTab "characters"}}selected{{end}}>{{.Page.T.char_rankings}}</option>
+                    <option value="/woe?tab=guilds&season_id={{.Data.SelectedSeasonID}}&event_id={{.Data.SelectedEventID}}" {{if eq .Data.ActiveTab "guilds"}}selected{{end}}>{{.Page.T.guild_rankings}}</option>
+                    <option value="/woe?tab=guilds_by_class&season_id={{.Data.SelectedSeasonID}}&event_id={{.Data.SelectedEventID}}" {{if eq .Data.ActiveTab "guilds_by_class"}}selected{{end}}>{{.Page.T.nav_woe_guild_by_class}}</option>
+                </select>
             </div>
             <div class="hidden sm:block">
                 <div class="border-b border-gray-200">
                     <nav class="-mb-px flex space-x-8" aria-label="Tabs">
-                        <a href="/woe?tab=characters" class="whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm {{if eq .Data.ActiveTab "characters"}}border-blue-500 text-blue-600{{else}}border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300{{end}}">
+                        <!-- NEW: Added season_id and event_id to tab links -->
+                        <a href="/woe?tab=characters&season_id={{.Data.SelectedSeasonID}}&event_id={{.Data.SelectedEventID}}" class="whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm {{if eq .Data.ActiveTab "characters"}}border-blue-500 text-blue-600{{else}}border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300{{end}}">
                             {{.Page.T.char_rankings}}
                         </a>
-                        <a href="/woe?tab=guilds" class="whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm {{if eq .Data.ActiveTab "guilds"}}border-blue-500 text-blue-600{{else}}border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300{{end}}">
+                        <a href="/woe?tab=guilds&season_id={{.Data.SelectedSeasonID}}&event_id={{.Data.SelectedEventID}}" class="whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm {{if eq .Data.ActiveTab "guilds"}}border-blue-500 text-blue-600{{else}}border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300{{end}}">
                             {{.Page.T.guild_rankings}}
                         </a>
-                        <a href="/woe?tab=guilds_by_class" class="whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm {{if eq .Data.ActiveTab "guilds_by_class"}}border-blue-500 text-blue-600{{else}}border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300{{end}}">
+                        <a href="/woe?tab=guilds_by_class&season_id={{.Data.SelectedSeasonID}}&event_id={{.Data.SelectedEventID}}" class="whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm {{if eq .Data.ActiveTab "guilds_by_class"}}border-blue-500 text-blue-600{{else}}border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300{{end}}">
                             {{.Page.T.nav_woe_guild_by_class}}
                         </a>
                         </nav>
@@ -48,10 +56,38 @@
         </div>
 
         <div class="bg-white p-3 rounded-lg shadow mb-4">
-            <form action="/woe" method="GET" class="flex flex-wrap items-end gap-3">
+            <form action="/woe" method="GET" id="woe-filter-form" class="flex flex-wrap items-end gap-3">
                 <input type="hidden" name="tab" value="{{.Data.ActiveTab}}">
                 
-                <div class="flex-grow">
+                <!-- NEW: Season Selector -->
+                <div class="flex-grow min-w-[150px]">
+                    <label for="season_id" class="block text-xs font-medium text-gray-700">Season</label>
+                    <select name="season_id" id="season_id" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-300 focus:ring focus:ring-indigo-200 focus:ring-opacity-50 text-sm">
+                        {{range .Data.AllSeasons}}
+                            <option value="{{.SeasonID}}" {{if eq .SeasonID $.Data.SelectedSeasonID}}selected{{end}}>
+                                Season {{.SeasonID}} ({{.StartDate}})
+                            </option>
+                        {{end}}
+                    </select>
+                </div>
+
+                <!-- NEW: Event Selector -->
+                <div class="flex-grow min-w-[150px]">
+                    <label for="event_id" class="block text-xs font-medium text-gray-700">Event</label>
+                    <select name="event_id" id="event_id" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-300 focus:ring focus:ring-indigo-200 focus:ring-opacity-50 text-sm" {{if not .Data.EventsForSeason}}disabled{{end}}>
+                        {{if .Data.EventsForSeason}}
+                            {{range .Data.EventsForSeason}}
+                                <option value="{{.EventID}}" {{if eq .EventID $.Data.SelectedEventID}}selected{{end}}>
+                                    {{.EventDate}}
+                                </option>
+                            {{end}}
+                        {{else}}
+                            <option value="">No events for this season</option>
+                        {{end}}
+                    </select>
+                </div>
+
+                <div class="flex-grow min-w-[150px]">
                     <label for="name_query" class="block text-xs font-medium text-gray-700">
                         {{if eq .Data.ActiveTab "characters"}}
                             {{.Page.T.search_by_char}}
@@ -63,7 +99,7 @@
                 </div>
                 
                 {{if or (eq .Data.ActiveTab "characters") (eq .Data.ActiveTab "guilds_by_class")}}
-                <div class="flex-grow">
+                <div class="flex-grow min-w-[150px]">
                     <label for="class_filter" class="block text-xs font-medium text-gray-700">{{.Page.T.filter_by_class}}</label>
                     <select name="class_filter" id="class_filter" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-300 focus:ring focus:ring-indigo-200 focus:ring-opacity-50 text-sm">
                         <option value="">{{.Page.T.all_classes}}</option>
@@ -90,6 +126,7 @@
                             {{$currentOrder := .Data.Order}}
                             {{$revOrder := "ASC"}}{{if eq $currentOrder "ASC"}}{{$revOrder = "DESC"}}{{end}}
 
+                            <!-- NEW: Sorting links now include all filters -->
                             <th class="px-2 sm:px-3 py-2"><a href="/woe?sort_by=name&order={{if eq $currentSort "name"}}{{$revOrder}}{{else}}ASC{{end}}{{$filter}}">{{.Page.T.character}} {{if eq $currentSort "name"}}{{if eq $currentOrder "ASC"}}<span class="text-gray-400">▲</span>{{else}}<span class="text-gray-400">▼</span>{{end}}{{end}}</a></th>
                             <th class="px-2 sm:px-3 py-2"><a href="/woe?sort_by=class&order={{if eq $currentSort "class"}}{{$revOrder}}{{else}}ASC{{end}}{{$filter}}">{{.Page.T.class}} {{if eq $currentSort "class"}}{{if eq $currentOrder "ASC"}}<span class="text-gray-400">▲</span>{{else}}<span class="text-gray-400">▼</span>{{end}}{{end}}</a></th>
                             <th class="px-2 sm:px-3 py-2"><a href="/woe?sort_by=guild&order={{if eq $currentSort "guild"}}{{$revOrder}}{{else}}ASC{{end}}{{$filter}}">{{.Page.T.guild}} {{if eq $currentSort "guild"}}{{if eq $currentOrder "ASC"}}<span class="text-gray-400">▲</span>{{else}}<span class="text-gray-400">▼</span>{{end}}{{end}}</a></th>
@@ -144,6 +181,7 @@
                             {{$currentOrder := .Data.Order}}
                             {{$revOrder := "ASC"}}{{if eq $currentOrder "ASC"}}{{$revOrder = "DESC"}}{{end}}
 
+                            <!-- NEW: Sorting links now include all filters -->
                             <th class="px-2 sm:px-3 py-2"><a href="/woe?sort_by=guild&order={{if eq $currentSort "guild"}}{{$revOrder}}{{else}}ASC{{end}}{{$filter}}">{{.Page.T.guild}} {{if eq $currentSort "guild"}}{{if eq $currentOrder "ASC"}}<span class="text-gray-400">▲</span>{{else}}<span class="text-gray-400">▼</span>{{end}}{{end}}</a></th>
                             <th class="px-2 sm:px-3 py-2"><a href="/woe?sort_by=members&order={{if eq $currentSort "members"}}{{$revOrder}}{{else}}DESC{{end}}{{$filter}}">{{.Page.T.members}} {{if eq $currentSort "members"}}{{if eq $currentOrder "ASC"}}<span class="text-gray-400">▲</span>{{else}}<span class="text-gray-400">▼</span>{{end}}{{end}}</a></th>
                             <th class="px-2 sm:px-3 py-2"><a href="/woe?sort_by=kills&order={{if eq $currentSort "kills"}}{{$revOrder}}{{else}}DESC{{end}}{{$filter}}">{{.Page.T.total_kills}} {{if eq $currentSort "kills"}}{{if eq $currentOrder "ASC"}}<span class="text-gray-400">▲</span>{{else}}<span class="text-gray-400">▼</span>{{end}}{{end}}</a></th>
@@ -191,6 +229,7 @@
                             {{$currentOrder := .Data.Order}}
                             {{$revOrder := "ASC"}}{{if eq $currentOrder "ASC"}}{{$revOrder = "DESC"}}{{end}}
 
+                            <!-- Note: Sorting not implemented for this view in the handler, but structure is here -->
                             <th class="px-2 sm:px-3 py-2">{{.Page.T.class}}</th>
                             <th class="px-2 sm:px-3 py-2">{{.Page.T.members}}</th>
                             <th class="px-2 sm:px-3 py-2">{{.Page.T.total_kills}}</th>
@@ -244,51 +283,30 @@
     
     <script>
     document.addEventListener('DOMContentLoaded', () => {
-        const lang = document.documentElement.lang || 'en';
-        const translations = {
-            updated_never: '{{.Page.T.updated_never}}',
-            updated_ago: '{{.Page.T.updated_ago}}'
-        };
+        // NEW: Form submission logic for season/event dropdowns
+        const form = document.getElementById('woe-filter-form');
+        const seasonSelect = document.getElementById('season_id');
+        const eventSelect = document.getElementById('event_id');
 
-        const lastUpdateElement = document.getElementById('last-updated');
-        if (lastUpdateElement) {
-            const timestampStr = lastUpdateElement.dataset.timestamp;
-            if (!timestampStr || timestampStr === 'Never' || timestampStr === '') {
-                lastUpdateElement.textContent = translations.updated_never;
-                return;
-            }
-
-            const lastUpdateDate = new Date(timestampStr);
-            const formattedTimestamp = lastUpdateDate.toLocaleString([], {
-                year: 'numeric', month: 'short', day: 'numeric',
-                hour: '2-digit', minute: '2-digit'
-            });
-
-            const updateTimeAgo = () => {
-                const now = new Date();
-                const secondsPast = Math.floor((now.getTime() - lastUpdateDate.getTime()) / 1000);
-                let timeAgoString;
-                
-                if (lang === 'pt') {
-                        if (secondsPast < 5) timeAgoString = 'agora mesmo';
-                        else if (secondsPast < 60) timeAgoString = `${secondsPast}s`;
-                        else if (secondsPast < 3600) timeAgoString = `${Math.floor(secondsPast / 60)}m`;
-                        else if (secondsPast < 86400) timeAgoString = `${Math.floor(secondsPast / 3600)}h`;
-                        else timeAgoString = `${Math.floor(secondsPast / 86400)}d`;
-                } else {
-                    if (secondsPast < 5) timeAgoString = 'just now';
-                    else if (secondsPast < 60) timeAgoString = `${secondsPast}s ago`;
-                    else if (secondsPast < 3600) timeAgoString = `${Math.floor(secondsPast / 60)}m ago`;
-                    else if (secondsPast < 86400) timeAgoString = `${Math.floor(secondsPast / 3600)}h ago`;
-                    else if (secondsPast < 86400) timeAgoString = `${Math.floor(secondsPast / 86400)}d ago`;
+        if (seasonSelect) {
+            seasonSelect.addEventListener('change', () => {
+                // When season changes, reset event_id and submit
+                if (eventSelect) {
+                    eventSelect.value = ""; 
                 }
-                
-                const fullString = translations.updated_ago.replace('%s', timeAgoString);
-                lastUpdateElement.innerHTML = `${fullString} <span class="text-gray-400 font-normal">(${formattedTimestamp})</span>`;
-            };
-            updateTimeAgo();
-            setInterval(updateTimeAgo, 30000);
+                form.submit();
+            });
         }
+        
+        if (eventSelect) {
+             eventSelect.addEventListener('change', () => {
+                // When event changes, just submit
+                form.submit();
+            });
+        }
+
+        // --- OLD SCRIPT (Removed) ---
+        // The timeago script is no longer needed as we display the event date directly.
     });
     </script>
 </body>

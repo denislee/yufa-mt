@@ -2714,6 +2714,7 @@ func findItemIDOnline(cleanItemName string, slots int) (sql.NullInt64, bool) {
 }
 
 // woeRankingsHandler fetches and displays WoE rankings for characters or guilds.
+// This handler is now season/event-aware.
 func woeRankingsHandler(w http.ResponseWriter, r *http.Request) {
 	if err := r.ParseForm(); err != nil {
 		http.Error(w, "Failed to parse form", http.StatusBadRequest)
@@ -2721,20 +2722,124 @@ func woeRankingsHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	searchQuery := r.FormValue("query")
 	activeTab := r.FormValue("tab")
-	selectedClass := r.FormValue("class_filter") // <-- ADD THIS
+	selectedClass := r.FormValue("class_filter")
+	selectedSeasonID, _ := strconv.Atoi(r.FormValue("season_id"))
+	selectedEventID, _ := strconv.Atoi(r.FormValue("event_id"))
+
 	if activeTab == "" {
 		activeTab = "characters" // Default to character view
 	}
 
+	// --- 1. Fetch All Seasons ---
+	var allSeasons []WoeSeasonInfo
+	seasonRows, err := db.Query("SELECT season_id, start_date, end_date FROM woe_seasons ORDER BY start_date DESC")
+	if err != nil {
+		log.Printf("[E] [HTTP/WoE] Could not query for WoE seasons: %v", err)
+		http.Error(w, "Could not query WoE seasons", http.StatusInternalServerError)
+		return
+	}
+	defer seasonRows.Close()
+
+	for seasonRows.Next() {
+		var s WoeSeasonInfo
+		var startDate string
+		if err := seasonRows.Scan(&s.SeasonID, &startDate, &s.EndDate); err != nil {
+			log.Printf("[W] [HTTP/WoE] Failed to scan WoE season row: %v", err)
+			continue
+		}
+		if t, err := time.Parse(time.RFC3339, startDate); err == nil {
+			s.StartDate = t.Format("2006-01-02")
+		}
+		allSeasons = append(allSeasons, s)
+	}
+
+	if len(allSeasons) == 0 {
+		// No data at all, render an empty page
+		renderTemplate(w, r, "woe_rankings.html", WoePageData{PageTitle: "WoE Rankings", ActiveTab: activeTab})
+		return
+	}
+
+	// --- 2. Determine Selected Season ---
+	if selectedSeasonID == 0 {
+		selectedSeasonID = allSeasons[0].SeasonID // Default to the latest season
+	}
+
+	// --- 3. Fetch Events for the Selected Season ---
+	var eventsForSeason []WoeEventInfo
+	eventRows, err := db.Query("SELECT event_id, event_date, is_season_summary FROM woe_events WHERE season_id = ? ORDER BY event_date DESC", selectedSeasonID)
+	if err != nil {
+		log.Printf("[E] [HTTP/WoE] Could not query for WoE events: %v", err)
+		http.Error(w, "Could not query WoE events", http.StatusInternalServerError)
+		return
+	}
+	defer eventRows.Close()
+
+	var selectedEventDate string
+	for eventRows.Next() {
+		var e WoeEventInfo
+		var eventDate string
+		if err := eventRows.Scan(&e.EventID, &eventDate, &e.IsSeasonSummary); err != nil {
+			log.Printf("[W] [HTTP/WoE] Failed to scan WoE event row: %v", err)
+			continue
+		}
+		if t, err := time.Parse(time.RFC3339, eventDate); err == nil {
+			e.EventDate = t.Format("2006-01-02 15:04")
+		}
+		eventsForSeason = append(eventsForSeason, e)
+	}
+
+	if len(eventsForSeason) == 0 {
+		// Season has no events, render page with just season data
+		renderTemplate(w, r, "woe_rankings.html", WoePageData{
+			PageTitle:        "WoE Rankings",
+			ActiveTab:        activeTab,
+			AllSeasons:       allSeasons,
+			SelectedSeasonID: selectedSeasonID,
+		})
+		return
+	}
+
+	// --- 4. Determine Selected Event ---
+	if selectedEventID == 0 {
+		selectedEventID = eventsForSeason[0].EventID // Default to the latest event
+		selectedEventDate = eventsForSeason[0].EventDate
+	} else {
+		// Find the date for the selected event
+		for _, e := range eventsForSeason {
+			if e.EventID == selectedEventID {
+				selectedEventDate = e.EventDate
+				break
+			}
+		}
+	}
+
+	// --- 5. Build Filters for SQL and Template ---
 	var characters []WoeCharacterRank
 	var guilds []WoeGuildRank
-	var guildsByClassMap map[string][]WoeGuildClassRank // <-- ADD THIS
+	var guildsByClassMap map[string][]WoeGuildClassRank
 	var allowedSorts map[string]string
 	var orderByClause, sortBy, order string
 	var whereConditions []string
 	var queryParams []interface{}
 	var whereClause string
 
+	// CRITICAL: All queries must now filter by the selected event_id
+	whereConditions = append(whereConditions, "event_id = ?")
+	queryParams = append(queryParams, selectedEventID)
+
+	// Build filter URL for pagination/sorting links
+	filterValues := url.Values{}
+	filterValues.Set("tab", activeTab)
+	filterValues.Set("season_id", strconv.Itoa(selectedSeasonID))
+	filterValues.Set("event_id", strconv.Itoa(selectedEventID))
+	if searchQuery != "" {
+		filterValues.Set("query", searchQuery)
+	}
+	if selectedClass != "" {
+		filterValues.Set("class_filter", selectedClass)
+	}
+
+	// --- 6. Fetch Data based on Active Tab ---
 	if activeTab == "guilds" {
 		// --- GUILD RANKING LOGIC ---
 		allowedSorts = map[string]string{
@@ -2743,14 +2848,14 @@ func woeRankingsHandler(w http.ResponseWriter, r *http.Request) {
 			"healing": "total_healing", "emperium": "total_emp_kills", "points": "total_points",
 		}
 		orderByClause, sortBy, order = getSortClause(r, allowedSorts, "kills", "DESC")
+		filterValues.Set("sort_by", sortBy)
+		filterValues.Set("order", order)
 
 		if searchQuery != "" {
 			whereConditions = append(whereConditions, "guild_name LIKE ?")
 			queryParams = append(queryParams, "%"+searchQuery+"%")
 		}
-		if len(whereConditions) > 0 {
-			whereClause = "WHERE " + strings.Join(whereConditions, " AND ")
-		}
+		whereClause = "WHERE " + strings.Join(whereConditions, " AND ")
 
 		query := fmt.Sprintf(`
 			SELECT
@@ -2762,7 +2867,7 @@ func woeRankingsHandler(w http.ResponseWriter, r *http.Request) {
 					WHEN SUM(death_count) = 0 THEN SUM(kill_count)
 					ELSE CAST(SUM(kill_count) AS REAL) / SUM(death_count)
 				END AS kd_ratio
-			FROM woe_character_rankings
+			FROM woe_event_rankings
 			%s -- whereClause
 			GROUP BY guild_name, guild_id
 			%s -- orderByClause
@@ -2789,44 +2894,35 @@ func woeRankingsHandler(w http.ResponseWriter, r *http.Request) {
 		}
 
 	} else if activeTab == "guilds_by_class" {
-		// --- NEW: GUILD BY CLASS RANKING LOGIC ---
+		// --- GUILD BY CLASS RANKING LOGIC ---
 		allowedSorts = map[string]string{
-			"guild":    "guild_name",
-			"class":    "class",
-			"members":  "member_count",
-			"kills":    "total_kills",
-			"deaths":   "total_deaths",
-			"kd":       "kd_ratio",
-			"damage":   "total_damage",
-			"healing":  "total_healing",
-			"emperium": "total_emp_kills",
-			"points":   "total_points",
+			"guild": "guild_name", "class": "class", "members": "member_count", "kills": "total_kills",
+			"deaths": "total_deaths", "kd": "kd_ratio", "damage": "total_damage",
+			"healing": "total_healing", "emperium": "total_emp_kills", "points": "total_points",
 		}
-		// Default sort by guild name, then by most kills within that guild
 		orderByClause, sortBy, order = getSortClause(r, allowedSorts, "guild", "ASC")
 		if sortBy == "guild" {
 			orderByClause = fmt.Sprintf("ORDER BY guild_name %s, total_kills DESC", order)
 		}
+		filterValues.Set("sort_by", sortBy)
+		filterValues.Set("order", order)
 
-		// Always filter out characters not in a guild
 		whereConditions = append(whereConditions, "guild_name IS NOT NULL AND guild_name != ''")
 
 		if searchQuery != "" {
 			whereConditions = append(whereConditions, "guild_name LIKE ?")
 			queryParams = append(queryParams, "%"+searchQuery+"%")
 		}
-
 		if selectedClass != "" {
 			whereConditions = append(whereConditions, "class = ?")
 			queryParams = append(queryParams, selectedClass)
 		}
-
 		whereClause = "WHERE " + strings.Join(whereConditions, " AND ")
 
 		query := fmt.Sprintf(`
 			SELECT
 				guild_name, class,
-				COUNT(name) AS member_count,
+				COUNT(character_name) AS member_count,
 				SUM(kill_count) AS total_kills,
 				SUM(death_count) AS total_deaths,
 				SUM(damage_done) AS total_damage,
@@ -2837,7 +2933,7 @@ func woeRankingsHandler(w http.ResponseWriter, r *http.Request) {
 					WHEN SUM(death_count) = 0 THEN SUM(kill_count)
 					ELSE CAST(SUM(kill_count) AS REAL) / SUM(death_count)
 				END AS kd_ratio
-			FROM woe_character_rankings
+			FROM woe_event_rankings
 			%s -- whereClause
 			GROUP BY guild_name, class
 			%s -- orderByClause
@@ -2868,33 +2964,31 @@ func woeRankingsHandler(w http.ResponseWriter, r *http.Request) {
 	} else {
 		// --- CHARACTER RANKING LOGIC ---
 		allowedSorts = map[string]string{
-			"name": "name", "class": "class", "guild": "guild_name",
+			"name": "character_name", "class": "class", "guild": "guild_name",
 			"kills": "kill_count", "deaths": "death_count", "damage": "damage_done",
 			"emperium": "emperium_kill", "healing": "healing_done",
 			"score": "score", "points": "points",
 		}
 		orderByClause, sortBy, order = getSortClause(r, allowedSorts, "kills", "DESC")
+		filterValues.Set("sort_by", sortBy)
+		filterValues.Set("order", order)
 
 		if searchQuery != "" {
-			whereConditions = append(whereConditions, "name LIKE ?")
+			whereConditions = append(whereConditions, "character_name LIKE ?")
 			queryParams = append(queryParams, "%"+searchQuery+"%")
 		}
-
 		if selectedClass != "" {
 			whereConditions = append(whereConditions, "class = ?")
 			queryParams = append(queryParams, selectedClass)
 		}
-
-		if len(whereConditions) > 0 {
-			whereClause = "WHERE " + strings.Join(whereConditions, " AND ")
-		}
+		whereClause = "WHERE " + strings.Join(whereConditions, " AND ")
 
 		query := fmt.Sprintf(`
-			SELECT name, class, guild_id, guild_name,
+			SELECT character_name, class, guild_id, guild_name,
 				   kill_count, death_count, damage_done, emperium_kill,
 				   healing_done, score, points
-			FROM woe_character_rankings
-			%s %s`, whereClause, orderByClause) // No pagination, fetch all
+			FROM woe_event_rankings
+			%s %s`, whereClause, orderByClause)
 
 		rows, err := db.Query(query, queryParams...)
 		if err != nil {
@@ -2910,23 +3004,14 @@ func woeRankingsHandler(w http.ResponseWriter, r *http.Request) {
 				&c.Name, &c.Class, &c.GuildID, &c.GuildName, &c.KillCount, &c.DeathCount,
 				&c.DamageDone, &c.EmperiumKill, &c.HealingDone, &c.Score, &c.Points,
 			); err != nil {
-				log.Printf("[W] [HTTP/WoE] Failed to scan WoE character row: %v", err)
+				log.Printf("[WM] [HTTP/WoE] Failed to scan WoE character row: %v", err)
 				continue
 			}
 			characters = append(characters, c)
 		}
 	}
 
-	allClasses := getAllClasses()
-
-	filterValues := url.Values{}
-	filterValues.Set("tab", activeTab)
-	if searchQuery != "" {
-		filterValues.Set("query", searchQuery)
-	}
-	if selectedClass != "" {
-		filterValues.Set("class_filter", selectedClass)
-	}
+	allClasses := getAllClasses() // Re-use existing helper
 
 	filterString := ""
 	if encodedFilter := filterValues.Encode(); encodedFilter != "" {
@@ -2934,18 +3019,27 @@ func woeRankingsHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	data := WoePageData{
+		// New Data
+		AllSeasons:        allSeasons,
+		SelectedSeasonID:  selectedSeasonID,
+		EventsForSeason:   eventsForSeason,
+		SelectedEventID:   selectedEventID,
+		SelectedEventDate: selectedEventDate,
+
+		// Event Data
 		Characters:         characters,
 		Guilds:             guilds,
-		GuildClassRanksMap: guildsByClassMap, // <-- MODIFIED
-		ActiveTab:          activeTab,
-		LastScrapeTime:     GetLastUpdateTime("last_updated", "woe_character_rankings"),
-		SortBy:             sortBy,
-		Order:              order,
-		SearchQuery:        searchQuery,
-		PageTitle:          "WoE Rankings",
-		Filter:             template.URL(filterString),
-		AllClasses:         allClasses,    // <-- MODIFIED
-		SelectedClass:      selectedClass, // <-- MODIFIED
+		GuildClassRanksMap: guildsByClassMap,
+
+		// Page State
+		ActiveTab:     activeTab,
+		SortBy:        sortBy,
+		Order:         order,
+		SearchQuery:   searchQuery,
+		PageTitle:     "WoE Rankings",
+		Filter:        template.URL(filterString),
+		AllClasses:    allClasses,
+		SelectedClass: selectedClass,
 	}
 	renderTemplate(w, r, "woe_rankings.html", data)
 }
