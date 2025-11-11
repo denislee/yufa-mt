@@ -22,7 +22,7 @@
             <!-- NEW: Show selected event date instead of last scrape time -->
             {{if .Data.SelectedEventDate}}
                 <div id="last-updated" class="text-sm text-gray-500">
-                    {{.Page.T.info_loaded_at | printf .Data.SelectedEventDate}}
+                    {{printf .Page.T.info_loaded_at .Data.SelectedEventDate}}
                 </div>
             {{end}}
         </div>
