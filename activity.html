@@ -43,8 +43,20 @@
         
         <div class="space-y-4">
             {{range .Data.MarketEvents}}
-                <div class="bg-white shadow rounded-lg p-3 flex flex-col sm:flex-row items-start sm:items-center gap-3 text-xs">
-                    <div class="flex-shrink-0">
+                <div class="shadow rounded-lg p-3 flex flex-col sm:flex-row items-start sm:items-center gap-3 text-xs
+                    {{if eq .EventType "SOLD"}}
+                        bg-blue-50
+                    {{else if eq .EventType "ADDED"}}
+                        bg-green-50
+                    {{else if eq .EventType "REMOVED" "REMOVED_SINGLE"}}
+                        bg-red-50
+                    {{else if eq .EventType "NEW_LOW"}}
+                        bg-yellow-50
+                    {{else}}
+                        bg-white
+                    {{end}}
+                ">
+                <div class="flex-shrink-0">
                         <img src="https://static.divine-pride.net/images/items/item/{{.ItemID}}.png" alt="" class="w-8 h-8" style="image-rendering: pixelated;">
                     </div>
                     <div class="flex-1 min-w-0">
