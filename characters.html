@@ -154,7 +154,7 @@
                             {{end}}
                             
                             {{if .Data.VisibleColumns.last_updated}}
-                            <th class="px-2 sm:px-3 py-2"><a href="/characters?sort_by=last_updated&order={{if eq $currentSort "last_updated"}}{{$revOrder}}{{else}}DESC{{end}}{{$filter}}">{{.Page.T.last_updated}} {{if eq $currentSort "last_updated"}}{{if eq $currentOrder "ASC"}}<span class="text-gray-400">▲</span>{{else}}<span class_name="text-gray-400">▼</span>{{end}}{{end}}</a></th>
+                            <th class="px-2 sm:px-3 py-2"><a href="/characters?sort_by=last_updated&order={{if eq $currentSort "last_updated"}}{{$revOrder}}{{else}}DESC{{end}}{{$filter}}">{{.Page.T.last_updated}} {{if eq $currentSort "last_updated"}}{{if eq $currentOrder "ASC"}}<span class="text-gray-4Look at400">▲</span>{{else}}<span class_name="text-gray-400">▼</span>{{end}}{{end}}</a></th>
                             {{end}}
                             
                             {{if .Data.VisibleColumns.last_active}}
@@ -180,6 +180,7 @@
                                     {{if .IsSpecial}}
                                         <span title="{{$.Page.T.first_99_class}}" class="ml-1.5 text-xs">🏆</span>
                                     {{end}}
+                                ... (truncated)
                                 </div>
                             </td>
                             
@@ -206,7 +207,7 @@
                             {{if $.Data.VisibleColumns.guild}}
                             <td class="px-2 sm:px-3 py-2">
                                 {{if .GuildName.Valid}}
-                                <a href="/characters?guild_filter={{.GuildName.String | urlquery}}" class="hover:underline">{{.GuildName.String}}</a>
+                                <a href="/guild?name={{.GuildName.String | urlquery}}" class="hover:underline">{{.GuildName.String}}</a>
                                 {{else}}
                                 <span class="text-gray-400">N/A</span>
                                 {{end}}
