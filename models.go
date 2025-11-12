@@ -500,6 +500,7 @@ type CharacterDetailPageData struct {
 	ChangelogEntries    []CharacterChangelog
 	ChangelogPagination PaginationData
 	PageTitle           string
+	Filter              template.URL
 }
 
 type CharacterChangelog struct {

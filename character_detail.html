@@ -123,8 +123,8 @@
                     </div>
 
                     {{if gt .Data.ChangelogPagination.TotalPages 1}}
-                        {{$filter := (print "&name=" .Data.Character.Name | urlquery)}}
-                        {{template "pagination" (dict "Page" .Page "Pagination" .Data.ChangelogPagination "Filter" $filter)}}
+                        {{/* Use the Filter value passed from the handler */}}
+                        {{template "pagination" (dict "Page" .Page "Pagination" .Data.ChangelogPagination "Filter" .Data.Filter)}}
                     {{end}}
 
                     {{else}}

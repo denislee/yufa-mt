@@ -2108,7 +2108,16 @@ func characterDetailHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// 6. Render template
+	// 6. Build Filter URL for changelog pagination
+	filterValues := url.Values{}
+	filterValues.Set("name", p.Name)
+
+	filterString := ""
+	if encodedFilter := filterValues.Encode(); encodedFilter != "" {
+		filterString = "&" + encodedFilter
+	}
+
+	// 7. Render template
 	data := CharacterDetailPageData{
 		Character:           p,
 		Guild:               guild,
@@ -2120,6 +2129,7 @@ func characterDetailHandler(w http.ResponseWriter, r *http.Request) {
 		ChangelogEntries:    changelogEntries,
 		ChangelogPagination: pagination,
 		PageTitle:           p.Name,
+		Filter:              template.URL(filterString), // <-- ADD THIS
 	}
 	renderTemplate(w, r, "character_detail.html", data)
 }
