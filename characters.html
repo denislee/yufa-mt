@@ -173,14 +173,13 @@
                             <td class="px-2 sm:px-3 py-2">
                                 <div class="flex items-center">
                                     <img src="{{.Class | getClassImageURL}}" alt="{{.Class}}" class="w-6 h-6 mr-2" style="image-rendering: pixelated;">
-                                    <a href="/character?name={{.Name | urlquery}}" class="hover:underline">{{.Name}}</a>
-                                    {{if .IsGuildLeader}}
+                                    <a href="/character?name={{.Name | urlquery}}" class="hover:underline">{{.Name}}</a>{{/*
+                                    */}}{{- if .IsGuildLeader -}}
                                         <span title="{{$.Page.T.guild_leader}}" class="ml-1.5 text-xs">⭐</span>
-                                    {{end}}
-                                    {{if .IsSpecial}}
+                                    {{- end -}}
+                                    {{- if .IsSpecial -}}
                                         <span title="{{$.Page.T.first_99_class}}" class="ml-1.5 text-xs">🏆</span>
-                                    {{end}}
-                                ... (truncated)
+                                    {{- end -}}
                                 </div>
                             </td>
                             
