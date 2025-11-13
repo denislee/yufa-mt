@@ -73,7 +73,6 @@ var (
 	ptNameMutex        sync.Mutex
 	ptNameRegex        = regexp.MustCompile(`<h1 class="item-title-db">([^<]+)</h1>`)
 	slotRemoverRegex   = regexp.MustCompile(`\s*\[\d+\]\s*`)
-	dropMessageRegex   = regexp.MustCompile(`^'([^']*)' (got|stole) (.*)$`)
 	lastChatPacketTime atomic.Int64 // Stores Unix timestamp
 	lastActivityLog    time.Time
 	activityLogMutex   sync.Mutex

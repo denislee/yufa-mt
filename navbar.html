@@ -10,27 +10,35 @@
             
             {{/* Define variables to check if the current page is active */}}
             {{ $isRankingPage := (or (eq .Data.PageTitle "Characters") (eq .Data.PageTitle "Guilds") (eq .Data.PageTitle "MVP Kills") (eq .Data.PageTitle "WoE Rankings")) }}
-            {{ $isMiscPage := (or (eq .Data.PageTitle "Player Count") (eq .Data.PageTitle "XP Calculator") (eq .Data.PageTitle "About")) }}
+            {{ $isStatsPage := (or (eq .Data.PageTitle "Drop Stats") (eq .Data.PageTitle "Player Count")) }}
 
             <div class="hidden md:flex items-center space-x-1">
+                {{/* --- MODIFIED: Moved Search link to first position and changed to icon --- */}}
+                <a href="/search" class="text-sm p-2 rounded-md {{if eq .Data.PageTitle "Global Search"}}font-semibold text-blue-600 bg-blue-50{{else}}text-gray-600 hover:bg-gray-100{{end}}" title="{{.Page.T.nav_search}}">
+                    <svg class="w-5 h-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                    </svg>
+                </a>
+                
                 <a href="/" class="text-sm px-3 py-2 rounded-md {{if eq .Data.PageTitle "Summary"}}font-semibold text-blue-600 bg-blue-50{{else}}text-gray-600 hover:bg-gray-100{{end}}">{{.Page.T.nav_summary}}</a>
                 <a href="/full-list" class="text-sm px-3 py-2 rounded-md {{if eq .Data.PageTitle "Full List"}}font-semibold text-blue-600 bg-blue-50{{else}}text-gray-600 hover:bg-gray-100{{end}}">{{.Page.T.nav_full_list}}</a>
                 <a href="/activity" class="text-sm px-3 py-2 rounded-md {{if eq .Data.PageTitle "Activity"}}font-semibold text-blue-600 bg-blue-50{{else}}text-gray-600 hover:bg-gray-100{{end}}">{{.Page.T.nav_activity}}</a>
                 <a href="/discord" class="text-sm px-3 py-2 rounded-md {{if eq .Data.PageTitle "Discord"}}font-semibold text-blue-600 bg-blue-50{{else}}text-gray-600 hover:bg-gray-100{{end}}">{{.Page.T.nav_discord}}</a>
                 <a href="/chat" class="text-sm px-3 py-2 rounded-md {{if eq .Data.PageTitle "Chat"}}font-semibold text-blue-600 bg-blue-50{{else}}text-gray-600 hover:bg-gray-100{{end}}">{{.Page.T.nav_chat}}</a>
-                <a href="/search" class="text-sm px-3 py-2 rounded-md {{if eq .Data.PageTitle "Global Search"}}font-semibold text-blue-600 bg-blue-50{{else}}text-gray-600 hover:bg-gray-100{{end}}">{{.Page.T.nav_search}}</a>
                 
-                <div class="relative" id="misc-dropdown-menu">
-                    <button id="misc-dropdown-button" class="text-sm px-3 py-2 rounded-md flex items-center {{if $isMiscPage}}font-semibold text-blue-600 bg-blue-50{{else}}text-gray-600 hover:bg-gray-100{{end}}">
-                        <span>{{.Page.T.nav_misc}}</span>
+                {{/* --- Statistics Dropdown --- */}}
+                <div class="relative" id="stats-dropdown-menu">
+                    <button id="stats-dropdown-button" class="text-sm px-3 py-2 rounded-md flex items-center {{if $isStatsPage}}font-semibold text-blue-600 bg-blue-50{{else}}text-gray-600 hover:bg-gray-100{{end}}">
+                        <span>{{.Page.T.nav_statistics}}</span>
                         <svg class="w-4 h-4 ml-1" fill="currentColor" viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg"><path fill-rule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clip-rule="evenodd"></path></svg>
                     </button>
-                    <div id="misc-dropdown-content" class="dropdown-content hidden absolute right-0 mt-2 w-48 bg-white rounded-md shadow-lg py-1 z-20 ring-1 ring-black ring-opacity-5">
+                    <div id="stats-dropdown-content" class="dropdown-content hidden absolute right-0 mt-2 w-48 bg-white rounded-md shadow-lg py-1 z-20 ring-1 ring-black ring-opacity-5">
+                        <a href="/stats/drops" class="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">{{.Page.T.nav_drop_stats}}</a>
                         <a href="/players" class="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">{{.Page.T.nav_player_count}}</a>
-                        <a href="/xp-calculator" class="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">{{.Page.T.nav_xp_calculator}}</a>
-                        <a href="/about" class="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">{{.Page.T.nav_about}}</a>
                     </div>
                 </div>
+
+                {{/* --- Ranking Dropdown --- */}}
                 <div class="relative" id="ranking-dropdown-menu">
                     <button id="ranking-dropdown-button" class="text-sm px-3 py-2 rounded-md flex items-center {{if $isRankingPage}}font-semibold text-blue-600 bg-blue-50{{else}}text-gray-600 hover:bg-gray-100{{end}}">
                         <span>{{.Page.T.nav_rankings}}</span>
@@ -44,7 +52,7 @@
                     </div>
                 </div>
 
-                {{/* --- NEW: Language Dropdown --- */}}
+                {{/* --- Language Dropdown --- */}}
                 <div class="relative" id="lang-dropdown-menu">
                     <button id="lang-dropdown-button" class="text-lg p-2 rounded-md flex items-center text-gray-600 hover:bg-gray-100">
                         <span>
@@ -67,11 +75,10 @@
                         </a>
                     </div>
                 </div>
-                {{/* --- END NEW --- */}}
             </div>
 
             <div class="md:hidden flex items-center">
-                {{/* --- NEW: Mobile Language Toggle --- */}}
+                {{/* --- Mobile Language Toggle --- */}}
                 <div class="flex items-center space-x-1 mr-2">
                     <a href="/set-lang?lang=en&redirect={{.Page.RequestURL}}" 
                        class="text-xs p-1 rounded-md {{if eq .Page.Lang "en"}}bg-blue-100{{else}}text-gray-500{{end}}">
@@ -82,7 +89,6 @@
                        🇧🇷
                     </a>
                 </div>
-                {{/* --- END NEW --- */}}
 
                 <button id="mobile-menu-button" class="p-2 rounded-md text-gray-600 hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-blue-500" aria-label="Main menu" aria-expanded="false">
                     <span class="sr-only">Open main menu</span>
@@ -98,26 +104,32 @@
     </div>
 
     <div id="mobile-menu" class="hidden md:hidden border-t border-gray-200">
+        {{/* --- MODIFIED: Moved Search link to first position and added icon --- */}}
+        <a href="/search" class="block py-2 px-4 text-sm flex items-center gap-2 {{if eq .Data.PageTitle "Global Search"}}bg-blue-50 text-blue-600 font-semibold{{else}}text-gray-600 hover:bg-gray-50{{end}}">
+            <svg class="w-5 h-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+            </svg>
+            <span>{{.Page.T.nav_search}}</span>
+        </a>
+        
         <a href="/" class="block py-2 px-4 text-sm {{if eq .Data.PageTitle "Summary"}}bg-blue-50 text-blue-600 font-semibold{{else}}text-gray-600 hover:bg-gray-50{{end}}">{{.Page.T.nav_summary}}</a>
         <a href="/full-list" class="block py-2 px-4 text-sm {{if eq .Data.PageTitle "Full List"}}bg-blue-50 text-blue-600 font-semibold{{else}}text-gray-600 hover:bg-gray-50{{end}}">{{.Page.T.nav_full_list}}</a>
         <a href="/activity" class="block py-2 px-4 text-sm {{if eq .Data.PageTitle "Activity"}}bg-blue-50 text-blue-600 font-semibold{{else}}text-gray-600 hover:bg-gray-50{{end}}">{{.Page.T.nav_activity}}</a>
         <a href="/discord" class="block py-2 px-4 text-sm {{if eq .Data.PageTitle "Discord"}}bg-blue-50 text-blue-600 font-semibold{{else}}text-gray-600 hover:bg-gray-50{{end}}">{{.Page.T.nav_discord}}</a>
         <a href="/chat" class="block py-2 px-4 text-sm {{if eq .Data.PageTitle "Chat"}}bg-blue-50 text-blue-600 font-semibold{{else}}text-gray-600 hover:bg-gray-50{{end}}">{{.Page.T.nav_chat}}</a>
         
-        {{/* --- MODIFIED: Fixed typo PageVTitle -> PageTitle --- */}}
-        <a href="/search" class="block py-2 px-4 text-sm {{if eq .Data.PageTitle "Global Search"}}bg-blue-50 text-blue-600 font-semibold{{else}}text-gray-600 hover:bg-gray-50{{end}}">{{.Page.T.nav_search}}</a>
-        
-        <details class="group" {{if $isMiscPage}}open{{end}}>
-            <summary class="py-2 px-4 text-sm list-none flex justify-between cursor-pointer {{if $isMiscPage}}text-blue-600 font-semibold{{else}}text-gray-600 hover:bg-gray-50{{end}}">
-                <span>{{.Page.T.nav_misc}}</span>
+        {{/* --- Mobile Statistics Dropdown --- */}}
+        <details class="group" {{if $isStatsPage}}open{{end}}>
+            <summary class="py-2 px-4 text-sm list-none flex justify-between cursor-pointer {{if $isStatsPage}}text-blue-600 font-semibold{{else}}text-gray-600 hover:bg-gray-50{{end}}">
+                <span>{{.Page.T.nav_statistics}}</span>
                  <svg class="w-4 h-4 transition-transform duration-200 group-open:rotate-90" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path></svg>
             </summary>
             <div class="pl-4">
+                <a href="/stats/drops" class="block py-2 px-4 text-sm {{if eq .Data.PageTitle "Drop Stats"}}bg-blue-50 text-blue-600 font-semibold{{else}}text-gray-600 hover:bg-gray-50{{end}}">{{.Page.T.nav_drop_stats}}</a>
                 <a href="/players" class="block py-2 px-4 text-sm {{if eq .Data.PageTitle "Player Count"}}bg-blue-50 text-blue-600 font-semibold{{else}}text-gray-600 hover:bg-gray-50{{end}}">{{.Page.T.nav_player_count}}</a>
-                <a href="/xp-calculator" class="block py-2 px-4 text-sm {{if eq .Data.PageTitle "XP Calculator"}}bg-blue-50 text-blue-600 font-semibold{{else}}text-gray-600 hover:bg-gray-50{{end}}">{{.Page.T.nav_xp_calculator}}</a>
-                <a href="/about" class="block py-2 px-4 text-sm {{if eq .Data.PageTitle "About"}}bg-blue-50 text-blue-600 font-semibold{{else}}text-gray-600 hover:bg-gray-50{{end}}">{{.Page.T.nav_about}}</a>
             </div>
         </details>
+        
         <details class="group" {{if $isRankingPage}}open{{end}}>
             <summary class="py-2 px-4 text-sm list-none flex justify-between cursor-pointer {{if $isRankingPage}}text-blue-600 font-semibold{{else}}text-gray-600 hover:bg-gray-50{{end}}">
                 <span>{{.Page.T.nav_rankings}}</span>
@@ -173,8 +185,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // --- MODIFIED: Initialize all dropdowns ---
     setupDropdown('ranking-dropdown-button', 'ranking-dropdown-content');
-    setupDropdown('misc-dropdown-button', 'misc-dropdown-content');
-    setupDropdown('lang-dropdown-button', 'lang-dropdown-content'); // <-- ADD THIS LINE
+    setupDropdown('lang-dropdown-button', 'lang-dropdown-content');
+    setupDropdown('stats-dropdown-button', 'stats-dropdown-content');
 
     // Global click listener to close dropdowns when clicking anywhere else
     window.addEventListener('click', () => {

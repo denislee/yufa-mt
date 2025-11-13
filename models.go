@@ -154,7 +154,7 @@ type RMSItem struct {
 	Buy            string
 	Sell           string
 	Weight         string
-	Slots          int // <-- ADDED
+	Slots          int
 	Prefix         string
 	Description    string
 	Script         string
@@ -267,19 +267,19 @@ type HistoryPageData struct {
 	ItemName           string
 	ItemNamePT         sql.NullString
 	PriceDataJSON      template.JS
-	CurrentLowestJSON  template.JS  // <-- ADDED
-	CurrentHighestJSON template.JS  // <-- ADDED
-	OverallLowest      int64        // <-- CHANGED
-	OverallHighest     int64        // <-- CHANGED
-	CurrentLowest      *ItemListing // Kept for HTML fields
-	CurrentHighest     *ItemListing // Kept for HTML fields
+	CurrentLowestJSON  template.JS
+	CurrentHighestJSON template.JS
+	OverallLowest      int64
+	OverallHighest     int64
+	CurrentLowest      *ItemListing
+	CurrentHighest     *ItemListing
 	ItemDetails        *RMSItem
 	AllListings        []Item
 	LastScrapeTime     string
 	Pagination         PaginationData
 	TotalListings      int
 	PageTitle          string
-	Filter             template.URL // <-- ADD THIS
+	Filter             template.URL
 }
 
 type PlayerCountPoint struct {
@@ -310,7 +310,7 @@ type CharacterPageData struct {
 	Players        []PlayerCharacter
 	LastScrapeTime string
 
-	SearchQuery   string // This is the correct field
+	SearchQuery   string
 	SelectedClass string
 	SelectedGuild string
 	AllClasses    []string
@@ -320,7 +320,7 @@ type CharacterPageData struct {
 
 	VisibleColumns map[string]bool
 	AllColumns     []Column
-	Filter         template.URL // <-- ADDED
+	Filter         template.URL
 
 	Pagination   PaginationData
 	TotalPlayers int
@@ -335,13 +335,13 @@ type CharacterPageData struct {
 type GuildPageData struct {
 	Guilds              []Guild
 	LastGuildUpdateTime string
-	SearchQuery         string // <-- RENAMED
+	SearchQuery         string
 	SortBy              string
 	Order               string
 	Pagination          PaginationData
 	TotalGuilds         int
 	PageTitle           string
-	Filter              template.URL // <-- ADDED
+	Filter              template.URL
 }
 
 type GuildDetailPageData struct {
@@ -357,7 +357,7 @@ type GuildDetailPageData struct {
 	ChangelogEntries    []CharacterChangelog
 	ChangelogPagination PaginationData
 	PageTitle           string
-	Filter              template.URL // <-- ADD THIS
+	Filter              template.URL
 }
 
 type WoeGuildClassRank struct {
@@ -476,7 +476,7 @@ type StoreDetailPageData struct {
 	SortBy    string
 	Order     string
 	PageTitle string
-	Filter    template.URL // <-- ADD THIS
+	Filter    template.URL
 }
 
 type MvpKillPageData struct {
@@ -515,7 +515,7 @@ type CharacterChangelogPageData struct {
 	LastScrapeTime   string
 	Pagination       PaginationData
 	PageTitle        string
-	Filter           template.URL // <-- ADD THIS
+	Filter           template.URL
 }
 
 type GuildInfo struct {
@@ -583,7 +583,7 @@ type AdminDashboardData struct {
 	MostVisitedPageCount  int
 	RecentPageViews       []PageViewEntry
 
-	PageVisitCounts []PageViewSummary // <-- ADD THIS LINE
+	PageVisitCounts []PageViewSummary
 
 	PageViewsCurrentPage int
 	PageViewsTotalPages  int
@@ -656,7 +656,7 @@ type TradingPostPageData struct {
 	SortBy         string
 	Order          string
 	PageTitle      string
-	Filter         template.URL // <-- ADD THIS
+	Filter         template.URL
 }
 
 func (tp TradingPost) CreatedAgo() string {
@@ -717,8 +717,8 @@ func (fi FlatTradingPostItem) OriginalName() string {
 // ChatMessage holds a single chat log entry
 type ChatMessage struct {
 	Timestamp     string
-	Channel       string // <-- ADD THIS LINE
-	CharacterName string // <-- ADD THIS LINE
+	Channel       string
+	CharacterName string
 	Message       string
 }
 
@@ -731,8 +731,17 @@ type ChatPageData struct {
 	AllChannels       []string     `json:"-"`
 	ActiveChannel     string       `json:"-"`
 	QueryFilter       template.URL `json:"-"`
-	SearchQuery       string       `json:"-"` // <-- ADD THIS LINE
+	SearchQuery       string       `json:"-"`
 	ActivityGraphJSON template.JS  `json:"-"`
+}
+
+// --- NEW: For drop_stats.html ---
+type DropStatsPageData struct {
+	PageTitle       string
+	LastScrapeTime  string
+	DropStats       []DropStatItem
+	TotalDrops      int64
+	UniqueDropItems int64
 }
 
 // XPCalculatorPageData holds all data for the xp_calculator.html template
@@ -745,10 +754,10 @@ type XPCalculatorPageData struct {
 	StartPerc   float64
 	EndLevel    int
 	EndPerc     float64
-	TimeHours   int     // <-- CHANGED
-	TimeMinutes int     // <-- ADDED
-	CalcType    string  // <-- ADDED
-	TimeSpent   float64 // in hours (REMOVED)
+	TimeHours   int
+	TimeMinutes int
+	CalcType    string
+	TimeSpent   float64
 
 	// Results
 	TotalXPGained int64
@@ -808,4 +817,10 @@ type GlobalSearchPageData struct {
 	HasResults       bool
 }
 
-// --- END NEW ---
+type DropStatItem struct {
+	ItemID   sql.NullInt64
+	Name     string
+	NamePT   sql.NullString
+	Count    int
+	LastSeen string // Formatted as "YYYY-MM-DD HH:MM"
+}

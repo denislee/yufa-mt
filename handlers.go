@@ -13,6 +13,7 @@ import (
 	"net/http"
 	"net/url"
 	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -360,6 +361,14 @@ var (
 			"chat_messages_found":      "Chat Messages",
 			"trading_post_items_found": "Trading Post Items",
 			"market_items_found":       "Market Items",
+
+			// --- NEW: Drop Stat Translations ---
+			"nav_drop_stats": "Drop",
+			"total_drops":    "Total Drops",
+			"unique_items":   "Unique Items",
+			"count":          "Count",
+
+			"nav_statistics": "Statistics", // <-- ADD THIS
 		},
 		"pt": {
 			"market_summary":         "Resumo do Mercado",
@@ -653,6 +662,14 @@ var (
 			"chat_messages_found":      "Mensagens de Chat",
 			"trading_post_items_found": "Itens (Discord)",
 			"market_items_found":       "Itens no Mercado",
+
+			// --- NEW: Drop Stat Translations ---
+			"nav_drop_stats": "Drops",
+			"total_drops":    "Drops Totais",
+			"unique_items":   "Itens Únicos",
+			"count":          "Qtd.",
+
+			"nav_statistics": "Estatísticas", // <-- ADD THIS
 		},
 	}
 )
@@ -744,6 +761,10 @@ var (
 	reCardRemover = regexp.MustCompile(`(?i)\s*\b(card|carta)\b\s*`)
 
 	reSlotRemover = regexp.MustCompile(`\s*\[\d+\]\s*`)
+
+	dropMessageRegex = regexp.MustCompile(`'(.+)'\s+(got|stole)\s+(.+)`)
+
+	reItemFromDrop = regexp.MustCompile(`(?:(?:\d+\s*x\s*)?'(.+?)'|.+\'s\s+(.+?)|(.+?))\s*(?:\(chance:.*)?$`)
 )
 
 // var classImages = map[string]string{
@@ -1250,6 +1271,7 @@ func init() {
 		"xp_calculator.html",
 		"about.html",
 		"search.html",
+		"drop_stats.html",
 	}
 
 	for _, tmplName := range templates {
@@ -3147,7 +3169,7 @@ func getChatActivityGraphData() template.JS {
 	return template.JS(jsonData)
 }
 
-// chatHandler displays the paginated public chat log.
+// This handler is now much simpler and only handles chat logs.
 func chatHandler(w http.ResponseWriter, r *http.Request) {
 	const messagesPerPage = 100
 	activeChannel := r.URL.Query().Get("channel")
@@ -3157,19 +3179,46 @@ func chatHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// 1. Get all unique channels for tabs
-	allChannels := getAllChatChannels()
+	allChannels := getAllChatChannels() // Reverted to include "Drop"
 
-	// 2. Build WHERE clause
+	// Initialize Page Data
+	data := ChatPageData{
+		LastScrapeTime:    GetLastChatPacketTime(),
+		PageTitle:         "Chat",
+		AllChannels:       allChannels,
+		ActiveChannel:     activeChannel,
+		SearchQuery:       searchQuery,
+		ActivityGraphJSON: getChatActivityGraphData(),
+	}
+
+	// 2. Build Filter URL (for pagination)
+	queryFilter := url.Values{}
+	if activeChannel != "all" {
+		queryFilter.Set("channel", activeChannel)
+	}
+	if searchQuery != "" {
+		queryFilter.Set("query", searchQuery)
+	}
+	var filterString string
+	if encodedFilter := queryFilter.Encode(); encodedFilter != "" {
+		filterString = "&" + encodedFilter
+	}
+	data.QueryFilter = template.URL(filterString)
+
+	// --- REMOVED: "Drop Stats" Tab Logic ---
+
+	// 3. Build WHERE clause for message logs
 	var whereConditions []string
 	var params []interface{}
 
-	if activeChannel != "all" {
-		whereConditions = append(whereConditions, "channel = ?")
-		params = append(params, activeChannel)
-	} else {
-		// "all" tab excludes "Local"
+	if activeChannel == "all" {
+		// "all" tab now excludes "Local"
 		whereConditions = append(whereConditions, "channel != ?")
 		params = append(params, "Local")
+	} else {
+		// Specific channel (e.g., "Main", "Trade", or "Drop")
+		whereConditions = append(whereConditions, "channel = ?")
+		params = append(params, activeChannel)
 	}
 
 	if searchQuery != "" {
@@ -3178,12 +3227,14 @@ func chatHandler(w http.ResponseWriter, r *http.Request) {
 		params = append(params, likeQuery, likeQuery)
 	}
 
-	// Filter out noisy system messages
-	whereConditions = append(whereConditions, "NOT (channel = 'Drop' AND character_name = 'System' AND (message LIKE '%Os Campos de Batalha%' OR message LIKE '%Utilizem os efeitos%'))")
+	// Filter out noisy system messages (only applies if "Drop" channel is selected)
+	if activeChannel == "Drop" {
+		whereConditions = append(whereConditions, "NOT (channel = 'Drop' AND character_name = 'System' AND (message LIKE '%Os Campos de Batalha%' OR message LIKE '%Utilizem os efeitos%'))")
+	}
 
 	whereClause := "WHERE " + strings.Join(whereConditions, " AND ")
 
-	// 3. Get total count
+	// 4. Get total count
 	var totalMessages int
 	countQuery := fmt.Sprintf("SELECT COUNT(*) FROM chat %s", whereClause)
 	if err := db.QueryRow(countQuery, params...).Scan(&totalMessages); err != nil {
@@ -3192,10 +3243,10 @@ func chatHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// 4. Create pagination
-	pagination := newPaginationData(r, totalMessages, messagesPerPage)
+	// 5. Create pagination
+	data.Pagination = newPaginationData(r, totalMessages, messagesPerPage)
 
-	// 5. Fetch paginated messages
+	// 6. Fetch paginated messages
 	query := fmt.Sprintf(`
 		SELECT timestamp, channel, character_name, message 
 		FROM chat 
@@ -3203,7 +3254,7 @@ func chatHandler(w http.ResponseWriter, r *http.Request) {
 		ORDER BY timestamp DESC 
 		LIMIT ? OFFSET ?`, whereClause)
 
-	queryArgs := append(params, pagination.ItemsPerPage, pagination.Offset)
+	queryArgs := append(params, data.Pagination.ItemsPerPage, data.Pagination.Offset)
 	rows, err := db.Query(query, queryArgs...)
 	if err != nil {
 		log.Printf("[E] [HTTP/Chat] Could not query for chat messages: %v", err)
@@ -3227,40 +3278,13 @@ func chatHandler(w http.ResponseWriter, r *http.Request) {
 		}
 		messages = append(messages, msg)
 	}
+	data.Messages = messages
 
-	// 6. Build Filter URL
-	queryFilter := url.Values{}
-	if activeChannel != "all" {
-		queryFilter.Set("channel", activeChannel)
-	}
-	if searchQuery != "" {
-		queryFilter.Set("query", searchQuery)
-	}
-
-	var filterString string
-	if encodedFilter := queryFilter.Encode(); encodedFilter != "" {
-		filterString = "&" + encodedFilter
-	}
-
-	// 7. Get graph data
-	activityGraphJSON := getChatActivityGraphData()
-
-	// 8. Render Template
-	data := ChatPageData{
-		Messages:          messages,
-		LastScrapeTime:    GetLastChatPacketTime(),
-		Pagination:        pagination,
-		PageTitle:         "Chat",
-		AllChannels:       allChannels,
-		ActiveChannel:     activeChannel,
-		QueryFilter:       template.URL(filterString),
-		SearchQuery:       searchQuery,
-		ActivityGraphJSON: activityGraphJSON,
-	}
+	// 7. Render Template
 	renderTemplate(w, r, "chat.html", data)
 }
 
-// getAllChatChannels is a small helper to abstract the channel query.
+// Reverted to only exclude "Local". "Drop" is now a regular channel.
 func getAllChatChannels() []string {
 	var allChannels []string
 	channelRows, err := db.Query("SELECT DISTINCT channel FROM chat WHERE channel != 'Local' ORDER BY channel ASC")
@@ -4582,4 +4606,165 @@ func fetchMarketResults(wg *sync.WaitGroup, results *[]ItemSummary, likeQuery st
 			*results = append(*results, r)
 		}
 	}
+}
+
+// This function is updated to return its findings instead of modifying a struct.
+func fetchDropStatistics() ([]DropStatItem, int64, int64, error) {
+	log.Println("[I] [HTTP/Stats] Fetching drop statistics...")
+
+	query := `SELECT message, timestamp FROM chat WHERE channel = 'Drop' AND character_name = 'System' ORDER BY timestamp DESC`
+	rows, err := db.Query(query)
+	if err != nil {
+		return nil, 0, 0, fmt.Errorf("could not query chat for drop stats: %w", err)
+	}
+	defer rows.Close()
+
+	itemStats := make(map[string]*struct {
+		Count    int
+		LastSeen string
+	})
+	var totalDrops int64 = 0
+	var processedRows int = 0
+
+	for rows.Next() {
+		processedRows++
+		var msg, timestampStr string
+		if err := rows.Scan(&msg, &timestampStr); err != nil {
+			log.Printf("[W] [HTTP/Chat] Failed to scan drop stat row: %v", err)
+			continue
+		}
+
+		log.Printf("[D] [DropStats] Processing Msg: %s", msg)
+
+		dropMatches := dropMessageRegex.FindStringSubmatch(msg)
+		var itemMsgFragment string
+		if len(dropMatches) == 4 {
+			itemMsgFragment = dropMatches[3]
+			log.Printf("[D] [DropStats] -> Matched drop. Fragment: %s", itemMsgFragment)
+		} else {
+			log.Printf("[D] [DropStats] -> FAILED dropMessageRegex match. (len: %d)", len(dropMatches))
+			continue
+		}
+
+		itemMatches := reItemFromDrop.FindStringSubmatch(itemMsgFragment)
+		var itemName string
+
+		if len(itemMatches) == 4 { // [full_match, quoted_item, monster_item, fallback_item]
+			if itemMatches[1] != "" {
+				itemName = itemMatches[1]
+			} else if itemMatches[2] != "" {
+				itemName = itemMatches[2]
+			} else if itemMatches[3] != "" {
+				itemName = itemMatches[3]
+			}
+			log.Printf("[D] [DropStats] -> Matched item. Name: '%s' (Matches: %v)", itemName, itemMatches[1:])
+		} else {
+			log.Printf("[D] [DropStats] -> FAILED reItemFromDrop match. (len: %d)", len(itemMatches))
+		}
+
+		itemName = strings.TrimSpace(itemName)
+		if itemName == "" {
+			log.Printf("[W] [HTTP/Chat] Could not parse item name from fragment: %s", itemMsgFragment)
+			continue
+		}
+
+		totalDrops++
+		if stat, ok := itemStats[itemName]; ok {
+			stat.Count++
+		} else {
+			formattedTime := timestampStr
+			if parsedTime, err := time.Parse(time.RFC3339, timestampStr); err == nil {
+				formattedTime = parsedTime.Format("2006-01-02 15:04")
+			}
+			itemStats[itemName] = &struct {
+				Count    int
+				LastSeen string
+			}{
+				Count:    1,
+				LastSeen: formattedTime,
+			}
+		}
+	}
+
+	log.Printf("[I] [HTTP/Chat] Drop stats processed. Total DB rows: %d. Total drops parsed: %d. Unique items: %d", processedRows, totalDrops, len(itemStats))
+
+	uniqueDropItems := int64(len(itemStats))
+
+	if len(itemStats) == 0 {
+		return nil, totalDrops, uniqueDropItems, nil // Return empty stats
+	}
+
+	// --- Database Join Logic (unchanged) ---
+	placeholders := strings.Repeat("?,", len(itemStats)-1) + "?"
+	params := make([]interface{}, len(itemStats))
+	i := 0
+	for name := range itemStats {
+		params[i] = name
+		i++
+	}
+	dbItems := make(map[string]struct {
+		ItemID sql.NullInt64
+		NamePT sql.NullString
+	})
+	joinQuery := fmt.Sprintf(`
+        SELECT name, item_id, name_pt 
+        FROM internal_item_db 
+        WHERE name IN (%s)`, placeholders)
+	joinRows, err := db.Query(joinQuery, params...)
+	if err != nil {
+		log.Printf("[W] [HTTP/Chat] Failed to join internal_item_db for drop stats: %v", err)
+	} else {
+		defer joinRows.Close()
+		for joinRows.Next() {
+			var name string
+			var itemID sql.NullInt64
+			var namePT sql.NullString
+			if err := joinRows.Scan(&name, &itemID, &namePT); err == nil {
+				dbItems[name] = struct {
+					ItemID sql.NullInt64
+					NamePT sql.NullString
+				}{itemID, namePT}
+			}
+		}
+	}
+
+	// --- Create final slice (unchanged) ---
+	var dropStats []DropStatItem
+	for name, stat := range itemStats {
+		dbInfo := dbItems[name]
+		dropStats = append(dropStats, DropStatItem{
+			ItemID:   dbInfo.ItemID,
+			Name:     name,
+			NamePT:   dbInfo.NamePT,
+			Count:    stat.Count,
+			LastSeen: stat.LastSeen,
+		})
+	}
+
+	// --- Sort (unchanged) ---
+	sort.Slice(dropStats, func(i, j int) bool {
+		return dropStats[i].Count > dropStats[j].Count
+	})
+
+	return dropStats, totalDrops, uniqueDropItems, nil
+}
+
+// This new handler will serve the /stats/drops page.
+func dropStatsHandler(w http.ResponseWriter, r *http.Request) {
+	stats, total, unique, err := fetchDropStatistics()
+	if err != nil {
+		log.Printf("[E] [HTTP/Stats] Could not fetch drop stats: %v", err)
+		http.Error(w, "Could not fetch drop statistics", http.StatusInternalServerError)
+		return
+	}
+
+	data := DropStatsPageData{
+		PageTitle:       "Drop Stats",
+		LastScrapeTime:  GetLastChatPacketTime(), // Use chat time for "last updated"
+		DropStats:       stats,
+		TotalDrops:      total,
+		UniqueDropItems: unique,
+	}
+
+	renderTemplate(w, r, "drop_stats.html", data)
 }

@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="{{.Page.Lang}}">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{.Page.T.nav_drop_stats}} - Yufa Market Tracker</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        html { font-size: 100%; }
+        .container {
+            max-width: 95% !important;
+        }
+    </style>
+</head>
+<body class="bg-gray-100 text-gray-800 text-sm sm:text-base">
+
+    {{template "navbar.html" .}}
+
+    <div class="container mx-auto px-4 py-6">
+        <div class="flex flex-col sm:flex-row justify-between sm:items-center gap-2 mb-4 border-b border-gray-200 pb-3">
+            <h1 class="text-2xl font-bold text-gray-800">{{.Page.T.nav_drop_stats}}</h1>
+            <div id="last-updated" class="text-sm text-gray-500" data-timestamp="{{.Data.LastScrapeTime}}"></div>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4 my-4">
+            <div class="bg-white p-4 rounded-lg shadow text-center">
+                <div class="text-xs text-gray-500 uppercase font-semibold">{{.Page.T.total_drops}}</div>
+                <div class="text-3xl font-bold text-gray-800">{{formatZeny .Data.TotalDrops}}</div>
+            </div>
+            <div class="bg-white p-4 rounded-lg shadow text-center">
+                <div class="text-xs text-gray-500 uppercase font-semibold">{{.Page.T.unique_items}}</div>
+                <div class="text-3xl font-bold text-gray-800">{{formatZeny .Data.UniqueDropItems}}</div>
+            </div>
+        </div>
+
+        <div class="bg-white shadow-lg rounded-lg overflow-hidden">
+            <div class="overflow-x-auto">
+                <table class="min-w-full leading-normal">
+                    <thead>
+                        <tr class="border-b-2 border-gray-200 bg-gray-50 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                            <th class="px-3 py-2">{{.Page.T.item_name}}</th>
+                            <th class="px-3 py-2">{{.Page.T.item_id}}</th>
+                            <th class="px-3 py-2">{{.Page.T.count}}</th>
+                            <th class="px-3 py-2">{{.Page.T.last_seen}}</th>
+                        </tr>
+                    </thead>
+                    <tbody class="text-gray-700">
+                        {{range .Data.DropStats}}
+                        <tr class="border-b border-gray-200 hover:bg-gray-50">
+                            <td class="px-3 py-2">
+                                <div class="flex items-center">
+                                    {{if .ItemID.Valid}}
+                                    <img src="https://static.divine-pride.net/images/items/item/{{.ItemID.Int64}}.png" alt="" class="w-6 h-6 mr-2" style="image-rendering: pixelated;">
+                                    {{end}}
+                                    <div>
+                                        {{ $displayName := .Name }}
+                                        {{ if and (eq $.Page.Lang "pt") .NamePT.Valid }}{{ $displayName = .NamePT.String }}{{ end }}
+                                        
+                                        <a href="/item?name={{.Name | urlquery}}" class="font-semibold hover:underline">{{$displayName}}</a>
+                                        
+                                        {{if and (eq $.Page.Lang "en") .NamePT.Valid}}
+                                            <div class="text-xs text-gray-500 mt-1">({{.NamePT.String}})</div>
+                                        {{else if and (eq $.Page.Lang "pt") .NamePT.Valid (ne .Name .NamePT.String)}}
+                                            <div class="text-xs text-gray-500 mt-1">({{.Name}})</div>
+                                        {{end}}
+                                    </div>
+                                </div>
+                            </td>
+                            <td class="px-3 py-2 text-xs text-gray-500">
+                                {{if .ItemID.Valid}}{{.ItemID.Int64}}{{else}}N/A{{end}}
+                            </td>
+                            <td class="px-3 py-2 font-semibold">{{.Count}}</td>
+                            <td class="px-3 py-2 text-xs text-gray-500 whitespace-nowrap">{{.LastSeen}}</td>
+                        </tr>
+                        {{else}}
+                        <tr>
+                            <td colspan="4" class="px-3 py-4 text-center text-gray-500">{{.Page.T.no_chat_messages}}</td>
+                        </tr>
+                        {{end}}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+    
+    <script>
+    // This script is just for the "Last Updated" text
+    document.addEventListener('DOMContentLoaded', () => {
+        const lang = document.documentElement.lang || 'en';
+        const translations = {
+            updated_never: '{{.Page.T.updated_never}}',
+            last_updated_at_chat: '{{.Page.T.last_updated_at_chat}}'
+        };
+
+        const lastUpdateElement = document.getElementById('last-updated');
+        if (lastUpdateElement) {
+            const timestampStr = lastUpdateElement.dataset.timestamp;
+            if (!timestampStr || timestampStr === 'Never' || timestampStr === '') {
+                lastUpdateElement.textContent = translations.updated_never;
+                return;
+            }
+
+            const lastUpdateDate = new Date(timestampStr);
+            const formattedTimestamp = lastUpdateDate.toLocaleString([], {
+                year: 'numeric', month: 'short', day: 'numeric',
+                hour: '2-digit', minute: '2-digit'
+            });
+
+            const updateTimeAgo = () => {
+                const now = new Date();
+                const secondsPast = Math.floor((now.getTime() - lastUpdateDate.getTime()) / 1000);
+                let timeAgoString;
+
+                if (lang === 'pt') {
+                    if (secondsPast < 5) timeAgoString = 'agora mesmo';
+                    else if (secondsPast < 60) timeAgoString = `${secondsPast}s`;
+                    else if (secondsPast < 3600) timeAgoString = `${Math.floor(secondsPast / 60)}m`;
+                    else if (secondsPast < 86400) timeAgoString = `${Math.floor(secondsPast / 3600)}h`;
+                    else timeAgoString = `${Math.floor(secondsPast / 86400)}d`;
+                } else {
+                    if (secondsPast < 5) timeAgoString = 'just now';
+                    else if (secondsPast < 60) timeAgoString = `${secondsPast}s ago`;
+                    else if (secondsPast < 3600) timeAgoString = `${Math.floor(secondsPast / 60)}m ago`;
+                    else if (secondsPast < 86400) timeAgoString = `${Math.floor(secondsPast / 3600)}h ago`;
+                    else timeAgoString = `${Math.floor(secondsPast / 86400)}d ago`;
+                }
+
+                const fullString = translations.last_updated_at_chat.replace('%s', timeAgoString);
+                lastUpdateElement.innerHTML = `${fullString} <span class="text-gray-400 font-normal">(${formattedTimestamp})</span>`;
+            };
+
+            updateTimeAgo();
+            setInterval(updateTimeAgo, 30000);
+        }
+    });
+    </script>
+</body>
+</html>
