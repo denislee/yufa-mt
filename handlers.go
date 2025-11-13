@@ -373,6 +373,10 @@ var (
 
 			"cards": "Cards",
 			"items": "Items",
+
+			"admin_backfill_drops": "Backfill Drop Logs to Changelog", // <-- ADD THIS
+			"item_drops":           "Item Drops",
+			"no_drop_history":      "No item drops recorded for this character.",
 		},
 		"pt": {
 			"market_summary":         "Resumo do Mercado",
@@ -649,7 +653,6 @@ var (
 			"showing_last_seen": "Mostrando os <strong>%d</strong> itens vistos por último nesta loja. Itens esmaecidos não estão mais disponíveis.",
 			"last_seen":         "Visto por Último",
 
-			// ... (inside "pt" map)
 			"item_details": "Detalhes do Item",
 			"weight":       "Peso",
 			"slots":        "Slots",
@@ -667,17 +670,21 @@ var (
 			"trading_post_items_found": "Itens (Discord)",
 			"market_items_found":       "Itens no Mercado",
 
-			// --- NEW: Drop Stat Translations ---
+			// Drop Stat Translations ---
 			"nav_drop_stats": "Drops",
 			"total_drops":    "Drops Totais",
 			"unique_items":   "Itens Únicos",
 			"count":          "Qtd.",
 
-			"nav_statistics":         "Estatísticas", // <-- ADD THIS
+			"nav_statistics":         "Estatísticas",
 			"nav_search_placeholder": "Buscar...",
 
 			"cards": "Cartas",
 			"items": "Itens",
+
+			"admin_backfill_drops": "Preencher Logs de Drop no Histórico",
+			"item_drops":           "Drops de Itens",
+			"no_drop_history":      "Nenhum drop de item registrado para este personagem.",
 		},
 	}
 )
@@ -2118,6 +2125,7 @@ func mvpKillsHandler(w http.ResponseWriter, r *http.Request) {
 
 func characterDetailHandler(w http.ResponseWriter, r *http.Request) {
 	charName := r.URL.Query().Get("name")
+	changelogQuery := r.URL.Query().Get("changelog_query") // <-- ADDED
 	if charName == "" {
 		http.Error(w, "Character name is required", http.StatusBadRequest)
 		return
@@ -2156,16 +2164,44 @@ func characterDetailHandler(w http.ResponseWriter, r *http.Request) {
 
 	// 5. Fetch paginated changelog
 	const entriesPerPage = 25
-	changelogEntries, pagination, err := fetchCharacterChangelog(p.Name, r, entriesPerPage)
+
+	// --- MODIFIED: Use new count function ---
+	totalChangelogEntries, err := countCharacterChangelog(p.Name, changelogQuery)
+	if err != nil {
+		log.Printf("[E] [HTTP/Char] %v", err)
+		http.Error(w, "Could not query for character changelog count", http.StatusInternalServerError)
+		return
+	}
+
+	pagination := newPaginationData(r, totalChangelogEntries, entriesPerPage)
+
+	// --- MODIFIED: Pass search query and pagination struct ---
+	allChangelogEntries, err := fetchCharacterChangelog(p.Name, changelogQuery, pagination)
 	if err != nil {
 		log.Printf("[E] [HTTP/Char] %v", err)
 		http.Error(w, "Could not query for character changelog", http.StatusInternalServerError)
 		return
 	}
 
+	// --- Filter changelog into activity and drops ---
+	var activityHistory []CharacterChangelog
+	var dropHistory []CharacterChangelog
+	for _, entry := range allChangelogEntries {
+		if strings.HasPrefix(entry.ActivityDescription, "Dropped item: ") {
+			// Trim the prefix for a cleaner display
+			entry.ActivityDescription = strings.TrimPrefix(entry.ActivityDescription, "Dropped item: ")
+			dropHistory = append(dropHistory, entry)
+		} else {
+			activityHistory = append(activityHistory, entry)
+		}
+	}
+
 	// 6. Build Filter URL for changelog pagination
 	filterValues := url.Values{}
 	filterValues.Set("name", p.Name)
+	if changelogQuery != "" { // <-- ADDED
+		filterValues.Set("changelog_query", changelogQuery)
+	}
 
 	filterString := ""
 	if encodedFilter := filterValues.Encode(); encodedFilter != "" {
@@ -2174,17 +2210,19 @@ func characterDetailHandler(w http.ResponseWriter, r *http.Request) {
 
 	// 7. Render template
 	data := CharacterDetailPageData{
-		Character:           p,
-		Guild:               guild,
-		MvpKills:            mvpKills,
-		MvpHeaders:          mvpHeaders,
-		GuildHistory:        guildHistory,
-		LastScrapeTime:      GetLastScrapeTime(),
-		ClassImageURL:       getClassImageURL(p.Class), // Use the template helper
-		ChangelogEntries:    changelogEntries,
-		ChangelogPagination: pagination,
-		PageTitle:           p.Name,
-		Filter:              template.URL(filterString), // <-- ADD THIS
+		Character:            p,
+		Guild:                guild,
+		MvpKills:             mvpKills,
+		MvpHeaders:           mvpHeaders,
+		GuildHistory:         guildHistory,
+		LastScrapeTime:       GetLastScrapeTime(),
+		ClassImageURL:        getClassImageURL(p.Class),
+		ActivityHistory:      activityHistory,
+		DropHistory:          dropHistory,
+		ChangelogPagination:  pagination,
+		PageTitle:            p.Name,
+		Filter:               template.URL(filterString),
+		ChangelogSearchQuery: changelogQuery, // <-- ADDED
 	}
 	renderTemplate(w, r, "character_detail.html", data)
 }
@@ -4318,21 +4356,31 @@ func fetchCharacterGuildHistory(charName string) ([]CharacterChangelog, error) {
 }
 
 // fetchCharacterChangelog retrieves the paginated general changelog for a character.
-func fetchCharacterChangelog(charName string, r *http.Request, entriesPerPage int) ([]CharacterChangelog, PaginationData, error) {
-	var totalChangelogEntries int
-	err := db.QueryRow("SELECT COUNT(*) FROM character_changelog WHERE character_name = ?", charName).Scan(&totalChangelogEntries)
-	if err != nil {
-		return nil, PaginationData{}, fmt.Errorf("could not count changelog: %w", err)
+// --- MODIFIED: Signature no longer takes *http.Request, takes searchQuery and pagination ---
+func fetchCharacterChangelog(charName string, searchQuery string, pagination PaginationData) ([]CharacterChangelog, error) {
+
+	// --- MODIFIED: Build WHERE clause ---
+	var whereConditions []string
+	var params []interface{}
+
+	whereConditions = append(whereConditions, "character_name = ?")
+	params = append(params, charName)
+
+	if searchQuery != "" {
+		whereConditions = append(whereConditions, "activity_description LIKE ?")
+		params = append(params, "%"+searchQuery+"%")
 	}
+	whereClause := "WHERE " + strings.Join(whereConditions, " AND ")
+	// --- END MODIFICATION ---
 
-	pagination := newPaginationData(r, totalChangelogEntries, entriesPerPage)
+	changelogQuery := fmt.Sprintf(`SELECT change_time, activity_description FROM character_changelog 
+		%s ORDER BY change_time DESC LIMIT ? OFFSET ?`, whereClause)
 
-	changelogQuery := `SELECT change_time, activity_description FROM character_changelog 
-		WHERE character_name = ? ORDER BY change_time DESC LIMIT ? OFFSET ?`
+	params = append(params, pagination.ItemsPerPage, pagination.Offset)
 
-	changelogRows, err := db.Query(changelogQuery, charName, pagination.ItemsPerPage, pagination.Offset)
+	changelogRows, err := db.Query(changelogQuery, params...)
 	if err != nil {
-		return nil, pagination, fmt.Errorf("could not query changelog: %w", err)
+		return nil, fmt.Errorf("could not query changelog: %w", err)
 	}
 	defer changelogRows.Close()
 
@@ -4347,7 +4395,7 @@ func fetchCharacterChangelog(charName string, r *http.Request, entriesPerPage in
 			changelogEntries = append(changelogEntries, entry)
 		}
 	}
-	return changelogEntries, pagination, nil
+	return changelogEntries, nil
 }
 
 // --- Template Funcs (Refactored) ---
@@ -4889,4 +4937,28 @@ func dropStatsHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	renderTemplate(w, r, "drop_stats.html", data)
+}
+
+// countCharacterChangelog counts all changelog entries for a character, with an optional search filter.
+func countCharacterChangelog(charName, searchQuery string) (int, error) {
+	var totalEntries int
+	var whereConditions []string
+	var params []interface{}
+
+	whereConditions = append(whereConditions, "character_name = ?")
+	params = append(params, charName)
+
+	if searchQuery != "" {
+		whereConditions = append(whereConditions, "activity_description LIKE ?")
+		params = append(params, "%"+searchQuery+"%")
+	}
+
+	whereClause := "WHERE " + strings.Join(whereConditions, " AND ")
+	query := fmt.Sprintf("SELECT COUNT(*) FROM character_changelog %s", whereClause)
+
+	err := db.QueryRow(query, params...).Scan(&totalEntries)
+	if err != nil {
+		return 0, fmt.Errorf("could not count changelog: %w", err)
+	}
+	return totalEntries, nil
 }

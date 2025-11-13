@@ -489,18 +489,19 @@ type MvpKillPageData struct {
 }
 
 type CharacterDetailPageData struct {
-	Character      PlayerCharacter
-	Guild          *Guild
-	MvpKills       MvpKillEntry
-	MvpHeaders     []MvpHeader
-	LastScrapeTime string
-	GuildHistory   []CharacterChangelog
-	ClassImageURL  string
-
-	ChangelogEntries    []CharacterChangelog
-	ChangelogPagination PaginationData
-	PageTitle           string
-	Filter              template.URL
+	Character            PlayerCharacter
+	Guild                *Guild
+	MvpKills             MvpKillEntry
+	MvpHeaders           []MvpHeader
+	LastScrapeTime       string
+	GuildHistory         []CharacterChangelog
+	ClassImageURL        string
+	ActivityHistory      []CharacterChangelog
+	DropHistory          []CharacterChangelog
+	ChangelogPagination  PaginationData
+	PageTitle            string
+	Filter               template.URL
+	ChangelogSearchQuery string // <-- ADD THIS
 }
 
 type CharacterChangelog struct {

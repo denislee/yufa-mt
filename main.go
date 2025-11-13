@@ -236,6 +236,7 @@ func registerAdminRoutes() *http.ServeMux {
 	adminRouter.HandleFunc("/guild/update-emblem", adminUpdateGuildEmblemHandler)
 	adminRouter.HandleFunc("/character/clear-last-active", adminClearLastActiveHandler)
 	adminRouter.HandleFunc("/character/clear-mvp-kills", adminClearMvpKillsHandler)
+	adminRouter.HandleFunc("/backfill/drops", adminBackfillDropLogsHandler)
 
 	// Admin RMS Cache Management
 	adminRouter.HandleFunc("/cache", adminCacheActionHandler)

@@ -155,7 +155,15 @@
                                 <button type="submit" class="bg-red-600 hover:bg-red-800 text-white font-bold py-2 px-4 rounded">Clear All MVP Kills</button>
                             </form>
                         </div>
-                    </div>
+                        
+                        <div class="bg-white p-6 rounded-lg shadow mb-8">
+                            <h2 class="text-xl font-bold mb-4">Data Backfill</h2>
+                            <p class="text-sm text-gray-600 mb-4">This will scan the entire chat log, parse all item drop messages, and insert them into the character changelog. This is idempotent (safe to run multiple times).</p>
+                            <form action="/admin/backfill/drops" method="POST" onsubmit="return confirm('This may take a moment. Are you sure you want to backfill all drop logs into the changelog?');">
+                                <button type="submit" class="bg-teal-500 hover:bg-teal-700 text-white font-bold py-2 px-4 rounded">Backfill Drop Logs to Changelog</button>
+                            </form>
+                        </div>
+                        </div>
                     <div>
                         <div class="bg-white p-6 rounded-lg shadow mb-8">
                             <h2 class="text-xl font-bold mb-4">Page View Summary (Top 25)</h2>

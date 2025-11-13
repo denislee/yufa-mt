@@ -1185,3 +1185,114 @@ func insertTradingPostItemsFromForm(tx *sql.Tx, postID int, form url.Values) err
 
 	return nil
 }
+
+// --- NEW: Admin handler to trigger the backfill ---
+func adminBackfillDropLogsHandler(w http.ResponseWriter, r *http.Request) {
+	log.Println("[I] [Admin] Manual backfill of drop logs triggered.")
+
+	count, err := backfillDropLogsToChangelog()
+	if err != nil {
+		log.Printf("[E] [Admin] Drop log backfill failed: %v", err)
+		// Use the existing redirect helper
+		http.Redirect(w, r, adminRedirectURL(r, "Drop backfill failed."), http.StatusSeeOther)
+		return
+	}
+
+	msg := fmt.Sprintf("Drop log backfill complete. %d new entries added.", count)
+	log.Printf("[I] [Admin] %s", msg)
+	http.Redirect(w, r, adminRedirectURL(r, msg), http.StatusSeeOther)
+}
+
+func backfillDropLogsToChangelog() (int64, error) {
+	log.Println("[I] [Backfill] Starting drop log backfill process...")
+
+	// 1. Begin transaction
+	tx, err := db.Begin()
+	if err != nil {
+		return 0, fmt.Errorf("failed to begin transaction: %w", err)
+	}
+	defer tx.Rollback() // Rollback on error
+
+	// 2. Delete all existing drop logs to prevent duplicates.
+	// This makes the operation idempotent (safe to run multiple times).
+	delRes, err := tx.Exec("DELETE FROM character_changelog WHERE activity_description LIKE 'Dropped item: %'")
+	if err != nil {
+		return 0, fmt.Errorf("failed to delete old drop logs: %w", err)
+	}
+	deletedCount, _ := delRes.RowsAffected()
+	log.Printf("[I] [Backfill] Deleted %d old drop log entries.", deletedCount)
+
+	// 3. Query all drop messages from the chat table
+	rows, err := tx.Query("SELECT message, timestamp FROM chat WHERE channel = 'Drop' AND character_name = 'System'")
+	if err != nil {
+		return 0, fmt.Errorf("failed to query chat table for drops: %w", err)
+	}
+	defer rows.Close()
+
+	// 4. Prepare the INSERT statement
+	stmt, err := tx.Prepare("INSERT INTO character_changelog (character_name, change_time, activity_description) VALUES (?, ?, ?)")
+	if err != nil {
+		return 0, fmt.Errorf("failed to prepare insert statement: %w", err)
+	}
+	defer stmt.Close()
+
+	var newEntriesCount int64 = 0
+
+	// 5. Loop, Parse, and Insert
+	for rows.Next() {
+		var msg, timestampStr string
+		if err := rows.Scan(&msg, &timestampStr); err != nil {
+			log.Printf("[W] [Backfill] Failed to scan drop row: %v", err)
+			continue
+		}
+
+		// Parse the player name using the existing regex
+		dropMatches := dropMessageRegex.FindStringSubmatch(msg)
+		var itemMsgFragment, playerName string
+		if len(dropMatches) == 4 {
+			playerName = dropMatches[1]
+			itemMsgFragment = dropMatches[3]
+		} else {
+			continue // Not a valid drop message
+		}
+
+		// Parse the item name using the existing regex
+		itemMatches := reItemFromDrop.FindStringSubmatch(itemMsgFragment)
+		var itemName string
+		if len(itemMatches) == 4 {
+			if itemMatches[1] != "" {
+				itemName = itemMatches[1]
+			} else if itemMatches[2] != "" {
+				itemName = itemMatches[2]
+			} else if itemMatches[3] != "" {
+				itemName = itemMatches[3]
+			}
+		}
+		itemName = strings.TrimSpace(itemName)
+		if itemName == "" {
+			continue // Couldn't parse item name
+		}
+
+		// Create the new activity description
+		activityDesc := fmt.Sprintf("Dropped item: %s", itemName)
+
+		// Insert into the changelog
+		_, err := stmt.Exec(playerName, timestampStr, activityDesc)
+		if err != nil {
+			// Log the error but continue. This can happen if the character
+			// (e.g., 'Brajuk') is not in the 'characters' table,
+			// which would violate the foreign key constraint.
+			log.Printf("[W] [Backfill] Failed to insert log for '%s' (time: %s, item: %s): %v", playerName, timestampStr, itemName, err)
+			continue
+		}
+		newEntriesCount++
+	}
+
+	// 6. Commit transaction
+	if err := tx.Commit(); err != nil {
+		return 0, fmt.Errorf("failed to commit transaction: %w", err)
+	}
+
+	log.Printf("[I] [Backfill] Successfully inserted %d new drop log entries.", newEntriesCount)
+	return newEntriesCount, nil
+}

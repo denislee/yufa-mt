@@ -1,9 +1,9 @@
 <!DOCTYPE html>
-<html lang="{{.Page.Lang}}"> {{/* <-- MODIFIED */}}
+<html lang="{{.Page.Lang}}">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{{.Data.Character.Name}} - Yufa Market Tracker</title> {{/* <-- MODIFIED */}}
+    <title>{{.Data.PageTitle}} - Yufa Market Tracker</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
         html { font-size: 100%; }
@@ -17,222 +17,182 @@
     {{template "navbar.html" .}}
 
     <div class="container mx-auto px-4 py-6">
+        
         <div class="flex flex-col sm:flex-row justify-between sm:items-center gap-2 mb-4 border-b border-gray-200 pb-3">
             <div class="flex items-center gap-4">
-                {{/* MODIFIED: Use .Data */}}
-                {{if .Data.ClassImageURL}}
-                <img src="{{.Data.ClassImageURL}}" alt="{{.Data.Character.Class}}" class="h-16 w-16 bg-gray-200 p-1 rounded-md">
-                {{end}}
+                <img src="{{getClassImageURL .Data.Character.Class}}" alt="{{.Data.Character.Class}}" class="w-10 h-10 bg-white rounded-md shadow p-1" style="image-rendering: pixelated;">
                 <div>
-                    <h1 class="text-3xl font-bold text-gray-800 flex items-center">
-                        {{.Data.Character.Name}}
-                        {{if .Data.Character.IsGuildLeader}}
-                            <span title="{{.Page.T.guild_leader}}" class="ml-2 text-xl">⭐</span> {{/* <-- MODIFIED */}}
-                        {{end}}
-                    </h1>
-                    <p class="text-lg text-gray-600">{{.Data.Character.Class}}</p>
+                    <h1 class="text-3xl font-bold text-gray-800">{{.Data.Character.Name}}</h1>
+                    <div class="text-lg text-gray-600">{{.Data.Character.Class}}</div>
                 </div>
             </div>
-            {{/* MODIFIED: Use .Data and new #last-updated ID */}}
-            <div id="last-updated" class="text-sm text-gray-500" data-timestamp="{{.Data.LastScrapeTime}}"></div>
+            <div class="text-sm text-gray-500" title="Last full scrape time">{{printf .Page.T.info_loaded_at .Data.LastScrapeTime}}</div>
         </div>
 
-        <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
-            <div class="md:col-span-2">
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            
+            <div class="lg:col-span-1 space-y-6">
+                
                 <div class="bg-white p-4 rounded-lg shadow">
-                    <h2 class="text-xl font-semibold mb-4 border-b pb-2">{{.Page.T.char_info}}</h2> {{/* <-- MODIFIED */}}
-                    <div class="grid grid-cols-2 sm:grid-cols-3 gap-4">
+                    <h2 class="text-xl font-semibold text-gray-800 mb-3 border-b pb-2">{{.Page.T.char_info}}</h2>
+                    
+                    <div class="flex justify-around text-center my-4">
                         <div>
-                            <p class="font-medium text-gray-500">{{.Page.T.rank}}</p> {{/* <-- MODIFIED */}}
-                            <p class="text-lg">{{.Data.Character.Rank}}</p>
-                        </div>
-                        <div>
-                            <p class="font-medium text-gray-500">{{.Page.T.base_level}}</p> {{/* <-- MODIFIED */}}
-                            <p class="text-lg">{{.Data.Character.BaseLevel}}</p>
+                            <div class="text-xs text-gray-500 uppercase font-semibold">{{.Page.T.base_level}}</div>
+                            <div class="text-3xl font-bold text-gray-800">{{.Data.Character.BaseLevel}}</div>
                         </div>
                         <div>
-                            <p class="font-medium text-gray-500">{{.Page.T.job_level}}</p> {{/* <-- MODIFIED */}}
-                            <p class="text-lg">{{.Data.Character.JobLevel}}</p>
-                        </div>
-                        <div>
-                            <p class="font-medium text-gray-500">{{.Page.T.experience}}</p> {{/* <-- MODIFIED */}}
-                            <p class="text-lg">{{printf "%.2f" .Data.Character.Experience}}%</p>
-                        </div>
-                        <div>
-                            <p class="font-medium text-gray-500">{{.Page.T.zeny}}</p> {{/* <-- MODIFIED */}}
-                            <p class="text-lg font-mono">{{if .Data.Character.Zeny}}{{formatZeny .Data.Character.Zeny}} z{{else}}N/A{{end}}</p>
-                        </div>
-                         <div>
-                            <p class="font-medium text-gray-500">{{.Page.T.status}}</p> {{/* <-- MODIFIED */}}
-                            <p class="text-lg">{{if .Data.Character.IsActive}}<span class="text-green-600 font-semibold">{{.Page.T.active}}</span>{{else}}<span class="text-gray-500">{{.Page.T.inactive}}</span>{{end}}</p> {{/* <-- MODIFIED */}}
-                        </div>
-                        <div class="col-span-full sm:col-span-1">
-                            <p class="font-medium text-gray-500">{{.Page.T.last_active}}</p> {{/* <-- MODIFIED */}}
-                            <p class="text-lg">{{.Data.Character.LastActive}}</p>
+                            <div class="text-xs text-gray-500 uppercase font-semibold">{{.Page.T.job_level}}</div>
+                            <div class="text-3xl font-bold text-gray-800">{{.Data.Character.JobLevel}}</div>
                         </div>
                     </div>
+
+                    <dl class="space-y-2 text-sm border-t pt-3">
+                        <div class="flex justify-between"><dt class="text-gray-500">{{.Page.T.rank}}:</dt><dd class="font-semibold">{{.Data.Character.Rank}}</dd></div>
+                        <div class="flex justify-between"><dt class="text-gray-500">{{.Page.T.experience}}:</dt><dd class="font-semibold">{{printf "%.4f" .Data.Character.Experience}}%</dd></div>
+                        <div class="flex justify-between"><dt class="text-gray-500">{{.Page.T.zeny}}:</dt><dd class="font-semibold text-green-600">{{formatZeny .Data.Character.Zeny}}z</dd></div>
+                        <div class="flex justify-between"><dt class="text-gray-500">{{.Page.T.status}}:</dt>
+                            <dd class="font-semibold {{if .Data.Character.IsActive}}text-green-600{{else}}text-red-600{{end}}">
+                                {{if .Data.Character.IsActive}}{{.Page.T.active}}{{else}}{{.Page.T.inactive}}{{end}}
+                            </dd>
+                        </div>
+                        <div class="flex justify-between"><dt class="text-gray-500">{{.Page.T.last_active}}:</dt><dd class="font-semibold">{{.Data.Character.LastActive}}</dd></div>
+                        <div class="flex justify-between"><dt class="text-gray-500">{{.Page.T.last_updated}}:</dt><dd class="font-semibold">{{.Data.Character.LastUpdated}}</dd></div>
+                    </dl>
                 </div>
 
-                <div class="bg-white p-4 rounded-lg shadow mt-6">
-                    {{/* MODIFIED: Use .Data and .Page.T */}}
-                    <h2 class="text-xl font-semibold mb-2">{{printf .Page.T.mvp_kills_total .Data.MvpKills.TotalKills}}</h2>
+                <div class="bg-white p-4 rounded-lg shadow">
+                    <h2 class="text-xl font-semibold text-gray-800 mb-3 border-b pb-2">{{.Page.T.guild_info}}</h2>
+                    {{if .Data.Guild}}
+                        <div class="flex items-center gap-3 mb-3">
+                            {{if .Data.Guild.EmblemURL}}
+                            <img src="{{.Data.Guild.EmblemURL}}" alt="{{.Data.Guild.Name}} Emblem" class="w-10 h-10 bg-gray-100 rounded shadow">
+                            {{end}}
+                            <div>
+                                <a href="/guild?name={{.Data.Guild.Name | urlquery}}" class="text-lg font-semibold text-blue-600 hover:underline">{{.Data.Guild.Name}}</a>
+                                {{if .Data.Character.IsGuildLeader}}
+                                <span class="ml-2 text-xs font-semibold bg-yellow-200 text-yellow-800 px-2 py-0.5 rounded-full">{{.Page.T.guild_leader}}</span>
+                                {{end}}
+                            </div>
+                        </div>
+                        <dl class="space-y-2 text-sm">
+                            <div class="flex justify-between"><dt class="text-gray-500">{{.Page.T.guild_level}}:</dt><dd class="font-semibold">{{.Data.Guild.Level}}</dd></div>
+                            <div class="flex justify-between"><dt class="text-gray-500">{{.Page.T.guild_master}}:</dt><dd class="font-semibold"><a href="/character?name={{.Data.Guild.Master | urlquery}}" class="text-blue-600 hover:underline">{{.Data.Guild.Master}}</a></dd></div>
+                            <div class="flex justify-between"><dt class="text-gray-500">{{.Page.T.members}}:</dt><dd class="font-semibold">{{.Data.Guild.MemberCount}}</dd></div>
+                        </dl>
+                    {{else}}
+                        <p class="text-sm text-gray-500">{{.Page.T.not_in_guild}}</p>
+                    {{end}}
+
+                    {{if .Data.GuildHistory}}
+                    <h3 class="text-md font-semibold text-gray-700 mt-4 pt-3 border-t">{{.Page.T.guild_history}}</h3>
+                    <ul class="space-y-1.5 text-sm mt-2">
+                        {{range .Data.GuildHistory}}
+                        <li class="flex items-center gap-3">
+                            <span class="text-gray-500 text-xs whitespace-nowrap">{{.ChangeTime}}</span>
+                            <span class="text-gray-700">{{.ActivityDescription}}</span>
+                        </li>
+                        {{end}}
+                    </ul>
+                    {{end}}
+                </div>
+                
+            </div>
+            
+            <div class="lg:col-span-2 space-y-6">
+
+                <div class="bg-white p-4 rounded-lg shadow">
+                    <h2 class="text-xl font-semibold text-gray-800 mb-3 border-b pb-2">{{printf .Page.T.mvp_kills_total .Data.MvpKills.TotalKills}}</h2>
                     {{if gt .Data.MvpKills.TotalKills 0}}
-                    <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4 pt-2">
+                    <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4">
                         {{range .Data.MvpHeaders}}
                             {{$killCount := getKillCount $.Data.MvpKills.Kills .MobID}}
                             {{if gt $killCount 0}}
-                            <div class="flex items-center space-x-3 p-2 rounded-md bg-gray-50">
-                                <img src="https://projetoyufa.com/_next/image?url=%2Fimages%2Fmvp%2F{{.MobID}}.png&w=1920&q=75" alt="{{.MobName}}" class="h-10 w-10 object-contain">
+                            <div class="flex items-center gap-2 p-2 bg-gray-50 rounded-md">
+                                <img src="https://divine-pride.net/img/mobs/png/{{.MobID}}.png" alt="{{.MobName}}" class="w-8 h-8">
                                 <div>
-                                    <p class="font-semibold text-gray-800">{{.MobName}}</p>
-                                    <p class="text-sm text-gray-600">{{$killCount}} {{$.Page.T.kills}}</p> {{/* <-- MODIFIED */}}
+                                    <div class="font-semibold text-gray-700">{{.MobName}}</div>
+                                    <div class="text-sm text-gray-500">{{$killCount}} {{$.Page.T.kills}}</div>
                                 </div>
                             </div>
                             {{end}}
                         {{end}}
                     </div>
                     {{else}}
-                    <p class="text-gray-500 mt-4">{{.Page.T.no_mvp_kills}}</p> {{/* <-- MODIFIED */}}
+                    <p class="text-sm text-gray-500">{{.Page.T.no_mvp_kills}}</p>
                     {{end}}
                 </div>
 
-                <div class="bg-white p-4 rounded-lg shadow mt-6">
-                    <h2 class="text-xl font-semibold mb-2">{{.Page.T.char_changelog}}</h2> {{/* <-- MODIFIED */}}
-                    {{if .Data.ChangelogEntries}} {{/* <-- MODIFIED */}}
-                    <div class="overflow-x-auto">
-                        <table class="min-w-full divide-y divide-gray-200 mt-4">
-                            <thead class="bg-gray-50">
-                                <tr>
-                                    <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                                        {{.Page.T.timestamp}} {{/* <-- MODIFIED */}}
-                                    </th>
-                                    <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                                        {{.Page.T.activity}} {{/* <-- MODIFIED */}}
-                                    </th>
+                <div class="bg-white p-4 rounded-lg shadow">
+                    <h2 class="text-xl font-semibold text-gray-800 mb-3 border-b pb-2">{{.Page.T.item_drops}}</h2>
+                    <div class="overflow-x-auto max-h-96 overflow-y-auto">
+                        <table class="min-w-full text-sm">
+                            <tbody class="divide-y divide-gray-200">
+                                {{range .Data.DropHistory}}
+                                <tr class="hover:bg-gray-50">
+                                    <td class="py-2 px-2 text-gray-500 whitespace-nowrap" style="width: 150px;">{{.ChangeTime}}</td>
+                                    <td class="py-2 px-2 text-gray-700">
+                                        <a href="/item?name={{.ActivityDescription | urlquery}}" class="font-semibold text-blue-600 hover:underline">{{.ActivityDescription}}</a>
+                                    </td>
                                 </tr>
-                            </thead>
-                            <tbody class="bg-white divide-y divide-gray-200">
-                                {{range .Data.ChangelogEntries}} {{/* <-- MODIFIED */}}
+                                {{else}}
                                 <tr>
-                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500 font-mono">{{.ChangeTime}}</td>
-                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-800">{{.ActivityDescription}}</td>
+                                    <td class="py-4 text-center text-gray-500">{{.Page.T.no_drop_history}}</td>
                                 </tr>
                                 {{end}}
                             </tbody>
                         </table>
                     </div>
+                </div>
 
+                <div class="bg-white p-4 rounded-lg shadow">
+                    <div class="flex flex-col sm:flex-row justify-between sm:items-center gap-2 mb-3 border-b pb-2">
+                        <h2 class="text-xl font-semibold text-gray-800">{{.Page.T.char_changelog}}</h2>
+                        
+                        {{/* --- NEW: Changelog Search Form --- */}}
+                        <form action="/character" method="GET" class="flex items-center gap-2">
+                            <input type="hidden" name="name" value="{{.Data.Character.Name}}">
+                            <input type="text" name="changelog_query" value="{{.Data.ChangelogSearchQuery}}" placeholder="{{.Page.T.search}}..." class="block w-full sm:w-auto text-sm rounded-md border-gray-300 shadow-sm focus:border-indigo-300 focus:ring focus:ring-indigo-200 focus:ring-opacity-50 py-1.5 px-2">
+                            <button type="submit" class="bg-blue-500 hover:bg-blue-700 text-white font-bold py-1.5 px-3 rounded-md text-sm" title="{{.Page.T.search}}">
+                                <svg class="w-5 h-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                                </svg>
+                            </button>
+                        </form>
+                        {{/* --- END NEW --- */}}
+                    </div>
+
+                    <div class="overflow-x-auto">
+                        <table class="min-w-full text-sm">
+                            <thead class="bg-gray-50">
+                                <tr class="border-b-2 border-gray-200">
+                                    <th class="py-2 px-2 text-left font-semibold text-gray-600 uppercase tracking-wider" style="width: 150px;">{{.Page.T.timestamp}}</th>
+                                    <th class="py-2 px-2 text-left font-semibold text-gray-600 uppercase tracking-wider">{{.Page.T.activity}}</th>
+                                </tr>
+                            </thead>
+                            <tbody class="divide-y divide-gray-200">
+                                {{range .Data.ActivityHistory}}
+                                <tr class="hover:bg-gray-50">
+                                    <td class="py-2 px-2 text-gray-500 whitespace-nowrap">{{.ChangeTime}}</td>
+                                    <td class="py-2 px-2 text-gray-700">{{.ActivityDescription}}</td>
+                                </tr>
+                                {{else}}
+                                <tr>
+                                    <td colspan="2" class="py-4 text-center text-gray-500">{{.Page.T.no_char_activity}}</td>
+                                </tr>
+                                {{end}}
+                            </tbody>
+                        </table>
+                    </div>
                     {{if gt .Data.ChangelogPagination.TotalPages 1}}
-                        {{/* Use the Filter value passed from the handler */}}
-                        {{template "pagination" (dict "Page" .Page "Pagination" .Data.ChangelogPagination "Filter" .Data.Filter)}}
+                        {{$filter := .Data.Filter}}
+                        {{template "pagination" (dict "Page" .Page "Pagination" .Data.ChangelogPagination "Filter" $filter)}}
                     {{end}}
-
-                    {{else}}
-                    <p class="text-gray-500 mt-4">{{.Page.T.no_char_activity}}</p> {{/* <-- MODIFIED */}}
-                    {{end}}
-                </div>
                 </div>
 
-            <div class="md:col-span-1">
-                {{if .Data.Guild}} {{/* <-- MODIFIED */}}
-                <div class="bg-white p-4 rounded-lg shadow">
-                    <h2 class="text-xl font-semibold mb-4 border-b pb-2">{{.Page.T.guild_info}}</h2> {{/* <-- MODIFIED */}}
-                    <div class="space-y-3">
-                        <div>
-                            <p class="font-medium text-gray-500">{{.Page.T.guild_name}}</p> {{/* <-- MODIFIED */}}
-                            <a href="/guild?name={{.Data.Guild.Name | urlquery}}" class="text-lg text-blue-600 hover:underline">{{.Data.Guild.Name}}</a>
-                        </div>
-                        <div>
-                            <p class="font-medium text-gray-500">{{.Page.T.guild_level}}</p> {{/* <-- MODIFIED */}}
-                            <p class="text-lg">{{.Data.Guild.Level}}</p>
-                        </div>
-                        <div>
-                            <p class="font-medium text-gray-500">{{.Page.T.guild_master}}</p> {{/* <-- MODIFIED */}}
-                            <a href="/character?name={{.Data.Guild.Master}}" class="text-lg text-blue-600 hover:underline">{{.Data.Guild.Master}}</a>
-                        </div>
-                        <div>
-                            <p class="font-medium text-gray-500">{{.Page.T.members}}</p> {{/* <-- MODIFIED */}}
-                            <p class="text-lg">{{.Data.Guild.MemberCount}}</p>
-                        </div>
-                    </div>
-                </div>
-                {{else}}
-                <div class="bg-white p-4 rounded-lg shadow">
-                     <h2 class="text-xl font-semibold mb-2">{{.Page.T.guild_info}}</h2> {{/* <-- MODIFIED */}}
-                     <p class="text-gray-500 mt-4">{{.Page.T.not_in_guild}}</p> {{/* <-- MODIFIED */}}
-                </div>
-                {{end}}
-                <div class="bg-white p-4 rounded-lg shadow mt-6">
-                    <h2 class="text-xl font-semibold mb-2">{{.Page.T.guild_history}}</h2> {{/* <-- MODIFIED */}}
-                    {{if .Data.GuildHistory}} {{/* <-- MODIFIED */}}
-                    <div class="mt-4 space-y-3">
-                        {{range .Data.GuildHistory}} {{/* <-- MODIFIED */}}
-                        <div class="flex items-start space-x-3">
-                            <div class="text-xs text-gray-400 font-mono whitespace-nowrap pt-1">{{.ChangeTime}}</div>
-                            <div class="text-sm text-gray-700">{{.ActivityDescription}}</div>
-                        </div>
-                        {{end}}
-                    </div>
-                    {{else}}
-                    <p class="text-gray-500 mt-4">{{.Page.T.no_guild_history}}</p> {{/* <-- MODIFIED */}}
-                    {{end}}
-                </div>
             </div>
         </div>
+
     </div>
-    
-    {{/* --- NEW: Added update script --- */}}
-    <script>
-        document.addEventListener('DOMContentLoaded', () => {
-            const lang = document.documentElement.lang || 'en';
-            const translations = {
-                updated_never: '{{.Page.T.updated_never}}',
-                updated_ago: '{{.Page.T.updated_ago}}',
-                last_updated_at: '{{.Page.T.last_updated_at}}'
-            };
-
-            const lastUpdateElement = document.getElementById('last-updated');
-            if (lastUpdateElement) {
-                const timestampStr = lastUpdateElement.dataset.timestamp;
-
-                if (!timestampStr || timestampStr === 'Never' || timestampStr === '') {
-                    lastUpdateElement.textContent = translations.updated_never;
-                    return;
-                }
-
-                const lastUpdateDate = new Date(timestampStr);
-                const formattedTimestamp = lastUpdateDate.toLocaleString([], {
-                    year: 'numeric', month: 'short', day: 'numeric',
-                    hour: '2-digit', minute: '2-digit'
-                });
-
-                const updateTimeAgo = () => {
-                    const now = new Date();
-                    const secondsPast = Math.floor((now.getTime() - lastUpdateDate.getTime()) / 1000);
-                    let timeAgoString;
-
-                    if (lang === 'pt') {
-                        if (secondsPast < 5) timeAgoString = 'agora mesmo';
-                        else if (secondsPast < 60) timeAgoString = `${secondsPast}s`;
-                        else if (secondsPast < 3600) timeAgoString = `${Math.floor(secondsPast / 60)}m`;
-                        else if (secondsPast < 86400) timeAgoString = `${Math.floor(secondsPast / 3600)}h`;
-                        else timeAgoString = `${Math.floor(secondsPast / 86400)}d`;
-                    } else {
-                        if (secondsPast < 5) timeAgoString = 'just now';
-                        else if (secondsPast < 60) timeAgoString = `${secondsPast}s ago`;
-                        else if (secondsPast < 3600) timeAgoString = `${Math.floor(secondsPast / 60)}m ago`;
-                        else if (secondsPast < 86400) timeAgoString = `${Math.floor(secondsPast / 3600)}h ago`;
-                        else timeAgoString = `${Math.floor(secondsPast / 86400)}d ago`;
-                    }
-                    
-                    const fullString = translations.last_updated_at.replace('%s', timeAgoString);
-                    lastUpdateElement.innerHTML = `${fullString} <span class="text-gray-400 font-normal">(${formattedTimestamp})</span>`;
-                };
-
-                updateTimeAgo();
-                setInterval(updateTimeAgo, 30000);
-            }
-        });
-    </script>
 </body>
 </html>
