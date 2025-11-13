@@ -368,7 +368,11 @@ var (
 			"unique_items":   "Unique Items",
 			"count":          "Count",
 
-			"nav_statistics": "Statistics", // <-- ADD THIS
+			"nav_statistics":         "Statistics", // <-- ADD THIS
+			"nav_search_placeholder": "Search...",
+
+			"cards": "Cards",
+			"items": "Items",
 		},
 		"pt": {
 			"market_summary":         "Resumo do Mercado",
@@ -669,7 +673,11 @@ var (
 			"unique_items":   "Itens Únicos",
 			"count":          "Qtd.",
 
-			"nav_statistics": "Estatísticas", // <-- ADD THIS
+			"nav_statistics":         "Estatísticas", // <-- ADD THIS
+			"nav_search_placeholder": "Buscar...",
+
+			"cards": "Cartas",
+			"items": "Itens",
 		},
 	}
 )
@@ -4608,24 +4616,32 @@ func fetchMarketResults(wg *sync.WaitGroup, results *[]ItemSummary, likeQuery st
 	}
 }
 
-// This function is updated to return its findings instead of modifying a struct.
-func fetchDropStatistics() ([]DropStatItem, int64, int64, error) {
+// fetchDropStatistics queries and aggregates all item drops.
+func fetchDropStatistics(itemSortBy, itemOrder, playerSortBy, playerOrder string) ([]DropStatItem, int64, int64, []DropStatPlayer, error) { // <-- MODIFIED SIGNATURE
 	log.Println("[I] [HTTP/Stats] Fetching drop statistics...")
 
 	query := `SELECT message, timestamp FROM chat WHERE channel = 'Drop' AND character_name = 'System' ORDER BY timestamp DESC`
 	rows, err := db.Query(query)
 	if err != nil {
-		return nil, 0, 0, fmt.Errorf("could not query chat for drop stats: %w", err)
+		return nil, 0, 0, nil, fmt.Errorf("could not query chat for drop stats: %w", err)
 	}
 	defer rows.Close()
 
+	// --- (Aggregation map setup - unchanged) ---
+	type playerAggStats struct {
+		Total int64
+		Cards int64
+		Items int64
+	}
 	itemStats := make(map[string]*struct {
 		Count    int
 		LastSeen string
 	})
+	playerStats := make(map[string]*playerAggStats)
 	var totalDrops int64 = 0
 	var processedRows int = 0
 
+	// --- (Row processing loop - unchanged) ---
 	for rows.Next() {
 		processedRows++
 		var msg, timestampStr string
@@ -4638,9 +4654,11 @@ func fetchDropStatistics() ([]DropStatItem, int64, int64, error) {
 
 		dropMatches := dropMessageRegex.FindStringSubmatch(msg)
 		var itemMsgFragment string
+		var playerName string
 		if len(dropMatches) == 4 {
+			playerName = dropMatches[1]
 			itemMsgFragment = dropMatches[3]
-			log.Printf("[D] [DropStats] -> Matched drop. Fragment: %s", itemMsgFragment)
+			log.Printf("[D] [DropStats] -> Matched drop. Player: '%s', Fragment: %s", playerName, itemMsgFragment)
 		} else {
 			log.Printf("[D] [DropStats] -> FAILED dropMessageRegex match. (len: %d)", len(dropMatches))
 			continue
@@ -4649,7 +4667,7 @@ func fetchDropStatistics() ([]DropStatItem, int64, int64, error) {
 		itemMatches := reItemFromDrop.FindStringSubmatch(itemMsgFragment)
 		var itemName string
 
-		if len(itemMatches) == 4 { // [full_match, quoted_item, monster_item, fallback_item]
+		if len(itemMatches) == 4 {
 			if itemMatches[1] != "" {
 				itemName = itemMatches[1]
 			} else if itemMatches[2] != "" {
@@ -4669,6 +4687,20 @@ func fetchDropStatistics() ([]DropStatItem, int64, int64, error) {
 		}
 
 		totalDrops++
+
+		if _, ok := playerStats[playerName]; !ok {
+			playerStats[playerName] = &playerAggStats{}
+		}
+		agg := playerStats[playerName]
+		agg.Total++
+
+		isCard := strings.HasSuffix(itemName, " Card")
+		if isCard {
+			agg.Cards++
+		} else {
+			agg.Items++
+		}
+
 		if stat, ok := itemStats[itemName]; ok {
 			stat.Count++
 		} else {
@@ -4686,15 +4718,15 @@ func fetchDropStatistics() ([]DropStatItem, int64, int64, error) {
 		}
 	}
 
-	log.Printf("[I] [HTTP/Chat] Drop stats processed. Total DB rows: %d. Total drops parsed: %d. Unique items: %d", processedRows, totalDrops, len(itemStats))
+	log.Printf("[I] [HTTP/Chat] Drop stats processed. Total DB rows: %d. Total drops parsed: %d. Unique items: %d. Unique players: %d", processedRows, totalDrops, len(itemStats), len(playerStats))
 
 	uniqueDropItems := int64(len(itemStats))
 
-	if len(itemStats) == 0 {
-		return nil, totalDrops, uniqueDropItems, nil // Return empty stats
+	if totalDrops == 0 {
+		return nil, totalDrops, uniqueDropItems, nil, nil
 	}
 
-	// --- Database Join Logic (unchanged) ---
+	// --- (Item DB Join logic - unchanged) ---
 	placeholders := strings.Repeat("?,", len(itemStats)-1) + "?"
 	params := make([]interface{}, len(itemStats))
 	i := 0
@@ -4728,7 +4760,7 @@ func fetchDropStatistics() ([]DropStatItem, int64, int64, error) {
 		}
 	}
 
-	// --- Create final slice (unchanged) ---
+	// Create final item slice
 	var dropStats []DropStatItem
 	for name, stat := range itemStats {
 		dbInfo := dbItems[name]
@@ -4741,17 +4773,102 @@ func fetchDropStatistics() ([]DropStatItem, int64, int64, error) {
 		})
 	}
 
-	// --- Sort (unchanged) ---
+	// --- MODIFIED: Dynamic Sorting for dropStats ---
 	sort.Slice(dropStats, func(i, j int) bool {
-		return dropStats[i].Count > dropStats[j].Count
+		var less bool
+		switch itemSortBy {
+		case "name":
+			less = dropStats[i].Name < dropStats[j].Name
+		case "item_id":
+			idI := dropStats[i].ItemID.Int64
+			idJ := dropStats[j].ItemID.Int64
+			if !dropStats[i].ItemID.Valid {
+				idI = 0
+			}
+			if !dropStats[j].ItemID.Valid {
+				idJ = 0
+			}
+			less = idI < idJ
+		case "last_seen":
+			less = dropStats[i].LastSeen < dropStats[j].LastSeen
+		default: // Default to "count"
+			less = dropStats[i].Count < dropStats[j].Count
+		}
+
+		if itemOrder == "DESC" {
+			return !less
+		}
+		return less
 	})
 
-	return dropStats, totalDrops, uniqueDropItems, nil
+	// Create final player slice
+	var playerStatsSlice []DropStatPlayer
+	for name, agg := range playerStats {
+		playerStatsSlice = append(playerStatsSlice, DropStatPlayer{
+			PlayerName: name,
+			Count:      agg.Total,
+			CardCount:  agg.Cards,
+			ItemCount:  agg.Items,
+		})
+	}
+
+	// --- MODIFIED: Dynamic Sorting for playerStatsSlice ---
+	sort.Slice(playerStatsSlice, func(i, j int) bool {
+		var less bool
+		switch playerSortBy {
+		case "name":
+			less = playerStatsSlice[i].PlayerName < playerStatsSlice[j].PlayerName
+		case "cards":
+			less = playerStatsSlice[i].CardCount < playerStatsSlice[j].CardCount
+		case "items":
+			less = playerStatsSlice[i].ItemCount < playerStatsSlice[j].ItemCount
+		default: // Default to "count"
+			less = playerStatsSlice[i].Count < playerStatsSlice[j].Count
+		}
+
+		if playerOrder == "DESC" {
+			return !less
+		}
+		return less
+	})
+
+	return dropStats, totalDrops, uniqueDropItems, playerStatsSlice, nil
 }
 
 // This new handler will serve the /stats/drops page.
+// --- MODIFIED: dropStatsHandler ---
 func dropStatsHandler(w http.ResponseWriter, r *http.Request) {
-	stats, total, unique, err := fetchDropStatistics()
+	// --- ADDED: Sorting logic for Item table ---
+	itemAllowedSorts := map[string]string{
+		"name":      "name",
+		"item_id":   "item_id",
+		"count":     "count",
+		"last_seen": "last_seen",
+	}
+	// Manually get item sort params from query
+	itemSortBy := r.FormValue("isort")
+	itemOrder := r.FormValue("iorder")
+	// Use getSortClause to validate and set defaults
+	// Note: We pass a "fake" request object with the correct query params
+	itemSortReq, _ := http.NewRequest("GET", fmt.Sprintf("/?sort_by=%s&order=%s", itemSortBy, itemOrder), nil)
+	_, itemSortBy, itemOrder = getSortClause(itemSortReq, itemAllowedSorts, "count", "DESC")
+
+	// --- ADDED: Sorting logic for Player table ---
+	playerAllowedSorts := map[string]string{
+		"name":  "name",
+		"count": "count",
+		"cards": "cards",
+		"items": "items",
+	}
+	// Manually get player sort params from query
+	playerSortBy := r.FormValue("psort")
+	playerOrder := r.FormValue("porder")
+	// Use getSortClause to validate and set defaults
+	playerSortReq, _ := http.NewRequest("GET", fmt.Sprintf("/?sort_by=%s&order=%s", playerSortBy, playerOrder), nil)
+	_, playerSortBy, playerOrder = getSortClause(playerSortReq, playerAllowedSorts, "count", "DESC")
+
+	// --- MODIFIED: Pass all sort params ---
+	stats, total, unique, playerStats, err := fetchDropStatistics(itemSortBy, itemOrder, playerSortBy, playerOrder)
 	if err != nil {
 		log.Printf("[E] [HTTP/Stats] Could not fetch drop stats: %v", err)
 		http.Error(w, "Could not fetch drop statistics", http.StatusInternalServerError)
@@ -4760,10 +4877,15 @@ func dropStatsHandler(w http.ResponseWriter, r *http.Request) {
 
 	data := DropStatsPageData{
 		PageTitle:       "Drop Stats",
-		LastScrapeTime:  GetLastChatPacketTime(), // Use chat time for "last updated"
+		LastScrapeTime:  GetLastChatPacketTime(),
 		DropStats:       stats,
+		PlayerStats:     playerStats,
 		TotalDrops:      total,
 		UniqueDropItems: unique,
+		ItemSortBy:      itemSortBy,
+		ItemOrder:       itemOrder,
+		PlayerSortBy:    playerSortBy,
+		PlayerOrder:     playerOrder,
 	}
 
 	renderTemplate(w, r, "drop_stats.html", data)

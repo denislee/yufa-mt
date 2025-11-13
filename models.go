@@ -735,13 +735,25 @@ type ChatPageData struct {
 	ActivityGraphJSON template.JS  `json:"-"`
 }
 
-// --- NEW: For drop_stats.html ---
+type DropStatPlayer struct {
+	PlayerName string
+	Count      int64
+	CardCount  int64
+	ItemCount  int64
+}
+
+// DropStatsPageData holds all data for the drop_stats.html template
 type DropStatsPageData struct {
 	PageTitle       string
 	LastScrapeTime  string
 	DropStats       []DropStatItem
+	PlayerStats     []DropStatPlayer
 	TotalDrops      int64
 	UniqueDropItems int64
+	ItemSortBy      string // <-- MODIFIED
+	ItemOrder       string // <-- MODIFIED
+	PlayerSortBy    string // <-- ADDED
+	PlayerOrder     string // <-- ADDED
 }
 
 // XPCalculatorPageData holds all data for the xp_calculator.html template

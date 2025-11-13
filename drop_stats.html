@@ -33,54 +33,145 @@
             </div>
         </div>
 
-        <div class="bg-white shadow-lg rounded-lg overflow-hidden">
-            <div class="overflow-x-auto">
-                <table class="min-w-full leading-normal">
-                    <thead>
-                        <tr class="border-b-2 border-gray-200 bg-gray-50 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
-                            <th class="px-3 py-2">{{.Page.T.item_name}}</th>
-                            <th class="px-3 py-2">{{.Page.T.item_id}}</th>
-                            <th class="px-3 py-2">{{.Page.T.count}}</th>
-                            <th class="px-3 py-2">{{.Page.T.last_seen}}</th>
-                        </tr>
-                    </thead>
-                    <tbody class="text-gray-700">
-                        {{range .Data.DropStats}}
-                        <tr class="border-b border-gray-200 hover:bg-gray-50">
-                            <td class="px-3 py-2">
-                                <div class="flex items-center">
-                                    {{if .ItemID.Valid}}
-                                    <img src="https://static.divine-pride.net/images/items/item/{{.ItemID.Int64}}.png" alt="" class="w-6 h-6 mr-2" style="image-rendering: pixelated;">
-                                    {{end}}
-                                    <div>
-                                        {{ $displayName := .Name }}
-                                        {{ if and (eq $.Page.Lang "pt") .NamePT.Valid }}{{ $displayName = .NamePT.String }}{{ end }}
-                                        
-                                        <a href="/item?name={{.Name | urlquery}}" class="font-semibold hover:underline">{{$displayName}}</a>
-                                        
-                                        {{if and (eq $.Page.Lang "en") .NamePT.Valid}}
-                                            <div class="text-xs text-gray-500 mt-1">({{.NamePT.String}})</div>
-                                        {{else if and (eq $.Page.Lang "pt") .NamePT.Valid (ne .Name .NamePT.String)}}
-                                            <div class="text-xs text-gray-500 mt-1">({{.Name}})</div>
+{{/* --- 2-Column Layout for Tables --- */}}
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+
+            <div class="bg-white shadow-lg rounded-lg overflow-hidden">
+                <h3 class="text-lg font-semibold text-gray-800 p-4 border-b bg-gray-50">{{.Page.T.nav_drop_stats}}</h3>
+                <div class="overflow-x-auto">
+                    <table class="min-w-full leading-normal">
+                        <thead>
+                            <tr class="border-b-2 border-gray-200 bg-gray-50 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                                
+                                {{/* --- MODIFIED: Add Item sort variables --- */}}
+                                {{$itemSort := .Data.ItemSortBy}}
+                                {{$itemOrder := .Data.ItemOrder}}
+                                {{$itemRevOrder := toggleOrder $itemOrder}}
+                                {{/* Pass player sort params to keep them in the URL */}}
+                                {{$playerParams := printf "&psort=%s&porder=%s" .Data.PlayerSortBy .Data.PlayerOrder}}
+
+                                <th class="px-3 py-2">
+                                    <a href="?isort=name&iorder={{if eq $itemSort "name"}}{{$itemRevOrder}}{{else}}ASC{{end}}{{$playerParams | TmplHTML}}">
+                                        {{.Page.T.item_name}} {{if eq $itemSort "name"}}{{if eq $itemOrder "ASC"}}<span class="text-gray-400">▲</span>{{else}}<span class="text-gray-400">▼</span>{{end}}{{end}}
+                                    </a>
+                                </th>
+                                <th class="px-3 py-2">
+                                    <a href="?isort=item_id&iorder={{if eq $itemSort "item_id"}}{{$itemRevOrder}}{{else}}ASC{{end}}{{$playerParams | TmplHTML}}">
+                                        {{.Page.T.item_id}} {{if eq $itemSort "item_id"}}{{if eq $itemOrder "ASC"}}<span class="text-gray-400">▲</span>{{else}}<span class="text-gray-400">▼</span>{{end}}{{end}}
+                                    </a>
+                                </th>
+                                <th class="px-3 py-2">
+                                    <a href="?isort=count&iorder={{if eq $itemSort "count"}}{{$itemRevOrder}}{{else}}DESC{{end}}{{$playerParams | TmplHTML}}">
+                                        {{.Page.T.count}} {{if eq $itemSort "count"}}{{if eq $itemOrder "ASC"}}<span class="text-gray-400">▲</span>{{else}}<span class="text-gray-400">▼</span>{{end}}{{end}}
+                                    </a>
+                                </th>
+                                <th class="px-3 py-2">
+                                    <a href="?isort=last_seen&iorder={{if eq $itemSort "last_seen"}}{{$itemRevOrder}}{{else}}DESC{{end}}{{$playerParams | TmplHTML}}">
+                                        {{.Page.T.last_seen}} {{if eq $itemSort "last_seen"}}{{if eq $itemOrder "ASC"}}<span class="text-gray-400">▲</span>{{else}}<span class="text-gray-400">▼</span>{{end}}{{end}}
+                                    </a>
+                                </th>
+                            </tr>
+                        </thead>
+                        {{/* --- ADDED: tbody for Item Drops --- */}}
+                        <tbody class="text-gray-700">
+                            {{range .Data.DropStats}}
+                            <tr class="border-b border-gray-200 hover:bg-gray-50">
+                                <td class="px-3 py-2">
+                                    <div class="flex items-center">
+                                        {{if .ItemID.Valid}}
+                                        <img src="https://static.divine-pride.net/images/items/item/{{.ItemID.Int64}}.png" alt="" class="w-6 h-6 mr-2" style="image-rendering: pixelated;">
                                         {{end}}
+                                        <div>
+                                            {{ $displayName := .Name }}
+                                            {{ if and (eq $.Page.Lang "pt") .NamePT.Valid }}{{ $displayName = .NamePT.String }}{{ end }}
+                                            
+                                            <a href="/item?name={{.Name | urlquery}}" class="font-semibold hover:underline">{{$displayName}}</a>
+                                            
+                                            {{if and (eq $.Page.Lang "en") .NamePT.Valid}}
+                                                <div class="text-xs text-gray-500 mt-1">({{.NamePT.String}})</div>
+                                            {{else if and (eq $.Page.Lang "pt") .NamePT.Valid (ne .Name .NamePT.String)}}
+                                                <div class="text-xs text-gray-500 mt-1">({{.Name}})</div>
+                                            {{end}}
+                                        </div>
                                     </div>
-                                </div>
-                            </td>
-                            <td class="px-3 py-2 text-xs text-gray-500">
-                                {{if .ItemID.Valid}}{{.ItemID.Int64}}{{else}}N/A{{end}}
-                            </td>
-                            <td class="px-3 py-2 font-semibold">{{.Count}}</td>
-                            <td class="px-3 py-2 text-xs text-gray-500 whitespace-nowrap">{{.LastSeen}}</td>
-                        </tr>
-                        {{else}}
-                        <tr>
-                            <td colspan="4" class="px-3 py-4 text-center text-gray-500">{{.Page.T.no_chat_messages}}</td>
-                        </tr>
-                        {{end}}
-                    </tbody>
-                </table>
+                                </td>
+                                <td class="px-3 py-2 text-xs text-gray-500">
+                                    {{if .ItemID.Valid}}{{.ItemID.Int64}}{{else}}N/A{{end}}
+                                </td>
+                                <td class="px-3 py-2 font-semibold">{{.Count}}</td>
+                                <td class="px-3 py-2 text-xs text-gray-500 whitespace-nowrap">{{.LastSeen}}</td>
+                            </tr>
+                            {{else}}
+                            <tr>
+                                <td colspan="4" class="px-3 py-4 text-center text-gray-500">{{.Page.T.no_chat_messages}}</td>
+                            </tr>
+                            {{end}}
+                        </tbody>
+                        {{/* --- END ADDED --- */}}
+                    </table>
+                </div>
             </div>
-        </div>
+
+            <div class="bg-white shadow-lg rounded-lg overflow-hidden">
+                <h3 class="text-lg font-semibold text-gray-800 p-4 border-b bg-gray-50">{{.Page.T.player_drop_rankings}}</h3>
+                <div class="overflow-x-auto">
+                    <table class="min-w-full leading-normal">
+                        <thead>
+                            <tr class="border-b-2 border-gray-200 bg-gray-50 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                                
+                                {{/* --- MODIFIED: Add Player sort variables --- */}}
+                                {{$playerSort := .Data.PlayerSortBy}}
+                                {{$playerOrder := .Data.PlayerOrder}}
+                                {{$playerRevOrder := toggleOrder $playerOrder}}
+                                {{/* Pass item sort params to keep them in the URL */}}
+                                {{$itemParams := printf "&isort=%s&iorder=%s" .Data.ItemSortBy .Data.ItemOrder}}
+
+                                <th class="px-3 py-2">
+                                    <a href="?psort=name&porder={{if eq $playerSort "name"}}{{$playerRevOrder}}{{else}}ASC{{end}}{{$itemParams | TmplHTML}}">
+                                        {{.Page.T.player}} {{if eq $playerSort "name"}}{{if eq $playerOrder "ASC"}}<span class="text-gray-400">▲</span>{{else}}<span class="text-gray-400">▼</span>{{end}}{{end}}
+                                    </a>
+                                </th>
+                                <th class="px-3 py-2">
+                                    <a href="?psort=count&porder={{if eq $playerSort "count"}}{{$playerRevOrder}}{{else}}DESC{{end}}{{$itemParams | TmplHTML}}">
+                                        {{.Page.T.count}} {{if eq $playerSort "count"}}{{if eq $playerOrder "ASC"}}<span class="text-gray-400">▲</span>{{else}}<span class="text-gray-400">▼</span>{{end}}{{end}}
+                                    </a>
+                                </th>
+                                <th class="px-3 py-2">
+                                    <a href="?psort=cards&porder={{if eq $playerSort "cards"}}{{$playerRevOrder}}{{else}}DESC{{end}}{{$itemParams | TmplHTML}}">
+                                        {{.Page.T.cards}} {{if eq $playerSort "cards"}}{{if eq $playerOrder "ASC"}}<span class="text-gray-400">▲</span>{{else}}<span class="text-gray-400">▼</span>{{end}}{{end}}
+                                    </a>
+                                </th>
+                                <th class="px-3 py-2">
+                                    <a href="?psort=items&porder={{if eq $playerSort "items"}}{{$playerRevOrder}}{{else}}DESC{{end}}{{$itemParams | TmplHTML}}">
+                                        {{.Page.T.items}} {{if eq $playerSort "items"}}{{if eq $playerOrder "ASC"}}<span class="text-gray-400">▲</span>{{else}}<span class="text-gray-400">▼</span>{{end}}{{end}}
+                                    </a>
+                                </th>
+                            </tr>
+                        </thead>
+                        {{/* --- ADDED: tbody for Player Drops --- */}}
+                        <tbody class="text-gray-700">
+                            {{range .Data.PlayerStats}}
+                            <tr class="border-b border-gray-200 hover:bg-gray-50">
+                                <td class="px-3 py-2">
+                                    <a href="/character?name={{.PlayerName | urlquery}}" class="font-semibold hover:underline text-blue-600">{{.PlayerName}}</a>
+                                </td>
+                                <td class="px-3 py-2 font-semibold">{{.Count}}</td>
+                                <td class="px-3 py-2 font-semibold text-blue-600">{{.CardCount}}</td>
+                                <td class="px-3 py-2 font-semibold text-gray-600">{{.ItemCount}}</td>
+                            </tr>
+                            {{else}}
+                            <tr>
+                                <td colspan="4" class="px-3 py-4 text-center text-gray-500">{{.Page.T.no_chat_messages}}</td>
+                            </tr>
+                            {{end}}
+                        </tbody>
+                        {{/* --- END ADDED --- */}}
+                        </table>
+                </div>
+            </div>
+        
+        </div> {{/* --- END: 2-Column Grid --- */}}
+
     </div>
     
     <script>
