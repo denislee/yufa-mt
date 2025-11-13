@@ -109,7 +109,7 @@
                             {{$killCount := getKillCount $.Data.MvpKills.Kills .MobID}}
                             {{if gt $killCount 0}}
                             <div class="flex items-center gap-2 p-2 bg-gray-50 rounded-md">
-                                <img src="https://divine-pride.net/img/mobs/png/{{.MobID}}.png" alt="{{.MobName}}" class="w-8 h-8">
+                                <img src="https://projetoyufa.com/_next/image?url=%2Fimages%2Fmvp%2F{{.MobID}}.png&w=1920&q=75" alt="{{.MobName}}" class="w-8 h-8">
                                 <div>
                                     <div class="font-semibold text-gray-700">{{.MobName}}</div>
                                     <div class="text-sm text-gray-500">{{$killCount}} {{$.Page.T.kills}}</div>
@@ -149,7 +149,7 @@
                     <div class="flex flex-col sm:flex-row justify-between sm:items-center gap-2 mb-3 border-b pb-2">
                         <h2 class="text-xl font-semibold text-gray-800">{{.Page.T.char_changelog}}</h2>
                         
-                        {{/* --- NEW: Changelog Search Form --- */}}
+                        {{/* --- Changelog Search Form --- */}}
                         <form action="/character" method="GET" class="flex items-center gap-2">
                             <input type="hidden" name="name" value="{{.Data.Character.Name}}">
                             <input type="text" name="changelog_query" value="{{.Data.ChangelogSearchQuery}}" placeholder="{{.Page.T.search}}..." class="block w-full sm:w-auto text-sm rounded-md border-gray-300 shadow-sm focus:border-indigo-300 focus:ring focus:ring-indigo-200 focus:ring-opacity-50 py-1.5 px-2">
@@ -171,19 +171,31 @@
                                 </tr>
                             </thead>
                             <tbody class="divide-y divide-gray-200">
-                                {{range .Data.ActivityHistory}}
-                                <tr class="hover:bg-gray-50">
-                                    <td class="py-2 px-2 text-gray-500 whitespace-nowrap">{{.ChangeTime}}</td>
-                                    <td class="py-2 px-2 text-gray-700">{{.ActivityDescription}}</td>
-                                </tr>
-                                {{else}}
-                                <tr>
-                                    <td colspan="2" class="py-4 text-center text-gray-500">{{.Page.T.no_char_activity}}</td>
-                                </tr>
-                                {{end}}
-                            </tbody>
+    {{range .Data.ActivityHistory}}
+    <tr class="hover:bg-gray-50">
+        <td class="py-2 px-2 text-gray-500 whitespace-nowrap">{{.ChangeTime}}</td>
+        
+        {{/* --- MODIFIED: Use hasPrefix and trimPrefix --- */}}
+        <td class="py-2 px-2 text-gray-700">
+            {{if hasPrefix .ActivityDescription "Dropped item: "}}
+                Dropped item: <a href="/item?name={{trimPrefix .ActivityDescription "Dropped item: " | urlquery}}" class="font-semibold text-blue-600 hover:underline">{{trimPrefix .ActivityDescription "Dropped item: "}}</a>
+            {{else}}
+                {{.ActivityDescription}}
+            {{end}}
+        </td>
+        {{/* --- END MODIFICATION --- */}}
+
+    </tr>
+    {{else}}
+    <tr>
+        <td colspan="2" class="py-4 text-center text-gray-500">{{.Page.T.no_char_activity}}</td>
+    </tr>
+    {{end}}
+</tbody>
                         </table>
                     </div>
+                    
+                    {{/* --- MODIFIED: Use .Data.ChangelogPagination --- */}}
                     {{if gt .Data.ChangelogPagination.TotalPages 1}}
                         {{$filter := .Data.Filter}}
                         {{template "pagination" (dict "Page" .Page "Pagination" .Data.ChangelogPagination "Filter" $filter)}}

@@ -113,6 +113,30 @@
                 </div>
                 {{end}}
                 
+                {{/* --- NEW: Item Drop History --- */}}
+                <div class="bg-white p-4 rounded-lg shadow">
+                    <h3 class="font-medium text-gray-700 mb-2 border-b pb-2">{{.Page.T.item_drop_history}}</h3>
+                    <div class="overflow-x-auto max-h-48 overflow-y-auto">
+                        <table class="min-w-full text-sm">
+                            <tbody class="divide-y divide-gray-200">
+                                {{range .Data.DropHistory}}
+                                <tr class="hover:bg-gray-50">
+                                    <td class="py-1.5 px-1 text-gray-500 whitespace-nowrap">{{.Timestamp}}</td>
+                                    <td class="py-1.5 px-1 text-gray-700">
+                                        <a href="/character?name={{.PlayerName | urlquery}}" class="font-semibold text-blue-600 hover:underline">{{.PlayerName}}</a>
+                                    </td>
+                                </tr>
+                                {{else}}
+                                <tr>
+                                    <td colspan="2" class="py-4 text-center text-gray-500">{{.Page.T.no_item_drop_history}}</td>
+                                </tr>
+                                {{end}}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+                {{/* --- END NEW --- */}}
+                
                 </div>
             </div>
         {{else}}

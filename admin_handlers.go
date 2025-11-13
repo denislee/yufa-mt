@@ -1203,6 +1203,7 @@ func adminBackfillDropLogsHandler(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, adminRedirectURL(r, msg), http.StatusSeeOther)
 }
 
+// --- NEW: Core logic to perform the backfill ---
 func backfillDropLogsToChangelog() (int64, error) {
 	log.Println("[I] [Backfill] Starting drop log backfill process...")
 
@@ -1237,9 +1238,16 @@ func backfillDropLogsToChangelog() (int64, error) {
 	defer stmt.Close()
 
 	var newEntriesCount int64 = 0
+	// --- ADDED: Counters for logging ---
+	var processedRows int = 0
+	var failedRegex1 int = 0
+	var failedRegex2 int = 0
+	var failedInsert int = 0
+	// --- END ADDED ---
 
 	// 5. Loop, Parse, and Insert
 	for rows.Next() {
+		processedRows++ // <-- ADDED
 		var msg, timestampStr string
 		if err := rows.Scan(&msg, &timestampStr); err != nil {
 			log.Printf("[W] [Backfill] Failed to scan drop row: %v", err)
@@ -1252,7 +1260,12 @@ func backfillDropLogsToChangelog() (int64, error) {
 		if len(dropMatches) == 4 {
 			playerName = dropMatches[1]
 			itemMsgFragment = dropMatches[3]
+			// --- ADDED LOG ---
+			log.Printf("[D] [Backfill] Parsed message: Player='%s', Fragment='%s'", playerName, itemMsgFragment)
 		} else {
+			// --- ADDED LOG ---
+			log.Printf("[D] [Backfill] dropMessageRegex FAILED for msg: %s", msg)
+			failedRegex1++
 			continue // Not a valid drop message
 		}
 
@@ -1270,19 +1283,25 @@ func backfillDropLogsToChangelog() (int64, error) {
 		}
 		itemName = strings.TrimSpace(itemName)
 		if itemName == "" {
+			// --- ADDED LOG ---
+			log.Printf("[D] [Backfill] reItemFromDrop FAILED for fragment: %s", itemMsgFragment)
+			failedRegex2++
 			continue // Couldn't parse item name
 		}
+
+		// --- ADDED LOG ---
+		log.Printf("[D] [Backfill] Parsed item name: '%s'", itemName)
 
 		// Create the new activity description
 		activityDesc := fmt.Sprintf("Dropped item: %s", itemName)
 
-		// Insert into the changelog
+		// --- ADDED LOG ---
+		log.Printf("[D] [Backfill] Attempting to insert: CHAR='%s', TIME='%s', DESC='%s'", playerName, timestampStr, activityDesc)
 		_, err := stmt.Exec(playerName, timestampStr, activityDesc)
 		if err != nil {
-			// Log the error but continue. This can happen if the character
-			// (e.g., 'Brajuk') is not in the 'characters' table,
-			// which would violate the foreign key constraint.
-			log.Printf("[W] [Backfill] Failed to insert log for '%s' (time: %s, item: %s): %v", playerName, timestampStr, itemName, err)
+			// --- MODIFIED LOG ---
+			log.Printf("[W] [Backfill] FAILED to insert log for '%s' (time: %s, item: %s). Error: %v", playerName, timestampStr, itemName, err)
+			failedInsert++
 			continue
 		}
 		newEntriesCount++
@@ -1293,6 +1312,15 @@ func backfillDropLogsToChangelog() (int64, error) {
 		return 0, fmt.Errorf("failed to commit transaction: %w", err)
 	}
 
-	log.Printf("[I] [Backfill] Successfully inserted %d new drop log entries.", newEntriesCount)
+	// --- ADDED: Final Summary Log ---
+	log.Printf("[I] [Backfill] ----- Backfill Summary -----")
+	log.Printf("[I] [Backfill] Total Rows Processed: %d", processedRows)
+	log.Printf("[I] [Backfill] Failed Player/Verb Regex: %d", failedRegex1)
+	log.Printf("[I] [Backfill] Failed Item Name Regex: %d", failedRegex2)
+	log.Printf("[I] [Backfill] Failed DB Inserts (FK error?): %d", failedInsert)
+	log.Printf("[I] [Backfill] Successfully Inserted: %d", newEntriesCount)
+	log.Printf("[I] [Backfill] ------------------------------")
+	// --- END ADDED ---
+
 	return newEntriesCount, nil
 }

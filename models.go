@@ -261,8 +261,6 @@ type ActivityPageData struct {
 	PageTitle  string
 }
 
-// In models.go:
-// In models.go:
 type HistoryPageData struct {
 	ItemName           string
 	ItemNamePT         sql.NullString
@@ -280,6 +278,7 @@ type HistoryPageData struct {
 	TotalListings      int
 	PageTitle          string
 	Filter             template.URL
+	DropHistory        []PlayerDropInfo
 }
 
 type PlayerCountPoint struct {
@@ -496,12 +495,12 @@ type CharacterDetailPageData struct {
 	LastScrapeTime       string
 	GuildHistory         []CharacterChangelog
 	ClassImageURL        string
-	ActivityHistory      []CharacterChangelog
-	DropHistory          []CharacterChangelog
-	ChangelogPagination  PaginationData
+	ActivityHistory      []CharacterChangelog // This will hold the paginated/searched list
+	DropHistory          []CharacterChangelog // This will hold the full drop list
+	ChangelogPagination  PaginationData       // <-- RENAMED (from ActivityPagination)
 	PageTitle            string
 	Filter               template.URL
-	ChangelogSearchQuery string // <-- ADD THIS
+	ChangelogSearchQuery string
 }
 
 type CharacterChangelog struct {
@@ -836,4 +835,9 @@ type DropStatItem struct {
 	NamePT   sql.NullString
 	Count    int
 	LastSeen string // Formatted as "YYYY-MM-DD HH:MM"
+}
+
+type PlayerDropInfo struct {
+	PlayerName string
+	Timestamp  string // Formatted as "YYYY-MM-DD HH:MM"
 }
