@@ -212,6 +212,7 @@ func registerRoutes() *http.ServeMux {
 	mux.HandleFunc("/xp-calculator", visitorTracker(xpCalculatorHandler))
 	mux.HandleFunc("/about", visitorTracker(aboutHandler))
 	mux.HandleFunc("/set-lang", setLangHandler)
+	mux.HandleFunc("/search", visitorTracker(globalSearchHandler))
 
 	// --- Admin Routes ---
 	adminRouter := registerAdminRoutes()

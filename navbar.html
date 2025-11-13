@@ -18,6 +18,7 @@
                 <a href="/activity" class="text-sm px-3 py-2 rounded-md {{if eq .Data.PageTitle "Activity"}}font-semibold text-blue-600 bg-blue-50{{else}}text-gray-600 hover:bg-gray-100{{end}}">{{.Page.T.nav_activity}}</a>
                 <a href="/discord" class="text-sm px-3 py-2 rounded-md {{if eq .Data.PageTitle "Discord"}}font-semibold text-blue-600 bg-blue-50{{else}}text-gray-600 hover:bg-gray-100{{end}}">{{.Page.T.nav_discord}}</a>
                 <a href="/chat" class="text-sm px-3 py-2 rounded-md {{if eq .Data.PageTitle "Chat"}}font-semibold text-blue-600 bg-blue-50{{else}}text-gray-600 hover:bg-gray-100{{end}}">{{.Page.T.nav_chat}}</a>
+                <a href="/search" class="text-sm px-3 py-2 rounded-md {{if eq .Data.PageTitle "Global Search"}}font-semibold text-blue-600 bg-blue-50{{else}}text-gray-600 hover:bg-gray-100{{end}}">{{.Page.T.nav_search}}</a>
                 
                 <div class="relative" id="misc-dropdown-menu">
                     <button id="misc-dropdown-button" class="text-sm px-3 py-2 rounded-md flex items-center {{if $isMiscPage}}font-semibold text-blue-600 bg-blue-50{{else}}text-gray-600 hover:bg-gray-100{{end}}">
@@ -102,6 +103,9 @@
         <a href="/activity" class="block py-2 px-4 text-sm {{if eq .Data.PageTitle "Activity"}}bg-blue-50 text-blue-600 font-semibold{{else}}text-gray-600 hover:bg-gray-50{{end}}">{{.Page.T.nav_activity}}</a>
         <a href="/discord" class="block py-2 px-4 text-sm {{if eq .Data.PageTitle "Discord"}}bg-blue-50 text-blue-600 font-semibold{{else}}text-gray-600 hover:bg-gray-50{{end}}">{{.Page.T.nav_discord}}</a>
         <a href="/chat" class="block py-2 px-4 text-sm {{if eq .Data.PageTitle "Chat"}}bg-blue-50 text-blue-600 font-semibold{{else}}text-gray-600 hover:bg-gray-50{{end}}">{{.Page.T.nav_chat}}</a>
+        
+        {{/* --- MODIFIED: Fixed typo PageVTitle -> PageTitle --- */}}
+        <a href="/search" class="block py-2 px-4 text-sm {{if eq .Data.PageTitle "Global Search"}}bg-blue-50 text-blue-600 font-semibold{{else}}text-gray-600 hover:bg-gray-50{{end}}">{{.Page.T.nav_search}}</a>
         
         <details class="group" {{if $isMiscPage}}open{{end}}>
             <summary class="py-2 px-4 text-sm list-none flex justify-between cursor-pointer {{if $isMiscPage}}text-blue-600 font-semibold{{else}}text-gray-600 hover:bg-gray-50{{end}}">

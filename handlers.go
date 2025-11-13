@@ -348,6 +348,18 @@ var (
 			"weight":       "Weight",
 			"slots":        "Slots",
 			"buy_sell":     "Buy / Sell",
+
+			// In "en" map:
+			"nav_search":               "Search",
+			"global_search_title":      "Global Search",
+			"search_placeholder":       "Search for characters, guilds, items, chat...",
+			"search_results_for":       "Search results for: <strong>%s</strong>",
+			"no_results_found":         "No results found.",
+			"characters_found":         "Characters",
+			"guilds_found":             "Guilds",
+			"chat_messages_found":      "Chat Messages",
+			"trading_post_items_found": "Trading Post Items",
+			"market_items_found":       "Market Items",
 		},
 		"pt": {
 			"market_summary":         "Resumo do Mercado",
@@ -629,6 +641,18 @@ var (
 			"weight":       "Peso",
 			"slots":        "Slots",
 			"buy_sell":     "Compra / Venda",
+
+			// In "pt" map:
+			"nav_search":               "Busca",
+			"global_search_title":      "Busca Global",
+			"search_placeholder":       "Buscar personagens, guilds, itens, chat...",
+			"search_results_for":       "Resultados da busca por: <strong>%s</strong>",
+			"no_results_found":         "Nenhum resultado encontrado.",
+			"characters_found":         "Personagens",
+			"guilds_found":             "Guilds",
+			"chat_messages_found":      "Mensagens de Chat",
+			"trading_post_items_found": "Itens (Discord)",
+			"market_items_found":       "Itens no Mercado",
 		},
 	}
 )
@@ -1225,6 +1249,7 @@ func init() {
 		"chat.html",
 		"xp_calculator.html",
 		"about.html",
+		"search.html",
 	}
 
 	for _, tmplName := range templates {
@@ -4397,4 +4422,164 @@ func dict(values ...interface{}) (map[string]interface{}, error) {
 		dict[key] = values[i+1]
 	}
 	return dict, nil
+}
+
+// --- Global Search Helper Functions ---
+
+func fetchCharacterResults(wg *sync.WaitGroup, results *[]GlobalSearchCharacterResult, likeQuery string) {
+	defer wg.Done()
+	query := "SELECT name, class, guild_name FROM characters WHERE name LIKE ? LIMIT 10"
+	rows, err := db.Query(query, likeQuery)
+	if err != nil {
+		log.Printf("[W] [GlobalSearch] Character search failed: %v", err)
+		return
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var r GlobalSearchCharacterResult
+		if err := rows.Scan(&r.Name, &r.Class, &r.GuildName); err == nil {
+			*results = append(*results, r)
+		}
+	}
+}
+
+func fetchGuildResults(wg *sync.WaitGroup, results *[]GlobalSearchGuildResult, likeQuery string) {
+	defer wg.Done()
+	query := "SELECT name, master FROM guilds WHERE name LIKE ? OR master LIKE ? LIMIT 10"
+	rows, err := db.Query(query, likeQuery, likeQuery)
+	if err != nil {
+		log.Printf("[W] [GlobalSearch] Guild search failed: %v", err)
+		return
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var r GlobalSearchGuildResult
+		if err := rows.Scan(&r.Name, &r.Master); err == nil {
+			*results = append(*results, r)
+		}
+	}
+}
+
+func fetchChatResults(wg *sync.WaitGroup, results *[]GlobalSearchChatResult, likeQuery string) {
+	defer wg.Done()
+	query := `
+		SELECT character_name, message, channel, timestamp FROM chat 
+		WHERE (character_name LIKE ? OR message LIKE ?) AND channel != 'Local' 
+		ORDER BY timestamp DESC LIMIT 20`
+	rows, err := db.Query(query, likeQuery, likeQuery)
+	if err != nil {
+		log.Printf("[W] [GlobalSearch] Chat search failed: %v", err)
+		return
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var r GlobalSearchChatResult
+		if err := rows.Scan(&r.CharacterName, &r.Message, &r.Channel, &r.Timestamp); err == nil {
+			if parsedTime, err := time.Parse(time.RFC3339, r.Timestamp); err == nil {
+				r.FormattedTime = parsedTime.Format("2006-01-02 15:04")
+			} else {
+				r.FormattedTime = r.Timestamp
+			}
+			*results = append(*results, r)
+		}
+	}
+}
+
+func fetchTradeResults(wg *sync.WaitGroup, results *[]GlobalSearchTradeResult, likeQuery string) {
+	defer wg.Done()
+	query := `
+		SELECT p.id, p.post_type, p.character_name, i.item_name, local_db.name_pt
+		FROM trading_post_items i
+		JOIN trading_posts p ON i.post_id = p.id
+		LEFT JOIN internal_item_db local_db ON i.item_id = local_db.item_id
+		WHERE i.item_name LIKE ?
+		GROUP BY p.id, i.item_name
+		ORDER BY p.created_at DESC LIMIT 20`
+
+	rows, err := db.Query(query, likeQuery)
+	if err != nil {
+		log.Printf("[W] [GlobalSearch] Trade search failed: %v", err)
+		return
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var r GlobalSearchTradeResult
+		if err := rows.Scan(&r.PostID, &r.PostType, &r.CharacterName, &r.ItemName, &r.NamePT); err == nil {
+			*results = append(*results, r)
+		}
+	}
+}
+
+// --- NEW: globalSearchHandler ---
+func globalSearchHandler(w http.ResponseWriter, r *http.Request) {
+	searchQuery := r.URL.Query().Get("q")
+
+	data := GlobalSearchPageData{
+		PageTitle:      "Global Search",
+		LastScrapeTime: GetLastScrapeTime(),
+		SearchQuery:    searchQuery,
+	}
+
+	if searchQuery != "" {
+		likeQuery := "%" + searchQuery + "%"
+		var wg sync.WaitGroup
+
+		wg.Add(5) // <-- MODIFIED: Changed from 4 to 5
+		go fetchCharacterResults(&wg, &data.CharacterResults, likeQuery)
+		go fetchGuildResults(&wg, &data.GuildResults, likeQuery)
+		go fetchChatResults(&wg, &data.ChatResults, likeQuery)
+		go fetchTradeResults(&wg, &data.TradeResults, likeQuery)
+		go fetchMarketResults(&wg, &data.MarketResults, likeQuery) // <-- ADDED
+		wg.Wait()
+
+		data.HasResults = len(data.CharacterResults) > 0 ||
+			len(data.GuildResults) > 0 ||
+			len(data.ChatResults) > 0 ||
+			len(data.TradeResults) > 0 ||
+			len(data.MarketResults) > 0 // <-- ADDED
+	}
+
+	renderTemplate(w, r, "search.html", data)
+}
+
+func fetchMarketResults(wg *sync.WaitGroup, results *[]ItemSummary, likeQuery string) {
+	defer wg.Done()
+
+	// This query finds unique items available on the market that match the search
+	query := `
+		SELECT
+			i.name_of_the_item,
+			local_db.name_pt,
+			MAX(i.item_id) as item_id,
+			MIN(CASE WHEN i.is_available = 1 THEN CAST(REPLACE(i.price, ',', '') AS INTEGER) ELSE NULL END) as lowest_price,
+			MAX(i.item_id) as highest_price, -- This field isn't used, but ItemSummary needs it
+			SUM(CASE WHEN i.is_available = 1 THEN 1 ELSE 0 END) as listing_count
+		FROM items i
+		LEFT JOIN internal_item_db local_db ON i.item_id = local_db.item_id
+		WHERE (i.name_of_the_item LIKE ? OR local_db.name_pt LIKE ?)
+		  AND i.is_available = 1
+		GROUP BY i.name_of_the_item
+		ORDER BY listing_count DESC
+		LIMIT 10
+	`
+
+	rows, err := db.Query(query, likeQuery, likeQuery)
+	if err != nil {
+		log.Printf("[W] [GlobalSearch] Market search failed: %v", err)
+		return
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var r ItemSummary
+		// Note: Scanning into HighestPrice field even though it's not used,
+		// because the struct expects it.
+		if err := rows.Scan(&r.Name, &r.NamePT, &r.ItemID, &r.LowestPrice, &r.HighestPrice, &r.ListingCount); err == nil {
+			*results = append(*results, r)
+		}
+	}
 }

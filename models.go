@@ -761,3 +761,51 @@ type PageViewSummary struct {
 	Path string
 	Hits int
 }
+
+// --- NEW: Structs for Global Search ---
+
+// GlobalSearchCharacterResult holds a single character result.
+type GlobalSearchCharacterResult struct {
+	Name      string
+	Class     string
+	GuildName sql.NullString
+}
+
+// GlobalSearchGuildResult holds a single guild result.
+type GlobalSearchGuildResult struct {
+	Name   string
+	Master string
+}
+
+// GlobalSearchChatResult holds a single chat message result.
+type GlobalSearchChatResult struct {
+	CharacterName string
+	Message       string
+	Channel       string
+	Timestamp     string
+	FormattedTime string // e.g., "2023-10-27 15:04"
+}
+
+// GlobalSearchTradeResult holds a single trading post item result.
+type GlobalSearchTradeResult struct {
+	PostID        int
+	PostType      string
+	CharacterName string
+	ItemName      string
+	NamePT        sql.NullString
+}
+
+// GlobalSearchPageData holds all data for the new search.html template.
+type GlobalSearchPageData struct {
+	PageTitle        string
+	LastScrapeTime   string
+	SearchQuery      string
+	CharacterResults []GlobalSearchCharacterResult
+	GuildResults     []GlobalSearchGuildResult
+	ChatResults      []GlobalSearchChatResult
+	TradeResults     []GlobalSearchTradeResult
+	MarketResults    []ItemSummary
+	HasResults       bool
+}
+
+// --- END NEW ---
