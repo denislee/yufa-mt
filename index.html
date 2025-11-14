@@ -45,11 +45,13 @@
             {{$sort := .Data.SortBy}}
             {{$order := .Data.Order}}
             {{$showAll := .Data.ShowAll}}
-            <a href="/?query={{$q}}&sort_by={{$sort}}&order={{$order}}{{if not $showAll}}&only_available=true{{end}}" class="px-3 py-1 text-sm font-medium flex items-center gap-2 -mb-0.5 border-b-2 {{if eq $currentType ""}}text-blue-600 border-blue-600{{else}}text-gray-500 border-transparent hover:text-gray-700 hover:border-gray-300{{end}}">{{.Page.T.all_items}}</a>
+            {{/* --- MODIFIED: Use "category_all" key --- */}}
+            <a href="/?query={{$q}}&sort_by={{$sort}}&order={{$order}}{{if not $showAll}}&only_available=true{{end}}" class="px-3 py-1 text-sm font-medium flex items-center gap-2 -mb-0.5 border-b-2 {{if eq $currentType ""}}text-blue-600 border-blue-600{{else}}text-gray-500 border-transparent hover:text-gray-700 hover:border-gray-300{{end}}">{{.Page.T.category_all}}</a>
             {{range .Data.ItemTypes}}
                 <a href="/?query={{$q}}&sort_by={{$sort}}&order={{$order}}{{if not $showAll}}&only_available=true{{end}}&type={{.FullName | urlquery}}" title="{{.FullName}}" class="px-3 py-1 text-sm font-medium flex items-center gap-2 -mb-0.5 border-b-2 {{if eq .FullName $currentType}}text-blue-600 border-blue-600{{else}}text-gray-500 border-transparent hover:text-gray-700 hover:border-gray-300{{end}}">
                     <img src="https://static.divine-pride.net/images/items/item/{{.IconItemID}}.png" alt="{{.FullName}}" class="" style="image-rendering: pixelated;">
-                    {{.ShortName}}
+                    {{/* --- MODIFIED: Use translation map --- */}}
+                    {{index $.Page.T .ShortName}}
                 </a>
             {{end}}
         </div>

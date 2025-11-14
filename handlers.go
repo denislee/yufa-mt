@@ -400,6 +400,19 @@ var (
 			"interval_30d":          "30d",
 			"interval_all":          "All Time",
 			// --- END NEW ---
+
+			"category_all":            "All Items",
+			"category_healing_item":   "Healing",
+			"category_usable_item":    "Usable",
+			"category_miscellaneous":  "Misc",
+			"category_ammunition":     "Ammo",
+			"category_card":           "Card",
+			"category_monster_egg":    "Egg",
+			"category_pet_armor":      "Pet",
+			"category_weapon":         "Weapon",
+			"category_armor":          "Armor",
+			"category_cash_shop_item": "Cash Shop",
+			"category_taming_item":    "Taming",
 		},
 		"pt": {
 			"market_summary":         "Resumo do Mercado",
@@ -730,6 +743,19 @@ var (
 			"interval_30d":          "30d",
 			"interval_all":          "Total",
 			// --- END NEW ---
+
+			"category_all":            "Todos os Itens",
+			"category_healing_item":   "Cura",
+			"category_usable_item":    "Usável",
+			"category_miscellaneous":  "Etc",
+			"category_ammunition":     "Munição",
+			"category_card":           "Carta",
+			"category_monster_egg":    "Ovo",
+			"category_pet_armor":      "Pet",
+			"category_weapon":         "Arma",
+			"category_armor":          "Equip.",
+			"category_cash_shop_item": "Loja ROPs",
+			"category_taming_item":    "Doma",
 		},
 	}
 )
@@ -1259,45 +1285,50 @@ func generateEventIntervals(viewStart, viewEnd time.Time, events []EventDefiniti
 }
 
 func mapItemTypeToTabData(typeName string) ItemTypeTab {
-	tab := ItemTypeTab{FullName: typeName, ShortName: typeName, IconItemID: 909}
+	// FullName remains the English type name (used for URL query param)
+	tab := ItemTypeTab{FullName: typeName, IconItemID: 909}
+
+	// ShortName is now a translation KEY
 	switch typeName {
 	case "Ammunition":
-		tab.ShortName = ""
+		tab.ShortName = "category_ammunition"
 		tab.IconItemID = 1750
 	case "Armor":
-		tab.ShortName = ""
+		tab.ShortName = "category_armor"
 		tab.IconItemID = 2316
 	case "Card":
-		tab.ShortName = ""
+		tab.ShortName = "category_card"
 		tab.IconItemID = 4133
 	case "Delayconsume":
-		tab.ShortName = ""
+		tab.ShortName = "category_usable_item" // Grouping with usable
 		tab.IconItemID = 610
 	case "Healing Item":
-		tab.ShortName = ""
+		tab.ShortName = "category_healing_item"
 		tab.IconItemID = 501
 	case "Miscellaneous":
-		tab.ShortName = ""
+		tab.ShortName = "category_miscellaneous"
 		tab.IconItemID = 909
 	case "Monster Egg":
-		tab.ShortName = ""
+		tab.ShortName = "category_monster_egg"
 		tab.IconItemID = 9001
 	case "Pet Armor":
-		tab.ShortName = ""
+		tab.ShortName = "category_pet_armor"
 		tab.IconItemID = 5183
 	case "Taming Item":
-		tab.ShortName = ""
+		tab.ShortName = "category_taming_item"
 		tab.IconItemID = 632
 	case "Usable Item":
-		tab.ShortName = ""
+		tab.ShortName = "category_usable_item"
 		tab.IconItemID = 603
 	case "Weapon":
-		tab.ShortName = ""
+		tab.ShortName = "category_weapon"
 		tab.IconItemID = 1162
 	case "Cash Shop Item":
-		tab.ShortName = ""
+		tab.ShortName = "category_cash_shop_item"
 		tab.IconItemID = 200441
-
+	default:
+		// Fallback, just use the name as-is (won't be translated)
+		tab.ShortName = typeName
 	}
 	return tab
 }
