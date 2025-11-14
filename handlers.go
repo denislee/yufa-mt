@@ -3425,8 +3425,11 @@ func marketStatsHandler(w http.ResponseWriter, r *http.Request) {
 
 	const topLimit = 20
 
-	var whereConditions = "WHERE event_type = 'SOLD' AND event_timestamp >= ?"
+	// --- MODIFICATION: Added price filter to whereConditions ---
+	// This filters out transactions >= 100,000,000z from all stats on this page.
+	var whereConditions = "WHERE event_type = 'SOLD' AND event_timestamp >= ? AND CAST(REPLACE(json_extract(details, '$.price'), ',', '') AS INTEGER) < 50000000"
 	var params = []interface{}{startTime}
+	// --- END MODIFICATION ---
 
 	// --- Build Filter URL for template (Interval ONLY) ---
 	filterValues := url.Values{}
@@ -3472,6 +3475,10 @@ func marketStatsHandler(w http.ResponseWriter, r *http.Request) {
 	data.ItemSortBy = itemSortBy
 	data.ItemOrder = itemOrder
 
+	// --- MODIFICATION: Handle table alias 'me.' for this query ---
+	// The "Top Sold Items" query aliases market_events as 'me', so we must adjust the where clause.
+	aliasedWhereConditions := strings.Replace(whereConditions, "details", "me.details", -1)
+
 	itemsQuery := fmt.Sprintf(`
 		SELECT
 			me.item_name,
@@ -3484,7 +3491,8 @@ func marketStatsHandler(w http.ResponseWriter, r *http.Request) {
 		%s
 		GROUP BY me.item_name, me.item_id, idb.name_pt
 		%s
-		LIMIT %d`, whereConditions, itemOrderByClause, topLimit)
+		LIMIT %d`, aliasedWhereConditions, itemOrderByClause, topLimit)
+	// --- END MODIFICATION ---
 
 	log.Printf("[D] [HTTP/Stats] Top Items Query: %s; Params: %v", itemsQuery, params)
 	itemRows, err := db.Query(itemsQuery, params...)
@@ -3520,6 +3528,7 @@ func marketStatsHandler(w http.ResponseWriter, r *http.Request) {
 	data.SellerSortBy = sellerSortBy
 	data.SellerOrder = sellerOrder
 
+	// This query does not use an alias, so 'whereConditions' works as-is.
 	sellersQuery := fmt.Sprintf(`
 		SELECT
 			json_extract(details, '$.seller') as seller_name,
@@ -3548,6 +3557,7 @@ func marketStatsHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// 4. Get Chart Data
+	// This query does not use an alias, so 'whereConditions' works as-is.
 	chartQuery := fmt.Sprintf(`
 		SELECT
 			strftime('%%Y-%%m-%%dT00:00:00Z', event_timestamp) as day,
