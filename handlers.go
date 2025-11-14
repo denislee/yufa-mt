@@ -4678,87 +4678,164 @@ func fetchMarketResults(wg *sync.WaitGroup, results *[]ItemSummary, likeQuery st
 	}
 }
 
-// fetchDropStatistics queries and aggregates all item drops from the changelog.
-func fetchDropStatistics(itemSortBy, itemOrder, playerSortBy, playerOrder string) ([]DropStatItem, int64, int64, []DropStatPlayer, error) {
-	log.Println("[I] [HTTP/Stats] Fetching drop statistics from changelog...")
+// fetchDropStatistics queries and aggregates all item drops.
+func fetchDropStatistics(itemSortBy, itemOrder, playerSortBy, playerOrder string) ([]DropStatItem, int64, int64, []DropStatPlayer, error) { // <-- MODIFIED SIGNATURE
+	log.Println("[I] [HTTP/Stats] Fetching drop statistics...")
 
-	var totalDrops, uniqueDropItems int64
-	var dropStats []DropStatItem
-	var playerStatsSlice []DropStatPlayer
-
-	// 1. Get total drop count
-	err := db.QueryRow("SELECT COUNT(*) FROM character_changelog WHERE activity_description LIKE 'Dropped item: %'").Scan(&totalDrops)
+	query := `SELECT message, timestamp FROM chat WHERE channel = 'Drop' AND character_name = 'System' ORDER BY timestamp DESC`
+	rows, err := db.Query(query)
 	if err != nil {
-		return nil, 0, 0, nil, fmt.Errorf("could not count total drops: %w", err)
+		return nil, 0, 0, nil, fmt.Errorf("could not query chat for drop stats: %w", err)
 	}
+	defer rows.Close()
+
+	// --- (Aggregation map setup - unchanged) ---
+	type playerAggStats struct {
+		Total int64
+		Cards int64
+		Items int64
+	}
+	itemStats := make(map[string]*struct {
+		Count    int
+		LastSeen string
+	})
+	playerStats := make(map[string]*playerAggStats)
+	var totalDrops int64 = 0
+	var processedRows int = 0
+
+	// --- (Row processing loop - unchanged) ---
+	for rows.Next() {
+		processedRows++
+		var msg, timestampStr string
+		if err := rows.Scan(&msg, &timestampStr); err != nil {
+			log.Printf("[W] [HTTP/Chat] Failed to scan drop stat row: %v", err)
+			continue
+		}
+
+		log.Printf("[D] [DropStats] Processing Msg: %s", msg)
+
+		dropMatches := dropMessageRegex.FindStringSubmatch(msg)
+		var itemMsgFragment string
+		var playerName string
+		if len(dropMatches) == 4 {
+			playerName = dropMatches[1]
+			itemMsgFragment = dropMatches[3]
+			log.Printf("[D] [DropStats] -> Matched drop. Player: '%s', Fragment: %s", playerName, itemMsgFragment)
+		} else {
+			log.Printf("[D] [DropStats] -> FAILED dropMessageRegex match. (len: %d)", len(dropMatches))
+			continue
+		}
+
+		itemMatches := reItemFromDrop.FindStringSubmatch(itemMsgFragment)
+		var itemName string
+
+		if len(itemMatches) == 4 {
+			if itemMatches[1] != "" {
+				itemName = itemMatches[1]
+			} else if itemMatches[2] != "" {
+				itemName = itemMatches[2]
+			} else if itemMatches[3] != "" {
+				itemName = itemMatches[3]
+			}
+			log.Printf("[D] [DropStats] -> Matched item. Name: '%s' (Matches: %v)", itemName, itemMatches[1:])
+		} else {
+			log.Printf("[D] [DropStats] -> FAILED reItemFromDrop match. (len: %d)", len(itemMatches))
+		}
+
+		itemName = strings.TrimSpace(itemName)
+		if itemName == "" {
+			log.Printf("[W] [HTTP/Chat] Could not parse item name from fragment: %s", itemMsgFragment)
+			continue
+		}
+
+		totalDrops++
+
+		if _, ok := playerStats[playerName]; !ok {
+			playerStats[playerName] = &playerAggStats{}
+		}
+		agg := playerStats[playerName]
+		agg.Total++
+
+		isCard := strings.HasSuffix(itemName, " Card")
+		if isCard {
+			agg.Cards++
+		} else {
+			agg.Items++
+		}
+
+		if stat, ok := itemStats[itemName]; ok {
+			stat.Count++
+		} else {
+			formattedTime := timestampStr
+			if parsedTime, err := time.Parse(time.RFC3339, timestampStr); err == nil {
+				formattedTime = parsedTime.Format("2006-01-02 15:04")
+			}
+			itemStats[itemName] = &struct {
+				Count    int
+				LastSeen string
+			}{
+				Count:    1,
+				LastSeen: formattedTime,
+			}
+		}
+	}
+
+	log.Printf("[I] [HTTP/Chat] Drop stats processed. Total DB rows: %d. Total drops parsed: %d. Unique items: %d. Unique players: %d", processedRows, totalDrops, len(itemStats), len(playerStats))
+
+	uniqueDropItems := int64(len(itemStats))
 
 	if totalDrops == 0 {
-		return nil, 0, 0, nil, nil
+		return nil, totalDrops, uniqueDropItems, nil, nil
 	}
 
-	// 2. Get Item Drop Statistics
-	// Use SUBSTR to extract the item name and join with the item DB
-	itemQuery := `
-		SELECT
-			SUBSTR(cl.activity_description, 15) as item_name, -- <-- *** FIX IS HERE (was 16) ***
-			COUNT(cl.activity_description) as item_count,
-			MAX(cl.change_time) as last_seen,
-			idb.item_id,
-			idb.name_pt
-		FROM character_changelog cl
-		LEFT JOIN internal_item_db idb ON idb.name = SUBSTR(cl.activity_description, 15) -- <-- *** FIX IS HERE (was 16) ***
-		WHERE cl.activity_description LIKE 'Dropped item: %'
-		GROUP BY item_name
-	`
-	itemRows, err := db.Query(itemQuery)
+	// --- (Item DB Join logic - unchanged) ---
+	placeholders := strings.Repeat("?,", len(itemStats)-1) + "?"
+	params := make([]interface{}, len(itemStats))
+	i := 0
+	for name := range itemStats {
+		params[i] = name
+		i++
+	}
+	dbItems := make(map[string]struct {
+		ItemID sql.NullInt64
+		NamePT sql.NullString
+	})
+	joinQuery := fmt.Sprintf(`
+        SELECT name, item_id, name_pt 
+        FROM internal_item_db 
+        WHERE name IN (%s)`, placeholders)
+	joinRows, err := db.Query(joinQuery, params...)
 	if err != nil {
-		return nil, 0, 0, nil, fmt.Errorf("could not query item drop stats: %w", err)
-	}
-	defer itemRows.Close()
-
-	for itemRows.Next() {
-		var stat DropStatItem
-		var timestampStr string
-		if err := itemRows.Scan(&stat.Name, &stat.Count, &timestampStr, &stat.ItemID, &stat.NamePT); err != nil {
-			log.Printf("[W] [HTTP/Stats] Failed to scan item drop stat row: %v", err)
-			continue
+		log.Printf("[W] [HTTP/Chat] Failed to join internal_item_db for drop stats: %v", err)
+	} else {
+		defer joinRows.Close()
+		for joinRows.Next() {
+			var name string
+			var itemID sql.NullInt64
+			var namePT sql.NullString
+			if err := joinRows.Scan(&name, &itemID, &namePT); err == nil {
+				dbItems[name] = struct {
+					ItemID sql.NullInt64
+					NamePT sql.NullString
+				}{itemID, namePT}
+			}
 		}
-		if parsedTime, err := time.Parse(time.RFC3339, timestampStr); err == nil {
-			stat.LastSeen = parsedTime.Format("2006-01-02 15:04")
-		} else {
-			stat.LastSeen = timestampStr
-		}
-		dropStats = append(dropStats, stat)
-	}
-	uniqueDropItems = int64(len(dropStats))
-
-	// 3. Get Player Drop Statistics
-	playerQuery := `
-		SELECT
-			character_name,
-			COUNT(*) as total_count,
-			SUM(CASE WHEN activity_description LIKE '% Card' THEN 1 ELSE 0 END) as card_count,
-			SUM(CASE WHEN activity_description NOT LIKE '% Card' THEN 1 ELSE 0 END) as item_count
-		FROM character_changelog
-		WHERE activity_description LIKE 'Dropped item: %'
-		GROUP BY character_name
-	`
-	playerRows, err := db.Query(playerQuery)
-	if err != nil {
-		return nil, 0, 0, nil, fmt.Errorf("could not query player drop stats: %w", err)
-	}
-	defer playerRows.Close()
-
-	for playerRows.Next() {
-		var stat DropStatPlayer
-		if err := playerRows.Scan(&stat.PlayerName, &stat.Count, &stat.CardCount, &stat.ItemCount); err != nil {
-			log.Printf("[W] [HTTP/Stats] Failed to scan player drop stat row: %v", err)
-			continue
-		}
-		playerStatsSlice = append(playerStatsSlice, stat)
 	}
 
-	// 4. Sort the results (same logic as before)
+	// Create final item slice
+	var dropStats []DropStatItem
+	for name, stat := range itemStats {
+		dbInfo := dbItems[name]
+		dropStats = append(dropStats, DropStatItem{
+			ItemID:   dbInfo.ItemID,
+			Name:     name,
+			NamePT:   dbInfo.NamePT,
+			Count:    stat.Count,
+			LastSeen: stat.LastSeen,
+		})
+	}
+
+	// --- MODIFIED: Dynamic Sorting for dropStats ---
 	sort.Slice(dropStats, func(i, j int) bool {
 		var less bool
 		switch itemSortBy {
@@ -4776,15 +4853,28 @@ func fetchDropStatistics(itemSortBy, itemOrder, playerSortBy, playerOrder string
 			less = idI < idJ
 		case "last_seen":
 			less = dropStats[i].LastSeen < dropStats[j].LastSeen
-		default: // "count"
+		default: // Default to "count"
 			less = dropStats[i].Count < dropStats[j].Count
 		}
+
 		if itemOrder == "DESC" {
 			return !less
 		}
 		return less
 	})
 
+	// Create final player slice
+	var playerStatsSlice []DropStatPlayer
+	for name, agg := range playerStats {
+		playerStatsSlice = append(playerStatsSlice, DropStatPlayer{
+			PlayerName: name,
+			Count:      agg.Total,
+			CardCount:  agg.Cards,
+			ItemCount:  agg.Items,
+		})
+	}
+
+	// --- MODIFIED: Dynamic Sorting for playerStatsSlice ---
 	sort.Slice(playerStatsSlice, func(i, j int) bool {
 		var less bool
 		switch playerSortBy {
@@ -4794,9 +4884,10 @@ func fetchDropStatistics(itemSortBy, itemOrder, playerSortBy, playerOrder string
 			less = playerStatsSlice[i].CardCount < playerStatsSlice[j].CardCount
 		case "items":
 			less = playerStatsSlice[i].ItemCount < playerStatsSlice[j].ItemCount
-		default: // "count"
+		default: // Default to "count"
 			less = playerStatsSlice[i].Count < playerStatsSlice[j].Count
 		}
+
 		if playerOrder == "DESC" {
 			return !less
 		}
