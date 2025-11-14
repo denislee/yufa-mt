@@ -29,10 +29,10 @@
             {{$itemParams := printf "&isort=%s&iorder=%s" .Data.ItemSortBy .Data.ItemOrder}}
             {{$sellerParams := printf "&ssort=%s&sorder=%s" .Data.SellerSortBy .Data.SellerOrder}}
 
-            <a href="/stats/market?interval=24h{{$itemParams | TmplHTML}}{{$sellerParams | TmplHTML}}" class="px-3 py-1 text-xs font-medium rounded-full {{if eq $interval "24h"}}bg-blue-600 text-white{{else}}bg-white text-gray-600 hover:bg-gray-50 shadow-sm border{{end}}">{{.Page.T.interval_24h}}</a>
-            <a href="/stats/market?interval=7d{{$itemParams | TmplHTML}}{{$sellerParams | TmplHTML}}" class="px-3 py-1 text-xs font-medium rounded-full {{if eq $interval "7d"}}bg-blue-600 text-white{{else}}bg-white text-gray-600 hover:bg-gray-50 shadow-sm border{{end}}">{{.Page.T.interval_7d}}</a>
-            <a href="/stats/market?interval=30d{{$itemParams | TmplHTML}}{{$sellerParams | TmplHTML}}" class="px-3 py-1 text-xs font-medium rounded-full {{if eq $interval "30d"}}bg-blue-600 text-white{{else}}bg-white text-gray-600 hover:bg-gray-50 shadow-sm border{{end}}">{{.Page.T.interval_30d}}</a>
-            <a href="/stats/market?interval=all{{$itemParams | TmplHTML}}{{$sellerParams | TmplHTML}}" class="px-3 py-1 text-xs font-medium rounded-full {{if eq $interval "all"}}bg-blue-600 text-white{{else}}bg-white text-gray-600 hover:bg-gray-50 shadow-sm border{{end}}">{{.Page.T.interval_all}}</a>
+            <a href="/stats/market?interval=24h{{$itemParams | TmplURL}}{{$sellerParams | TmplURL}}" class="px-3 py-1 text-xs font-medium rounded-full {{if eq $interval "24h"}}bg-blue-600 text-white{{else}}bg-white text-gray-600 hover:bg-gray-50 shadow-sm border{{end}}">{{.Page.T.interval_24h}}</a>
+            <a href="/stats/market?interval=7d{{$itemParams | TmplURL}}{{$sellerParams | TmplURL}}" class="px-3 py-1 text-xs font-medium rounded-full {{if eq $interval "7d"}}bg-blue-600 text-white{{else}}bg-white text-gray-600 hover:bg-gray-50 shadow-sm border{{end}}">{{.Page.T.interval_7d}}</a>
+            <a href="/stats/market?interval=30d{{$itemParams | TmplURL}}{{$sellerParams | TmplURL}}" class="px-3 py-1 text-xs font-medium rounded-full {{if eq $interval "30d"}}bg-blue-600 text-white{{else}}bg-white text-gray-600 hover:bg-gray-50 shadow-sm border{{end}}">{{.Page.T.interval_30d}}</a>
+            <a href="/stats/market?interval=all{{$itemParams | TmplURL}}{{$sellerParams | TmplURL}}" class="px-3 py-1 text-xs font-medium rounded-full {{if eq $interval "all"}}bg-blue-600 text-white{{else}}bg-white text-gray-600 hover:bg-gray-50 shadow-sm border{{end}}">{{.Page.T.interval_all}}</a>
         </div>
 
         <div class="grid grid-cols-1 md:grid-cols-2 gap-4 my-4">
@@ -68,17 +68,17 @@
                                 {{$sellerParams := printf "&ssort=%s&sorder=%s" .Data.SellerSortBy .Data.SellerOrder}}
 
                                 <th class="px-3 py-2">
-                                    <a href="/stats/market?isort=name&iorder={{if eq $currentSort "name"}}{{$revOrder}}{{else}}ASC{{end}}{{$query}}{{$sellerParams | TmplHTML}}">
+                                    <a href="/stats/market?isort=name&iorder={{if eq $currentSort "name"}}{{$revOrder}}{{else}}ASC{{end}}{{$query}}{{$sellerParams | TmplURL}}">
                                         {{.Page.T.item_name}} {{if eq $currentSort "name"}}{{if eq $currentOrder "ASC"}}<span class="text-gray-400">▲</span>{{else}}<span class="text-gray-400">▼</span>{{end}}{{end}}
                                     </a>
                                 </th>
                                 <th class="px-3 py-2 text-right">
-                                    <a href="/stats/market?isort=count&iorder={{if eq $currentSort "count"}}{{$revOrder}}{{else}}DESC{{end}}{{$query}}{{$sellerParams | TmplHTML}}">
+                                    <a href="/stats/market?isort=count&iorder={{if eq $currentSort "count"}}{{$revOrder}}{{else}}DESC{{end}}{{$query}}{{$sellerParams | TmplURL}}">
                                         {{.Page.T.sales}} {{if eq $currentSort "count"}}{{if eq $currentOrder "ASC"}}<span class="text-gray-400">▲</span>{{else}}<span class="text-gray-400">▼</span>{{end}}{{end}}
                                     </a>
                                 </th>
                                 <th class="px-3 py-2 text-right">
-                                    <a href="/stats/market?isort=zeny&iorder={{if eq $currentSort "zeny"}}{{$revOrder}}{{else}}DESC{{end}}{{$query}}{{$sellerParams | TmplHTML}}">
+                                    <a href="/stats/market?isort=zeny&iorder={{if eq $currentSort "zeny"}}{{$revOrder}}{{else}}DESC{{end}}{{$query}}{{$sellerParams | TmplURL}}">
                                         {{.Page.T.zeny_volume}} {{if eq $currentSort "zeny"}}{{if eq $currentOrder "ASC"}}<span class="text-gray-400">▲</span>{{else}}<span class="text-gray-400">▼</span>{{end}}{{end}}
                                     </a>
                                 </th>
@@ -132,17 +132,17 @@
                                 {{$itemParams := printf "&isort=%s&iorder=%s" .Data.ItemSortBy .Data.ItemOrder}}
 
                                 <th class="px-3 py-2">
-                                    <a href="/stats/market?ssort=name&sorder={{if eq $currentSort "name"}}{{$revOrder}}{{else}}ASC{{end}}{{$query}}{{$itemParams | TmplHTML}}">
+                                    <a href="/stats/market?ssort=name&sorder={{if eq $currentSort "name"}}{{$revOrder}}{{else}}ASC{{end}}{{$query}}{{$itemParams | TmplURL}}">
                                         {{.Page.T.seller}} {{if eq $currentSort "name"}}{{if eq $currentOrder "ASC"}}<span class="text-gray-400">▲</span>{{else}}<span class="text-gray-400">▼</span>{{end}}{{end}}
                                     </a>
                                 </th>
                                 <th class="px-3 py-2 text-right">
-                                    <a href="/stats/market?ssort=count&sorder={{if eq $currentSort "count"}}{{$revOrder}}{{else}}DESC{{end}}{{$query}}{{$itemParams | TmplHTML}}">
+                                    <a href="/stats/market?ssort=count&sorder={{if eq $currentSort "count"}}{{$revOrder}}{{else}}DESC{{end}}{{$query}}{{$itemParams | TmplURL}}">
                                         {{.Page.T.sales}} {{if eq $currentSort "count"}}{{if eq $currentOrder "ASC"}}<span class="text-gray-400">▲</span>{{else}}<span class="text-gray-400">▼</span>{{end}}{{end}}
                                     </a>
                                 </th>
                                 <th class="px-3 py-2 text-right">
-                                    <a href="/stats/market?ssort=zeny&sorder={{if eq $currentSort "zeny"}}{{$revOrder}}{{else}}DESC{{end}}{{$query}}{{$itemParams | TmplHTML}}">
+                                    <a href="/stats/market?ssort=zeny&sorder={{if eq $currentSort "zeny"}}{{$revOrder}}{{else}}DESC{{end}}{{$query}}{{$itemParams | TmplURL}}">
                                         {{.Page.T.zeny_volume}} {{if eq $currentSort "zeny"}}{{if eq $currentOrder "ASC"}}<span class="text-gray-400">▲</span>{{else}}<span class="text-gray-400">▼</span>{{end}}{{end}}
                                     </a>
                                 </th>

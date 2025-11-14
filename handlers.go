@@ -42,6 +42,7 @@ var (
 		"formatAvgLevel":   formatAvgLevel,
 		"getClassImageURL": getClassImageURL,
 		"TmplHTML":         tmplHTML,
+		"TmplURL":          tmplURL,
 		"dict":             dict,
 		"hasPrefix":        strings.HasPrefix,
 		"trimPrefix":       strings.TrimPrefix,
@@ -3390,13 +3391,16 @@ func getMarketStatsInterval(r *http.Request) (string, string) {
 	switch intervalStr {
 	case "24h":
 		startTime = now.Add(-24 * time.Hour).Format(time.RFC3339)
+		// No 'break' needed; Go's switch doesn't fall through
 	case "30d":
 		startTime = now.Add(-30 * 24 * time.Hour).Format(time.RFC3339)
+		// No 'break' needed
 	case "all":
 		startTime = "2000-01-01T00:00:00Z" // Far in the past
 		intervalStr = "all"
+		// No 'break' needed
 	case "7d":
-		fallthrough
+		fallthrough // Intentionally fall through to the default case
 	default:
 		// Default to 7d
 		startTime = now.Add(-7 * 24 * time.Hour).Format(time.RFC3339)
@@ -3413,7 +3417,7 @@ func marketStatsHandler(w http.ResponseWriter, r *http.Request) {
 	sellerSortBy := r.URL.Query().Get("ssort")
 	sellerOrder := r.URL.Query().Get("sorder")
 
-	// --- ADDED: Logging ---
+	// --- Logging ---
 	log.Printf("[D] [HTTP/Stats] marketStatsHandler: Interval=%s, StartTime=%s", selectedInterval, startTime)
 	log.Printf("[D] [HTTP/Stats] marketStatsHandler: ItemSort=%s, ItemOrder=%s", itemSortBy, itemOrder)
 	log.Printf("[D] [HTTP/Stats] marketStatsHandler: SellerSort=%s, SellerOrder=%s", sellerSortBy, sellerOrder)
@@ -3444,9 +3448,7 @@ func marketStatsHandler(w http.ResponseWriter, r *http.Request) {
 	kpiQuery := fmt.Sprintf(`
 		SELECT COUNT(*), COALESCE(SUM(CAST(REPLACE(json_extract(details, '$.price'), ',', '') AS INTEGER)), 0)
 		FROM market_events %s`, whereConditions)
-	// --- ADDED: Logging ---
 	log.Printf("[D] [HTTP/Stats] KPI Query: %s; Params: %v", kpiQuery, params)
-	// --- END: Logging ---
 	err := db.QueryRow(kpiQuery, params...).Scan(&data.TotalSoldItems, &data.TotalZenyTransacted)
 	if err != nil {
 		log.Printf("[E] [HTTP/Stats] Could not query market KPIs: %v", err)
@@ -3484,9 +3486,7 @@ func marketStatsHandler(w http.ResponseWriter, r *http.Request) {
 		%s
 		LIMIT %d`, whereConditions, itemOrderByClause, topLimit)
 
-	// --- ADDED: Logging ---
 	log.Printf("[D] [HTTP/Stats] Top Items Query: %s; Params: %v", itemsQuery, params)
-	// --- END: Logging ---
 	itemRows, err := db.Query(itemsQuery, params...)
 	if err != nil {
 		log.Printf("[E] [HTTP/Stats] Could not query top sold items: %v", err)
@@ -3531,9 +3531,7 @@ func marketStatsHandler(w http.ResponseWriter, r *http.Request) {
 		%s
 		LIMIT %d`, whereConditions, sellerOrderByClause, topLimit)
 
-	// --- ADDED: Logging ---
 	log.Printf("[D] [HTTP/Stats] Top Sellers Query: %s; Params: %v", sellersQuery, params)
-	// --- END: Logging ---
 	sellerRows, err := db.Query(sellersQuery, params...)
 	if err != nil {
 		log.Printf("[E] [HTTP/Stats] Could not query top sellers: %v", err)
@@ -3560,9 +3558,7 @@ func marketStatsHandler(w http.ResponseWriter, r *http.Request) {
 		GROUP BY day
 		ORDER BY day ASC`, whereConditions)
 
-	// --- ADDED: Logging ---
 	log.Printf("[D] [HTTP/Stats] Chart Query: %s; Params: %v", chartQuery, params)
-	// --- END: Logging ---
 	chartRows, err := db.Query(chartQuery, params...)
 	if err != nil {
 		log.Printf("[E] [HTTP/Stats] Could not query chart data: %v", err)
@@ -5366,4 +5362,9 @@ func fetchCharacterDropHistory(charName string) ([]CharacterChangelog, error) {
 	}
 
 	return dropHistory, nil
+}
+
+// tmplURL marks a string as a safe URL for templates.
+func tmplURL(s string) template.URL {
+	return template.URL(s)
 }
