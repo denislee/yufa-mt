@@ -1294,26 +1294,18 @@ func parseMarketItem(itemSelection *goquery.Selection) (Item, bool) {
 // in scraper.go
 
 // determineRemovalType encapsulates the logic for deciding if an item was sold or just removed.
-func determineRemovalType(listing Item, activeStores map[string]bool, dbStoreSizes map[string]int) string {
-	// --- END MODIFICATION ---
-
-	// --- MODIFICATION: Check if the specific store is still active ---
-	// Create a unique key for the store
-	storeKey := listing.SellerName + "::" + listing.StoreName
-	if _, storeIsActive := activeStores[storeKey]; storeIsActive {
-		// If the specific store is still online, assume the item was sold.
+func determineRemovalType(listing Item, activeSellers map[string]bool, dbStoreSizes map[string]int) string {
+	// If the seller is still online, assume the item was sold.
+	if _, sellerIsActive := activeSellers[listing.SellerName]; sellerIsActive {
 		return "SOLD"
 	}
-	// --- END MODIFICATION ---
-
-	// If the store is offline, check if it was the only item.
-	// This logic remains the same, but now only triggers if the store itself is gone.
+	// If the seller is offline, but this was the only item in their store,
+	// assume they just closed the store (REMOVED_SINGLE).
 	if dbStoreSizes[listing.SellerName] == 1 {
 		return "REMOVED_SINGLE"
 	}
-
-	// Otherwise, the seller is offline (or this specific store is closed)
-	// and they had other items. We assume they just removed this item or closed this one store.
+	// Otherwise, the seller is offline and had other items, so we assume
+	// they just removed this one item from their store before logging off.
 	return "REMOVED"
 }
 
@@ -1326,11 +1318,7 @@ func scrapeData() {
 	var err error
 	var doc *goquery.Document
 	scrapedItemsByName := make(map[string][]Item)
-
-	// --- MODIFICATION: This is now a map of active *stores* ---
-	// The key will be "SellerName::StoreName"
-	activeStores := make(map[string]bool)
-	// --- END MODIFICATION ---
+	activeSellers := make(map[string]bool)
 
 	// --- MODIFICATION: Added retry loop for parsing ---
 	for attempt := 1; attempt <= maxParseRetries; attempt++ {
@@ -1351,9 +1339,7 @@ func scrapeData() {
 
 		// Reset maps for this attempt
 		scrapedItemsByName = make(map[string][]Item)
-		// --- MODIFICATION: Reset activeStores map ---
-		activeStores = make(map[string]bool)
-		// --- END MODIFICATION ---
+		activeSellers = make(map[string]bool)
 
 		// --- Main Scraper Loop ---
 		doc.Find("svg.lucide-user").Each(func(i int, s *goquery.Selection) {
@@ -1383,13 +1369,7 @@ func scrapeData() {
 			sellerName := strings.TrimSpace(s.Next().Text())
 			mapName := strings.TrimSpace(card.Find("svg.lucide-map-pin").Next().Text())
 			mapCoordinates := strings.TrimSpace(card.Find("svg.lucide-copy").Next().Text())
-
-			// --- MODIFICATION: Use the new storeKey to track active stores ---
-			if sellerName != "" {
-				storeKey := sellerName + "::" + shopName
-				activeStores[storeKey] = true
-			}
-			// --- END MODIFICATION ---
+			activeSellers[sellerName] = true
 
 			if enableMarketScraperDebugLogs == true {
 				log.Printf("[D] [Scraper/Market] shop name: %s, seller name: %s, map_name: %s, mapcoord: %s", shopName, sellerName, mapName, mapCoordinates)
@@ -1450,7 +1430,7 @@ func scrapeData() {
 	}
 	defer tx.Rollback()
 
-	// --- Database logic from here down ---
+	// --- Database logic from here down is unchanged ---
 
 	_, err = tx.Exec("INSERT OR IGNORE INTO scrape_history (timestamp) VALUES (?)", retrievalTime)
 	if err != nil {
@@ -1458,8 +1438,6 @@ func scrapeData() {
 		return
 	}
 
-	// --- MODIFICATION: This query now pre-loads store sizes by *seller* ---
-	// We still need this for the REMOVED_SINGLE check.
 	dbStoreSizes := make(map[string]int)
 	sellerItems := make(map[string]map[string]bool)
 	rows, err := tx.Query("SELECT seller_name, name_of_the_item FROM items WHERE is_available = 1")
@@ -1481,7 +1459,6 @@ func scrapeData() {
 			dbStoreSizes[seller] = len(items)
 		}
 	}
-	// --- END MODIFICATION ---
 
 	dbAvailableItemsMap := make(map[string][]Item)
 	dbAvailableNames := make(map[string]bool)
@@ -1521,8 +1498,8 @@ func scrapeData() {
 				if _, found := currentSet[toComparable(lastItem)]; !found {
 
 					// --- REFACTOR ---
-					// Use the new helper function, passing the new activeStores map
-					eventType := determineRemovalType(lastItem, activeStores, dbStoreSizes)
+					// Use the new helper function
+					eventType := determineRemovalType(lastItem, activeSellers, dbStoreSizes)
 					// --- END REFACTOR ---
 
 					details, _ := json.Marshal(map[string]interface{}{
@@ -1624,8 +1601,8 @@ func scrapeData() {
 			for _, listing := range removedListings {
 
 				// --- REFACTOR ---
-				// Use the new helper function, passing the new activeStores map
-				eventType := determineRemovalType(listing, activeStores, dbStoreSizes)
+				// Use the new helper function
+				eventType := determineRemovalType(listing, activeSellers, dbStoreSizes)
 				// --- END REFACTOR ---
 
 				details, _ := json.Marshal(map[string]interface{}{
@@ -2990,3 +2967,4 @@ func toComparable(item Item) comparableItem {
 		MapCoordinates: item.MapCoordinates,
 	}
 }
+
