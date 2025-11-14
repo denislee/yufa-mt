@@ -2748,6 +2748,41 @@ func startChatPacketCapture(ctx context.Context) {
 						// Check if it's the specific 0.01% drop message.
 						if strings.Contains(message, "(chance: 0.01%)") && (strings.Contains(message, "got") || strings.Contains(message, "stole")) {
 							channel = "Drop"
+
+							// <<< --- START: Real-time Drop Logging --- >>>
+							// We have a drop message. Let's parse it for the changelog.
+							// We use the regexes from handlers.go (same 'main' package).
+							dropMatches := dropMessageRegex.FindStringSubmatch(message)
+							if len(dropMatches) == 4 {
+								// dropMatches[1] = character name (e.g., "Lindinha GC")
+								// dropMatches[3] = rest of message (e.g., "Raydric's Iron Cain (chance: 0.01%)")
+								playerName := dropMatches[1]
+								itemMsgFragment := dropMatches[3]
+
+								// Now extract the item name from the fragment
+								itemMatches := reItemFromDrop.FindStringSubmatch(itemMsgFragment)
+								var itemName string
+								if len(itemMatches) == 4 {
+									if itemMatches[1] != "" {
+										itemName = itemMatches[1]
+									} else if itemMatches[2] != "" {
+										itemName = itemMatches[2]
+									} else if itemMatches[3] != "" {
+										itemName = itemMatches[3]
+									}
+								}
+
+								itemName = strings.TrimSpace(itemName)
+
+								if playerName != "" && itemName != "" {
+									// We have both! Log it to the changelog in real-time.
+									// We use a goroutine so it doesn't block the packet capture loop.
+									// The new function handles duplicate protection.
+									go logDropToChangelog(time.Now().Format(time.RFC3339), playerName, itemName)
+								}
+							}
+							// <<< --- END: Real-time Drop Logging --- >>>
+
 						} else {
 							// Otherwise, it's a general announcement.
 							channel = "Announcement"
@@ -2821,6 +2856,50 @@ func startChatPacketCapture(ctx context.Context) {
 			}
 			// --- END REFACTORED PARSING LOOP ---
 		}
+	}
+}
+
+// logDropToChangelog inserts a drop event directly into the character_changelog table.
+// This is called in real-time by the packet capture service.
+func logDropToChangelog(timestamp, charName, itemName string) {
+	if charName == "" || itemName == "" {
+		return
+	}
+
+	activityDescription := "Dropped item: " + itemName
+
+	// We perform a quick check to prevent duplicate entries if the packet is re-sent
+	// and processed multiple times in a short window (e.g., 5 seconds).
+	var exists int
+	err := db.QueryRow(`
+		SELECT 1 FROM character_changelog 
+		WHERE character_name = ? 
+		  AND activity_description = ? 
+		  AND change_time > datetime(?, '-5 second') 
+		LIMIT 1`,
+		charName, activityDescription, timestamp,
+	).Scan(&exists)
+
+	// If it's not found (ErrNoRows) or another error, proceed with insert.
+	// If it *is* found (err == nil), we skip.
+	if err == nil {
+		if enableChatScraperDebugLogs {
+			log.Printf("[D] [Scraper/DropLog] Duplicate drop log detected for %s. Skipping.", charName)
+		}
+		return
+	}
+
+	// Insert the new drop log entry
+	_, err = db.Exec(`
+		INSERT INTO character_changelog (character_name, change_time, activity_description) 
+		VALUES (?, ?, ?)`,
+		charName, timestamp, activityDescription,
+	)
+
+	if err != nil {
+		log.Printf("[E] [Scraper/DropLog] Failed to insert drop log for %s: %v", charName, err)
+	} else if enableChatScraperDebugLogs {
+		log.Printf("[D] [Scraper/DropLog] Successfully logged drop for %s: %s", charName, itemName)
 	}
 }
 

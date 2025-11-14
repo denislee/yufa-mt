@@ -36,3 +36,9 @@ for file in *.go *.html; do
 done
 
 echo "Done."
+
+echo '
+check for one impactful optimization in performance possible in this code. 
+show the entire function or any other structure on go, not the entire source code file content. 
+if the files are too big, split the answer in various parts, send each part after I input "continue"
+'
