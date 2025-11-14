@@ -841,3 +841,48 @@ type PlayerDropInfo struct {
 	PlayerName string
 	Timestamp  string // Formatted as "YYYY-MM-DD HH:MM"
 }
+
+// --- NEW: Structs for Market Statistics Page ---
+
+// MarketStatItem holds aggregated data for a top-selling item.
+type MarketStatItem struct {
+	ItemName  string
+	ItemID    sql.NullInt64
+	NamePT    sql.NullString
+	Count     int64
+	TotalZeny int64
+}
+
+// MarketStatSeller holds aggregated data for a top seller.
+type MarketStatSeller struct {
+	SellerName string
+	Count      int64
+	TotalZeny  int64
+}
+
+// MarketSalesPoint holds data for a single day in the chart.
+type MarketSalesPoint struct {
+	Day   string `json:"Day"`
+	Count int64  `json:"Count"`
+	Zeny  int64  `json:"Zeny"`
+}
+
+// MarketStatsPageData holds all data for the market_stats.html template.
+type MarketStatsPageData struct {
+	PageTitle           string
+	LastScrapeTime      string
+	SelectedInterval    string
+	TotalSoldItems      int64
+	TotalZenyTransacted int64
+	SalesOverTimeJSON   template.JS
+	TopSoldItems        []MarketStatItem
+	TopSellers          []MarketStatSeller
+	// --- NEW FIELDS ---
+	ItemSortBy   string // e.g., "count", "zeny"
+	ItemOrder    string // "ASC" or "DESC"
+	SellerSortBy string // e.g., "name", "count", "zeny"
+	SellerOrder  string // "ASC" or "DESC"
+	Filter       template.URL
+}
+
+// --- END NEW ---

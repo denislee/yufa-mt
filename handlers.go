@@ -381,6 +381,24 @@ var (
 			"item_drop_history":    "Item Drop History",
 			"dropped_by":           "Dropped By",
 			"no_item_drop_history": "No drops have been recorded for this item.",
+
+			// --- NEW: Market Stat Translations (en) ---
+			"nav_market_stats":      "Market",
+			"total_items_sold":      "Total Items Sold",
+			"total_zeny_transacted": "Total Zeny Transacted",
+			"sales_over_time":       "Sales Over Time",
+			"top_sold_items":        "Top Sold Items (by units)",
+			"top_sellers":           "Top Sellers (by units)",
+			"sales":                 "Sales",
+			"zeny_volume":           "Zeny Volume",
+			"no_sales_data":         "No sales data found for this period.",
+			"js_sales_volume":       "Sales Volume (Zeny)",
+			"js_items_sold":         "Items Sold (Units)",
+			"interval_24h":          "24h",
+			"interval_7d":           "7d",
+			"interval_30d":          "30d",
+			"interval_all":          "All Time",
+			// --- END NEW ---
 		},
 		"pt": {
 			"market_summary":         "Resumo do Mercado",
@@ -693,6 +711,24 @@ var (
 			"item_drop_history":    "Histórico de Drops do Item",
 			"dropped_by":           "Dropado por",
 			"no_item_drop_history": "Nenhum drop foi registrado para este item.",
+
+			// --- NEW: Market Stat Translations (pt) ---
+			"nav_market_stats":      "Mercado",
+			"total_items_sold":      "Total de Itens Vendidos",
+			"total_zeny_transacted": "Total de Zeny Transacionado",
+			"sales_over_time":       "Vendas ao Longo do Tempo",
+			"top_sold_items":        "Itens Mais Vendidos (por unid.)",
+			"top_sellers":           "Melhores Vendedores (por unid.)",
+			"sales":                 "Vendas",
+			"zeny_volume":           "Volume de Zeny",
+			"no_sales_data":         "Nenhum dado de venda encontrado para este período.",
+			"js_sales_volume":       "Volume de Vendas (Zeny)",
+			"js_items_sold":         "Itens Vendidos (Unid.)",
+			"interval_24h":          "24h",
+			"interval_7d":           "7d",
+			"interval_30d":          "30d",
+			"interval_all":          "Total",
+			// --- END NEW ---
 		},
 	}
 )
@@ -1295,6 +1331,7 @@ func init() {
 		"about.html",
 		"search.html",
 		"drop_stats.html",
+		"market_stats.html",
 	}
 
 	for _, tmplName := range templates {
@@ -3342,6 +3379,209 @@ func chatHandler(w http.ResponseWriter, r *http.Request) {
 
 	// 7. Render Template
 	renderTemplate(w, r, "chat.html", data)
+}
+
+// getMarketStatsInterval calculates the start time for the stats query.
+func getMarketStatsInterval(r *http.Request) (string, string) {
+	intervalStr := r.URL.Query().Get("interval")
+	var startTime string
+	now := time.Now()
+
+	switch intervalStr {
+	case "24h":
+		startTime = now.Add(-24 * time.Hour).Format(time.RFC3339)
+	case "30d":
+		startTime = now.Add(-30 * 24 * time.Hour).Format(time.RFC3339)
+	case "all":
+		startTime = "2000-01-01T00:00:00Z" // Far in the past
+		intervalStr = "all"
+	case "7d":
+		fallthrough
+	default:
+		// Default to 7d
+		startTime = now.Add(-7 * 24 * time.Hour).Format(time.RFC3339)
+		intervalStr = "7d"
+	}
+	return intervalStr, startTime
+}
+
+func marketStatsHandler(w http.ResponseWriter, r *http.Request) {
+	// --- Read all params ---
+	selectedInterval, startTime := getMarketStatsInterval(r)
+	itemSortBy := r.URL.Query().Get("isort")
+	itemOrder := r.URL.Query().Get("iorder")
+	sellerSortBy := r.URL.Query().Get("ssort")
+	sellerOrder := r.URL.Query().Get("sorder")
+
+	// --- ADDED: Logging ---
+	log.Printf("[D] [HTTP/Stats] marketStatsHandler: Interval=%s, StartTime=%s", selectedInterval, startTime)
+	log.Printf("[D] [HTTP/Stats] marketStatsHandler: ItemSort=%s, ItemOrder=%s", itemSortBy, itemOrder)
+	log.Printf("[D] [HTTP/Stats] marketStatsHandler: SellerSort=%s, SellerOrder=%s", sellerSortBy, sellerOrder)
+	// --- END: Logging ---
+
+	const topLimit = 20
+
+	var whereConditions = "WHERE event_type = 'SOLD' AND event_timestamp >= ?"
+	var params = []interface{}{startTime}
+
+	// --- Build Filter URL for template (Interval ONLY) ---
+	filterValues := url.Values{}
+	filterValues.Set("interval", selectedInterval)
+
+	filterString := ""
+	if encodedFilter := filterValues.Encode(); encodedFilter != "" {
+		filterString = "&" + encodedFilter
+	}
+
+	data := MarketStatsPageData{
+		PageTitle:        "Market Stats",
+		LastScrapeTime:   GetLastScrapeTime(),
+		SelectedInterval: selectedInterval,
+		Filter:           template.URL(filterString),
+	}
+
+	// 1. Get KPIs
+	kpiQuery := fmt.Sprintf(`
+		SELECT COUNT(*), COALESCE(SUM(CAST(REPLACE(json_extract(details, '$.price'), ',', '') AS INTEGER)), 0)
+		FROM market_events %s`, whereConditions)
+	// --- ADDED: Logging ---
+	log.Printf("[D] [HTTP/Stats] KPI Query: %s; Params: %v", kpiQuery, params)
+	// --- END: Logging ---
+	err := db.QueryRow(kpiQuery, params...).Scan(&data.TotalSoldItems, &data.TotalZenyTransacted)
+	if err != nil {
+		log.Printf("[E] [HTTP/Stats] Could not query market KPIs: %v", err)
+	}
+
+	// 2. Get Top Sold Items (with sorting)
+	itemAllowedSorts := map[string]string{
+		"name":  "me.item_name",
+		"count": "count",
+		"zeny":  "zeny",
+	}
+
+	if _, ok := itemAllowedSorts[itemSortBy]; !ok {
+		itemSortBy = "count" // default sort
+	}
+	if itemOrder != "ASC" && itemOrder != "DESC" {
+		itemOrder = "DESC" // default order
+	}
+	itemOrderByClause := fmt.Sprintf("ORDER BY %s %s", itemAllowedSorts[itemSortBy], itemOrder)
+
+	data.ItemSortBy = itemSortBy
+	data.ItemOrder = itemOrder
+
+	itemsQuery := fmt.Sprintf(`
+		SELECT
+			me.item_name,
+			me.item_id,
+			idb.name_pt,
+			COUNT(*) as count,
+			COALESCE(SUM(CAST(REPLACE(json_extract(me.details, '$.price'), ',', '') AS INTEGER)), 0) as zeny
+		FROM market_events me
+		LEFT JOIN internal_item_db idb ON me.item_id = idb.item_id
+		%s
+		GROUP BY me.item_name, me.item_id, idb.name_pt
+		%s
+		LIMIT %d`, whereConditions, itemOrderByClause, topLimit)
+
+	// --- ADDED: Logging ---
+	log.Printf("[D] [HTTP/Stats] Top Items Query: %s; Params: %v", itemsQuery, params)
+	// --- END: Logging ---
+	itemRows, err := db.Query(itemsQuery, params...)
+	if err != nil {
+		log.Printf("[E] [HTTP/Stats] Could not query top sold items: %v", err)
+	} else {
+		defer itemRows.Close()
+		for itemRows.Next() {
+			var item MarketStatItem
+			if err := itemRows.Scan(&item.ItemName, &item.ItemID, &item.NamePT, &item.Count, &item.TotalZeny); err != nil {
+				log.Printf("[W] [HTTP/Stats] Failed to scan top item row: %v", err)
+				continue
+			}
+			data.TopSoldItems = append(data.TopSoldItems, item)
+		}
+	}
+
+	// 3. Get Top Sellers (with sorting)
+	sellerAllowedSorts := map[string]string{
+		"name":  "seller_name",
+		"count": "count",
+		"zeny":  "zeny",
+	}
+
+	if _, ok := sellerAllowedSorts[sellerSortBy]; !ok {
+		sellerSortBy = "count" // default sort
+	}
+	if sellerOrder != "ASC" && sellerOrder != "DESC" {
+		sellerOrder = "DESC" // default order
+	}
+	sellerOrderByClause := fmt.Sprintf("ORDER BY %s %s", sellerAllowedSorts[sellerSortBy], sellerOrder)
+
+	data.SellerSortBy = sellerSortBy
+	data.SellerOrder = sellerOrder
+
+	sellersQuery := fmt.Sprintf(`
+		SELECT
+			json_extract(details, '$.seller') as seller_name,
+			COUNT(*) as count,
+			COALESCE(SUM(CAST(REPLACE(json_extract(details, '$.price'), ',', '') AS INTEGER)), 0) as zeny
+		FROM market_events
+		%s
+		GROUP BY seller_name
+		%s
+		LIMIT %d`, whereConditions, sellerOrderByClause, topLimit)
+
+	// --- ADDED: Logging ---
+	log.Printf("[D] [HTTP/Stats] Top Sellers Query: %s; Params: %v", sellersQuery, params)
+	// --- END: Logging ---
+	sellerRows, err := db.Query(sellersQuery, params...)
+	if err != nil {
+		log.Printf("[E] [HTTP/Stats] Could not query top sellers: %v", err)
+	} else {
+		defer sellerRows.Close()
+		for sellerRows.Next() {
+			var seller MarketStatSeller
+			if err := sellerRows.Scan(&seller.SellerName, &seller.Count, &seller.TotalZeny); err != nil {
+				log.Printf("[W] [HTTP/Stats] Failed to scan top seller row: %v", err)
+				continue
+			}
+			data.TopSellers = append(data.TopSellers, seller)
+		}
+	}
+
+	// 4. Get Chart Data
+	chartQuery := fmt.Sprintf(`
+		SELECT
+			strftime('%%Y-%%m-%%dT00:00:00Z', event_timestamp) as day,
+			COUNT(*) as count,
+			COALESCE(SUM(CAST(REPLACE(json_extract(details, '$.price'), ',', '') AS INTEGER)), 0) as zeny
+		FROM market_events
+		%s
+		GROUP BY day
+		ORDER BY day ASC`, whereConditions)
+
+	// --- ADDED: Logging ---
+	log.Printf("[D] [HTTP/Stats] Chart Query: %s; Params: %v", chartQuery, params)
+	// --- END: Logging ---
+	chartRows, err := db.Query(chartQuery, params...)
+	if err != nil {
+		log.Printf("[E] [HTTP/Stats] Could not query chart data: %v", err)
+	} else {
+		var salesPoints []MarketSalesPoint
+		defer chartRows.Close()
+		for chartRows.Next() {
+			var point MarketSalesPoint
+			if err := chartRows.Scan(&point.Day, &point.Count, &point.Zeny); err != nil {
+				log.Printf("[W] [HTTP/Stats] Failed to scan chart data row: %v", err)
+				continue
+			}
+			salesPoints = append(salesPoints, point)
+		}
+		jsonBytes, _ := json.Marshal(salesPoints)
+		data.SalesOverTimeJSON = template.JS(jsonBytes)
+	}
+
+	renderTemplate(w, r, "market_stats.html", data)
 }
 
 // Reverted to only exclude "Local". "Drop" is now a regular channel.

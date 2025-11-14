@@ -36,6 +36,7 @@
                     </button>
                     <div id="stats-dropdown-content" class="dropdown-content hidden absolute right-0 mt-2 w-48 bg-white rounded-md shadow-lg py-1 z-20 ring-1 ring-black ring-opacity-5">
                         <a href="/stats/drops" class="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">{{.Page.T.nav_drop_stats}}</a>
+<a href="/stats/market" class="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">{{.Page.T.nav_market_stats}}</a>
                         <a href="/players" class="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">{{.Page.T.nav_player_count}}</a>
                     </div>
                 </div>
@@ -133,6 +134,7 @@
             </summary>
             <div class="pl-4">
                 <a href="/stats/drops" class="block py-2 px-4 text-sm {{if eq .Data.PageTitle "Drop Stats"}}bg-blue-50 text-blue-600 font-semibold{{else}}text-gray-600 hover:bg-gray-50{{end}}">{{.Page.T.nav_drop_stats}}</a>
+<a href="/stats/market" class="block py-2 px-4 text-sm {{if eq .Data.PageTitle "Market Stats"}}bg-blue-50 text-blue-600 font-semibold{{else}}text-gray-600 hover:bg-gray-50{{end}}">{{.Page.T.nav_market_stats}}</a>
                 <a href="/players" class="block py-2 px-4 text-sm {{if eq .Data.PageTitle "Player Count"}}bg-blue-50 text-blue-600 font-semibold{{else}}text-gray-600 hover:bg-gray-50{{end}}">{{.Page.T.nav_player_count}}</a>
             </div>
         </details>
