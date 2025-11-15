@@ -842,8 +842,6 @@ type PlayerDropInfo struct {
 	Timestamp  string // Formatted as "YYYY-MM-DD HH:MM"
 }
 
-// --- NEW: Structs for Market Statistics Page ---
-
 // MarketStatItem holds aggregated data for a top-selling item.
 type MarketStatItem struct {
 	ItemName  string
@@ -877,12 +875,30 @@ type MarketStatsPageData struct {
 	SalesOverTimeJSON   template.JS
 	TopSoldItems        []MarketStatItem
 	TopSellers          []MarketStatSeller
-	// --- NEW FIELDS ---
-	ItemSortBy   string // e.g., "count", "zeny"
-	ItemOrder    string // "ASC" or "DESC"
-	SellerSortBy string // e.g., "name", "count", "zeny"
-	SellerOrder  string // "ASC" or "DESC"
-	Filter       template.URL
+	ItemSortBy          string // e.g., "count", "zeny"
+	ItemOrder           string // "ASC" or "DESC"
+	SellerSortBy        string // e.g., "name", "count", "zeny"
+	SellerOrder         string // "ASC" or "DESC"
+	Filter              template.URL
 }
 
-// --- END NEW ---
+// LevelDistPoint holds data for a single bar in the level distribution chart.
+type LevelDistPoint struct {
+	Range string `json:"Range"`
+	Count int    `json:"Count"`
+}
+
+// CharacterStatsPageData holds all data for the character_stats.html template.
+type CharacterStatsPageData struct {
+	PageTitle               string
+	LastCharacterScrapeTime string
+	TotalCharacters         int64
+	TotalZeny               int64
+	AvgBaseLevel            float64
+	AvgJobLevel             float64
+	ClassDistributionJSON   template.JS
+	LevelDistributionJSON   template.JS
+	TopRichestCharacters    []PlayerCharacter
+	TopExperienceCharacters []PlayerCharacter
+	GraphFilter             map[string]bool
+}

@@ -46,6 +46,7 @@ var (
 		"dict":             dict,
 		"hasPrefix":        strings.HasPrefix,
 		"trimPrefix":       strings.TrimPrefix,
+		"default":          defaultFunc,
 	}
 
 	// classImages maps class names to their icon URLs.
@@ -413,6 +414,15 @@ var (
 			"category_armor":          "Armor",
 			"category_cash_shop_item": "Cash Shop",
 			"category_taming_item":    "Taming",
+
+			"nav_character_stats": "Character Stats",
+			"total_characters":    "Total Characters",
+			"total_zeny_on_chars": "Total Zeny (on Chars)",
+			"avg_job_level":       "Avg. Job Level",
+			"level_distribution":  "Level Distribution",
+			"js_char_count":       "Character Count",
+			"top_richest_chars":   "Top Richest Characters",
+			"top_exp_chars":       "Top Characters by Exp",
 		},
 		"pt": {
 			"market_summary":         "Resumo do Mercado",
@@ -756,6 +766,15 @@ var (
 			"category_armor":          "Equip.",
 			"category_cash_shop_item": "Loja ROPs",
 			"category_taming_item":    "Doma",
+
+			"nav_character_stats": "Estatísticas de Personagens",
+			"total_characters":    "Total de Personagens",
+			"total_zeny_on_chars": "Zeny Total (em Pers.)",
+			"avg_job_level":       "Nível de Classe Médio",
+			"level_distribution":  "Distribuição de Nível",
+			"js_char_count":       "Cont. de Personagens",
+			"top_richest_chars":   "Top Personagens Ricos",
+			"top_exp_chars":       "Top Personagens por Exp",
 		},
 	}
 )
@@ -836,128 +855,17 @@ var definedEvents = []EventDefinition{
 }
 
 var (
-	nameSanitizer = regexp.MustCompile(`[^a-zA-Z0-9 ]+`)
-
+	nameSanitizer    = regexp.MustCompile(`[^a-zA-Z0-9 ]+`)
 	contactSanitizer = regexp.MustCompile(`[^a-zA-Z0-9\s:.,#@-]+`)
-
-	notesSanitizer = regexp.MustCompile(`[^a-zA-Z0-9\s.,?!'-]+`)
-
-	itemSanitizer = regexp.MustCompile(`[^\p{L}0-9\s\[\]\+\-]+`)
-
-	reCardRemover = regexp.MustCompile(`(?i)\s*\b(card|carta)\b\s*`)
-
-	reSlotRemover = regexp.MustCompile(`\s*\[\d+\]\s*`)
-
+	notesSanitizer   = regexp.MustCompile(`[^a-zA-Z0-9\s.,?!'-]+`)
+	itemSanitizer    = regexp.MustCompile(`[^\p{L}0-9\s\[\]\+\-]+`)
+	reCardRemover    = regexp.MustCompile(`(?i)\s*\b(card|carta)\b\s*`)
+	reSlotRemover    = regexp.MustCompile(`\s*\[\d+\]\s*`)
 	dropMessageRegex = regexp.MustCompile(`'(.+)'\s+(got|stole)\s+(.+)`)
-
-	reItemFromDrop = regexp.MustCompile(`(?:(?:\d+\s*x\s*)?'(.+?)'|.+\'s\s+(.+?)|(.+?))\s*(?:\(chance:.*)?$`)
+	reItemFromDrop   = regexp.MustCompile(`(?:(?:\d+\s*x\s*)?'(.+?)'|.+\'s\s+(.+?)|(.+?))\s*(?:\(chance:.*)?$`)
 )
 
-// var classImages = map[string]string{
-// 	"Aprendiz":       "https://static.wikia.nocookie.net/ragnarok-online-encyclopedia/images/8/8b/Icon_jobs_0.png",
-// 	"Super Aprendiz": "https://static.wikia.nocookie.net/ragnarok-online-encyclopedia/images/c/c7/Icon_jobs_4001.png",
-// 	"Arqueiro":       "https://static.wikia.nocookie.net/ragnarok-online-encyclopedia/images/9/97/Icon_jobs_3.png",
-// 	"Espadachim":     "https://static.wikia.nocookie.net/ragnarok-online-encyclopedia/images/5/5b/Icon_jobs_1.png",
-// 	"Gatuno":         "https://static.wikia.nocookie.net/ragnarok-online-encyclopedia/images/3/3c/Icon_jobs_6.png",
-// 	"Mago":           "https://static.wikia.nocookie.net/ragnarok-online-encyclopedia/images/9/99/Icon_jobs_2.png",
-// 	"Mercador":       "https://static.wikia.nocookie.net/ragnarok-online-encyclopedia/images/9/9e/Icon_jobs_5.png",
-// 	"Noviço":         "https://static.wikia.nocookie.net/ragnarok-online-encyclopedia/images/c/c5/Icon_jobs_4.png",
-// 	"Alquimista":     "https://static.wikia.nocookie.net/ragnarok-online-encyclopedia/images/c/c7/Icon_jobs_18.png",
-// 	"Arruaceiro":     "https://static.wikia.nocookie.net/ragnarok-online-encyclopedia/images/4/48/Icon_jobs_17.png",
-// 	"Bardo":          "https://static.wikia.nocookie.net/ragnarok-online-encyclopedia/images/6/69/Icon_jobs_19.png",
-// 	"Bruxo":          "https://static.wikia.nocookie.net/ragnarok-online-encyclopedia/images/0/09/Icon_jobs_9.png",
-// 	"Cavaleiro":      "https://static.wikia.nocookie.net/ragnarok-online-encyclopedia/images/1/1d/Icon_jobs_7.png",
-// 	"Caçador":        "https://static.wikia.nocookie.net/ragnarok-online-encyclopedia/images/e/eb/Icon_jobs_11.png",
-// 	"Ferreiro":       "https://static.wikia.nocookie.net/ragnarok-online-encyclopedia/images/7/7b/Icon_jobs_10.png",
-// 	"Mercenário":     "https://static.wikia.nocookie.net/ragnarok-online-encyclopedia/images/9/9c/Icon_jobs_12.png",
-// 	"Monge":          "https://static.wikia.nocookie.net/ragnarok-online-encyclopedia/images/4/44/Icon_jobs_15.png",
-// 	"Odalisca":       "https://static.wikia.nocookie.net/ragnarok-online-encyclopedia/images/d/dc/Icon_jobs_20.png",
-// 	"Sacerdote":      "https://static.wikia.nocookie.net/ragnarok-online-encyclopedia/images/3/3a/Icon_jobs_8.png",
-// 	"Sábio":          "https://static.wikia.nocookie.net/ragnarok-online-encyclopedia/images/0/0e/Icon_jobs_16.png",
-// 	"Templário":      "https://static.wikia.nocookie.net/ragnarok-online-encyclopedia/images/e/e1/Icon_jobs_14.png",
-// }
-
 const MvpKillCountOffset = 3
-
-// var templateFuncs = template.FuncMap{
-// 	"lower": strings.ToLower,
-// 	"cleanCardName": func(cardName string) string {
-// 		return strings.TrimSpace(reCardRemover.ReplaceAllString(cardName, " "))
-// 	},
-// 	"toggleOrder": func(currentOrder string) string {
-// 		if currentOrder == "ASC" {
-// 			return "DESC"
-// 		}
-// 		return "ASC"
-// 	},
-// 	"parseDropMessage": func(msg string) map[string]string {
-// 		// dropMessageRegex is defined in scraper.go in the package-level var block
-// 		matches := dropMessageRegex.FindStringSubmatch(msg)
-// 		if len(matches) == 4 { // Check for 4 matches
-// 			// matches[0] = full string
-// 			// matches[1] = character name (e.g., "Lindinha GC")
-// 			// matches[2] = "got" or "stole"
-// 			// matches[3] = rest of message (e.g., "Raydric's Iron Cain (chance: 0.01%)")
-// 			return map[string]string{
-// 				"charName": matches[1],
-// 				"message":  matches[2] + " " + matches[3], // Reconstruct "got Item..." or "stole Item..."
-// 			}
-// 		}
-// 		return nil
-// 	},
-// 	"formatZeny": func(zeny int64) string {
-// 		s := strconv.FormatInt(zeny, 10)
-// 		if len(s) <= 3 {
-// 			return s
-// 		}
-// 		var result []string
-// 		for i := len(s); i > 0; i -= 3 {
-// 			start := i - 3
-// 			if start < 0 {
-// 				start = 0
-// 			}
-// 			result = append([]string{s[start:i]}, result...)
-// 		}
-// 		return strings.Join(result, ".")
-// 	},
-// 	"formatRMT": func(rmt int64) string {
-//
-// 		return fmt.Sprintf("R$ %d", rmt)
-// 	},
-// 	"getKillCount": func(kills map[string]int, mobID string) int {
-// 		return kills[mobID]
-// 	},
-// 	"formatAvgLevel": func(level float64) string {
-// 		if level == 0 {
-// 			return "N/A"
-// 		}
-// 		return fmt.Sprintf("%.1f", level)
-// 	},
-// 	"getClassImageURL": func(class string) string {
-// 		if url, ok := classImages[class]; ok {
-// 			return url
-// 		}
-// 		// Fallback icon (Aprendiz)
-// 		return "https://static.wikia.nocookie.net/ragnarok-online-encyclopedia/images/8/8b/Icon_jobs_0.png"
-// 	},
-// 	"TmplHTML": func(s string) template.HTML {
-// 		return template.HTML(s)
-// 	},
-// 	"dict": func(values ...interface{}) (map[string]interface{}, error) {
-// 		if len(values)%2 != 0 {
-// 			return nil, fmt.Errorf("invalid dict call: odd number of arguments")
-// 		}
-// 		dict := make(map[string]interface{}, len(values)/2)
-// 		for i := 0; i < len(values); i += 2 {
-// 			key, ok := values[i].(string)
-// 			if !ok {
-// 				return nil, fmt.Errorf("dict keys must be strings")
-// 			}
-// 			dict[key] = values[i+1]
-// 		}
-// 		return dict, nil
-// 	},
-// }
 
 type PaginationData struct {
 	CurrentPage  int
@@ -967,7 +875,7 @@ type PaginationData struct {
 	HasPrevPage  bool
 	HasNextPage  bool
 	Offset       int
-	ItemsPerPage int // <-- ADD THIS FIELD
+	ItemsPerPage int
 }
 
 // newPaginationData creates a pagination object based on the request and total items.
@@ -1185,9 +1093,7 @@ func searchLocalDBAsync(wg *sync.WaitGroup, resultChan chan<- []int, searchQuery
 
 func getItemTypeTabs() []ItemTypeTab {
 	var itemTypes []ItemTypeTab
-	// --- MODIFICATION: Query internal_item_db (using the 'type' column) ---
 	rows, err := db.Query("SELECT DISTINCT type FROM internal_item_db WHERE type IS NOT NULL AND type != '' ORDER BY type ASC")
-	// --- END MODIFICATION ---
 	if err != nil {
 		log.Printf("[W] [HTTP] Could not query for item types: %v", err)
 		return itemTypes
@@ -1200,9 +1106,6 @@ func getItemTypeTabs() []ItemTypeTab {
 			log.Printf("[W] [HTTP] Failed to scan item type: %v", err)
 			continue
 		}
-		// --- MODIFICATION: The mapItemTypeToTabData function expects "CamelCase"
-		// The internal_item_db stores "Usable", "Etc", "Weapon", "Armor".
-		// We will map these.
 		var mappedType string
 		switch strings.ToLower(itemType) {
 		case "healing":
@@ -1233,7 +1136,6 @@ func getItemTypeTabs() []ItemTypeTab {
 			mappedType = itemType // Fallback
 		}
 		itemTypes = append(itemTypes, mapItemTypeToTabData(mappedType))
-		// --- END MODIFICATION ---
 	}
 	return itemTypes
 }
@@ -1364,6 +1266,7 @@ func init() {
 		"search.html",
 		"drop_stats.html",
 		"market_stats.html",
+		"character_stats.html",
 	}
 
 	for _, tmplName := range templates {
@@ -5406,4 +5309,154 @@ func fetchCharacterSpecialHistory(charName string) (guildHistory []CharacterChan
 // tmplURL marks a string as a safe URL for templates.
 func tmplURL(s string) template.URL {
 	return template.URL(s)
+}
+
+// getCharacterStatsKPIs fetches the 4 key performance indicators.
+func getCharacterStatsKPIs() (int64, int64, float64, float64, error) {
+	var totalChars, totalZeny int64
+	var avgBase, avgJob float64
+
+	query := `SELECT COUNT(*), SUM(zeny), AVG(base_level), AVG(job_level) FROM characters`
+	err := db.QueryRow(query).Scan(&totalChars, &totalZeny, &avgBase, &avgJob)
+	if err != nil {
+		return 0, 0, 0, 0, fmt.Errorf("could not query character KPIs: %w", err)
+	}
+	return totalChars, totalZeny, avgBase, avgJob, nil
+}
+
+// getCharacterLevelDistribution fetches the count of characters in 10-level buckets.
+func getCharacterLevelDistribution() ([]LevelDistPoint, error) {
+	query := `
+		SELECT
+			CASE
+				WHEN base_level BETWEEN 1 AND 10 THEN '1-10'
+				WHEN base_level BETWEEN 11 AND 20 THEN '11-20'
+				WHEN base_level BETWEEN 21 AND 30 THEN '21-30'
+				WHEN base_level BETWEEN 31 AND 40 THEN '31-40'
+				WHEN base_level BETWEEN 41 AND 50 THEN '41-50'
+				WHEN base_level BETWEEN 51 AND 60 THEN '51-60'
+				WHEN base_level BETWEEN 61 AND 70 THEN '61-70'
+				WHEN base_level BETWEEN 71 AND 80 THEN '71-80'
+				WHEN base_level BETWEEN 81 AND 90 THEN '81-90'
+				WHEN base_level BETWEEN 91 AND 99 THEN '91-99'
+				ELSE 'Other'
+			END as level_range,
+			COUNT(*) as count
+		FROM characters
+		GROUP BY level_range
+		ORDER BY MIN(base_level) ASC
+	`
+	rows, err := db.Query(query)
+	if err != nil {
+		return nil, fmt.Errorf("could not query level distribution: %w", err)
+	}
+	defer rows.Close()
+
+	var dist []LevelDistPoint
+	for rows.Next() {
+		var point LevelDistPoint
+		if err := rows.Scan(&point.Range, &point.Count); err != nil {
+			return nil, fmt.Errorf("failed to scan level dist row: %w", err)
+		}
+		dist = append(dist, point)
+	}
+	return dist, nil
+}
+
+// getTopCharacters fetches a list of characters, ordered by a specific column.
+func getTopCharacters(orderBy string, limit int) ([]PlayerCharacter, error) {
+	// We re-use PlayerCharacter struct, but only need to populate fields
+	// used by the template table.
+	query := fmt.Sprintf(`
+		SELECT rank, name, class, guild_name, zeny, base_level, job_level, experience
+		FROM characters
+		ORDER BY %s
+		LIMIT %d
+	`, orderBy, limit)
+
+	rows, err := db.Query(query)
+	if err != nil {
+		return nil, fmt.Errorf("could not query top characters: %w", err)
+	}
+	defer rows.Close()
+
+	var characters []PlayerCharacter
+	for rows.Next() {
+		var p PlayerCharacter
+		err := rows.Scan(
+			&p.Rank, &p.Name, &p.Class, &p.GuildName, &p.Zeny,
+			&p.BaseLevel, &p.JobLevel, &p.Experience,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("failed to scan top character row: %w", err)
+		}
+		characters = append(characters, p)
+	}
+	return characters, nil
+}
+
+// characterStatsHandler serves the page with server-wide character statistics.
+func characterStatsHandler(w http.ResponseWriter, r *http.Request) {
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "Failed to parse form", http.StatusBadRequest)
+		return
+	}
+
+	data := CharacterStatsPageData{
+		PageTitle:               "Character Stats",
+		LastCharacterScrapeTime: GetLastCharacterScrapeTime(), // From utils.go
+	}
+
+	// 1. Fetch KPIs
+	var kpiErr error
+	data.TotalCharacters, data.TotalZeny, data.AvgBaseLevel, data.AvgJobLevel, kpiErr = getCharacterStatsKPIs()
+	if kpiErr != nil {
+		log.Printf("[E] [HTTP/CharStats] %v", kpiErr)
+		// Don't fail the page, just show 0s
+	}
+
+	// 2. Fetch Class Distribution Chart data
+	// We can re-use the function from the main characters page.
+	// We pass an empty whereClause/params to get all characters.
+	graphFilter := r.Form["graph_filter"]
+	if len(graphFilter) == 0 {
+		// Set default graph filter
+		graphFilter = []string{"first", "second"}
+	}
+	classDistJSON, graphFilterMap, _ := getCharacterChartData("", nil, graphFilter)
+	data.ClassDistributionJSON = classDistJSON
+	data.GraphFilter = graphFilterMap
+
+	// 3. Fetch Level Distribution Chart data
+	levelDist, err := getCharacterLevelDistribution()
+	if err != nil {
+		log.Printf("[E] [HTTP/CharStats] %v", err)
+	}
+	levelDistJSON, _ := json.Marshal(levelDist)
+	data.LevelDistributionJSON = template.JS(levelDistJSON)
+
+	// 4. Fetch Top 10 Richest
+	data.TopRichestCharacters, err = getTopCharacters("zeny DESC", 10)
+	if err != nil {
+		log.Printf("[E] [HTTP/CharStats] %v", err)
+	}
+
+	// 5. Fetch Top 10 by Experience
+	data.TopExperienceCharacters, err = getTopCharacters("base_level DESC, experience DESC", 10)
+	if err != nil {
+		log.Printf("[E] [HTTP/CharStats] %v", err)
+	}
+
+	renderTemplate(w, r, "character_stats.html", data)
+}
+
+// ... (rest of handlers.go)
+
+// defaultFunc returns the default value if the given value is an empty string.
+// Used in templates like {{ .Value | default "Default" }}
+func defaultFunc(defaultValue string, value string) string {
+	if value == "" {
+		return defaultValue
+	}
+	return value
 }
