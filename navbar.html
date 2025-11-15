@@ -149,7 +149,7 @@
                 <a href="/characters" class="block py-2 px-4 text-sm {{if eq .Data.PageTitle "Characters"}}bg-blue-50 dark:bg-blue-900 text-blue-600 dark:text-blue-300 font-semibold{{else}}text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700{{end}}">{{.Page.T.nav_characters}}</a>
                 <a href="/guilds" class="block py-2 px-4 text-sm {{if eq .Data.PageTitle "Guilds"}}bg-blue-50 dark:bg-blue-900 text-blue-600 dark:text-blue-300 font-semibold{{else}}text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700{{end}}">{{.Page.T.nav_guilds}}</a>
                 <a href="/mvp-kills" class="block py-2 px-4 text-sm {{if eq .Data.PageTitle "MVP Kills"}}bg-blue-50 dark:bg-blue-900 text-blue-600 dark:text-blue-300 font-semibold{{else}}text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700{{end}}">{{.Page.T.nav_mvp_kills}}</a>
-                [cite_start]{{/* --- THIS IS THE FIX [cite: 1587] --- */}}
+                {{/* --- THIS IS THE FIX [cite: 1587] --- */}}
                 <a href="/woe" class="block py-2 px-4 text-sm {{if eq .Data.PageTitle "WoE Rankings"}}bg-blue-50 dark:bg-blue-900 text-blue-600 dark:text-blue-300 font-semibold{{else}}text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700{{end}}">{{.Page.T.nav_woe_rankings}}</a>
             </div>
         </details>
