@@ -13,7 +13,6 @@ import (
 	"net/http"
 	"net/url"
 	"regexp"
-	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -4955,221 +4954,154 @@ func fetchMarketResults(wg *sync.WaitGroup, results *[]ItemSummary, likeQuery st
 	}
 }
 
-// fetchDropStatistics queries and aggregates all item drops.
-func fetchDropStatistics(itemSortBy, itemOrder, playerSortBy, playerOrder string) ([]DropStatItem, int64, int64, []DropStatPlayer, error) { // <-- MODIFIED SIGNATURE
-	log.Println("[I] [HTTP/Stats] Fetching drop statistics...")
+// fetchDropStatistics queries and aggregates all item drops from the structured changelog.
+func fetchDropStatistics(itemSortBy, itemOrder, playerSortBy, playerOrder string) ([]DropStatItem, int64, int64, []DropStatPlayer, error) {
+	log.Println("[I] [HTTP/Stats] Fetching drop statistics (Optimized)...")
 
-	query := `SELECT message, timestamp FROM chat WHERE channel = 'Drop' AND character_name = 'System' ORDER BY timestamp DESC`
-	rows, err := db.Query(query)
+	// 1. Get KPIs (Total Drops, Unique Items)
+	var totalDrops, uniqueDropItems int64
+	kpiQuery := `
+		SELECT
+			COUNT(*),
+			COUNT(DISTINCT SUBSTR(activity_description, 15))
+		FROM character_changelog
+		WHERE activity_description LIKE 'Dropped item: %'`
+	err := db.QueryRow(kpiQuery).Scan(&totalDrops, &uniqueDropItems)
 	if err != nil {
-		return nil, 0, 0, nil, fmt.Errorf("could not query chat for drop stats: %w", err)
+		if err == sql.ErrNoRows {
+			return nil, 0, 0, nil, nil // No drops, not an error
+		}
+		return nil, 0, 0, nil, fmt.Errorf("could not query drop stats KPIs: %w", err)
+	}
+
+	if totalDrops == 0 {
+		return nil, 0, 0, nil, nil // No drops, return early
+	}
+
+	// 2. Define the Common Table Expression (CTE) to get a clean, de-duplicated
+	// list of drops, each with its canonical item_id, name_en, name_pt, and type.
+	const cte = `
+	WITH deduped_logs AS (
+		SELECT
+			cl.id,
+			cl.change_time,
+			cl.character_name,
+			SUBSTR(cl.activity_description, 15) AS log_name,
+			MIN(i.item_id) as item_id,
+			MIN(i.name) as name_en,
+			MIN(i.name_pt) as name_pt,
+			MIN(i.type) as item_type
+		FROM
+			character_changelog cl
+		LEFT JOIN
+			internal_item_db i ON SUBSTR(cl.activity_description, 15) = i.name OR SUBSTR(cl.activity_description, 15) = i.name_pt
+		WHERE
+			cl.activity_description LIKE 'Dropped item: %%'
+		GROUP BY
+			cl.id, cl.change_time, cl.character_name, cl.activity_description
+	)
+	`
+
+	// 3. Get Top Dropped Items (with dynamic sorting, using the CTE)
+	itemSortMap := map[string]string{
+		"name":      "item_name_display",
+		"item_id":   "t.item_id",
+		"count":     "total_count",
+		"last_seen": "last_seen",
+	}
+	itemSortCol, ok := itemSortMap[itemSortBy]
+	if !ok {
+		itemSortCol = "total_count"
+	}
+	if itemOrder != "ASC" && itemOrder != "DESC" {
+		itemOrder = "DESC"
+	}
+	itemOrderBy := fmt.Sprintf("ORDER BY %s %s, item_name_display ASC", itemSortCol, itemOrder)
+
+	// This query now groups the results from the CTE.
+	itemQuery := fmt.Sprintf(`
+		%s
+		SELECT
+			COALESCE(t.name_en, t.log_name) AS item_name_display,
+			MAX(t.change_time) AS last_seen,
+			COUNT(*) AS total_count,
+			t.item_id,
+			t.name_pt
+		FROM deduped_logs AS t
+		GROUP BY
+			COALESCE(t.item_id, t.log_name), 
+			COALESCE(t.name_en, t.log_name), 
+			t.name_pt
+		%s`, cte, itemOrderBy)
+
+	rows, err := db.Query(itemQuery)
+	if err != nil {
+		return nil, totalDrops, uniqueDropItems, nil, fmt.Errorf("could not query for item drop stats: %w", err)
 	}
 	defer rows.Close()
 
-	// --- (Aggregation map setup - unchanged) ---
-	type playerAggStats struct {
-		Total int64
-		Cards int64
-		Items int64
-	}
-	itemStats := make(map[string]*struct {
-		Count    int
-		LastSeen string
-	})
-	playerStats := make(map[string]*playerAggStats)
-	var totalDrops int64 = 0
-	var processedRows int = 0
-
-	// --- (Row processing loop - unchanged) ---
-	for rows.Next() {
-		processedRows++
-		var msg, timestampStr string
-		if err := rows.Scan(&msg, &timestampStr); err != nil {
-			log.Printf("[W] [HTTP/Chat] Failed to scan drop stat row: %v", err)
-			continue
-		}
-
-		log.Printf("[D] [DropStats] Processing Msg: %s", msg)
-
-		dropMatches := dropMessageRegex.FindStringSubmatch(msg)
-		var itemMsgFragment string
-		var playerName string
-		if len(dropMatches) == 4 {
-			playerName = dropMatches[1]
-			itemMsgFragment = dropMatches[3]
-			log.Printf("[D] [DropStats] -> Matched drop. Player: '%s', Fragment: %s", playerName, itemMsgFragment)
-		} else {
-			log.Printf("[D] [DropStats] -> FAILED dropMessageRegex match. (len: %d)", len(dropMatches))
-			continue
-		}
-
-		itemMatches := reItemFromDrop.FindStringSubmatch(itemMsgFragment)
-		var itemName string
-
-		if len(itemMatches) == 4 {
-			if itemMatches[1] != "" {
-				itemName = itemMatches[1]
-			} else if itemMatches[2] != "" {
-				itemName = itemMatches[2]
-			} else if itemMatches[3] != "" {
-				itemName = itemMatches[3]
-			}
-			log.Printf("[D] [DropStats] -> Matched item. Name: '%s' (Matches: %v)", itemName, itemMatches[1:])
-		} else {
-			log.Printf("[D] [DropStats] -> FAILED reItemFromDrop match. (len: %d)", len(itemMatches))
-		}
-
-		itemName = strings.TrimSpace(itemName)
-		if itemName == "" {
-			log.Printf("[W] [HTTP/Chat] Could not parse item name from fragment: %s", itemMsgFragment)
-			continue
-		}
-
-		totalDrops++
-
-		if _, ok := playerStats[playerName]; !ok {
-			playerStats[playerName] = &playerAggStats{}
-		}
-		agg := playerStats[playerName]
-		agg.Total++
-
-		isCard := strings.HasSuffix(itemName, " Card")
-		if isCard {
-			agg.Cards++
-		} else {
-			agg.Items++
-		}
-
-		if stat, ok := itemStats[itemName]; ok {
-			stat.Count++
-		} else {
-			formattedTime := timestampStr
-			if parsedTime, err := time.Parse(time.RFC3339, timestampStr); err == nil {
-				formattedTime = parsedTime.Format("2006-01-02 15:04")
-			}
-			itemStats[itemName] = &struct {
-				Count    int
-				LastSeen string
-			}{
-				Count:    1,
-				LastSeen: formattedTime,
-			}
-		}
-	}
-
-	log.Printf("[I] [HTTP/Chat] Drop stats processed. Total DB rows: %d. Total drops parsed: %d. Unique items: %d. Unique players: %d", processedRows, totalDrops, len(itemStats), len(playerStats))
-
-	uniqueDropItems := int64(len(itemStats))
-
-	if totalDrops == 0 {
-		return nil, totalDrops, uniqueDropItems, nil, nil
-	}
-
-	// --- (Item DB Join logic - unchanged) ---
-	placeholders := strings.Repeat("?,", len(itemStats)-1) + "?"
-	params := make([]interface{}, len(itemStats))
-	i := 0
-	for name := range itemStats {
-		params[i] = name
-		i++
-	}
-	dbItems := make(map[string]struct {
-		ItemID sql.NullInt64
-		NamePT sql.NullString
-	})
-	joinQuery := fmt.Sprintf(`
-        SELECT name, item_id, name_pt 
-        FROM internal_item_db 
-        WHERE name IN (%s)`, placeholders)
-	joinRows, err := db.Query(joinQuery, params...)
-	if err != nil {
-		log.Printf("[W] [HTTP/Chat] Failed to join internal_item_db for drop stats: %v", err)
-	} else {
-		defer joinRows.Close()
-		for joinRows.Next() {
-			var name string
-			var itemID sql.NullInt64
-			var namePT sql.NullString
-			if err := joinRows.Scan(&name, &itemID, &namePT); err == nil {
-				dbItems[name] = struct {
-					ItemID sql.NullInt64
-					NamePT sql.NullString
-				}{itemID, namePT}
-			}
-		}
-	}
-
-	// Create final item slice
 	var dropStats []DropStatItem
-	for name, stat := range itemStats {
-		dbInfo := dbItems[name]
-		dropStats = append(dropStats, DropStatItem{
-			ItemID:   dbInfo.ItemID,
-			Name:     name,
-			NamePT:   dbInfo.NamePT,
-			Count:    stat.Count,
-			LastSeen: stat.LastSeen,
-		})
+	for rows.Next() {
+		var item DropStatItem
+		var lastSeenStr string
+		err := rows.Scan(&item.Name, &lastSeenStr, &item.Count, &item.ItemID, &item.NamePT)
+		if err != nil {
+			log.Printf("[W] [HTTP/Stats] Failed to scan item drop stat row: %v", err)
+			continue
+		}
+		if parsedTime, pErr := time.Parse(time.RFC3339, lastSeenStr); pErr == nil {
+			item.LastSeen = parsedTime.Format("2006-01-02 15:04")
+		} else {
+			item.LastSeen = lastSeenStr
+		}
+		dropStats = append(dropStats, item)
 	}
+	rows.Close() // Close rows explicitly before next query
 
-	// --- MODIFIED: Dynamic Sorting for dropStats ---
-	sort.Slice(dropStats, func(i, j int) bool {
-		var less bool
-		switch itemSortBy {
-		case "name":
-			less = dropStats[i].Name < dropStats[j].Name
-		case "item_id":
-			idI := dropStats[i].ItemID.Int64
-			idJ := dropStats[j].ItemID.Int64
-			if !dropStats[i].ItemID.Valid {
-				idI = 0
-			}
-			if !dropStats[j].ItemID.Valid {
-				idJ = 0
-			}
-			less = idI < idJ
-		case "last_seen":
-			less = dropStats[i].LastSeen < dropStats[j].LastSeen
-		default: // Default to "count"
-			less = dropStats[i].Count < dropStats[j].Count
-		}
+	// 4. Get Top Player Drops (with dynamic sorting, using the CTE)
+	playerSortMap := map[string]string{
+		"name":  "character_name",
+		"count": "total_drops",
+		"cards": "card_drops",
+		"items": "item_drops",
+	}
+	playerSortCol, ok := playerSortMap[playerSortBy]
+	if !ok {
+		playerSortCol = "total_drops"
+	}
+	if playerOrder != "ASC" && playerOrder != "DESC" {
+		playerOrder = "DESC"
+	}
+	playerOrderBy := fmt.Sprintf("ORDER BY %s %s, character_name ASC", playerSortCol, playerOrder)
 
-		if itemOrder == "DESC" {
-			return !less
-		}
-		return less
-	})
+	// This query also groups the results from the CTE.
+	playerQuery := fmt.Sprintf(`
+		%s
+		SELECT
+			t.character_name,
+			COUNT(*) AS total_drops,
+			SUM(CASE WHEN t.item_type = 'Card' THEN 1 ELSE 0 END) AS card_drops,
+			SUM(CASE WHEN t.item_type != 'Card' OR t.item_type IS NULL THEN 1 ELSE 0 END) AS item_drops
+		FROM deduped_logs AS t
+		GROUP BY
+			t.character_name
+		%s`, cte, playerOrderBy)
 
-	// Create final player slice
+	rows, err = db.Query(playerQuery)
+	if err != nil {
+		return nil, totalDrops, uniqueDropItems, nil, fmt.Errorf("could not query for player drop stats: %w", err)
+	}
+	defer rows.Close()
+
 	var playerStatsSlice []DropStatPlayer
-	for name, agg := range playerStats {
-		playerStatsSlice = append(playerStatsSlice, DropStatPlayer{
-			PlayerName: name,
-			Count:      agg.Total,
-			CardCount:  agg.Cards,
-			ItemCount:  agg.Items,
-		})
+	for rows.Next() {
+		var p DropStatPlayer
+		if err := rows.Scan(&p.PlayerName, &p.Count, &p.CardCount, &p.ItemCount); err != nil {
+			log.Printf("[W] [HTTP/Stats] Failed to scan player drop stat row: %v", err)
+			continue
+		}
+		playerStatsSlice = append(playerStatsSlice, p)
 	}
-
-	// --- MODIFIED: Dynamic Sorting for playerStatsSlice ---
-	sort.Slice(playerStatsSlice, func(i, j int) bool {
-		var less bool
-		switch playerSortBy {
-		case "name":
-			less = playerStatsSlice[i].PlayerName < playerStatsSlice[j].PlayerName
-		case "cards":
-			less = playerStatsSlice[i].CardCount < playerStatsSlice[j].CardCount
-		case "items":
-			less = playerStatsSlice[i].ItemCount < playerStatsSlice[j].ItemCount
-		default: // Default to "count"
-			less = playerStatsSlice[i].Count < playerStatsSlice[j].Count
-		}
-
-		if playerOrder == "DESC" {
-			return !less
-		}
-		return less
-	})
 
 	return dropStats, totalDrops, uniqueDropItems, playerStatsSlice, nil
 }
