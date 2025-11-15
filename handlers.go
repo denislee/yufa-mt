@@ -1784,9 +1784,6 @@ func activityHandler(w http.ResponseWriter, r *http.Request) {
 	renderTemplate(w, r, "activity.html", data)
 }
 
-// In handlers.go, add this import:
-// "golang.org/x/sync/errgroup"
-
 func itemHistoryHandler(w http.ResponseWriter, r *http.Request) {
 	if err := r.ParseForm(); err != nil {
 		http.Error(w, "Failed to parse form", http.StatusBadRequest)
@@ -1806,11 +1803,14 @@ func itemHistoryHandler(w http.ResponseWriter, r *http.Request) {
 	// --- Concurrent Data Fetching ---
 	var g errgroup.Group
 	var rmsItemDetails *RMSItem
-	var currentListings []ItemListing
 	var finalPriceHistory []PricePointDetails
 	var overallLowest, overallHighest sql.NullInt64
 	var dropHistory []PlayerDropInfo
 	var totalListings int
+
+	// --- OPTIMIZATION: These are the new variables for Task 3 ---
+	var currentLowest *ItemListing
+	var currentHighest *ItemListing
 
 	// Task 2: Get Item Details (from local DB)
 	g.Go(func() error {
@@ -1819,15 +1819,32 @@ func itemHistoryHandler(w http.ResponseWriter, r *http.Request) {
 		return nil // Not critical, don't return error
 	})
 
-	// Task 3: Get current (available) listings
+	// --- OPTIMIZATION: Task 3 is now two concurrent, lightweight queries ---
+	// Task 3a: Get current LOWEST (available) listing
 	g.Go(func() error {
 		var err error
-		currentListings, err = fetchCurrentListings(itemName)
+		currentLowest, err = fetchCurrentLowestListing(itemName)
 		if err != nil {
-			log.Printf("[E] [HTTP/History] Step 3: %v", err)
+			log.Printf("[E] [HTTP/History] Step 3a: %v", err)
 			return err // This is a critical query
 		}
-		log.Printf("[D] [HTTP/History] Step 3: Found %d current (available) listings.", len(currentListings))
+		if currentLowest != nil {
+			log.Printf("[D] [HTTP/History] Step 3a: Found current lowest listing.")
+		}
+		return nil
+	})
+
+	// Task 3b: Get current HIGHEST (available) listing
+	g.Go(func() error {
+		var err error
+		currentHighest, err = fetchCurrentHighestListing(itemName)
+		if err != nil {
+			log.Printf("[E] [HTTP/History] Step 3b: %v", err)
+			return err // This is a critical query
+		}
+		if currentHighest != nil {
+			log.Printf("[D] [HTTP/History] Step 3b: Found current highest listing.")
+		}
 		return nil
 	})
 
@@ -1879,14 +1896,6 @@ func itemHistoryHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	// --- End Concurrent Fetching ---
-
-	// --- Sequential steps that depend on concurrent results ---
-
-	var currentLowest, currentHighest *ItemListing
-	if len(currentListings) > 0 {
-		currentLowest = &currentListings[0]
-		currentHighest = &currentListings[len(currentListings)-1]
-	}
 
 	// Step 7: Create pagination and fetch the current page of listings
 	const listingsPerPage = 50
@@ -3973,36 +3982,66 @@ func fetchItemDetails(itemID int) *RMSItem {
 	return nil // Not found
 }
 
-// fetchCurrentListings gets all currently available listings for an item, sorted by price.
-func fetchCurrentListings(itemName string) ([]ItemListing, error) {
+// fetchCurrentLowestListing gets only the single lowest-priced available listing.
+func fetchCurrentLowestListing(itemName string) (*ItemListing, error) {
 	query := `
 		SELECT CAST(REPLACE(REPLACE(price, ',', ''), 'z', '') AS INTEGER) as price_int, 
 		       quantity, store_name, seller_name, map_name, map_coordinates, date_and_time_retrieved
 		FROM items WHERE name_of_the_item = ? AND is_available = 1 
-		ORDER BY price_int ASC;
+		ORDER BY price_int ASC, id DESC
+		LIMIT 1;
 	`
-	rows, err := db.Query(query, itemName)
-	if err != nil {
-		return nil, fmt.Errorf("current listings query error: %w", err)
-	}
-	defer rows.Close()
+	var listing ItemListing
+	var timestampStr string
+	err := db.QueryRow(query, itemName).Scan(
+		&listing.Price, &listing.Quantity, &listing.StoreName,
+		&listing.SellerName, &listing.MapName, &listing.MapCoordinates, &timestampStr,
+	)
 
-	var listings []ItemListing
-	for rows.Next() {
-		var listing ItemListing
-		var timestampStr string
-		if err := rows.Scan(&listing.Price, &listing.Quantity, &listing.StoreName, &listing.SellerName, &listing.MapName, &listing.MapCoordinates, &timestampStr); err != nil {
-			log.Printf("[W] [HTTP/History] Failed to scan current listing row: %v", err)
-			continue
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return nil, nil // No listing found is not an error
 		}
-		if parsedTime, err := time.Parse(time.RFC3339, timestampStr); err == nil {
-			listing.Timestamp = parsedTime.Format("2006-01-02 15:04")
-		} else {
-			listing.Timestamp = timestampStr
-		}
-		listings = append(listings, listing)
+		return nil, fmt.Errorf("current lowest listing query error: %w", err)
 	}
-	return listings, nil
+
+	if parsedTime, pErr := time.Parse(time.RFC3339, timestampStr); pErr == nil {
+		listing.Timestamp = parsedTime.Format("2006-01-02 15:04")
+	} else {
+		listing.Timestamp = timestampStr
+	}
+	return &listing, nil
+}
+
+// fetchCurrentHighestListing gets only the single highest-priced available listing.
+func fetchCurrentHighestListing(itemName string) (*ItemListing, error) {
+	query := `
+		SELECT CAST(REPLACE(REPLACE(price, ',', ''), 'z', '') AS INTEGER) as price_int, 
+		       quantity, store_name, seller_name, map_name, map_coordinates, date_and_time_retrieved
+		FROM items WHERE name_of_the_item = ? AND is_available = 1 
+		ORDER BY price_int DESC, id DESC
+		LIMIT 1;
+	`
+	var listing ItemListing
+	var timestampStr string
+	err := db.QueryRow(query, itemName).Scan(
+		&listing.Price, &listing.Quantity, &listing.StoreName,
+		&listing.SellerName, &listing.MapName, &listing.MapCoordinates, &timestampStr,
+	)
+
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return nil, nil // No listing found is not an error
+		}
+		return nil, fmt.Errorf("current highest listing query error: %w", err)
+	}
+
+	if parsedTime, pErr := time.Parse(time.RFC3339, timestampStr); pErr == nil {
+		listing.Timestamp = parsedTime.Format("2006-01-02 15:04")
+	} else {
+		listing.Timestamp = timestampStr
+	}
+	return &listing, nil
 }
 
 // fetchPriceHistory aggregates the lowest/highest price points over time for the graph.
