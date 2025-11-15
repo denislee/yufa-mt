@@ -1092,41 +1092,41 @@ func sanitizeString(input string, sanitizer *regexp.Regexp) string {
 	return sanitizer.ReplaceAllString(input, "")
 }
 
-// getCombinedItemIDs searches local and remote sources concurrently for item IDs.
+// getCombinedItemIDs searches the local item DB for matching item IDs.
+// This is the optimized version that *only* uses the local database
+// and removes the live (slow) web scrape.
 func getCombinedItemIDs(searchQuery string) ([]int, error) {
-	var wg sync.WaitGroup
-	// Create buffered channels to avoid blocking the goroutines
-	scrapedIDsChan := make(chan []int, 1)
-	localIDsChan := make(chan []int, 1)
-
-	wg.Add(2)
-	go searchRODatabaseAsync(&wg, scrapedIDsChan, searchQuery)
-	go searchLocalDBAsync(&wg, localIDsChan, searchQuery)
-	wg.Wait()
-
-	// Safely close and read from the channels
-	close(scrapedIDsChan)
-	close(localIDsChan)
-	scrapedIDs := <-scrapedIDsChan
-	localIDs := <-localIDsChan
-
-	// Combine and de-duplicate
-	combinedIDs := make(map[int]struct{}, len(scrapedIDs)+len(localIDs))
-	for _, id := range scrapedIDs {
-		combinedIDs[id] = struct{}{}
+	const query = `
+		SELECT item_id FROM internal_item_db
+		WHERE name LIKE ? OR name_pt LIKE ?
+	`
+	likeQuery := "%" + searchQuery + "%"
+	rows, err := db.Query(query, likeQuery, likeQuery)
+	if err != nil {
+		log.Printf("[W] [HTTP] Local item ID search failed for '%s': %v", searchQuery, err)
+		return nil, fmt.Errorf("local item search failed: %w", err)
 	}
-	for _, id := range localIDs {
-		combinedIDs[id] = struct{}{}
+	defer rows.Close()
+
+	// Use a map to automatically handle de-duplication
+	idMap := make(map[int]struct{})
+	for rows.Next() {
+		var id int
+		if err := rows.Scan(&id); err == nil {
+			idMap[id] = struct{}{}
+		}
 	}
 
-	if len(combinedIDs) == 0 {
-		return nil, nil // Return nil slice instead of empty slice
+	if len(idMap) == 0 {
+		return nil, nil // No results
 	}
 
-	idList := make([]int, 0, len(combinedIDs))
-	for id := range combinedIDs {
+	// Convert map keys to a slice
+	idList := make([]int, 0, len(idMap))
+	for id := range idMap {
 		idList = append(idList, id)
 	}
+
 	return idList, nil
 }
 
