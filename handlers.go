@@ -4045,51 +4045,64 @@ func fetchCurrentHighestListing(itemName string) (*ItemListing, error) {
 }
 
 // fetchPriceHistory aggregates the lowest/highest price points over time for the graph.
-// It de-duplicates consecutive identical price points.
+// This optimized version uses window functions to avoid correlated subqueries.
 func fetchPriceHistory(itemName string) ([]PricePointDetails, error) {
-	// This complex query is necessary to find the *specific* item (and its seller)
-	// that had the min/max price at each distinct timestamp.
-	priceChangeQuery := `
+	// This query uses a Common Table Expression (CTE) with window functions (ROW_NUMBER)
+	// to find the min and max priced item for each timestamp in a single pass.
+	// This is significantly more efficient than the previous version which used
+	// two separate subqueries, each with its own correlated subquery.
+	const priceChangeQuery = `
+		WITH RankedItems AS (
+			SELECT
+				date_and_time_retrieved,
+				CAST(REPLACE(REPLACE(price, ',', ''), 'z', '') AS INTEGER) as price_int,
+				quantity,
+				store_name,
+				seller_name,
+				map_name,
+				map_coordinates,
+				-- Rank items from lowest price (1) to highest
+				ROW_NUMBER() OVER(
+					PARTITION BY date_and_time_retrieved 
+					ORDER BY CAST(REPLACE(REPLACE(price, ',', ''), 'z', '') AS INTEGER) ASC, id DESC
+				) as rn_asc,
+				-- Rank items from highest price (1) to lowest
+				ROW_NUMBER() OVER(
+					PARTITION BY date_and_time_retrieved 
+					ORDER BY CAST(REPLACE(REPLACE(price, ',', ''), 'z', '') AS INTEGER) DESC, id DESC
+				) as rn_desc
+			FROM items
+			WHERE name_of_the_item = ?
+		)
+		-- Select all rows that are *either* the min (rn_asc = 1) or the max (rn_desc = 1)
+		-- Then, group by timestamp and use conditional aggregation to pivot
+		-- the min and max rows into a single row per timestamp.
 		SELECT
-			t_lowest.date_and_time_retrieved,
-			t_lowest.price_int, t_lowest.quantity, t_lowest.store_name, t_lowest.seller_name, t_lowest.map_name, t_lowest.map_coordinates,
-			t_highest.price_int, t_highest.quantity, t_highest.store_name, t_highest.seller_name, t_highest.map_name, t_highest.map_coordinates
-		FROM
-			(
-				-- Subquery to find the row with the lowest price for each timestamp
-				SELECT 
-					i1.date_and_time_retrieved, CAST(REPLACE(REPLACE(i1.price, ',', ''), 'z', '') AS INTEGER) as price_int,
-					i1.quantity, i1.store_name, i1.seller_name, i1.map_name, i1.map_coordinates
-				FROM items i1
-				WHERE i1.name_of_the_item = ?
-				AND i1.id = (
-					SELECT i_min.id FROM items i_min
-					WHERE i_min.name_of_the_item = i1.name_of_the_item AND i_min.date_and_time_retrieved = i1.date_and_time_retrieved
-					ORDER BY CAST(REPLACE(REPLACE(i_min.price, ',', ''), 'z', '') AS INTEGER) ASC, i_min.id DESC
-					LIMIT 1
-				)
-			) AS t_lowest
-		JOIN
-			(
-				-- Subquery to find the row with the highest price for each timestamp
-				SELECT 
-					i2.date_and_time_retrieved, CAST(REPLACE(REPLACE(i2.price, ',', ''), 'z', '') AS INTEGER) as price_int,
-					i2.quantity, i2.store_name, i2.seller_name, i2.map_name, i2.map_coordinates
-				FROM items i2
-				WHERE i2.name_of_the_item = ?
-				AND i2.id = (
-					SELECT i_max.id FROM items i_max
-					WHERE i_max.name_of_the_item = i2.name_of_the_item AND i_max.date_and_time_retrieved = i2.date_and_time_retrieved
-					ORDER BY CAST(REPLACE(REPLACE(i_max.price, ',', ''), 'z', '') AS INTEGER) DESC, i_max.id DESC
-					LIMIT 1
-				)
-			) AS t_highest 
-		ON t_lowest.date_and_time_retrieved = t_highest.date_and_time_retrieved
-		ORDER BY t_lowest.date_and_time_retrieved ASC;
-    `
-	rows, err := db.Query(priceChangeQuery, itemName, itemName)
+			date_and_time_retrieved,
+			-- Lowest price details
+			MAX(CASE WHEN rn_asc = 1 THEN price_int END),
+			MAX(CASE WHEN rn_asc = 1 THEN quantity END),
+			MAX(CASE WHEN rn_asc = 1 THEN store_name END),
+			MAX(CASE WHEN rn_asc = 1 THEN seller_name END),
+			MAX(CASE WHEN rn_asc = 1 THEN map_name END),
+			MAX(CASE WHEN rn_asc = 1 THEN map_coordinates END),
+			-- Highest price details
+			MAX(CASE WHEN rn_desc = 1 THEN price_int END),
+			MAX(CASE WHEN rn_desc = 1 THEN quantity END),
+			MAX(CASE WHEN rn_desc = 1 THEN store_name END),
+			MAX(CASE WHEN rn_desc = 1 THEN seller_name END),
+			MAX(CASE WHEN rn_desc = 1 THEN map_name END),
+			MAX(CASE WHEN rn_desc = 1 THEN map_coordinates END)
+		FROM RankedItems
+		WHERE rn_asc = 1 OR rn_desc = 1
+		GROUP BY date_and_time_retrieved
+		ORDER BY date_and_time_retrieved ASC;
+	`
+
+	// The original query used two parameters for `itemName`, this one only needs one.
+	rows, err := db.Query(priceChangeQuery, itemName)
 	if err != nil {
-		return nil, fmt.Errorf("history change query error: %w", err)
+		return nil, fmt.Errorf("optimized history change query error: %w", err)
 	}
 	defer rows.Close()
 
@@ -4097,8 +4110,11 @@ func fetchPriceHistory(itemName string) ([]PricePointDetails, error) {
 	for rows.Next() {
 		var p PricePointDetails
 		var timestampStr string
-		err := rows.Scan(&timestampStr, &p.LowestPrice, &p.LowestQuantity, &p.LowestStoreName, &p.LowestSellerName, &p.LowestMapName, &p.LowestMapCoords,
-			&p.HighestPrice, &p.HighestQuantity, &p.HighestStoreName, &p.HighestSellerName, &p.HighestMapName, &p.HighestMapCoords)
+		err := rows.Scan(
+			&timestampStr,
+			&p.LowestPrice, &p.LowestQuantity, &p.LowestStoreName, &p.LowestSellerName, &p.LowestMapName, &p.LowestMapCoords,
+			&p.HighestPrice, &p.HighestQuantity, &p.HighestStoreName, &p.HighestSellerName, &p.HighestMapName, &p.HighestMapCoords,
+		)
 		if err != nil {
 			log.Printf("[W] [HTTP/History] Failed to scan history row: %v", err)
 			continue
