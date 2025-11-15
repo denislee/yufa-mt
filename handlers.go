@@ -4619,7 +4619,9 @@ func fetchCharacterChangelog(charName string, searchQuery string, pagination Pag
 	whereConditions = append(whereConditions, "character_name = ?")
 	params = append(params, charName)
 
-	// --- REMOVED: "activity_description NOT LIKE 'Dropped item: %'" ---
+	// --- OPTIMIZATION: Exclude drop logs from the main query ---
+	whereConditions = append(whereConditions, "activity_description NOT LIKE 'Dropped item: %'")
+	// --- END OPTIMIZATION ---
 
 	if searchQuery != "" {
 		whereConditions = append(whereConditions, "activity_description LIKE ?")
@@ -5137,7 +5139,9 @@ func countCharacterChangelog(charName, searchQuery string) (int, error) {
 	whereConditions = append(whereConditions, "character_name = ?")
 	params = append(params, charName)
 
-	// --- REMOVED: "activity_description NOT LIKE 'Dropped item: %'" ---
+	// --- OPTIMIZATION: Exclude drop logs from the main count ---
+	whereConditions = append(whereConditions, "activity_description NOT LIKE 'Dropped item: %'")
+	// --- END OPTIMIZATION ---
 
 	if searchQuery != "" {
 		whereConditions = append(whereConditions, "activity_description LIKE ?")

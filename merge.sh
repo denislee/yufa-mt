@@ -40,5 +40,6 @@ echo "Done."
 echo '
 check for one impactful optimization in performance possible in this code. 
 show the entire function or any other structure on go, not the entire source code file content. 
+do not put citations in the resulted code e.g. [cite: xx]
 if the files are too big, split the answer in various parts, send each part after I input "continue"
 '
