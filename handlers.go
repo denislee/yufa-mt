@@ -19,6 +19,7 @@ import (
 	"time"
 
 	"github.com/agnivade/levenshtein" // <-- ADD THIS IMPORT
+	"golang.org/x/sync/errgroup"
 )
 
 type BasePageData struct {
@@ -1783,6 +1784,9 @@ func activityHandler(w http.ResponseWriter, r *http.Request) {
 	renderTemplate(w, r, "activity.html", data)
 }
 
+// In handlers.go, add this import:
+// "golang.org/x/sync/errgroup"
+
 func itemHistoryHandler(w http.ResponseWriter, r *http.Request) {
 	if err := r.ParseForm(); err != nil {
 		http.Error(w, "Failed to parse form", http.StatusBadRequest)
@@ -1795,22 +1799,88 @@ func itemHistoryHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	log.Printf("[D] [HTTP/History] Handling request for item: '%s'", itemName)
 
-	// Step 1: Get Item ID and Portuguese Name
+	// Step 1: Get Item ID (Sequential, as itemID is needed)
 	itemID, itemNamePT := getItemIDAndNamePT(itemName)
 	log.Printf("[D] [HTTP/History] Step 1: Found ItemID: %d, NamePT: '%s'", itemID, itemNamePT.String)
 
-	// Step 2: Get Item Details (from local DB)
-	rmsItemDetails := fetchItemDetails(itemID)
-	log.Printf("[D] [HTTP/History] Step 2: Fetched item details (Found: %t).", rmsItemDetails != nil)
+	// --- Concurrent Data Fetching ---
+	var g errgroup.Group
+	var rmsItemDetails *RMSItem
+	var currentListings []ItemListing
+	var finalPriceHistory []PricePointDetails
+	var overallLowest, overallHighest sql.NullInt64
+	var dropHistory []PlayerDropInfo
+	var totalListings int
 
-	// Step 3: Get current (available) listings
-	currentListings, err := fetchCurrentListings(itemName)
-	if err != nil {
-		log.Printf("[E] [HTTP/History] Step 3: %v", err)
-		http.Error(w, "Database query for current listings failed", http.StatusInternalServerError)
+	// Task 2: Get Item Details (from local DB)
+	g.Go(func() error {
+		rmsItemDetails = fetchItemDetails(itemID)
+		log.Printf("[D] [HTTP/History] Step 2: Fetched item details (Found: %t).", rmsItemDetails != nil)
+		return nil // Not critical, don't return error
+	})
+
+	// Task 3: Get current (available) listings
+	g.Go(func() error {
+		var err error
+		currentListings, err = fetchCurrentListings(itemName)
+		if err != nil {
+			log.Printf("[E] [HTTP/History] Step 3: %v", err)
+			return err // This is a critical query
+		}
+		log.Printf("[D] [HTTP/History] Step 3: Found %d current (available) listings.", len(currentListings))
+		return nil
+	})
+
+	// Task 4: Get price history for the graph
+	g.Go(func() error {
+		var err error
+		finalPriceHistory, err = fetchPriceHistory(itemName)
+		if err != nil {
+			log.Printf("[E] [HTTP/History] Step 4: %v", err)
+			return err // This is a critical query
+		}
+		log.Printf("[D] [HTTP/History] Step 4: Found %d unique price points for history graph.", len(finalPriceHistory))
+		return nil
+	})
+
+	// Task 5: Get all-time min/max prices
+	g.Go(func() error {
+		overallLowest, overallHighest = getOverallPriceRange(itemName)
+		log.Printf("[D] [HTTP/History] Step 5: Found Overall Lowest: %d z, Overall Highest: %d z", overallLowest.Int64, overallHighest.Int64)
+		return nil // Not critical, just log
+	})
+
+	// Task 5b: Get item drop history
+	g.Go(func() error {
+		var err error
+		dropHistory, err = fetchItemDropHistory(itemName)
+		if err != nil {
+			log.Printf("[E] [HTTP/History] Step 5b: %v", err)
+		}
+		log.Printf("[D] [HTTP/History] Step 5b: Found %d drop records for this item.", len(dropHistory))
+		return nil // Not critical
+	})
+
+	// Task 6: Get total listings count for pagination
+	g.Go(func() error {
+		var err error
+		totalListings, err = countAllListings(itemName)
+		if err != nil {
+			log.Printf("[E] [HTTP/History] Step 6a: %v", err)
+			return err // This is a critical query
+		}
+		log.Printf("[D] [HTTP/History] Step 6a: Found %d total historical listings.", totalListings)
+		return nil
+	})
+
+	// Wait for all concurrent tasks to finish
+	if err := g.Wait(); err != nil {
+		http.Error(w, "One or more critical database queries failed", http.StatusInternalServerError)
 		return
 	}
-	log.Printf("[D] [HTTP/History] Step 3: Found %d current (available) listings.", len(currentListings))
+	// --- End Concurrent Fetching ---
+
+	// --- Sequential steps that depend on concurrent results ---
 
 	var currentLowest, currentHighest *ItemListing
 	if len(currentListings) > 0 {
@@ -1818,40 +1888,10 @@ func itemHistoryHandler(w http.ResponseWriter, r *http.Request) {
 		currentHighest = &currentListings[len(currentListings)-1]
 	}
 
-	// Step 4: Get price history for the graph
-	finalPriceHistory, err := fetchPriceHistory(itemName)
-	if err != nil {
-		log.Printf("[E] [HTTP/History] Step 4: %v", err)
-		http.Error(w, "Database query for changes failed", http.StatusInternalServerError)
-		return
-	}
-	log.Printf("[D] [HTTP/History] Step 4: Found %d unique price points for history graph.", len(finalPriceHistory))
-
-	// Step 5: Get all-time min/max prices
-	overallLowest, overallHighest := getOverallPriceRange(itemName)
-	log.Printf("[D] [HTTP/History] Step 5: Found Overall Lowest: %d z, Overall Highest: %d z", overallLowest.Int64, overallHighest.Int64)
-
-	// Step 5b: Get item drop history ---
-	dropHistory, err := fetchItemDropHistory(itemName)
-	if err != nil {
-		// Not fatal, just log it
-		log.Printf("[E] [HTTP/History] Step 5b: %v", err)
-	}
-	log.Printf("[D] [HTTP/History] Step 5b: Found %d drop records for this item.", len(dropHistory))
-
-	// Step 6: Get total listings count for pagination
-	const listingsPerPage = 50
-	totalListings, err := countAllListings(itemName)
-	if err != nil {
-		log.Printf("[E] [HTTP/History] Step 6a: %v", err)
-		http.Error(w, "Database query for all listings failed", http.StatusInternalServerError)
-		return
-	}
-	log.Printf("[D] [HTTP/History] Step 6a: Found %d total historical listings.", totalListings)
-
 	// Step 7: Create pagination and fetch the current page of listings
+	const listingsPerPage = 50
 	pagination := newPaginationData(r, totalListings, listingsPerPage)
-	allListings, err := fetchAllListings(itemName, pagination) // Removed redundant listingsPerPage
+	allListings, err := fetchAllListings(itemName, pagination) // This is the last query
 	if err != nil {
 		log.Printf("[E] [HTTP/History] Step 6b: %v", err)
 		http.Error(w, "Database query for all listings failed", http.StatusInternalServerError)
