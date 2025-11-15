@@ -2241,16 +2241,11 @@ func characterDetailHandler(w http.ResponseWriter, r *http.Request) {
 	mvpKills := fetchCharacterMvpKills(p.Name)
 	mvpHeaders := getMvpHeaders()
 
-	// 4. Fetch guild-related changelog entries (unchanged)
-	guildHistory, err := fetchCharacterGuildHistory(p.Name)
-	if err != nil {
-		log.Printf("[W] [HTTP/Char] %v", err)
-	}
+	// --- OPTIMIZATION: Step 4 & 5 ---
 
-	// --- MODIFIED: Step 5: Fetch ALL changelog types ---
+	// 4a. Get paginated CHANGELOG history (this is unchanged)
 	const entriesPerPage = 25
 
-	// 5a. Get paginated CHANGELOG history (includes drops, respects search)
 	totalChangelogEntries, err := countCharacterChangelog(p.Name, changelogQuery)
 	if err != nil {
 		log.Printf("[E] [HTTP/Char] %v", err)
@@ -2260,7 +2255,6 @@ func characterDetailHandler(w http.ResponseWriter, r *http.Request) {
 
 	pagination := newPaginationData(r, totalChangelogEntries, entriesPerPage)
 
-	// This list will go into the main "Activity" box
 	activityHistory, err := fetchCharacterChangelog(p.Name, changelogQuery, pagination)
 	if err != nil {
 		log.Printf("[E] [HTTP/Char] %v", err)
@@ -2268,15 +2262,13 @@ func characterDetailHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// 5b. Get ALL DROP history (ignores search and pagination)
-	// This list will go into the dedicated "Item Drops" box
-	dropHistory, err := fetchCharacterDropHistory(p.Name)
+	// 4b. (OPTIMIZED) Get all Guild and Drop history in a *single* query
+	guildHistory, dropHistory, err := fetchCharacterSpecialHistory(p.Name)
 	if err != nil {
-		log.Printf("[E] [HTTP/Char] %v", err)
-		http.Error(w, "Could not query for character drop history", http.StatusInternalServerError)
-		return
+		// Not fatal, just log it
+		log.Printf("[W] [HTTP/Char] Could not fetch special history: %v", err)
 	}
-	// --- END MODIFICATION ---
+	// --- END OPTIMIZATION ---
 
 	// 6. Build Filter URL for changelog pagination (unchanged)
 	filterValues := url.Values{}
@@ -2299,9 +2291,9 @@ func characterDetailHandler(w http.ResponseWriter, r *http.Request) {
 		GuildHistory:         guildHistory,
 		LastScrapeTime:       GetLastScrapeTime(),
 		ClassImageURL:        getClassImageURL(p.Class),
-		ActivityHistory:      activityHistory, // This now contains all paginated entries
-		DropHistory:          dropHistory,     // This contains *only* drops
-		ChangelogPagination:  pagination,      // Renamed this field
+		ActivityHistory:      activityHistory,
+		DropHistory:          dropHistory,
+		ChangelogPagination:  pagination,
 		PageTitle:            p.Name,
 		Filter:               template.URL(filterString),
 		ChangelogSearchQuery: changelogQuery,
@@ -4619,32 +4611,6 @@ func getMvpHeaders() []MvpHeader {
 	return mvpHeaders
 }
 
-// fetchCharacterGuildHistory retrieves only guild-related changelog entries.
-func fetchCharacterGuildHistory(charName string) ([]CharacterChangelog, error) {
-	var guildHistory []CharacterChangelog
-	guildHistoryQuery := `SELECT change_time, activity_description FROM character_changelog
-		WHERE character_name = ? AND (activity_description LIKE '%joined guild%' OR activity_description LIKE '%left guild%')
-		ORDER BY change_time DESC`
-
-	guildHistoryRows, err := db.Query(guildHistoryQuery, charName)
-	if err != nil {
-		return nil, fmt.Errorf("could not query guild history: %w", err)
-	}
-	defer guildHistoryRows.Close()
-
-	for guildHistoryRows.Next() {
-		var entry CharacterChangelog
-		var timestampStr string
-		if err := guildHistoryRows.Scan(&timestampStr, &entry.ActivityDescription); err == nil {
-			if t, err := time.Parse(time.RFC3339, timestampStr); err == nil {
-				entry.ChangeTime = t.Format("2006-01-02") // Date only
-			}
-			guildHistory = append(guildHistory, entry)
-		}
-	}
-	return guildHistory, nil
-}
-
 // fetchCharacterChangelog retrieves the paginated general changelog for a character.
 func fetchCharacterChangelog(charName string, searchQuery string, pagination PaginationData) ([]CharacterChangelog, error) {
 	var whereConditions []string
@@ -5298,20 +5264,20 @@ func fetchCharacterActivity(charName string, searchQuery string, pagination Pagi
 	return changelogEntries, nil
 }
 
-// fetchCharacterDropHistory retrieves ALL drop logs for a character (no pagination/search).
-func fetchCharacterDropHistory(charName string) ([]CharacterChangelog, error) {
-	var dropHistory []CharacterChangelog
-
+// fetchCharacterSpecialHistory retrieves all Drop and Guild logs for a character in one query.
+func fetchCharacterSpecialHistory(charName string) (guildHistory []CharacterChangelog, dropHistory []CharacterChangelog, err error) {
 	query := `
 		SELECT change_time, activity_description 
 		FROM character_changelog
-		WHERE character_name = ? AND activity_description LIKE 'Dropped item: %'
+		WHERE character_name = ? 
+		  AND (activity_description LIKE 'Dropped item: %' 
+		       OR activity_description LIKE '%joined guild%' 
+		       OR activity_description LIKE '%left guild%')
 		ORDER BY change_time DESC
 	`
-
 	rows, err := db.Query(query, charName)
 	if err != nil {
-		return nil, fmt.Errorf("could not query changelog for item drops: %w", err)
+		return nil, nil, fmt.Errorf("could not query special history: %w", err)
 	}
 	defer rows.Close()
 
@@ -5319,22 +5285,23 @@ func fetchCharacterDropHistory(charName string) ([]CharacterChangelog, error) {
 		var entry CharacterChangelog
 		var timestampStr string
 		if err := rows.Scan(&timestampStr, &entry.ActivityDescription); err != nil {
-			log.Printf("[W] [HTTP/CharDetail] Failed to scan drop history row: %v", err)
+			log.Printf("[W] [HTTP/CharDetail] Failed to scan special history row: %v", err)
 			continue
 		}
 
-		if parsedTime, err := time.Parse(time.RFC3339, timestampStr); err == nil {
+		parsedTime, _ := time.Parse(time.RFC3339, timestampStr)
+
+		// Filter the results into their respective slices
+		if strings.HasPrefix(entry.ActivityDescription, "Dropped item: ") {
 			entry.ChangeTime = parsedTime.Format("2006-01-02 15:04")
+			entry.ActivityDescription = strings.TrimPrefix(entry.ActivityDescription, "Dropped item: ")
+			dropHistory = append(dropHistory, entry)
 		} else {
-			entry.ChangeTime = timestampStr
+			entry.ChangeTime = parsedTime.Format("2006-01-02") // Guild history only needs date
+			guildHistory = append(guildHistory, entry)
 		}
-
-		// Trim prefix for display
-		entry.ActivityDescription = strings.TrimPrefix(entry.ActivityDescription, "Dropped item: ")
-		dropHistory = append(dropHistory, entry)
 	}
-
-	return dropHistory, nil
+	return guildHistory, dropHistory, nil
 }
 
 // tmplURL marks a string as a safe URL for templates.
