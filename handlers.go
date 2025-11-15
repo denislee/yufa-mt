@@ -415,7 +415,7 @@ var (
 			"category_cash_shop_item": "Cash Shop",
 			"category_taming_item":    "Taming",
 
-			"nav_character_stats": "Character Stats",
+			"nav_character_stats": "Character",
 			"total_characters":    "Total Characters",
 			"total_zeny_on_chars": "Total Zeny (on Chars)",
 			"avg_job_level":       "Avg. Job Level",
@@ -767,7 +767,7 @@ var (
 			"category_cash_shop_item": "Loja ROPs",
 			"category_taming_item":    "Doma",
 
-			"nav_character_stats": "Estatísticas de Personagens",
+			"nav_character_stats": "Personagens",
 			"total_characters":    "Total de Personagens",
 			"total_zeny_on_chars": "Zeny Total (em Pers.)",
 			"avg_job_level":       "Nível de Classe Médio",
