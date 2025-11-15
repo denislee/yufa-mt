@@ -1,102 +1,97 @@
-<nav class="bg-white shadow-sm sticky top-0 z-10 font-sans">
+<nav class="bg-white dark:bg-gray-800 shadow-sm dark:shadow-md dark:shadow-gray-700 sticky top-0 z-10 font-sans">
     <div class="container mx-auto px-4">
         <div class="flex justify-between items-center py-2">
             <div class="flex items-center space-x-4">
-                <a href="/about" class="text-xs font-semibold text-gray-700 hover:text-blue-600">ymt</a>
+                <a href="/about" class="text-xs font-semibold text-gray-700 dark:text-gray-200 hover:text-blue-600 dark:hover:text-blue-400">ymt</a>
             </div>
             
             {{/* Define variables to check if the current page is active */}}
             {{ $isRankingPage := (or (eq .Data.PageTitle "Characters") (eq .Data.PageTitle "Guilds") (eq .Data.PageTitle "MVP Kills") (eq .Data.PageTitle "WoE Rankings")) }}
-            {{/* --- MODIFIED --- */}}
             {{ $isStatsPage := (or (eq .Data.PageTitle "Drop Stats") (eq .Data.PageTitle "Market Stats") (eq .Data.PageTitle "Character Stats") (eq .Data.PageTitle "Player Count")) }}
 
             <div class="hidden md:flex items-center space-x-1">
                 
-                {{/* --- MODIFIED: Replaced search icon link with a search form --- */}}
+                {{/* --- Search Form --- */}}
                 <form action="/search" method="GET" class="relative" id="nav-search-form">
-                    {{/* Prefills search query only if on the global search page */}}
-                    <input type="text" name="q" placeholder="{{.Page.T.nav_search_placeholder}}" value="{{if eq .Data.PageTitle "Global Search"}}{{.Data.SearchQuery}}{{end}}" class="block w-full text-sm rounded-md border-gray-300 shadow-sm focus:border-indigo-300 focus:ring focus:ring-indigo-200 focus:ring-opacity-50 pl-3 pr-8 py-1.5" style="width: 160px;">
-                    <button type="submit" class="absolute inset-y-0 right-0 flex items-center pr-2 text-gray-400 hover:text-gray-600" title="{{.Page.T.search}}">
+                    <input type="text" name="q" placeholder="{{.Page.T.nav_search_placeholder}}" value="{{if eq .Data.PageTitle "Global Search"}}{{.Data.SearchQuery}}{{end}}" class="block w-full text-sm rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white dark:placeholder-gray-400 shadow-sm focus:border-indigo-300 focus:ring focus:ring-indigo-200 focus:ring-opacity-50 pl-3 pr-8 py-1.5" style="width: 160px;">
+                    <button type="submit" class="absolute inset-y-0 right-0 flex items-center pr-2 text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300" title="{{.Page.T.search}}">
                         <svg class="w-5 h-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
                         </svg>
                     </button>
                 </form>
                 
-                <a href="/" class="text-sm px-3 py-2 rounded-md {{if eq .Data.PageTitle "Summary"}}font-semibold text-blue-600 bg-blue-50{{else}}text-gray-600 hover:bg-gray-100{{end}}">{{.Page.T.nav_summary}}</a>
-                <a href="/full-list" class="text-sm px-3 py-2 rounded-md {{if eq .Data.PageTitle "Full List"}}font-semibold text-blue-600 bg-blue-50{{else}}text-gray-600 hover:bg-gray-100{{end}}">{{.Page.T.nav_full_list}}</a>
-                <a href="/activity" class="text-sm px-3 py-2 rounded-md {{if eq .Data.PageTitle "Activity"}}font-semibold text-blue-600 bg-blue-50{{else}}text-gray-600 hover:bg-gray-100{{end}}">{{.Page.T.nav_activity}}</a>
-                <a href="/discord" class="text-sm px-3 py-2 rounded-md {{if eq .Data.PageTitle "Discord"}}font-semibold text-blue-600 bg-blue-50{{else}}text-gray-600 hover:bg-gray-100{{end}}">{{.Page.T.nav_discord}}</a>
-                <a href="/chat" class="text-sm px-3 py-2 rounded-md {{if eq .Data.PageTitle "Chat"}}font-semibold text-blue-600 bg-blue-50{{else}}text-gray-600 hover:bg-gray-100{{end}}">{{.Page.T.nav_chat}}</a>
+                {{/* --- Main Nav Links --- */}}
+                <a href="/" class="text-sm px-3 py-2 rounded-md {{if eq .Data.PageTitle "Summary"}}font-semibold text-blue-600 bg-blue-50 dark:bg-blue-900 dark:text-blue-300{{else}}text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700{{end}}">{{.Page.T.nav_summary}}</a>
+                <a href="/full-list" class="text-sm px-3 py-2 rounded-md {{if eq .Data.PageTitle "Full List"}}font-semibold text-blue-600 bg-blue-50 dark:bg-blue-900 dark:text-blue-300{{else}}text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700{{end}}">{{.Page.T.nav_full_list}}</a>
+                <a href="/activity" class="text-sm px-3 py-2 rounded-md {{if eq .Data.PageTitle "Activity"}}font-semibold text-blue-600 bg-blue-50 dark:bg-blue-900 dark:text-blue-300{{else}}text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700{{end}}">{{.Page.T.nav_activity}}</a>
+                <a href="/discord" class="text-sm px-3 py-2 rounded-md {{if eq .Data.PageTitle "Discord"}}font-semibold text-blue-600 bg-blue-50 dark:bg-blue-900 dark:text-blue-300{{else}}text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700{{end}}">{{.Page.T.nav_discord}}</a>
+                <a href="/chat" class="text-sm px-3 py-2 rounded-md {{if eq .Data.PageTitle "Chat"}}font-semibold text-blue-600 bg-blue-50 dark:bg-blue-900 dark:text-blue-300{{else}}text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700{{end}}">{{.Page.T.nav_chat}}</a>
                 
                 {{/* --- Statistics Dropdown --- */}}
                 <div class="relative" id="stats-dropdown-menu">
-                    <button id="stats-dropdown-button" class="text-sm px-3 py-2 rounded-md flex items-center {{if $isStatsPage}}font-semibold text-blue-600 bg-blue-50{{else}}text-gray-600 hover:bg-gray-100{{end}}">
+                    <button id="stats-dropdown-button" class="text-sm px-3 py-2 rounded-md flex items-center {{if $isStatsPage}}font-semibold text-blue-600 bg-blue-50 dark:bg-blue-900 dark:text-blue-300{{else}}text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700{{end}}">
                         <span>{{.Page.T.nav_statistics}}</span>
                         <svg class="w-4 h-4 ml-1" fill="currentColor" viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg"><path fill-rule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clip-rule="evenodd"></path></svg>
                     </button>
-                    {{/* --- MODIFIED --- */}}
-                    <div id="stats-dropdown-content" class="dropdown-content hidden absolute right-0 mt-2 w-48 bg-white rounded-md shadow-lg py-1 z-20 ring-1 ring-black ring-opacity-5">
-                        <a href="/stats/drops" class="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">{{.Page.T.nav_drop_stats}}</a>
-                        <a href="/stats/market" class="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">{{.Page.T.nav_market_stats}}</a>
-                        <a href="/stats/characters" class="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">{{.Page.T.nav_character_stats}}</a>
-                        <a href="/players" class="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">{{.Page.T.nav_player_count}}</a>
+                    <div id="stats-dropdown-content" class="dropdown-content hidden absolute right-0 mt-2 w-48 bg-white dark:bg-gray-800 rounded-md shadow-lg py-1 z-20 ring-1 ring-black dark:ring-white dark:ring-opacity-10 ring-opacity-5">
+                        <a href="/stats/drops" class="block px-4 py-2 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700">{{.Page.T.nav_drop_stats}}</a>
+                        <a href="/stats/market" class="block px-4 py-2 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700">{{.Page.T.nav_market_stats}}</a>
+                        <a href="/stats/characters" class="block px-4 py-2 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700">{{.Page.T.nav_character_stats}}</a>
+                        <a href="/players" class="block px-4 py-2 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700">{{.Page.T.nav_player_count}}</a>
                     </div>
                 </div>
 
                 {{/* --- Ranking Dropdown --- */}}
                 <div class="relative" id="ranking-dropdown-menu">
-                    <button id="ranking-dropdown-button" class="text-sm px-3 py-2 rounded-md flex items-center {{if $isRankingPage}}font-semibold text-blue-600 bg-blue-50{{else}}text-gray-600 hover:bg-gray-100{{end}}">
+                    <button id="ranking-dropdown-button" class="text-sm px-3 py-2 rounded-md flex items-center {{if $isRankingPage}}font-semibold text-blue-600 bg-blue-50 dark:bg-blue-900 dark:text-blue-300{{else}}text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700{{end}}">
                         <span>{{.Page.T.nav_rankings}}</span>
                         <svg class="w-4 h-4 ml-1" fill="currentColor" viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg"><path fill-rule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clip-rule="evenodd"></path></svg>
                     </button>
-                    <div id="ranking-dropdown-content" class="dropdown-content hidden absolute right-0 mt-2 w-48 bg-white rounded-md shadow-lg py-1 z-20 ring-1 ring-black ring-opacity-5">
-                        <a href="/characters" class="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">{{.Page.T.nav_characters}}</a>
-                        <a href="/guilds" class="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">{{.Page.T.nav_guilds}}</a>
-                        <a href="/mvp-kills" class="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">{{.Page.T.nav_mvp_kills}}</a>
-                        <a href="/woe" class="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">{{.Page.T.nav_woe_rankings}}</a>
+                    <div id="ranking-dropdown-content" class="dropdown-content hidden absolute right-0 mt-2 w-48 bg-white dark:bg-gray-800 rounded-md shadow-lg py-1 z-20 ring-1 ring-black dark:ring-white dark:ring-opacity-10 ring-opacity-5">
+                        <a href="/characters" class="block px-4 py-2 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700">{{.Page.T.nav_characters}}</a>
+                        <a href="/guilds" class="block px-4 py-2 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700">{{.Page.T.nav_guilds}}</a>
+                        <a href="/mvp-kills" class="block px-4 py-2 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700">{{.Page.T.nav_mvp_kills}}</a>
+                        <a href="/woe" class="block px-4 py-2 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700">{{.Page.T.nav_woe_rankings}}</a>
                     </div>
                 </div>
 
-                {{/* --- Language Dropdown --- */}}
-                <div class="relative" id="lang-dropdown-menu">
-                    <button id="lang-dropdown-button" class="text-lg p-2 rounded-md flex items-center text-gray-600 hover:bg-gray-100">
-                        <span>
-                            {{if eq .Page.Lang "pt"}}
-                                🇧🇷
-                            {{else}}
-                                🇺🇸
-                            {{end}}
-                        </span>
+                {{/* --- NEW: Settings Dropdown --- */}}
+                <div class="relative" id="settings-dropdown-menu">
+                    <button id="settings-dropdown-button" class="text-lg p-2 rounded-md flex items-center text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700" title="Settings">
+                        <span>⚙️</span>
                         <svg class="w-4 h-4 ml-1" fill="currentColor" viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg"><path fill-rule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clip-rule="evenodd"></path></svg>
                     </button>
-                    <div id="lang-dropdown-content" class="dropdown-content hidden absolute right-0 mt-2 w-36 bg-white rounded-md shadow-lg py-1 z-20 ring-1 ring-black ring-opacity-5">
-                        <a href="/set-lang?lang=en&redirect={{.Page.RequestURL}}" class="flex items-center gap-2 px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">
+                    <div id="settings-dropdown-content" class="dropdown-content hidden absolute right-0 mt-2 w-48 bg-white dark:bg-gray-800 rounded-md shadow-lg py-1 z-20 ring-1 ring-black dark:ring-white dark:ring-opacity-10 ring-opacity-5">
+                        {{/* --- Language Items --- */}}
+                        <a href="/set-lang?lang=en&redirect={{.Page.RequestURL}}" class="flex items-center gap-2 px-4 py-2 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700">
                             <span>🇺🇸</span>
                             <span>English</span>
                         </a>
-                        <a href="/set-lang?lang=pt&redirect={{.Page.RequestURL}}" class="flex items-center gap-2 px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">
+                        <a href="/set-lang?lang=pt&redirect={{.Page.RequestURL}}" class="flex items-center gap-2 px-4 py-2 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700">
                             <span>🇧🇷</span>
                             <span>Português</span>
                         </a>
+                        
+                        {{/* --- Divider --- */}}
+                        <div class="border-t border-gray-100 dark:border-gray-700 my-1"></div>
+
+                        {{/* --- Theme Toggle Item (MODIFIED) --- */}}
+                        <button id="theme-toggle-button" class="flex items-center justify-between w-full px-4 py-2 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700">
+                            <span>{{.Page.T.nav_toggle_theme}}</span>
+                            <span class="flex items-center">
+                                <svg id="theme-toggle-dark-icon" class="hidden h-5 w-5" fill="currentColor" viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg"><path d="M17.293 13.293A8 8 0 016.707 2.707a8.001 8.001 0 1010.586 10.586z"></path></svg>
+                                <svg id="theme-toggle-light-icon" class="hidden h-5 w-5" fill="currentColor" viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg"><path d="M10 2a1 1 0 011 1v1a1 1 0 11-2 0V3a1 1 0 011-1zm4 8a4 4 0 11-8 0 4 4 0 018 0zm-.464 4.95l.707.707a1 1 0 001.414-1.414l-.707-.707a1 1 0 00-1.414 1.414zm2.12-10.607a1 1 0 010 1.414l-.707.707a1 1 0 11-1.414-1.414l.707-.707a1 1 0 011.414 0zM17 11a1 1 0 100-2h-1a1 1 0 100 2h1zm-2.12 4.293a1 1 0 011.414 0l.707.707a1 1 0 01-1.414 1.414l-.707-.707a1 1 0 010-1.414zM4 11a1 1 0 100-2H3a1 1 0 100 2h1zM5.05 5.05a1 1 0 010-1.414l.707-.707a1 1 0 011.414 1.414l-.707.707a1 1 0 01-1.414 0zM2 11a1 1 0 100 2h1a1 1 0 100-2H2zm3.95.464a1 1 0 011.414 0l.707.707a1 1 0 11-1.414 1.414l-.707-.707a1 1 0 010-1.414z" fill-rule="evenodd" clip-rule="evenodd"></path></svg>
+                            </span>
+                        </button>
                     </div>
                 </div>
+
             </div>
 
             <div class="md:hidden flex items-center">
-                {{/* --- Mobile Language Toggle --- */}}
-                <div class="flex items-center space-x-1 mr-2">
-                    <a href="/set-lang?lang=en&redirect={{.Page.RequestURL}}" 
-                       class="text-xs p-1 rounded-md {{if eq .Page.Lang "en"}}bg-blue-100{{else}}text-gray-500{{end}}">
-                       🇺🇸
-                    </a>
-                    <a href="/set-lang?lang=pt&redirect={{.Page.RequestURL}}" 
-                       class="text-xs p-1 rounded-md {{if eq .Page.Lang "pt"}}bg-blue-100{{else}}text-gray-500{{end}}">
-                       🇧🇷
-                    </a>
-                </div>
-
-                <button id="mobile-menu-button" class="p-2 rounded-md text-gray-600 hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-blue-500" aria-label="Main menu" aria-expanded="false">
+                {{/* --- Mobile Hamburger Menu Button --- */}}
+                <button id="mobile-menu-button" class="p-2 rounded-md text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-blue-500" aria-label="Main menu" aria-expanded="false">
                     <span class="sr-only">Open main menu</span>
                     <svg id="open-icon" class="block h-6 w-6" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16" />
@@ -109,13 +104,13 @@
         </div>
     </div>
 
-    <div id="mobile-menu" class="hidden md:hidden border-t border-gray-200">
+    <div id="mobile-menu" class="hidden md:hidden border-t border-gray-200 dark:border-gray-700 dark:bg-gray-800">
         
-        {{/* --- MODIFIED: Replaced search link with a form --- */}}
-        <form action="/search" method="GET" class="p-2 border-b border-gray-100">
+        {{/* --- Mobile Search Form --- */}}
+        <form action="/search" method="GET" class="p-2 border-b border-gray-100 dark:border-gray-700">
             <div class="relative">
-                <input type="text" name="q" placeholder="{{.Page.T.nav_search_placeholder}}" value="{{if eq .Data.PageTitle "Global Search"}}{{.Data.SearchQuery}}{{end}}" class="block w-full text-sm rounded-md border-gray-300 shadow-sm focus:border-indigo-300 focus:ring focus:ring-indigo-200 focus:ring-opacity-50 pl-3 pr-8 py-1.5">
-                <button type="submit" class="absolute inset-y-0 right-0 flex items-center pr-2 text-gray-400 hover:text-gray-600" title="{{.Page.T.search}}">
+                <input type="text" name="q" placeholder="{{.Page.T.nav_search_placeholder}}" value="{{if eq .Data.PageTitle "Global Search"}}{{.Data.SearchQuery}}{{end}}" class="block w-full text-sm rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white dark:placeholder-gray-400 shadow-sm focus:border-indigo-300 focus:ring focus:ring-indigo-200 focus:ring-opacity-50 pl-3 pr-8 py-1.5">
+                <button type="submit" class="absolute inset-y-0 right-0 flex items-center pr-2 text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300" title="{{.Page.T.search}}">
                     <svg class="w-5 h-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                       <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
                     </svg>
@@ -123,39 +118,73 @@
             </div>
         </form>
         
-        <a href="/" class="block py-2 px-4 text-sm {{if eq .Data.PageTitle "Summary"}}bg-blue-50 text-blue-600 font-semibold{{else}}text-gray-600 hover:bg-gray-50{{end}}">{{.Page.T.nav_summary}}</a>
-        <a href="/full-list" class="block py-2 px-4 text-sm {{if eq .Data.PageTitle "Full List"}}bg-blue-50 text-blue-600 font-semibold{{else}}text-gray-600 hover:bg-gray-50{{end}}">{{.Page.T.nav_full_list}}</a>
-        <a href="/activity" class="block py-2 px-4 text-sm {{if eq .Data.PageTitle "Activity"}}bg-blue-50 text-blue-600 font-semibold{{else}}text-gray-600 hover:bg-gray-50{{end}}">{{.Page.T.nav_activity}}</a>
-        <a href="/discord" class="block py-2 px-4 text-sm {{if eq .Data.PageTitle "Discord"}}bg-blue-50 text-blue-600 font-semibold{{else}}text-gray-600 hover:bg-gray-50{{end}}">{{.Page.T.nav_discord}}</a>
-        <a href="/chat" class="block py-2 px-4 text-sm {{if eq .Data.PageTitle "Chat"}}bg-blue-50 text-blue-600 font-semibold{{else}}text-gray-600 hover:bg-gray-50{{end}}">{{.Page.T.nav_chat}}</a>
+        {{/* --- Mobile Nav Links --- */}}
+        <a href="/" class="block py-2 px-4 text-sm {{if eq .Data.PageTitle "Summary"}}bg-blue-50 dark:bg-blue-900 text-blue-600 dark:text-blue-300 font-semibold{{else}}text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700{{end}}">{{.Page.T.nav_summary}}</a>
+        <a href="/full-list" class="block py-2 px-4 text-sm {{if eq .Data.PageTitle "Full List"}}bg-blue-50 dark:bg-blue-900 text-blue-600 dark:text-blue-300 font-semibold{{else}}text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700{{end}}">{{.Page.T.nav_full_list}}</a>
+        <a href="/activity" class="block py-2 px-4 text-sm {{if eq .Data.PageTitle "Activity"}}bg-blue-50 dark:bg-blue-900 text-blue-600 dark:text-blue-300 font-semibold{{else}}text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700{{end}}">{{.Page.T.nav_activity}}</a>
+        <a href="/discord" class="block py-2 px-4 text-sm {{if eq .Data.PageTitle "Discord"}}bg-blue-50 dark:bg-blue-900 text-blue-600 dark:text-blue-300 font-semibold{{else}}text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700{{end}}">{{.Page.T.nav_discord}}</a>
+        <a href="/chat" class="block py-2 px-4 text-sm {{if eq .Data.PageTitle "Chat"}}bg-blue-50 dark:bg-blue-900 text-blue-600 dark:text-blue-300 font-semibold{{else}}text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700{{end}}">{{.Page.T.nav_chat}}</a>
         
         {{/* --- Mobile Statistics Dropdown --- */}}
         <details class="group" {{if $isStatsPage}}open{{end}}>
-            <summary class="py-2 px-4 text-sm list-none flex justify-between cursor-pointer {{if $isStatsPage}}text-blue-600 font-semibold{{else}}text-gray-600 hover:bg-gray-50{{end}}">
+            <summary class="py-2 px-4 text-sm list-none flex justify-between cursor-pointer {{if $isStatsPage}}text-blue-600 dark:text-blue-300 font-semibold{{else}}text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700{{end}}">
                 <span>{{.Page.T.nav_statistics}}</span>
                  <svg class="w-4 h-4 transition-transform duration-200 group-open:rotate-90" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path></svg>
             </summary>
-            {{/* --- MODIFIED --- */}}
             <div class="pl-4">
-                <a href="/stats/drops" class="block py-2 px-4 text-sm {{if eq .Data.PageTitle "Drop Stats"}}bg-blue-50 text-blue-600 font-semibold{{else}}text-gray-600 hover:bg-gray-50{{end}}">{{.Page.T.nav_drop_stats}}</a>
-                <a href="/stats/market" class="block py-2 px-4 text-sm {{if eq .Data.PageTitle "Market Stats"}}bg-blue-50 text-blue-600 font-semibold{{else}}text-gray-600 hover:bg-gray-50{{end}}">{{.Page.T.nav_market_stats}}</a>
-                <a href="/stats/characters" class="block py-2 px-4 text-sm {{if eq .Data.PageTitle "Character Stats"}}bg-blue-50 text-blue-600 font-semibold{{else}}text-gray-600 hover:bg-gray-50{{end}}">{{.Page.T.nav_character_stats}}</a>
-                <a href="/players" class="block py-2 px-4 text-sm {{if eq .Data.PageTitle "Player Count"}}bg-blue-50 text-blue-600 font-semibold{{else}}text-gray-600 hover:bg-gray-50{{end}}">{{.Page.T.nav_player_count}}</a>
+                <a href="/stats/drops" class="block py-2 px-4 text-sm {{if eq .Data.PageTitle "Drop Stats"}}bg-blue-50 dark:bg-blue-900 text-blue-600 dark:text-blue-300 font-semibold{{else}}text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700{{end}}">{{.Page.T.nav_drop_stats}}</a>
+                <a href="/stats/market" class="block py-2 px-4 text-sm {{if eq .Data.PageTitle "Market Stats"}}bg-blue-50 dark:bg-blue-900 text-blue-600 dark:text-blue-300 font-semibold{{else}}text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700{{end}}">{{.Page.T.nav_market_stats}}</a>
+                <a href="/stats/characters" class="block py-2 px-4 text-sm {{if eq .Data.PageTitle "Character Stats"}}bg-blue-50 dark:bg-blue-900 text-blue-600 dark:text-blue-300 font-semibold{{else}}text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700{{end}}">{{.Page.T.nav_character_stats}}</a>
+                <a href="/players" class="block py-2 px-4 text-sm {{if eq .Data.PageTitle "Player Count"}}bg-blue-50 dark:bg-blue-900 text-blue-600 dark:text-blue-300 font-semibold{{else}}text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700{{end}}">{{.Page.T.nav_player_count}}</a>
             </div>
         </details>
         
+        {{/* --- Mobile Ranking Dropdown --- */}}
         <details class="group" {{if $isRankingPage}}open{{end}}>
-            <summary class="py-2 px-4 text-sm list-none flex justify-between cursor-pointer {{if $isRankingPage}}text-blue-600 font-semibold{{else}}text-gray-600 hover:bg-gray-50{{end}}">
+            <summary class="py-2 px-4 text-sm list-none flex justify-between cursor-pointer {{if $isRankingPage}}text-blue-600 dark:text-blue-300 font-semibold{{else}}text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700{{end}}">
                 <span>{{.Page.T.nav_rankings}}</span>
                  <svg class="w-4 h-4 transition-transform duration-200 group-open:rotate-90" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path></svg>
             </summary>
             <div class="pl-4">
-                <a href="/characters" class="block py-2 px-4 text-sm {{if eq .Data.PageTitle "Characters"}}bg-blue-50 text-blue-600 font-semibold{{else}}text-gray-600 hover:bg-gray-50{{end}}">{{.Page.T.nav_characters}}</a>
-                <a href="/guilds" class="block py-2 px-4 text-sm {{if eq .Data.PageTitle "Guilds"}}bg-blue-50 text-blue-600 font-semibold{{else}}text-gray-600 hover:bg-gray-50{{end}}">{{.Page.T.nav_guilds}}</a>
-                <a href="/mvp-kills" class="block py-2 px-4 text-sm {{if eq .Data.PageTitle "MVP Kills"}}bg-blue-50 text-blue-600 font-semibold{{else}}text-gray-600 hover:bg-gray-50{{end}}">{{.Page.T.nav_mvp_kills}}</a>
-                <a href="/woe" class="block py-2 px-4 text-sm {{if eq .Data.PageTitle "WoE Rankings"}}bg-blue-50 text-blue-600 font-semibold{{else}}text-gray-600 hover:bg-gray-50{{end}}">{{.Page.T.nav_woe_rankings}}</a>
+                <a href="/characters" class="block py-2 px-4 text-sm {{if eq .Data.PageTitle "Characters"}}bg-blue-50 dark:bg-blue-900 text-blue-600 dark:text-blue-300 font-semibold{{else}}text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700{{end}}">{{.Page.T.nav_characters}}</a>
+                <a href="/guilds" class="block py-2 px-4 text-sm {{if eq .Data.PageTitle "Guilds"}}bg-blue-50 dark:bg-blue-900 text-blue-600 dark:text-blue-300 font-semibold{{else}}text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700{{end}}">{{.Page.T.nav_guilds}}</a>
+                <a href="/mvp-kills" class="block py-2 px-4 text-sm {{if eq .Data.PageTitle "MVP Kills"}}bg-blue-50 dark:bg-blue-900 text-blue-600 dark:text-blue-300 font-semibold{{else}}text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700{{end}}">{{.Page.T.nav_mvp_kills}}</a>
+                [cite_start]{{/* --- THIS IS THE FIX [cite: 1587] --- */}}
+                <a href="/woe" class="block py-2 px-4 text-sm {{if eq .Data.PageTitle "WoE Rankings"}}bg-blue-50 dark:bg-blue-900 text-blue-600 dark:text-blue-300 font-semibold{{else}}text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700{{end}}">{{.Page.T.nav_woe_rankings}}</a>
             </div>
         </details>
+        
+        {{/* --- NEW: Mobile Settings Dropdown --- */}}
+        <details class="group border-t border-gray-100 dark:border-gray-700">
+            <summary class="py-2 px-4 text-sm list-none flex justify-between cursor-pointer text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700">
+                <span>⚙️ Settings</span>
+                 <svg class="w-4 h-4 transition-transform duration-200 group-open:rotate-90" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path></svg>
+            </summary>
+            <div class="pl-4">
+                {{/* --- Language Items --- */}}
+                <a href="/set-lang?lang=en&redirect={{.Page.RequestURL}}" class="flex items-center gap-2 py-2 px-4 text-sm text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700">
+                    <span>🇺🇸</span>
+                    <span>English</span>
+                </a>
+                <a href="/set-lang?lang=pt&redirect={{.Page.RequestURL}}" class="flex items-center gap-2 py-2 px-4 text-sm text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700">
+                    <span>🇧🇷</span>
+                    <span>Português</span>
+                </a>
+                
+                {{/* --- Divider --- */}}
+                <div class="border-t border-gray-100 dark:border-gray-700 my-1 mx-4"></div>
+
+                {{/* --- Theme Toggle Item (MODIFIED) --- */}}
+                <button id="mobile-theme-toggle-button" class="w-full text-left flex justify-between items-center py-2 px-4 text-sm text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700">
+                    <span>{{.Page.T.nav_toggle_theme}}</span>
+                    <span class="flex items-center">
+                        <svg id="mobile-theme-toggle-dark-icon" class="hidden h-5 w-5" fill="currentColor" viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg"><path d="M17.293 13.293A8 8 0 016.707 2.707a8.001 8.001 0 1010.586 10.586z"></path></svg>
+                        <svg id="mobile-theme-toggle-light-icon" class="hidden h-5 w-5" fill="currentColor" viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg"><path d="M10 2a1 1 0 011 1v1a1 1 0 11-2 0V3a1 1 0 011-1zm4 8a4 4 0 11-8 0 4 4 0 018 0zm-.464 4.95l.707.707a1 1 0 001.414-1.414l-.707-.707a1 1 0 00-1.414 1.414zm2.12-10.607a1 1 0 010 1.414l-.707.707a1 1 0 11-1.414-1.414l.707-.707a1 1 0 011.414 0zM17 11a1 1 0 100-2h-1a1 1 0 100 2h1zm-2.12 4.293a1 1 0 011.414 0l.707.707a1 1 0 01-1.414 1.414l-.707-.707a1 1 0 010-1.414zM4 11a1 1 0 100-2H3a1 1 0 100 2h1zM5.05 5.05a1 1 0 010-1.414l.707-.707a1 1 0 011.414 1.414l-.707.707a1 1 0 01-1.414 0zM2 11a1 1 0 100 2h1a1 1 0 100-2H2zm3.95.464a1 1 0 011.414 0l.707.707a1 1 0 11-1.414 1.414l-.707-.707a1 1 0 010-1.414z" fill-rule="evenodd" clip-rule="evenodd"></path></svg>
+                    </span>
+                </button>
+            </div>
+        </details>
+
     </div>
 </nav>
 
@@ -199,8 +228,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // --- MODIFIED: Initialize all dropdowns ---
     setupDropdown('ranking-dropdown-button', 'ranking-dropdown-content');
-    setupDropdown('lang-dropdown-button', 'lang-dropdown-content');
     setupDropdown('stats-dropdown-button', 'stats-dropdown-content');
+    setupDropdown('settings-dropdown-button', 'settings-dropdown-content'); // <-- ADDED
 
     // Global click listener to close dropdowns when clicking anywhere else
     window.addEventListener('click', () => {
@@ -208,5 +237,53 @@ document.addEventListener('DOMContentLoaded', () => {
             el.classList.add('hidden');
         });
     });
+
+    // --- NEW: Theme Toggle Logic ---
+    const themeToggleButton = document.getElementById('theme-toggle-button');
+    const themeToggleDarkIcon = document.getElementById('theme-toggle-dark-icon');
+    const themeToggleLightIcon = document.getElementById('theme-toggle-light-icon');
+    
+    // Mobile elements
+    const mobileThemeToggleButton = document.getElementById('mobile-theme-toggle-button');
+    const mobileThemeToggleDarkIcon = document.getElementById('mobile-theme-toggle-dark-icon');
+    const mobileThemeToggleLightIcon = document.getElementById('mobile-theme-toggle-light-icon');
+
+    // Helper to update icon visibility
+    function updateIcons(isDarkMode) {
+        if (isDarkMode) {
+            if (themeToggleDarkIcon) themeToggleDarkIcon.classList.remove('hidden');
+            if (themeToggleLightIcon) themeToggleLightIcon.classList.add('hidden');
+            if (mobileThemeToggleDarkIcon) mobileThemeToggleDarkIcon.classList.remove('hidden');
+            if (mobileThemeToggleLightIcon) mobileThemeToggleLightIcon.classList.add('hidden');
+        } else {
+            if (themeToggleDarkIcon) themeToggleDarkIcon.classList.add('hidden');
+            if (themeToggleLightIcon) themeToggleLightIcon.classList.remove('hidden');
+            if (mobileThemeToggleDarkIcon) mobileThemeToggleDarkIcon.classList.add('hidden');
+            if (mobileThemeToggleLightIcon) mobileThemeToggleLightIcon.classList.remove('hidden');
+        }
+    }
+
+    // Check initial state from script in <head>
+    const isDark = document.documentElement.classList.contains('dark');
+    updateIcons(isDark);
+
+    // Click listener for desktop button
+    if (themeToggleButton) {
+        themeToggleButton.addEventListener('click', () => {
+            const isDarkMode = document.documentElement.classList.toggle('dark');
+            localStorage.theme = isDarkMode ? 'dark' : 'light';
+            updateIcons(isDarkMode);
+        });
+    }
+
+    // Click listener for mobile button
+    if (mobileThemeToggleButton) {
+        mobileThemeToggleButton.addEventListener('click', () => {
+            const isDarkMode = document.documentElement.classList.toggle('dark');
+            localStorage.theme = isDarkMode ? 'dark' : 'light';
+            updateIcons(isDarkMode);
+        });
+    }
+    // --- END: Theme Toggle Logic ---
 });
 </script>

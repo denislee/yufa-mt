@@ -4,7 +4,20 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{{.Page.T.market_summary}} - Yufa Market Tracker</title> {{/* <-- MODIFIED */}}
+    
+    {{/* --- ADD ALL 3 SCRIPTS FROM THE "IMPORTANT REMINDER" HERE --- */}}
     <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = { darkMode: 'class' }
+    </script>
+    <script>
+        if (localStorage.theme === 'dark' || (!('theme' in localStorage) && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
+            document.documentElement.classList.add('dark');
+        } else {
+            document.documentElement.classList.remove('dark');
+        }
+    </script>
+
     <style>
         html { font-size: 100%; }
         .container {
@@ -12,33 +25,35 @@
         }
     </style>
 </head>
-<body class="bg-gray-100 text-gray-800 text-sm sm:text-base">
+<body class="bg-gray-100 dark:bg-gray-900 text-gray-800 dark:text-gray-200 text-sm sm:text-base">
 
     {{template "navbar.html" .}}
 
     <div class="container mx-auto px-4 py-6">
-        <div class="flex flex-col sm:flex-row justify-between sm:items-center gap-2 mb-4 border-b border-gray-200 pb-3">
-            <h1 class="text-2xl font-bold text-gray-800">{{.Page.T.market_summary}}</h1> {{/* <-- MODIFIED */}}
+        <div class="flex flex-col sm:flex-row justify-between sm:items-center gap-2 mb-4 border-b border-gray-200 dark:border-gray-700 pb-3">
+            <h1 class="text-2xl font-bold text-gray-800 dark:text-gray-100">{{.Page.T.market_summary}}</h1> {{/* <-- MODIFIED */}}
             {{/* MODIFIED: Use .Data */}}
-            <div id="last-updated" class="text-sm text-gray-500" data-timestamp="{{.Data.LastScrapeTime}}"></div>
+            <div id="last-updated" class="text-sm text-gray-500 dark:text-gray-400" data-timestamp="{{.Data.LastScrapeTime}}"></div>
         </div>
 
-        <div class="bg-white p-3 rounded-lg shadow mb-4">
+        
+        <div class="bg-white dark:bg-gray-800 p-3 rounded-lg shadow mb-4">
              {{/* MODIFIED: Use .Data */}}
             <form action="/" method="GET" class="flex flex-wrap items-center gap-3">
                 <input type="hidden" name="type" value="{{.Data.SelectedType}}">
                 <input type="hidden" name="sort_by" value="{{.Data.SortBy}}">
                 <input type="hidden" name="order" value="{{.Data.Order}}">
-                <input type="text" name="query" placeholder="{{.Page.T.search_by_item_name}}" value="{{.Data.SearchQuery}}" class="flex-grow mt-1 block w-full md:w-auto rounded-md border-gray-300 shadow-sm focus:border-indigo-300 focus:ring focus:ring-indigo-200 focus:ring-opacity-50 text-sm">
-                <label class="flex items-center space-x-2 text-sm text-gray-700">
-                    <input type="checkbox" name="only_available" value="true" {{if not .Data.ShowAll}}checked{{end}} class="rounded border-gray-300 text-indigo-600 shadow-sm focus:border-indigo-300 focus:ring focus:ring-offset-0 focus:ring-indigo-200 focus:ring-opacity-50">
+                <input type="text" name="query" placeholder="{{.Page.T.search_by_item_name}}" value="{{.Data.SearchQuery}}" class="flex-grow mt-1 block w-full md:w-auto rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white dark:placeholder-gray-400 shadow-sm focus:border-indigo-300 focus:ring focus:ring-indigo-200 focus:ring-opacity-50 text-sm">
+                <label class="flex items-center space-x-2 text-sm text-gray-700 dark:text-gray-300">
+                    <input type="checkbox" name="only_available" value="true" {{if not .Data.ShowAll}}checked{{end}} class="rounded border-gray-300 dark:border-gray-600 dark:bg-gray-700 text-indigo-600 shadow-sm focus:border-indigo-300 focus:ring focus:ring-offset-0 focus:ring-indigo-200 focus:ring-opacity-50">
                     <span>{{.Page.T.show_only_available}}</span>
                 </label>
                 <button type="submit" class="w-full md:w-auto bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-md">{{.Page.T.search}}</button>
             </form>
         </div>
         
-        <div class="flex flex-wrap border-b-2 border-gray-200 mb-4 gap-2">
+      
+        <div class="flex flex-wrap border-b-2 border-gray-200 dark:border-gray-700 mb-4 gap-2">
             {{/* MODIFIED: Use .Data */}}
             {{$currentType := .Data.SelectedType}}
             {{$q := .Data.SearchQuery}}
@@ -46,9 +61,9 @@
             {{$order := .Data.Order}}
             {{$showAll := .Data.ShowAll}}
             {{/* --- MODIFIED: Use "category_all" key --- */}}
-            <a href="/?query={{$q}}&sort_by={{$sort}}&order={{$order}}{{if not $showAll}}&only_available=true{{end}}" class="px-3 py-1 text-sm font-medium flex items-center gap-2 -mb-0.5 border-b-2 {{if eq $currentType ""}}text-blue-600 border-blue-600{{else}}text-gray-500 border-transparent hover:text-gray-700 hover:border-gray-300{{end}}">{{.Page.T.category_all}}</a>
+            <a href="/?query={{$q}}&sort_by={{$sort}}&order={{$order}}{{if not $showAll}}&only_available=true{{end}}" class="px-3 py-1 text-sm font-medium flex items-center gap-2 -mb-0.5 border-b-2 {{if eq $currentType ""}}text-blue-600 border-blue-600 dark:text-blue-400 dark:border-blue-400{{else}}text-gray-500 dark:text-gray-400 border-transparent hover:text-gray-700 dark:hover:text-gray-200 hover:border-gray-300 dark:hover:border-gray-600{{end}}">{{.Page.T.category_all}}</a>
             {{range .Data.ItemTypes}}
-                <a href="/?query={{$q}}&sort_by={{$sort}}&order={{$order}}{{if not $showAll}}&only_available=true{{end}}&type={{.FullName | urlquery}}" title="{{.FullName}}" class="px-3 py-1 text-sm font-medium flex items-center gap-2 -mb-0.5 border-b-2 {{if eq .FullName $currentType}}text-blue-600 border-blue-600{{else}}text-gray-500 border-transparent hover:text-gray-700 hover:border-gray-300{{end}}">
+                <a href="/?query={{$q}}&sort_by={{$sort}}&order={{$order}}{{if not $showAll}}&only_available=true{{end}}&type={{.FullName | urlquery}}" title="{{.FullName}}" class="px-3 py-1 text-sm font-medium flex items-center gap-2 -mb-0.5 border-b-2 {{if eq .FullName $currentType}}text-blue-600 border-blue-600 dark:text-blue-400 dark:border-blue-400{{else}}text-gray-500 dark:text-gray-400 border-transparent hover:text-gray-700 dark:hover:text-gray-200 hover:border-gray-300 dark:hover:border-gray-600{{end}}">
                     <img src="https://static.divine-pride.net/images/items/item/{{.IconItemID}}.png" alt="{{.FullName}}" class="" style="image-rendering: pixelated;">
                     {{/* --- MODIFIED: Use translation map --- */}}
                     {{index $.Page.T .ShortName}}
@@ -57,15 +72,15 @@
         </div>
         
         {{/* MODIFIED: Use .Data and .Page.T. Use 'printf' for formatted translation */}}
-        <p class="text-sm text-gray-600 mb-3">{{printf .Page.T.showing_unique_items .Data.TotalUniqueItems | TmplHTML}}</p>
+        <p class="text-sm text-gray-600 dark:text-gray-400 mb-3">{{printf .Page.T.showing_unique_items .Data.TotalUniqueItems | TmplHTML}}</p>
 
 
-        <div class="bg-white shadow-lg rounded-lg overflow-hidden">
+        <div class="bg-white dark:bg-gray-800 shadow-lg rounded-lg overflow-hidden">
             <div class="overflow-x-auto">
                 <table class="min-w-full leading-normal">
                     <thead>
-                        <tr class="border-b-2 border-gray-200 bg-gray-50 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
-                             {{/* MODIFIED: Use .Data */}}
+                        <tr class="border-b-2 border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-700 text-left text-xs font-semibold text-gray-600 dark:text-gray-300 uppercase tracking-wider">
+                            {{/* MODIFIED: Use .Data */}}
                             {{$query := .Data.SearchQuery}}
                             {{$showAll := .Data.ShowAll}}
                             {{$currentSort := .Data.SortBy}}
@@ -81,10 +96,10 @@
                             <th class="px-2 sm:px-3 py-2"><a href="/?query={{$query}}{{if not $showAll}}&only_available=true{{end}}&sort_by=highest_price&order={{if eq $currentSort "highest_price"}}{{$revOrder}}{{else}}DESC{{end}}&type={{$selectedType | urlquery}}">{{.Page.T.highest_price}} {{if eq $currentSort "highest_price"}}{{if eq $currentOrder "ASC"}}<span class="text-gray-400">▲</span>{{else}}<span class="text-gray-400">▼</span>{{end}}{{end}}</a></th>
                         </tr>
                     </thead>
-                    <tbody class="text-gray-700 text-xs">
+                    <tbody class="text-gray-700 dark:text-gray-300 text-xs">
                         {{/* MODIFIED: Use .Data.Items and $ to access root .Page */}}
                         {{range .Data.Items}}
-                        <tr class="border-b border-gray-200 hover:bg-gray-50 {{if eq .ListingCount 0}}opacity-60{{end}}" {{if eq .ListingCount 0}}title="This item has no available listings"{{end}}>
+                        <tr class="border-b border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700 {{if eq .ListingCount 0}}opacity-60{{end}}" {{if eq .ListingCount 0}}title="This item has no available listings"{{end}}>
                             <td class="px-2 sm:px-3 py-2">
                                 <div class="flex items-center">
                                     <img src="https://static.divine-pride.net/images/items/item/{{.ItemID}}.png" alt="" class="w-6 h-6 mr-2" style="image-rendering: pixelated;">
@@ -92,11 +107,11 @@
                                         {{/* --- NEW: Language Toggle Logic --- */}}
                                         {{if and (eq $.Page.Lang "pt") .NamePT.Valid}}
                                             <a href="/item?name={{.Name | urlquery}}" class="font-semibold hover:underline">{{.NamePT.String}}</a>
-                                            <div class="text-xs text-gray-500 mt-1">({{.Name}})</div>
+                                            <div class="text-xs text-gray-500 dark:text-gray-400 mt-1">({{.Name}})</div>
                                         {{else}}
                                             <a href="/item?name={{.Name | urlquery}}" class="font-semibold hover:underline">{{.Name}}</a>
                                             {{if .NamePT.Valid}}
-                                            <div class="text-xs text-gray-500 mt-1">({{.NamePT.String}})</div>
+                                            <div class="text-xs text-gray-500 dark:text-gray-400 mt-1">({{.NamePT.String}})</div>
                                             {{end}}
                                         {{end}}
                                         {{/* --- END NEW --- */}}
@@ -106,14 +121,14 @@
                             <td class="px-2 sm:px-3 py-2">{{.ItemID}}</td>
                             <td class="px-2 sm:px-3 py-2">{{.ListingCount}}</td>
                             {{if .LowestPrice.Valid}}
-                                <td class="px-2 sm:px-3 py-2 font-semibold text-green-600" data-price="{{.LowestPrice.Int64}}"></td>
+                                <td class="px-2 sm:px-3 py-2 font-semibold text-green-600 dark:text-green-400" data-price="{{.LowestPrice.Int64}}"></td>
                             {{else}}
-                                <td class="px-2 sm:px-3 py-2 text-gray-500">N/A</td>
+                                <td class="px-2 sm:px-3 py-2 text-gray-500 dark:text-gray-400">N/A</td>
                             {{end}}
                             {{if .HighestPrice.Valid}}
-                                 <td class="px-2 sm:px-3 py-2 font-semibold text-red-600" data-price="{{.HighestPrice.Int64}}"></td>
+                                 <td class="px-2 sm:px-3 py-2 font-semibold text-red-600 dark:text-red-400" data-price="{{.HighestPrice.Int64}}"></td>
                             {{else}}
-                                <td class="px-2 sm:px-3 py-2 text-gray-500">N/A</td>
+                                <td class="px-2 sm:px-3 py-2 text-gray-500 dark:text-gray-400">N/A</td>
                             {{end}}
                         </tr>
                         {{end}}
@@ -185,7 +200,7 @@
                     
                     // MODIFIED: Use translation
                     const fullString = translations.updated_ago.replace('%s', timeAgoString);
-                    lastUpdateElement.innerHTML = `${fullString} <span class="text-gray-400 font-normal">(${formattedTimestamp})</span>`;
+                    lastUpdateElement.innerHTML = `${fullString} <span class="text-gray-400 dark:text-gray-500 font-normal">(${formattedTimestamp})</span>`;
                 };
 
                 updateTimeAgo();

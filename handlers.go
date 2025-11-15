@@ -423,6 +423,8 @@ var (
 			"js_char_count":       "Character Count",
 			"top_richest_chars":   "Top Richest Characters",
 			"top_exp_chars":       "Top Characters by Exp",
+
+			"nav_toggle_theme": "Toggle Theme", // <-- ADD THIS
 		},
 		"pt": {
 			"market_summary":         "Resumo do Mercado",
@@ -775,6 +777,8 @@ var (
 			"js_char_count":       "Cont. de Personagens",
 			"top_richest_chars":   "Top Personagens Ricos",
 			"top_exp_chars":       "Top Personagens por Exp",
+
+			"nav_toggle_theme": "Alternar Tema", // <-- ADD THIS
 		},
 	}
 )

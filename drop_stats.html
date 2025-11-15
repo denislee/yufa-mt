@@ -4,7 +4,20 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{{.Page.T.nav_drop_stats}} - Yufa Market Tracker</title>
+
+    {{/* --- ADD ALL 3 SCRIPTS FROM THE "IMPORTANT REMINDER" HERE --- */}}
     <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = { darkMode: 'class' }
+    </script>
+    <script>
+        if (localStorage.theme === 'dark' || (!('theme' in localStorage) && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
+            document.documentElement.classList.add('dark');
+        } else {
+            document.documentElement.classList.remove('dark');
+        }
+    </script>
+
     <style>
         html { font-size: 100%; }
         .container {
@@ -12,42 +25,41 @@
         }
     </style>
 </head>
-<body class="bg-gray-100 text-gray-800 text-sm sm:text-base">
+<body class="bg-gray-100 dark:bg-gray-900 text-gray-800 dark:text-gray-200 text-sm sm:text-base">
 
     {{template "navbar.html" .}}
 
     <div class="container mx-auto px-4 py-6">
-        <div class="flex flex-col sm:flex-row justify-between sm:items-center gap-2 mb-4 border-b border-gray-200 pb-3">
-            <h1 class="text-2xl font-bold text-gray-800">{{.Page.T.nav_drop_stats}}</h1>
-            <div id="last-updated" class="text-sm text-gray-500" data-timestamp="{{.Data.LastScrapeTime}}"></div>
+        <div class="flex flex-col sm:flex-row justify-between sm:items-center gap-2 mb-4 border-b border-gray-200 dark:border-gray-700 pb-3">
+            <h1 class="text-2xl font-bold text-gray-800 dark:text-gray-100">{{.Page.T.nav_drop_stats}}</h1>
+            <div id="last-updated" class="text-sm text-gray-500 dark:text-gray-400" data-timestamp="{{.Data.LastScrapeTime}}"></div>
         </div>
 
         <div class="grid grid-cols-1 md:grid-cols-2 gap-4 my-4">
-            <div class="bg-white p-4 rounded-lg shadow text-center">
-                <div class="text-xs text-gray-500 uppercase font-semibold">{{.Page.T.total_drops}}</div>
-                <div class="text-3xl font-bold text-gray-800">{{formatZeny .Data.TotalDrops}}</div>
+            <div class="bg-white dark:bg-gray-800 p-4 rounded-lg shadow text-center">
+                <div class="text-xs text-gray-500 dark:text-gray-400 uppercase font-semibold">{{.Page.T.total_drops}}</div>
+                <div class="text-3xl font-bold text-gray-800 dark:text-gray-100">{{formatZeny .Data.TotalDrops}}</div>
             </div>
-            <div class="bg-white p-4 rounded-lg shadow text-center">
-                <div class="text-xs text-gray-500 uppercase font-semibold">{{.Page.T.unique_items}}</div>
-                <div class="text-3xl font-bold text-gray-800">{{formatZeny .Data.UniqueDropItems}}</div>
+            <div class="bg-white dark:bg-gray-800 p-4 rounded-lg shadow text-center">
+                <div class="text-xs text-gray-500 dark:text-gray-400 uppercase font-semibold">{{.Page.T.unique_items}}</div>
+                <div class="text-3xl font-bold text-gray-800 dark:text-gray-100">{{formatZeny .Data.UniqueDropItems}}</div>
             </div>
         </div>
 
 {{/* --- 2-Column Layout for Tables --- */}}
         <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
 
-            <div class="bg-white shadow-lg rounded-lg overflow-hidden">
-                <h3 class="text-lg font-semibold text-gray-800 p-4 border-b bg-gray-50">{{.Page.T.nav_drop_stats}}</h3>
+            <div class="bg-white dark:bg-gray-800 shadow-lg rounded-lg overflow-hidden">
+                <h3 class="text-lg font-semibold text-gray-800 dark:text-gray-100 p-4 border-b dark:border-gray-700 bg-gray-50 dark:bg-gray-700">{{.Page.T.nav_drop_stats}}</h3>
                 <div class="overflow-x-auto">
                     <table class="min-w-full leading-normal">
                         <thead>
-                            <tr class="border-b-2 border-gray-200 bg-gray-50 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                            <tr class="border-b-2 border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-700 text-left text-xs font-semibold text-gray-600 dark:text-gray-300 uppercase tracking-wider">
                                 
                                 {{/* --- MODIFIED: Add Item sort variables --- */}}
                                 {{$itemSort := .Data.ItemSortBy}}
                                 {{$itemOrder := .Data.ItemOrder}}
                                 {{$itemRevOrder := toggleOrder $itemOrder}}
-                                {{/* Pass player sort params to keep them in the URL */}}
                                 {{$playerParams := printf "&psort=%s&porder=%s" .Data.PlayerSortBy .Data.PlayerOrder}}
 
                                 <th class="px-3 py-2">
@@ -73,9 +85,9 @@
                             </tr>
                         </thead>
                         {{/* --- ADDED: tbody for Item Drops --- */}}
-                        <tbody class="text-gray-700 text-xs">
+                        <tbody class="text-gray-700 dark:text-gray-300 text-xs">
                             {{range .Data.DropStats}}
-                            <tr class="border-b border-gray-200 hover:bg-gray-50">
+                            <tr class="border-b border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700">
                                 <td class="px-3 py-2">
                                     <div class="flex items-center">
                                         {{if .ItemID.Valid}}
@@ -88,22 +100,22 @@
                                             <a href="/item?name={{.Name | urlquery}}" class="font-semibold hover:underline">{{$displayName}}</a>
                                             
                                             {{if and (eq $.Page.Lang "en") .NamePT.Valid}}
-                                                <div class="text-xs text-gray-500 mt-1">({{.NamePT.String}})</div>
+                                                <div class="text-xs text-gray-500 dark:text-gray-400 mt-1">({{.NamePT.String}})</div>
                                             {{else if and (eq $.Page.Lang "pt") .NamePT.Valid (ne .Name .NamePT.String)}}
-                                                <div class="text-xs text-gray-500 mt-1">({{.Name}})</div>
+                                                <div class="text-xs text-gray-500 dark:text-gray-400 mt-1">({{.Name}})</div>
                                             {{end}}
                                         </div>
                                     </div>
                                 </td>
-                                <td class="px-3 py-2 text-xs text-gray-500">
+                                <td class="px-3 py-2 text-xs text-gray-500 dark:text-gray-400">
                                     {{if .ItemID.Valid}}{{.ItemID.Int64}}{{else}}N/A{{end}}
                                 </td>
                                 <td class="px-3 py-2 font-semibold">{{.Count}}</td>
-                                <td class="px-3 py-2 text-xs text-gray-500 whitespace-nowrap">{{.LastSeen}}</td>
+                                <td class="px-3 py-2 text-xs text-gray-500 dark:text-gray-400 whitespace-nowrap">{{.LastSeen}}</td>
                             </tr>
                             {{else}}
                             <tr>
-                                <td colspan="4" class="px-3 py-4 text-center text-gray-500">{{.Page.T.no_chat_messages}}</td>
+                                <td colspan="4" class="px-3 py-4 text-center text-gray-500 dark:text-gray-400">{{.Page.T.no_chat_messages}}</td>
                             </tr>
                             {{end}}
                         </tbody>
@@ -112,18 +124,17 @@
                 </div>
             </div>
 
-            <div class="bg-white shadow-lg rounded-lg overflow-hidden">
-                <h3 class="text-lg font-semibold text-gray-800 p-4 border-b bg-gray-50">{{.Page.T.player_drop_rankings}}</h3>
+            <div class="bg-white dark:bg-gray-800 shadow-lg rounded-lg overflow-hidden">
+                <h3 class="text-lg font-semibold text-gray-800 dark:text-gray-100 p-4 border-b dark:border-gray-700 bg-gray-50 dark:bg-gray-700">{{.Page.T.player_drop_rankings}}</h3>
                 <div class="overflow-x-auto">
                     <table class="min-w-full leading-normal">
                         <thead>
-                            <tr class="border-b-2 border-gray-200 bg-gray-50 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                            <tr class="border-b-2 border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-700 text-left text-xs font-semibold text-gray-600 dark:text-gray-300 uppercase tracking-wider">
                                 
                                 {{/* --- MODIFIED: Add Player sort variables --- */}}
                                 {{$playerSort := .Data.PlayerSortBy}}
                                 {{$playerOrder := .Data.PlayerOrder}}
                                 {{$playerRevOrder := toggleOrder $playerOrder}}
-                                {{/* Pass item sort params to keep them in the URL */}}
                                 {{$itemParams := printf "&isort=%s&iorder=%s" .Data.ItemSortBy .Data.ItemOrder}}
 
                                 <th class="px-3 py-2">
@@ -149,19 +160,19 @@
                             </tr>
                         </thead>
                         {{/* --- ADDED: tbody for Player Drops --- */}}
-                        <tbody class="text-gray-700 text-xs">
+                        <tbody class="text-gray-700 dark:text-gray-300 text-xs">
                             {{range .Data.PlayerStats}}
-                            <tr class="border-b border-gray-200 hover:bg-gray-50">
+                            <tr class="border-b border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700">
                                 <td class="px-3 py-2">
-                                    <a href="/character?name={{.PlayerName | urlquery}}" class="font-semibold hover:underline text-blue-600">{{.PlayerName}}</a>
+                                    <a href="/character?name={{.PlayerName | urlquery}}" class="font-semibold hover:underline text-blue-600 dark:text-blue-400">{{.PlayerName}}</a>
                                 </td>
                                 <td class="px-3 py-2 font-semibold">{{.Count}}</td>
-                                <td class="px-3 py-2 font-semibold text-blue-600">{{.CardCount}}</td>
-                                <td class="px-3 py-2 font-semibold text-gray-600">{{.ItemCount}}</td>
+                                <td class="px-3 py-2 font-semibold text-blue-600 dark:text-blue-400">{{.CardCount}}</td>
+                                <td class="px-3 py-2 font-semibold text-gray-600 dark:text-gray-300">{{.ItemCount}}</td>
                             </tr>
                             {{else}}
                             <tr>
-                                <td colspan="4" class="px-3 py-4 text-center text-gray-500">{{.Page.T.no_chat_messages}}</td>
+                                <td colspan="4" class="px-3 py-4 text-center text-gray-500 dark:text-gray-400">{{.Page.T.no_chat_messages}}</td>
                             </tr>
                             {{end}}
                         </tbody>
@@ -217,7 +228,7 @@
                 }
 
                 const fullString = translations.last_updated_at_chat.replace('%s', timeAgoString);
-                lastUpdateElement.innerHTML = `${fullString} <span class="text-gray-400 font-normal">(${formattedTimestamp})</span>`;
+                lastUpdateElement.innerHTML = `${fullString} <span class="text-gray-400 dark:text-gray-500 font-normal">(${formattedTimestamp})</span>`;
             };
 
             updateTimeAgo();

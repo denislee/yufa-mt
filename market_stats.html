@@ -4,7 +4,20 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{{.Page.T.nav_market_stats}} - Yufa Market Tracker</title>
+
+    {{/* --- ADD ALL 3 SCRIPTS FROM THE "IMPORTANT REMINDER" HERE --- */}}
     <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = { darkMode: 'class' }
+    </script>
+    <script>
+        if (localStorage.theme === 'dark' || (!('theme' in localStorage) && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
+            document.documentElement.classList.add('dark');
+        } else {
+            document.documentElement.classList.remove('dark');
+        }
+    </script>
+
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3.0.0/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
     <style>
@@ -14,14 +27,14 @@
         }
     </style>
 </head>
-<body class="bg-gray-100 text-gray-800 text-sm sm:text-base">
+<body class="bg-gray-100 dark:bg-gray-900 text-gray-800 dark:text-gray-200 text-sm sm:text-base">
 
     {{template "navbar.html" .}}
 
     <div class="container mx-auto px-4 py-6">
-        <div class="flex flex-col sm:flex-row justify-between sm:items-center gap-2 mb-4 border-b border-gray-200 pb-3">
-            <h1 class="text-2xl font-bold text-gray-800">{{.Page.T.nav_market_stats}}</h1>
-            <div id="last-updated" class="text-sm text-gray-500" data-timestamp="{{.Data.LastScrapeTime}}"></div>
+        <div class="flex flex-col sm:flex-row justify-between sm:items-center gap-2 mb-4 border-b border-gray-200 dark:border-gray-700 pb-3">
+            <h1 class="text-2xl font-bold text-gray-800 dark:text-gray-100">{{.Page.T.nav_market_stats}}</h1>
+            <div id="last-updated" class="text-sm text-gray-500 dark:text-gray-400" data-timestamp="{{.Data.LastScrapeTime}}"></div>
         </div>
 
         <div class="flex justify-center gap-1 mb-4">
@@ -29,25 +42,25 @@
             {{$itemParams := printf "&isort=%s&iorder=%s" .Data.ItemSortBy .Data.ItemOrder}}
             {{$sellerParams := printf "&ssort=%s&sorder=%s" .Data.SellerSortBy .Data.SellerOrder}}
 
-            <a href="/stats/market?interval=24h{{$itemParams | TmplURL}}{{$sellerParams | TmplURL}}" class="px-3 py-1 text-xs font-medium rounded-full {{if eq $interval "24h"}}bg-blue-600 text-white{{else}}bg-white text-gray-600 hover:bg-gray-50 shadow-sm border{{end}}">{{.Page.T.interval_24h}}</a>
-            <a href="/stats/market?interval=7d{{$itemParams | TmplURL}}{{$sellerParams | TmplURL}}" class="px-3 py-1 text-xs font-medium rounded-full {{if eq $interval "7d"}}bg-blue-600 text-white{{else}}bg-white text-gray-600 hover:bg-gray-50 shadow-sm border{{end}}">{{.Page.T.interval_7d}}</a>
-            <a href="/stats/market?interval=30d{{$itemParams | TmplURL}}{{$sellerParams | TmplURL}}" class="px-3 py-1 text-xs font-medium rounded-full {{if eq $interval "30d"}}bg-blue-600 text-white{{else}}bg-white text-gray-600 hover:bg-gray-50 shadow-sm border{{end}}">{{.Page.T.interval_30d}}</a>
-            <a href="/stats/market?interval=all{{$itemParams | TmplURL}}{{$sellerParams | TmplURL}}" class="px-3 py-1 text-xs font-medium rounded-full {{if eq $interval "all"}}bg-blue-600 text-white{{else}}bg-white text-gray-600 hover:bg-gray-50 shadow-sm border{{end}}">{{.Page.T.interval_all}}</a>
+            <a href="/stats/market?interval=24h{{$itemParams | TmplURL}}{{$sellerParams | TmplURL}}" class="px-3 py-1 text-xs font-medium rounded-full {{if eq $interval "24h"}}bg-blue-600 text-white{{else}}bg-white dark:bg-gray-700 text-gray-600 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-600 shadow-sm border border-gray-200 dark:border-gray-600{{end}}">{{.Page.T.interval_24h}}</a>
+            <a href="/stats/market?interval=7d{{$itemParams | TmplURL}}{{$sellerParams | TmplURL}}" class="px-3 py-1 text-xs font-medium rounded-full {{if eq $interval "7d"}}bg-blue-600 text-white{{else}}bg-white dark:bg-gray-700 text-gray-600 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-600 shadow-sm border border-gray-200 dark:border-gray-600{{end}}">{{.Page.T.interval_7d}}</a>
+            <a href="/stats/market?interval=30d{{$itemParams | TmplURL}}{{$sellerParams | TmplURL}}" class="px-3 py-1 text-xs font-medium rounded-full {{if eq $interval "30d"}}bg-blue-600 text-white{{else}}bg-white dark:bg-gray-700 text-gray-600 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-600 shadow-sm border border-gray-200 dark:border-gray-600{{end}}">{{.Page.T.interval_30d}}</a>
+            <a href="/stats/market?interval=all{{$itemParams | TmplURL}}{{$sellerParams | TmplURL}}" class="px-3 py-1 text-xs font-medium rounded-full {{if eq $interval "all"}}bg-blue-600 text-white{{else}}bg-white dark:bg-gray-700 text-gray-600 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-600 shadow-sm border border-gray-200 dark:border-gray-600{{end}}">{{.Page.T.interval_all}}</a>
         </div>
 
         <div class="grid grid-cols-1 md:grid-cols-2 gap-4 my-4">
-            <div class="bg-white p-4 rounded-lg shadow text-center">
-                <div class="text-xs text-gray-500 uppercase font-semibold">{{.Page.T.total_items_sold}} ({{.Data.SelectedInterval}})</div>
-                <div class="text-3xl font-bold text-gray-800">{{formatZeny .Data.TotalSoldItems}}</div>
+            <div class="bg-white dark:bg-gray-800 p-4 rounded-lg shadow text-center">
+                <div class="text-xs text-gray-500 dark:text-gray-400 uppercase font-semibold">{{.Page.T.total_items_sold}} ({{.Data.SelectedInterval}})</div>
+                <div class="text-3xl font-bold text-gray-800 dark:text-gray-100">{{formatZeny .Data.TotalSoldItems}}</div>
             </div>
-            <div class="bg-white p-4 rounded-lg shadow text-center">
-                <div class="text-xs text-gray-500 uppercase font-semibold">{{.Page.T.total_zeny_transacted}} ({{.Data.SelectedInterval}})</div>
-                <div class="text-3xl font-bold text-green-700">{{formatZeny .Data.TotalZenyTransacted}}z</div>
+            <div class="bg-white dark:bg-gray-800 p-4 rounded-lg shadow text-center">
+                <div class="text-xs text-gray-500 dark:text-gray-400 uppercase font-semibold">{{.Page.T.total_zeny_transacted}} ({{.Data.SelectedInterval}})</div>
+                <div class="text-3xl font-bold text-green-700 dark:text-green-400">{{formatZeny .Data.TotalZenyTransacted}}z</div>
             </div>
         </div>
 
-        <div class="bg-white p-4 rounded-lg shadow mb-6">
-            <h3 class="text-lg font-semibold text-gray-700 mb-3">{{.Page.T.sales_over_time}} ({{.Data.SelectedInterval}})</h3>
+        <div class="bg-white dark:bg-gray-800 p-4 rounded-lg shadow mb-6">
+            <h3 class="text-lg font-semibold text-gray-700 dark:text-gray-200 mb-3">{{.Page.T.sales_over_time}} ({{.Data.SelectedInterval}})</h3>
             <div class="relative h-[400px]">
                 <canvas id="salesChart" data-chart-json="{{.Data.SalesOverTimeJSON}}"></canvas>
             </div>
@@ -55,12 +68,12 @@
 
         <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
 
-            <div class="bg-white shadow-lg rounded-lg overflow-hidden">
-                <h3 class="text-lg font-semibold text-gray-800 p-4 border-b bg-gray-50">{{.Page.T.top_sold_items}} ({{.Data.SelectedInterval}})</h3>
+            <div class="bg-white dark:bg-gray-800 shadow-lg rounded-lg overflow-hidden">
+                <h3 class="text-lg font-semibold text-gray-800 dark:text-gray-100 p-4 border-b dark:border-gray-700 bg-gray-50 dark:bg-gray-700">{{.Page.T.top_sold_items}} ({{.Data.SelectedInterval}})</h3>
                 <div class="overflow-x-auto">
                     <table class="min-w-full leading-normal">
                         <thead>
-                            <tr class="border-b-2 border-gray-200 bg-gray-50 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                            <tr class="border-b-2 border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-700 text-left text-xs font-semibold text-gray-600 dark:text-gray-300 uppercase tracking-wider">
                                 {{$query := .Data.Filter}}
                                 {{$currentSort := .Data.ItemSortBy}}
                                 {{$currentOrder := .Data.ItemOrder}}
@@ -84,9 +97,9 @@
                                 </th>
                             </tr>
                         </thead>
-                        <tbody class="text-gray-700 text-xs">
+                        <tbody class="text-gray-700 dark:text-gray-300 text-xs">
                             {{range .Data.TopSoldItems}}
-                            <tr class="border-b border-gray-200 hover:bg-gray-50">
+                            <tr class="border-b border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700">
                                 <td class="px-3 py-2">
                                     <div class="flex items-center">
                                         {{if .ItemID.Valid}}
@@ -99,19 +112,19 @@
                                             <a href="/item?name={{.ItemName | urlquery}}" class="font-semibold hover:underline">{{$displayName}}</a>
                                             
                                             {{if and (eq $.Page.Lang "en") .NamePT.Valid}}
-                                                <div class="text-xs text-gray-500 mt-1">({{.NamePT.String}})</div>
+                                                <div class="text-xs text-gray-500 dark:text-gray-400 mt-1">({{.NamePT.String}})</div>
                                             {{else if and (eq $.Page.Lang "pt") .NamePT.Valid (ne .ItemName .NamePT.String)}}
-                                                <div class="text-xs text-gray-500 mt-1">({{.ItemName}})</div>
+                                                <div class="text-xs text-gray-500 dark:text-gray-400 mt-1">({{.ItemName}})</div>
                                             {{end}}
                                         </div>
                                     </div>
                                 </td>
                                 <td class="px-3 py-2 font-semibold text-right">{{.Count}}</td>
-                                <td class="px-3 py-2 font-mono text-green-700 text-right">{{formatZeny .TotalZeny}}z</td>
+                                <td class="px-3 py-2 font-mono text-green-700 dark:text-green-400 text-right">{{formatZeny .TotalZeny}}z</td>
                             </tr>
                             {{else}}
                             <tr>
-                                <td colspan="3" class="px-3 py-4 text-center text-gray-500">{{.Page.T.no_sales_data}}</td>
+                                <td colspan="3" class="px-3 py-4 text-center text-gray-500 dark:text-gray-400">{{.Page.T.no_sales_data}}</td>
                             </tr>
                             {{end}}
                         </tbody>
@@ -119,12 +132,12 @@
                 </div>
             </div>
 
-            <div class="bg-white shadow-lg rounded-lg overflow-hidden">
-                <h3 class="text-lg font-semibold text-gray-800 p-4 border-b bg-gray-50">{{.Page.T.top_sellers}} ({{.Data.SelectedInterval}})</h3>
+            <div class="bg-white dark:bg-gray-800 shadow-lg rounded-lg overflow-hidden">
+                <h3 class="text-lg font-semibold text-gray-800 dark:text-gray-100 p-4 border-b dark:border-gray-700 bg-gray-50 dark:bg-gray-700">{{.Page.T.top_sellers}} ({{.Data.SelectedInterval}})</h3>
                 <div class="overflow-x-auto">
                     <table class="min-w-full leading-normal">
                         <thead>
-                            <tr class="border-b-2 border-gray-200 bg-gray-50 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                            <tr class="border-b-2 border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-700 text-left text-xs font-semibold text-gray-600 dark:text-gray-300 uppercase tracking-wider">
                                 {{$query := .Data.Filter}}
                                 {{$currentSort := .Data.SellerSortBy}}
                                 {{$currentOrder := .Data.SellerOrder}}
@@ -148,18 +161,18 @@
                                 </th>
                             </tr>
                         </thead>
-                        <tbody class="text-gray-700 text-xs">
+                        <tbody class="text-gray-700 dark:text-gray-300 text-xs">
                             {{range .Data.TopSellers}}
-                            <tr class="border-b border-gray-200 hover:bg-gray-50">
+                            <tr class="border-b border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700">
                                 <td class="px-3 py-2">
-                                    <a href="/character?name={{.SellerName | urlquery}}" class="font-semibold hover:underline text-blue-600">{{.SellerName}}</a>
+                                    <a href="/character?name={{.SellerName | urlquery}}" class="font-semibold hover:underline text-blue-600 dark:text-blue-400">{{.SellerName}}</a>
                                 </td>
                                 <td class="px-3 py-2 font-semibold text-right">{{.Count}}</td>
-                                <td class="px-3 py-2 font-mono text-green-700 text-right">{{formatZeny .TotalZeny}}z</td>
+                                <td class="px-3 py-2 font-mono text-green-700 dark:text-green-400 text-right">{{formatZeny .TotalZeny}}z</td>
                             </tr>
                             {{else}}
                             <tr>
-                                <td colspan="3" class="px-3 py-4 text-center text-gray-500">{{.Page.T.no_sales_data}}</td>
+                                <td colspan="3" class="px-3 py-4 text-center text-gray-500 dark:text-gray-400">{{.Page.T.no_sales_data}}</td>
                             </tr>
                             {{end}}
                         </tbody>
@@ -171,6 +184,7 @@
 
     </div>
     
+    
     <script>
     // ... (JavaScript is unchanged) ...
     document.addEventListener('DOMContentLoaded', () => {
@@ -181,6 +195,9 @@
             js_sales_volume: '{{.Page.T.js_sales_volume}}',
             js_items_sold: '{{.Page.T.js_items_sold}}'
         };
+        const isDarkMode = document.documentElement.classList.contains('dark');
+        const gridColor = isDarkMode ? 'rgba(107, 114, 128, 0.2)' : 'rgba(209, 213, 219, 0.2)';
+        const labelColor = isDarkMode ? 'rgba(209, 213, 219, 1)' : 'rgba(107, 114, 128, 1)';
 
         const lastUpdateElement = document.getElementById('last-updated');
         if (lastUpdateElement) {
@@ -211,7 +228,7 @@
                         else timeAgoString = `${Math.floor(secondsPast / 86400)}d ago`;
                     }
                     const fullString = translations.updated_ago.replace('%s', timeAgoString);
-                    lastUpdateElement.innerHTML = `${fullString} <span class="text-gray-400 font-normal">(${formattedTimestamp})</span>`;
+                    lastUpdateElement.innerHTML = `${fullString} <span class="text-gray-400 dark:text-gray-500 font-normal">(${formattedTimestamp})</span>`;
                 };
                 updateTimeAgo();
                 setInterval(updateTimeAgo, 30000);
@@ -265,16 +282,20 @@
                                             day: 'MMM d'
                                         }
                                     },
-                                    grid: { display: false }
+                                    grid: { display: false },
+                                    ticks: { color: labelColor }
                                 },
                                 yZeny: {
                                     type: 'linear',
                                     position: 'left',
                                     title: {
                                         display: true,
-                                        text: translations.js_sales_volume
+                                        text: translations.js_sales_volume,
+                                        color: labelColor
                                     },
+                                    grid: { color: gridColor },
                                     ticks: {
+                                        color: labelColor,
                                         callback: function(value) {
                                             if (value >= 1000000) return (value / 1000000) + 'm';
                                             if (value >= 1000) return (value / 1000) + 'k';
@@ -287,12 +308,17 @@
                                     position: 'right',
                                     title: {
                                         display: true,
-                                        text: translations.js_items_sold
+                                        text: translations.js_items_sold,
+                                        color: labelColor
                                     },
-                                    grid: { display: false }
+                                    grid: { display: false },
+                                    ticks: { color: labelColor }
                                 }
                             },
                             plugins: {
+                                legend: {
+                                    labels: { color: labelColor }
+                                },
                                 tooltip: {
                                     mode: 'index',
                                     intersect: false,

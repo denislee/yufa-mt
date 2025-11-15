@@ -4,31 +4,44 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{{.Page.T.recent_market_activity}} - Yufa Market Tracker</title>
+
+    {{/* --- ADD ALL 3 SCRIPTS (CDN, Config, Initializer) HERE --- */}}
     <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = { darkMode: 'class' }
+    </script>
+    <script>
+        if (localStorage.theme === 'dark' || (!('theme' in localStorage) && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
+            document.documentElement.classList.add('dark');
+        } else {
+            document.documentElement.classList.remove('dark');
+        }
+    </script>
+
     <style>
-        html { font-size: 100%; }
+     html { font-size: 100%; }
         .container {
             max-width: 95% !important;
         }
     </style>
 </head>
-<body class="bg-gray-100 text-gray-800 text-sm sm:text-base">
+<body class="bg-gray-100 dark:bg-gray-900 text-gray-800 dark:text-gray-200 text-sm sm:text-base">
 
     {{template "navbar.html" .}}
 
     <div class="container mx-auto px-4 py-6">
 
-        <div class="flex flex-col sm:flex-row justify-between sm:items-center gap-2 mb-4 border-b border-gray-200 pb-3">
-            <h1 class="text-2xl font-bold text-gray-800">{{.Page.T.recent_market_activity}}</h1>
-            <div id="last-updated" class="text-sm text-gray-500" data-timestamp="{{.Data.LastScrapeTime}}"></div>
+        <div class="flex flex-col sm:flex-row justify-between sm:items-center gap-2 mb-4 border-b border-gray-200 dark:border-gray-700 pb-3">
+            <h1 class="text-2xl font-bold text-gray-800 dark:text-gray-100">{{.Page.T.recent_market_activity}}</h1>
+            <div id="last-updated" class="text-sm text-gray-500 dark:text-gray-400" data-timestamp="{{.Data.LastScrapeTime}}"></div>
         </div>
 
-        <div class="bg-white p-3 rounded-lg shadow mb-4">
+        <div class="bg-white dark:bg-gray-800 p-3 rounded-lg shadow mb-4">
             <form action="/activity" method="GET" class="flex flex-wrap items-center gap-3">
-                <input type="text" name="query" id="query" class="flex-grow mt-1 block w-full md:w-auto rounded-md border-gray-300 shadow-sm focus:border-indigo-300 focus:ring focus:ring-indigo-200 focus:ring-opacity-50 text-sm" placeholder="{{.Page.T.search_by_item_name}}" value="{{.Data.SearchQuery}}">
-                
-                <label class="flex items-center space-x-2 text-sm text-gray-700">
-                    <input type="checkbox" name="sold_only" value="true" class="rounded border-gray-300 text-blue-600 shadow-sm focus:border-blue-300 focus:ring focus:ring-blue-200 focus:ring-opacity-50"
+                <input type="text" name="query" id="query" class="flex-grow mt-1 block w-full md:w-auto rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white dark:placeholder-gray-400 shadow-sm focus:border-indigo-300 focus:ring focus:ring-indigo-200 focus:ring-opacity-50 text-sm" placeholder="{{.Page.T.search_by_item_name}}" value="{{.Data.SearchQuery}}">
+             
+                <label class="flex items-center space-x-2 text-sm text-gray-700 dark:text-gray-300">
+                    <input type="checkbox" name="sold_only" value="true" class="rounded border-gray-300 dark:border-gray-600 dark:bg-gray-700 text-blue-600 shadow-sm focus:border-blue-300 focus:ring focus:ring-blue-200 focus:ring-opacity-50"
                         {{if .Data.SoldOnly}}checked{{end}}>
                     <span>{{.Page.T.show_only_sold}}</span>
                 </label>
@@ -36,32 +49,34 @@
                 <button type="submit" class="w-full md:w-auto bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-md">{{.Page.T.filter}}</button>
                 
                 {{if or .Data.SearchQuery .Data.SoldOnly}}
-                <a href="/activity" class="text-sm text-gray-500 hover:text-gray-700 hover:underline">{{.Page.T.clear_filters}}</a>
+                <a href="/activity" class="text-sm text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 hover:underline">{{.Page.T.clear_filters}}</a>
                 {{end}}
             </form>
         </div>
         
         <div class="space-y-4">
             {{range .Data.MarketEvents}}
+                {{/* --- MODIFICATION IS HERE --- */}}
                 <div class="shadow rounded-lg p-3 flex flex-col sm:flex-row items-start sm:items-center gap-3 text-xs
                     {{if eq .EventType "SOLD"}}
-                        bg-blue-50
+                        bg-blue-50 dark:bg-blue-950 dark:border dark:border-blue-900
                     {{else if eq .EventType "ADDED"}}
-                        bg-green-50
+                        bg-green-50 dark:bg-green-950 dark:border dark:border-green-900
                     {{else if eq .EventType "REMOVED" "REMOVED_SINGLE"}}
-                        bg-red-50
+                        bg-red-50 dark:bg-red-950 dark:border dark:border-red-900
                     {{else if eq .EventType "NEW_LOW"}}
-                        bg-yellow-50
+                        bg-yellow-50 dark:bg-yellow-950 dark:border dark:border-yellow-800
                     {{else}}
-                        bg-white
+                        bg-white dark:bg-gray-800
                     {{end}}
                 ">
+                {{/* --- END MODIFICATION --- */}}
                 <div class="flex-shrink-0">
                         <img src="https://static.divine-pride.net/images/items/item/{{.ItemID}}.png" alt="" class="w-8 h-8" style="image-rendering: pixelated;">
                     </div>
-                    <div class="flex-1 min-w-0">
+                <div class="flex-1 min-w-0">
                         <div>
-                            <a href="/item?name={{.ItemName | urlquery}}" class="font-semibold text-gray-800 hover:text-blue-600 hover:underline">
+                            <a href="/item?name={{.ItemName | urlquery}}" class="font-semibold text-gray-800 dark:text-gray-100 hover:text-blue-600 dark:hover:text-blue-400 hover:underline">
                                 {{if and (eq $.Page.Lang "pt") .NamePT.Valid}}
                                     {{.NamePT.String}}
                                 {{else}}
@@ -70,22 +85,24 @@
                             </a>
                             
                             {{if eq .EventType "ADDED"}}
-                                <span class="text-gray-600">{{$.Page.T.was_added}}</span>
+                                <span class="text-gray-600 dark:text-gray-300">{{$.Page.T.was_added}}</span>
                             {{else if eq .EventType "REMOVED" "REMOVED_SINGLE"}}
-                                <span class="text-gray-600">{{$.Page.T.no_longer_for_sale}}</span>
+                                <span class="text-gray-600 dark:text-gray-300">{{$.Page.T.no_longer_for_sale}}</span>
                             {{else if eq .EventType "SOLD"}}
-                                <span class="font-semibold text-green-700">{{$.Page.T.was_sold}}.</span>
+                                {{/* --- MODIFICATION IS HERE (text-green-500) --- */}}
+                                <span class="font-semibold text-green-700 dark:text-green-500">{{$.Page.T.was_sold}}.</span>
                             {{else if eq .EventType "NEW_LOW"}}
-                                <span class="font-semibold text-blue-700">{{$.Page.T.new_historical_low}}!</span>
+                                {{/* --- MODIFICATION IS HERE (text-blue-500) --- */}}
+                                <span class="font-semibold text-blue-700 dark:text-blue-500">{{$.Page.T.new_historical_low}}!</span>
                             {{end}}
                         </div>
                         
                         {{if .Details.price}}
-                        <div class="text-gray-500 mt-1">
+                        <div class="text-gray-500 dark:text-gray-400 mt-1">
                             {{if or (eq .EventType "REMOVED") (eq .EventType "SOLD")}}
                                 <span class="line-through">{{.Details.price}}z</span>
                             {{else}}
-                                <span class="font-medium text-gray-700">{{$.Page.T.for}} {{.Details.price}}z</span>
+                                <span class="font-medium text-gray-700 dark:text-gray-300">{{$.Page.T.for}} {{.Details.price}}z</span>
                             {{end}}
                             <span class="mx-2">·</span>
                             <span>{{.Details.quantity}}x</span>
@@ -95,12 +112,12 @@
                         </div>
                         {{end}}
                     </div>
-                    <div class="text-xs text-gray-400 font-mono whitespace-nowrap w-full sm:w-auto text-left sm:text-right mt-2 sm:mt-0">
+                    <div class="text-xs text-gray-400 dark:text-gray-500 font-mono whitespace-nowrap w-full sm:w-auto text-left sm:text-right mt-2 sm:mt-0">
                         {{.Timestamp}}
                     </div>
                 </div>
             {{else}}
-                <div class="bg-white shadow rounded-lg p-6 text-center text-gray-500">
+                <div class="bg-white dark:bg-gray-800 shadow rounded-lg p-6 text-center text-gray-500 dark:text-gray-400">
                     {{.Page.T.no_market_activity}}
                 </div>
             {{end}}
@@ -143,7 +160,6 @@
                     const secondsPast = Math.floor((now.getTime() - lastUpdateDate.getTime()) / 1000);
                     let timeAgoString;
                     
-                    // --- MODIFIED: Removed 'atrás' to fix duplicate word ---
                     if (lang === 'pt') {
                         if (secondsPast < 5) timeAgoString = 'agora mesmo';
                         else if (secondsPast < 60) timeAgoString = `${secondsPast}s`;
@@ -151,7 +167,6 @@
                         else if (secondsPast < 86400) timeAgoString = `${Math.floor(secondsPast / 3600)}h`;
                         else timeAgoString = `${Math.floor(secondsPast / 86400)}d`;
                     } else {
-                    // --- END MODIFICATION ---
                         if (secondsPast < 5) timeAgoString = 'just now';
                         else if (secondsPast < 60) timeAgoString = `${secondsPast}s ago`;
                         else if (secondsPast < 3600) timeAgoString = `${Math.floor(secondsPast / 60)}m ago`;
@@ -160,7 +175,7 @@
                     }
 
                     const fullString = translations.updated_ago.replace('%s', timeAgoString);
-                    lastUpdateElement.innerHTML = `${fullString} <span class="text-gray-400 font-normal">(${formattedTimestamp})</span>`;
+                    lastUpdateElement.innerHTML = `${fullString} <span class="text-gray-400 dark:text-gray-500 font-normal">(${formattedTimestamp})</span>`;
                 };
 
                 updateTimeAgo();

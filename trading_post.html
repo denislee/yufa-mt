@@ -4,7 +4,20 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{{.Page.T.discord_title}} - Yufa Market Tracker</title>
+    
+    {{/* --- ADD ALL 3 SCRIPTS FROM THE "IMPORTANT REMINDER" HERE --- */}}
     <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = { darkMode: 'class' }
+    </script>
+    <script>
+        if (localStorage.theme === 'dark' || (!('theme' in localStorage) && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
+            document.documentElement.classList.add('dark');
+        } else {
+            document.documentElement.classList.remove('dark');
+        }
+    </script>
+
     <style>
         html { font-size: 100%; }
         .container {
@@ -12,52 +25,52 @@
         }
     </style>
 </head>
-<body class="bg-gray-100 text-gray-800 text-sm sm:text-base">
+<body class="bg-gray-100 dark:bg-gray-900 text-gray-800 dark:text-gray-200 text-sm sm:text-base">
 
     {{template "navbar.html" .}}
 
     <div class="container mx-auto px-4 py-6">
-        <div class="flex flex-col sm:flex-row justify-between sm:items-center gap-2 mb-4 border-b border-gray-200 pb-3">
+        <div class="flex flex-col sm:flex-row justify-between sm:items-center gap-2 mb-4 border-b border-gray-200 dark:border-gray-700 pb-3">
             <div>
-                <h1 class="text-2xl font-bold text-gray-800">{{.Page.T.discord_title}}</h1>
+                <h1 class="text-2xl font-bold text-gray-800 dark:text-gray-100">{{.Page.T.discord_title}}</h1>
             </div>
         </div>
 
-        <div class="bg-white p-3 rounded-lg shadow mb-4">
+        <div class="bg-white dark:bg-gray-800 p-3 rounded-lg shadow mb-4">
             <form action="/discord" method="GET" class="flex flex-wrap items-center gap-3">
                 <input type="hidden" name="filter_type" value="{{.Data.FilterType}}">
                 <input type="hidden" name="filter_currency" value="{{.Data.FilterCurrency}}"> <input type="hidden" name="sort_by" value="{{.Data.SortBy}}">
                 <input type="hidden" name="order" value="{{.Data.Order}}">
-                <input type="text" name="query" id="query" class="flex-grow mt-1 block w-full md:w-auto rounded-md border-gray-300 shadow-sm focus:border-indigo-300 focus:ring focus:ring-indigo-200 focus:ring-opacity-50 text-sm" placeholder="{{.Page.T.search_by_item_name}}" value="{{.Data.SearchQuery}}">
+                <input type="text" name="query" id="query" class="flex-grow mt-1 block w-full md:w-auto rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white dark:placeholder-gray-400 shadow-sm focus:border-indigo-300 focus:ring focus:ring-indigo-200 focus:ring-opacity-50 text-sm" placeholder="{{.Page.T.search_by_item_name}}" value="{{.Data.SearchQuery}}">
                 <button type="submit" class="w-full md:w-auto bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-md">{{.Page.T.search}}</button>
             </form>
         </div>
 
-        <div class="flex flex-wrap border-b-2 border-gray-200 mb-2 gap-2">
+        <div class="flex flex-wrap border-b-2 border-gray-200 dark:border-gray-700 mb-2 gap-2">
             <a href="/discord?filter_type=all&query={{.Data.SearchQuery}}&filter_currency={{.Data.FilterCurrency}}&sort_by={{.Data.SortBy}}&order={{.Data.Order}}"
                class="px-3 py-1 text-sm font-medium flex items-center gap-2 -mb-0.5 border-b-2
                       {{if eq .Data.FilterType "all"}}
-                        text-blue-600 border-blue-600
+                        text-blue-600 border-blue-600 dark:text-blue-400 dark:border-blue-400
                       {{else}}
-                        text-gray-500 border-transparent hover:text-gray-700 hover:border-gray-300
+                        text-gray-500 dark:text-gray-400 border-transparent hover:text-gray-700 dark:hover:text-gray-200 hover:border-gray-300 dark:hover:border-gray-600
                       {{end}}">
                 {{.Page.T.all_posts}}
             </a>
             <a href="/discord?filter_type=selling&query={{.Data.SearchQuery}}&filter_currency={{.Data.FilterCurrency}}&sort_by={{.Data.SortBy}}&order={{.Data.Order}}"
                class="px-3 py-1 text-sm font-medium flex items-center gap-2 -mb-0.5 border-b-2
                       {{if eq .Data.FilterType "selling"}}
-                        text-blue-600 border-blue-600
+                        text-blue-600 border-blue-600 dark:text-blue-400 dark:border-blue-400
                       {{else}}
-                        text-gray-500 border-transparent hover:text-gray-700 hover:border-gray-300
+                        text-gray-500 dark:text-gray-400 border-transparent hover:text-gray-700 dark:hover:text-gray-200 hover:border-gray-300 dark:hover:border-gray-600
                       {{end}}">
                 {{.Page.T.selling}}
             </a>
             <a href="/discord?filter_type=buying&query={{.Data.SearchQuery}}&filter_currency={{.Data.FilterCurrency}}&sort_by={{.Data.SortBy}}&order={{.Data.Order}}"
                class="px-3 py-1 text-sm font-medium flex items-center gap-2 -mb-0.5 border-b-2
                       {{if eq .Data.FilterType "buying"}}
-                        text-blue-600 border-blue-600
+                        text-blue-600 border-blue-600 dark:text-blue-400 dark:border-blue-400
                       {{else}}
-                        text-gray-500 border-transparent hover:text-gray-700 hover:border-gray-300
+                        text-gray-500 dark:text-gray-400 border-transparent hover:text-gray-700 dark:hover:text-gray-200 hover:border-gray-300 dark:hover:border-gray-600
                       {{end}}">
                 {{.Page.T.buying}}
             </a>
@@ -69,7 +82,7 @@
                       {{if eq .Data.FilterCurrency "all"}}
                         bg-gray-700 text-white
                       {{else}}
-                        bg-gray-200 text-gray-600 hover:bg-gray-300
+                        bg-gray-200 dark:bg-gray-700 text-gray-600 dark:text-gray-200 hover:bg-gray-300 dark:hover:bg-gray-600
                       {{end}}">
                 {{.Page.T.both}}
             </a>
@@ -78,7 +91,7 @@
                       {{if eq .Data.FilterCurrency "zeny"}}
                         bg-green-600 text-white
                       {{else}}
-                        bg-green-100 text-green-700 hover:bg-green-200
+                        bg-green-100 dark:bg-green-900 text-green-700 dark:text-green-300 hover:bg-green-200 dark:hover:bg-green-800
                       {{end}}">
                 {{.Page.T.zeny}}
             </a>
@@ -87,17 +100,17 @@
                       {{if eq .Data.FilterCurrency "rmt"}}
                         bg-blue-600 text-white
                       {{else}}
-                        bg-blue-100 text-blue-700 hover:bg-blue-200
+                         bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-300 hover:bg-blue-200 dark:hover:bg-blue-800
                       {{end}}">
                 {{.Page.T.rmt}}
             </a>
         </div>
 
 
-        <div class="bg-white shadow-lg rounded-lg overflow-hidden">
+        <div class="bg-white dark:bg-gray-800 shadow-lg rounded-lg overflow-hidden">
             <div class="overflow-x-auto">
-                <table class="min-w-full"> <thead class="bg-gray-50 border-b border-gray-200">
-                        <tr class="text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                <table class="min-w-full"> <thead class="bg-gray-50 dark:bg-gray-700 border-b border-gray-200 dark:border-gray-600">
+                        <tr class="text-left text-xs font-semibold text-gray-600 dark:text-gray-300 uppercase tracking-wider">
                             {{$query := .Data.SearchQuery}}
                             {{$filterType := .Data.FilterType}}
                             {{$filterCurrency := .Data.FilterCurrency}} {{$currentSort := .Data.SortBy}}
@@ -139,14 +152,14 @@
                             <th class="px-2 sm:px-3 py-2">{{.Page.T.source}}</th>
                         </tr>
                     </thead>
-                    <tbody class="divide-y divide-gray-100 text-xs">
+                    <tbody class="divide-y divide-gray-100 dark:divide-gray-700 text-xs">
                         {{range .Data.Items}}
-                        <tr class="hover:bg-gray-50">
+                        <tr class="hover:bg-gray-50 dark:hover:bg-gray-700">
                             <td class="px-2 sm:px-3 py-2">
                                 {{if eq .PostType "selling"}}
-                                    <span class="font-bold text-lg text-red-600" title="{{$.Page.T.type_selling}}">V></span>
+                                    <span class="font-bold text-lg text-red-600 dark:text-red-400" title="{{$.Page.T.type_selling}}">V></span>
                                 {{else}}
-                                    <span class="font-bold text-lg text-green-600" title="{{$.Page.T.type_buying}}">C></span>
+                                    <span class="font-bold text-lg text-green-600 dark:text-green-400" title="{{$.Page.T.type_buying}}">C></span>
                                 {{end}}
                             </td>
                             <td class="px-2 sm:px-3 py-2">
@@ -157,7 +170,7 @@
                                         <img src="https://static.divine-pride.net/images/items/item/909.png" alt="Item" class="w-6 h-6 opacity-50" style="image-rendering: pixelated;">
                                     {{end}}
                                     <div>
-                                        <span class="text-gray-800">
+                                        <span class="text-gray-800 dark:text-gray-100">
                                             {{if and (eq $.Page.Lang "pt") .NamePT.Valid}}
                                                 {{.NamePT.String}}
                                             {{else}}
@@ -166,7 +179,7 @@
                                             {{if gt .Refinement 0}}+{{.Refinement}}{{end}}
 
                                             {{if or .Card1.Valid .Card2.Valid .Card3.Valid .Card4.Valid}}
-                                            <span class="text-xs text-blue-600 ml-2 font-normal">
+                                            <span class="text-xs text-blue-600 dark:text-blue-400 ml-2 font-normal">
                                                 {{if .Card1.Valid}}[{{.Card1.String | cleanCardName}}]{{end}}
                                                 {{if .Card2.Valid}} [{{.Card2.String | cleanCardName}}]{{end}}
                                                 {{if .Card3.Valid}} [{{.Card3.String | cleanCardName}}]{{end}}
@@ -174,43 +187,43 @@
                                             </span>
                                             {{end}}
                                         </span>
-                                     </div>
+                                    </div>
                                 </div>
                             </td>
                             <td class="px-2 sm:px-3 py-2 font-mono text-right">
                                 {{if gt .PriceZeny 0}}
-                                <div class="text-green-600 font-semibold" title="{{.PriceZeny}} Zeny">{{formatZeny .PriceZeny}}z</div>
+                                <div class="text-green-600 dark:text-green-400 font-semibold" title="{{.PriceZeny}} Zeny">{{formatZeny .PriceZeny}}z</div>
                                 {{end}}
                                 {{if gt .PriceRMT 0}}
-                                <div class="text-blue-600 font-semibold" title="{{.PriceRMT}} RMT">{{formatRMT .PriceRMT}}</div>
+                                <div class="text-blue-600 dark:text-blue-400 font-semibold" title="{{.PriceRMT}} RMT">{{formatRMT .PriceRMT}}</div>
                                 {{end}}
                                 {{if and (eq .PriceZeny 0) (eq .PriceRMT 0)}}
                                 {{/* --- FIX 1 --- */}}
-                                <div class="text-gray-500 italic">{{$.Page.T.negotiable}}</div>
+                                <div class="text-gray-500 dark:text-gray-400 italic">{{$.Page.T.negotiable}}</div>
                                 {{end}}
                             </td>
                             <td class="px-2 sm:px-3 py-2 text-center">
                                 {{if eq .PaymentMethods "both"}}
                                     {{/* --- FIX 2 --- */}}
-                                    <span class="font-medium text-gray-700">{{$.Page.T.both}}</span>
+                                    <span class="font-medium text-gray-700 dark:text-gray-300">{{$.Page.T.both}}</span>
                                 {{else if eq .PaymentMethods "rmt"}}
                                     {{/* --- FIX 3 --- */}}
-                                    <span class="font-medium text-blue-600">{{$.Page.T.rmt}}</span>
+                                    <span class="font-medium text-blue-600 dark:text-blue-400">{{$.Page.T.rmt}}</span>
                                 {{else}}
                                     {{/* --- FIX 4 --- */}}
-                                    <span class="font-medium text-green-600">{{$.Page.T.zeny}}</span>
+                                    <span class="font-medium text-green-600 dark:text-green-400">{{$.Page.T.zeny}}</span>
                                 {{end}}
                             </td>
-                            <td class="px-2 sm:px-3 py-2 text-right text-gray-600">{{.Quantity}}x</td>
+                            <td class="px-2 sm:px-3 py-2 text-right text-gray-600 dark:text-gray-300">{{.Quantity}}x</td>
                             <td class="px-2 sm:px-3 py-2">
-                                <div class="font-semibold text-gray-800">{{.CharacterName}}</div>
-                                </td>
-                            <td class="px-2 sm:px-3 py-2 text-gray-500" title="{{.CreatedAt}}">
+                                <div class="font-semibold text-gray-800 dark:text-gray-100">{{.CharacterName}}</div>
+                            </td>
+                            <td class="px-2 sm:px-3 py-2 text-gray-500 dark:text-gray-400" title="{{.CreatedAt}}">
                                 {{.CreatedAgo}}
                             </td>
                             <td class="px-2 sm:px-3 py-2 text-center">
                                 {{if .Notes.Valid}}
-                                <span class="inline-block align-middle px-1.5 py-0.5 bg-gray-200 text-gray-700 text-xs font-medium rounded-full cursor-pointer hover:bg-gray-300 open-notes-lightbox" data-note="{{.Notes.String}}">
+                                <span class="inline-block align-middle px-1.5 py-0.5 bg-gray-200 dark:bg-gray-600 text-gray-700 dark:text-gray-200 text-xs font-medium rounded-full cursor-pointer hover:bg-gray-300 dark:hover:bg-gray-500 open-notes-lightbox" data-note="{{.Notes.String}}">
                                    ... 
                                 </span>
                                 {{end}}
@@ -221,18 +234,17 @@
                 </table>
             </div> {{if not .Data.Items}}
             <div class="text-center py-10 px-4">
-                <p class="text-gray-500">{{.Page.T.no_trading_posts | TmplHTML}}</p>
+                <p class="text-gray-500 dark:text-gray-400">{{.Page.T.no_trading_posts | TmplHTML}}</p>
             </div>
             {{end}}
         </div>
     </div>
 
     <div id="notes-lightbox" class="fixed inset-0 bg-gray-600 bg-opacity-75 flex items-center justify-center p-4 z-50 hidden">
-        <div class="bg-white rounded-lg shadow-xl max-w-lg w-full p-6 relative">
-            <button id="lightbox-close" class="absolute top-3 right-3 text-gray-400 hover:text-gray-600 text-2xl font-bold leading-none">&times;</button>
-
-            <h3 class="text-lg font-semibold text-gray-800 mb-4">{{.Page.T.lightbox_title}}</h3>
-            <div id="lightbox-content" class="text-gray-600 whitespace-pre-wrap max-h-[60vh] overflow-y-auto">
+        <div class="bg-white dark:bg-gray-800 rounded-lg shadow-xl max-w-lg w-full p-6 relative">
+            <button id="lightbox-close" class="absolute top-3 right-3 text-gray-400 hover:text-gray-600 dark:text-gray-300 dark:hover:text-gray-100 text-2xl font-bold leading-none">&times;</button>
+            <h3 class="text-lg font-semibold text-gray-800 dark:text-gray-100 mb-4">{{.Page.T.lightbox_title}}</h3>
+            <div id="lightbox-content" class="text-gray-600 dark:text-gray-300 whitespace-pre-wrap max-h-[60vh] overflow-y-auto">
                 </div>
         </div>
     </div>

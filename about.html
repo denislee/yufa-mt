@@ -4,7 +4,20 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{{.Page.T.about_title}} - Yufa Market Tracker</title> {{/* <-- MODIFIED */}}
+
+    {{/* --- ADD ALL 3 SCRIPTS FROM THE "IMPORTANT REMINDER" HERE --- */}}
     <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = { darkMode: 'class' }
+    </script>
+    <script>
+        if (localStorage.theme === 'dark' || (!('theme' in localStorage) && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
+            document.documentElement.classList.add('dark');
+        } else {
+            document.documentElement.classList.remove('dark');
+        }
+    </script>
+
     <style>
         html { font-size: 100%; }
         .container {
@@ -24,32 +37,36 @@
             border-bottom: 1px solid #eee;
             padding-bottom: 4px;
         }
+        /* --- NEW DARK STYLES --- */
+        .dark .content-box h3 {
+            border-bottom-color: #374151; /* gray-700 */
+        }
     </style>
 </head>
-<body class="bg-gray-100 text-gray-800 text-sm sm:text-base">
+<body class="bg-gray-100 dark:bg-gray-900 text-gray-800 dark:text-gray-200 text-sm sm:text-base">
 
     {{/* MODIFIED: Pass the entire context */}}
     {{template "navbar.html" .}}
 
     <div class="container mx-auto px-4 py-6">
-        <div class="flex flex-col sm:flex-row justify-between sm:items-center gap-2 mb-4 border-b border-gray-200 pb-3">
-            <h1 class="text-2xl font-bold text-gray-800">{{.Page.T.about_title}}</h1> {{/* <-- MODIFIED */}}
-            <div id="last-updated" class="text-sm text-gray-500"></div>
+        <div class="flex flex-col sm:flex-row justify-between sm:items-center gap-2 mb-4 border-b border-gray-200 dark:border-gray-700 pb-3">
+            <h1 class="text-2xl font-bold text-gray-800 dark:text-gray-100">{{.Page.T.about_title}}</h1> {{/* <-- MODIFIED */}}
+            <div id="last-updated" class="text-sm text-gray-500 dark:text-gray-400"></div>
         </div>
 
-        <div class="bg-white p-6 md:p-8 rounded-lg shadow-lg mb-6 content-box">
+        <div class="bg-white dark:bg-gray-800 p-6 md:p-8 rounded-lg shadow-lg mb-6 content-box">
             {{/* MODIFIED: Use translation keys */}}
-            <h2 class="text-xl font-semibold text-gray-800 mb-3">{{.Page.T.about_what_is_this | TmplHTML}}</h2>
-            <p>{{.Page.T.about_welcome | TmplHTML}}</p>
-            <p>{{.Page.T.about_all_info_public | TmplHTML}}</p>
+            <h2 class="text-xl font-semibold text-gray-800 dark:text-gray-100 mb-3">{{.Page.T.about_what_is_this | TmplHTML}}</h2>
+            <p class="dark:text-gray-300">{{.Page.T.about_welcome | TmplHTML}}</p>
+            <p class="dark:text-gray-300">{{.Page.T.about_all_info_public | TmplHTML}}</p>
         </div>
 
-        <div class="bg-white p-6 md:p-8 rounded-lg shadow-lg mb-6 content-box">
+        <div class="bg-white dark:bg-gray-800 p-6 md:p-8 rounded-lg shadow-lg mb-6 content-box">
             {{/* MODIFIED: Use translation keys */}}
-            <h2 class="text-xl font-semibold text-yellow-600 mb-4">{{.Page.T.about_warnings | TmplHTML}}</h2>
-            <p>{{.Page.T.about_please_read | TmplHTML}}</p>
+            <h2 class="text-xl font-semibold text-yellow-600 dark:text-yellow-400 mb-4">{{.Page.T.about_warnings | TmplHTML}}</h2>
+            <p class="dark:text-gray-300">{{.Page.T.about_please_read | TmplHTML}}</p>
             
-            <ul class="list-disc pl-5 space-y-3 text-gray-700">
+            <ul class="list-disc pl-5 space-y-3 text-gray-700 dark:text-gray-300">
                 <li>{{.Page.T.about_warning_1 | TmplHTML}}</li>
                 <li>{{.Page.T.about_warning_2 | TmplHTML}}</li>
                 <li>{{.Page.T.about_warning_3 | TmplHTML}}</li>

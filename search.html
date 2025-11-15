@@ -4,7 +4,20 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{{.Page.T.global_search_title}} - Yufa Market Tracker</title>
+
+    {{/* --- ADD ALL 3 SCRIPTS FROM THE "IMPORTANT REMINDER" HERE --- */}}
     <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = { darkMode: 'class' }
+    </script>
+    <script>
+        if (localStorage.theme === 'dark' || (!('theme' in localStorage) && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
+            document.documentElement.classList.add('dark');
+        } else {
+            document.documentElement.classList.remove('dark');
+        }
+    </script>
+    
     <style>
         html { font-size: 100%; }
         .container {
@@ -12,46 +25,46 @@
         }
     </style>
 </head>
-<body class="bg-gray-100 text-gray-800 text-sm sm:text-base">
+<body class="bg-gray-100 dark:bg-gray-900 text-gray-800 dark:text-gray-200 text-sm sm:text-base">
 
     {{template "navbar.html" .}}
 
     <div class="container mx-auto px-4 py-6">
-        <div class="flex flex-col sm:flex-row justify-between sm:items-center gap-2 mb-4 border-b border-gray-200 pb-3">
-            <h1 class="text-2xl font-bold text-gray-800">{{.Page.T.global_search_title}}</h1>
-            <div class="text-sm text-gray-500">{{printf .Page.T.info_loaded_at .Data.LastScrapeTime}}</div>
+        <div class="flex flex-col sm:flex-row justify-between sm:items-center gap-2 mb-4 border-b border-gray-200 dark:border-gray-700 pb-3">
+            <h1 class="text-2xl font-bold text-gray-800 dark:text-gray-100">{{.Page.T.global_search_title}}</h1>
+            <div class="text-sm text-gray-500 dark:text-gray-400">{{printf .Page.T.info_loaded_at .Data.LastScrapeTime}}</div>
         </div>
 
-        <div class="bg-white p-3 rounded-lg shadow mb-6">
+        <div class="bg-white dark:bg-gray-800 p-3 rounded-lg shadow mb-6">
             <form action="/search" method="GET" class="flex items-center gap-3">
-                <input type="text" name="q" value="{{.Data.SearchQuery}}" placeholder="{{.Page.T.search_placeholder}}" class="flex-grow mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-300 focus:ring focus:ring-indigo-200 focus:ring-opacity-50 text-sm">
+                <input type="text" name="q" value="{{.Data.SearchQuery}}" placeholder="{{.Page.T.search_placeholder}}" class="flex-grow mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white dark:placeholder-gray-400 shadow-sm focus:border-indigo-300 focus:ring focus:ring-indigo-200 focus:ring-opacity-50 text-sm">
                 <button type="submit" class="w-full sm:w-auto bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-md">{{.Page.T.search}}</button>
             </form>
         </div>
 
         {{if .Data.SearchQuery}}
-            <div class="mb-4 text-gray-700">
+            <div class="mb-4 text-gray-700 dark:text-gray-300">
                 {{printf .Page.T.search_results_for .Data.SearchQuery | TmplHTML}}
             </div>
 
             {{if not .Data.HasResults}}
-                <div class="bg-white p-4 rounded-lg shadow text-center text-gray-500">
+                <div class="bg-white dark:bg-gray-800 p-4 rounded-lg shadow text-center text-gray-500 dark:text-gray-400">
                     {{.Page.T.no_results_found}}
                 </div>
             {{else}}
                 <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
 
                     {{if .Data.CharacterResults}}
-                    <div class="bg-white shadow-lg rounded-lg overflow-hidden">
-                        <h3 class="text-lg font-semibold text-gray-800 p-4 border-b bg-gray-50">{{.Page.T.characters_found}} ({{len .Data.CharacterResults}})</h3>
-                        <ul class="divide-y divide-gray-200">
+                    <div class="bg-white dark:bg-gray-800 shadow-lg rounded-lg overflow-hidden">
+                        <h3 class="text-lg font-semibold text-gray-800 dark:text-gray-100 p-4 border-b dark:border-gray-700 bg-gray-50 dark:bg-gray-700">{{.Page.T.characters_found}} ({{len .Data.CharacterResults}})</h3>
+                        <ul class="divide-y divide-gray-200 dark:divide-gray-700">
                             {{range .Data.CharacterResults}}
-                            <li class="p-4 hover:bg-gray-50">
-                                <a href="/character?name={{.Name | urlquery}}" class="font-semibold text-blue-600 hover:underline">{{.Name}}</a>
-                                <div class="text-xs text-gray-600 mt-1">
+                            <li class="p-4 hover:bg-gray-50 dark:hover:bg-gray-700">
+                                <a href="/character?name={{.Name | urlquery}}" class="font-semibold text-blue-600 dark:text-blue-400 hover:underline">{{.Name}}</a>
+                                <div class="text-xs text-gray-600 dark:text-gray-400 mt-1">
                                     <span>{{.Class}}</span>
                                     {{if .GuildName.Valid}}
-                                    <span class="ml-2">| Guild: <a href="/guild?name={{.GuildName.String | urlquery}}" class="text-blue-500 hover:underline">{{.GuildName.String}}</a></span>
+                                    <span class="ml-2">| Guild: <a href="/guild?name={{.GuildName.String | urlquery}}" class="text-blue-500 dark:text-blue-400 hover:underline">{{.GuildName.String}}</a></span>
                                     {{end}}
                                 </div>
                             </li>
@@ -61,14 +74,14 @@
                     {{end}}
 
                     {{if .Data.GuildResults}}
-                    <div class="bg-white shadow-lg rounded-lg overflow-hidden">
-                        <h3 class="text-lg font-semibold text-gray-800 p-4 border-b bg-gray-50">{{.Page.T.guilds_found}} ({{len .Data.GuildResults}})</h3>
-                        <ul class="divide-y divide-gray-200">
+                    <div class="bg-white dark:bg-gray-800 shadow-lg rounded-lg overflow-hidden">
+                        <h3 class="text-lg font-semibold text-gray-800 dark:text-gray-100 p-4 border-b dark:border-gray-700 bg-gray-50 dark:bg-gray-700">{{.Page.T.guilds_found}} ({{len .Data.GuildResults}})</h3>
+                        <ul class="divide-y divide-gray-200 dark:divide-gray-700">
                             {{range .Data.GuildResults}}
-                            <li class="p-4 hover:bg-gray-50">
-                                <a href="/guild?name={{.Name | urlquery}}" class="font-semibold text-blue-600 hover:underline">{{.Name}}</a>
-                                <div class="text-xs text-gray-600 mt-1">
-                                    Master: <a href="/character?name={{.Master | urlquery}}" class="text-blue-500 hover:underline">{{.Master}}</a>
+                            <li class="p-4 hover:bg-gray-50 dark:hover:bg-gray-700">
+                                <a href="/guild?name={{.Name | urlquery}}" class="font-semibold text-blue-600 dark:text-blue-400 hover:underline">{{.Name}}</a>
+                                <div class="text-xs text-gray-600 dark:text-gray-400 mt-1">
+                                    Master: <a href="/character?name={{.Master | urlquery}}" class="text-blue-500 dark:text-blue-400 hover:underline">{{.Master}}</a>
                                 </div>
                             </li>
                             {{end}}
@@ -77,18 +90,18 @@
                     {{end}}
 
                     {{if .Data.TradeResults}}
-                    <div class="bg-white shadow-lg rounded-lg overflow-hidden">
-                        <h3 class="text-lg font-semibold text-gray-800 p-4 border-b bg-gray-50">{{.Page.T.trading_post_items_found}} ({{len .Data.TradeResults}})</h3>
-                        <ul class="divide-y divide-gray-200">
+                    <div class="bg-white dark:bg-gray-800 shadow-lg rounded-lg overflow-hidden">
+                        <h3 class="text-lg font-semibold text-gray-800 dark:text-gray-100 p-4 border-b dark:border-gray-700 bg-gray-50 dark:bg-gray-700">{{.Page.T.trading_post_items_found}} ({{len .Data.TradeResults}})</h3>
+                        <ul class="divide-y divide-gray-200 dark:divide-gray-700">
                             {{range .Data.TradeResults}}
-                            <li class="p-4 hover:bg-gray-50">
+                            <li class="p-4 hover:bg-gray-50 dark:hover:bg-gray-700">
                                 {{ $displayName := .ItemName }}
                                 {{ if .NamePT.Valid }}{{ $displayName = .NamePT.String }}{{ end }}
-                                <a href="/item?name={{.ItemName | urlquery}}" class="font-semibold text-blue-600 hover:underline">{{$displayName}}</a>
-                                {{if .NamePT.Valid}}<span class="text-xs text-gray-500"> ({{.ItemName}})</span>{{end}}
-                                <div class="text-xs text-gray-600 mt-1">
+                                <a href="/item?name={{.ItemName | urlquery}}" class="font-semibold text-blue-600 dark:text-blue-400 hover:underline">{{$displayName}}</a>
+                                {{if .NamePT.Valid}}<span class="text-xs text-gray-500 dark:text-gray-400"> ({{.ItemName}})</span>{{end}}
+                                <div class="text-xs text-gray-600 dark:text-gray-400 mt-1">
                                     <span>Type: <strong>{{.PostType}}</strong></span>
-                                    <span class="ml-2">| Char: <a href="/character?name={{.CharacterName | urlquery}}" class="text-blue-500 hover:underline">{{.CharacterName}}</a></span>
+                                    <span class="ml-2">| Char: <a href="/character?name={{.CharacterName | urlquery}}" class="text-blue-500 dark:text-blue-400 hover:underline">{{.CharacterName}}</a></span>
                                 </div>
                             </li>
                             {{end}}
@@ -97,32 +110,32 @@
                     {{end}}
 
                 {{if .Data.MarketResults}}
-                <div class="bg-white shadow-lg rounded-lg overflow-hidden">
-                    <h3 class="text-lg font-semibold text-gray-800 p-4 border-b bg-gray-50">{{.Page.T.market_items_found}} ({{len .Data.MarketResults}})</h3>
-                    <ul class="divide-y divide-gray-200">
+                <div class="bg-white dark:bg-gray-800 shadow-lg rounded-lg overflow-hidden">
+                    <h3 class="text-lg font-semibold text-gray-800 dark:text-gray-100 p-4 border-b dark:border-gray-700 bg-gray-50 dark:bg-gray-700">{{.Page.T.market_items_found}} ({{len .Data.MarketResults}})</h3>
+                    <ul class="divide-y divide-gray-200 dark:divide-gray-700">
                         {{range .Data.MarketResults}}
-                        <li class="p-4 hover:bg-gray-50 flex items-center space-x-3">
+                        <li class="p-4 hover:bg-gray-50 dark:hover:bg-gray-700 flex items-center space-x-3">
                             <img src="https://static.divine-pride.net/images/items/item/{{.ItemID}}.png" alt="" class="w-8 h-8 flex-shrink-0" style="image-rendering: pixelated;">
                             <div class="flex-1 min-w-0">
                                 {{if and (eq $.Page.Lang "pt") .NamePT.Valid}}
-                                    <a href="/item?name={{.Name | urlquery}}" class="font-semibold text-blue-600 hover:underline truncate block">{{.NamePT.String}}</a>
-                                    <div class="text-xs text-gray-500 truncate">({{.Name}})</div>
+                                    <a href="/item?name={{.Name | urlquery}}" class="font-semibold text-blue-600 dark:text-blue-400 hover:underline truncate block">{{.NamePT.String}}</a>
+                                    <div class="text-xs text-gray-500 dark:text-gray-400 truncate">({{.Name}})</div>
                                 {{else}}
-                                    <a href="/item?name={{.Name | urlquery}}" class="font-semibold text-blue-600 hover:underline truncate block">{{.Name}}</a>
+                                    <a href="/item?name={{.Name | urlquery}}" class="font-semibold text-blue-600 dark:text-blue-400 hover:underline truncate block">{{.Name}}</a>
                                     {{if .NamePT.Valid}}
-                                    <div class="text-xs text-gray-500 truncate">({{.NamePT.String}})</div>
+                                    <div class="text-xs text-gray-500 dark:text-gray-400 truncate">({{.NamePT.String}})</div>
                                     {{end}}
                                 {{end}}
                             </div>
                             <div class="text-right text-xs flex-shrink-0">
-                                <div class="font-semibold text-green-600">
+                                <div class="font-semibold text-green-600 dark:text-green-400">
                                     {{if .LowestPrice.Valid}}
                                         {{formatZeny .LowestPrice.Int64}}z
                                     {{else}}
                                         N/A
                                     {{end}}
                                 </div>
-                                <div class="text-gray-500">{{.ListingCount}} {{if eq .ListingCount 1}}listing{{else}}listings{{end}}</div>
+                                <div class="text-gray-500 dark:text-gray-400">{{.ListingCount}} {{if eq .ListingCount 1}}listing{{else}}listings{{end}}</div>
                             </div>
                         </li>
                         {{end}}
@@ -131,18 +144,18 @@
                 {{end}}
 
                     {{if .Data.ChatResults}}
-                    <div class="bg-white shadow-lg rounded-lg overflow-hidden">
-                        <h3 class="text-lg font-semibold text-gray-800 p-4 border-b bg-gray-50">{{.Page.T.chat_messages_found}} ({{len .Data.ChatResults}})</h3>
-                        <ul class="divide-y divide-gray-200">
+                    <div class="bg-white dark:bg-gray-800 shadow-lg rounded-lg overflow-hidden">
+                        <h3 class="text-lg font-semibold text-gray-800 dark:text-gray-100 p-4 border-b dark:border-gray-700 bg-gray-50 dark:bg-gray-700">{{.Page.T.chat_messages_found}} ({{len .Data.ChatResults}})</h3>
+                        <ul class="divide-y divide-gray-200 dark:divide-gray-700">
                             {{range .Data.ChatResults}}
-                            <li class="p-4 hover:bg-gray-50">
-                                <div class="text-xs text-gray-500 mb-1">
-                                    <span class="font-semibold text-gray-600">{{.FormattedTime}}</span>
-                                    <span class="text-red-600 font-bold ml-2">[{{.Channel}}]</span>
+                            <li class="p-4 hover:bg-gray-50 dark:hover:bg-gray-700">
+                                <div class="text-xs text-gray-500 dark:text-gray-400 mb-1">
+                                    <span class="font-semibold text-gray-600 dark:text-gray-300">{{.FormattedTime}}</span>
+                                    <span class="text-red-600 dark:text-red-400 font-bold ml-2">[{{.Channel}}]</span>
                                 </div>
                                 <div>
-                                    <a href="/character?name={{.CharacterName | urlquery}}" class="font-semibold text-blue-600 hover:underline">{{.CharacterName}}</a>:
-                                    <span class="text-gray-800">{{.Message}}</span>
+                                    <a href="/character?name={{.CharacterName | urlquery}}" class="font-semibold text-blue-600 dark:text-blue-400 hover:underline">{{.CharacterName}}</a>:
+                                    <span class="text-gray-800 dark:text-gray-200">{{.Message}}</span>
                                 </div>
                             </li>
                             {{end}}

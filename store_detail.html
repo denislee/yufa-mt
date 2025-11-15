@@ -4,7 +4,20 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{{printf .Page.T.store_title .Data.StoreName}} - Yufa Market Tracker</title>
+    
+    {{/* --- ADD ALL 3 SCRIPTS FROM THE "IMPORTANT REMINDER" HERE --- */}}
     <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = { darkMode: 'class' }
+    </script>
+    <script>
+        if (localStorage.theme === 'dark' || (!('theme' in localStorage) && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
+            document.documentElement.classList.add('dark');
+        } else {
+            document.documentElement.classList.remove('dark');
+        }
+    </script>
+
     <style>
         html { font-size: 100%; }
         .container {
@@ -12,38 +25,38 @@
         }
     </style>
 </head>
-<body class="bg-gray-100 text-gray-800 text-sm sm:text-base">
+<body class="bg-gray-100 dark:bg-gray-900 text-gray-800 dark:text-gray-200 text-sm sm:text-base">
 
     {{template "navbar.html" .}}
 
     <div class="container mx-auto px-4 py-6">
-        <div class="flex flex-col sm:flex-row justify-between sm:items-center gap-2 mb-4 border-b border-gray-200 pb-3">
+        <div class="flex flex-col sm:flex-row justify-between sm:items-center gap-2 mb-4 border-b border-gray-200 dark:border-gray-700 pb-3">
             <div>
-                <h1 class="text-2xl font-bold text-gray-800">{{.Page.T.store_details}}</h1>
-                <p class="text-lg text-gray-600">{{.Data.StoreName}}</p>
+                <h1 class="text-2xl font-bold text-gray-800 dark:text-gray-100">{{.Page.T.store_details}}</h1>
+                <p class="text-lg text-gray-600 dark:text-gray-300">{{.Data.StoreName}}</p>
             </div>
-            <div id="last-updated" class="text-sm text-gray-500" data-timestamp="{{.Data.LastScrapeTime}}"></div>
+            <div id="last-updated" class="text-sm text-gray-500 dark:text-gray-400" data-timestamp="{{.Data.LastScrapeTime}}"></div>
         </div>
 
         {{if .Data.Items}}
         <div class="flex flex-col md:flex-row gap-6">
 
             <div class="flex-1 min-w-0">
-                <p class="text-sm text-gray-600 mb-3">{{printf .Page.T.showing_last_seen (len .Data.Items) | TmplHTML}}</p>
-                <div class="bg-white shadow-lg rounded-lg overflow-hidden">
+                <p class="text-sm text-gray-600 dark:text-gray-400 mb-3">{{printf .Page.T.showing_last_seen (len .Data.Items) | TmplHTML}}</p>
+                <div class="bg-white dark:bg-gray-800 shadow-lg rounded-lg overflow-hidden">
                     <div class="overflow-x-auto">
                         <table class="min-w-full leading-normal">
                             <thead>
-                                <tr class="border-b-2 border-gray-200 bg-gray-50 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                                <tr class="border-b-2 border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-700 text-left text-xs font-semibold text-gray-600 dark:text-gray-300 uppercase tracking-wider">
                                     {{$storeName := .Data.StoreName}}{{$currentSort := .Data.SortBy}}{{$currentOrder := .Data.Order}}{{$revOrder := "ASC"}}{{if eq $currentOrder "ASC"}}{{$revOrder = "DESC"}}{{end}}
                                     <th class="px-2 sm:px-3 py-2"><a href="/store?name={{$storeName | urlquery}}&sort_by=name&order={{if eq $currentSort "name"}}{{$revOrder}}{{else}}ASC{{end}}">{{.Page.T.item_name}} {{if eq $currentSort "name"}}{{if eq $currentOrder "ASC"}}<span class="text-gray-400">▲</span>{{else}}<span class="text-gray-400">▼</span>{{end}}{{end}}</a></th>
                                     <th class="px-2 sm:px-3 py-2"><a href="/store?name={{$storeName | urlquery}}&sort_by=quantity&order={{if eq $currentSort "quantity"}}{{$revOrder}}{{else}}ASC{{end}}">{{.Page.T.qty_short}} {{if eq $currentSort "quantity"}}{{if eq $currentOrder "ASC"}}<span class="text-gray-400">▲</span>{{else}}<span class="text-gray-400">▼</span>{{end}}{{end}}</a></th>
                                     <th class="px-2 sm:px-3 py-2"><a href="/store?name={{$storeName | urlquery}}&sort_by=price&order={{if eq $currentSort "price"}}{{$revOrder}}{{else}}DESC{{end}}">{{.Page.T.price}} {{if eq $currentSort "price"}}{{if eq $currentOrder "ASC"}}<span class="text-gray-400">▲</span>{{else}}<span class="text-gray-400">▼</span>{{end}}{{end}}</a></th>
                                 </tr>
                             </thead>
-                            <tbody class="text-gray-700 text-xs">
+                            <tbody class="text-gray-700 dark:text-gray-300 text-xs">
                                 {{range .Data.Items}}
-                                <tr class="border-b border-gray-200 hover:bg-gray-50 {{if not .IsAvailable}}opacity-60{{end}}" {{if not .IsAvailable}}title="{{$.Page.T.listing_not_available}}"{{end}}>
+                                <tr class="border-b border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700 {{if not .IsAvailable}}opacity-60{{end}}" {{if not .IsAvailable}}title="{{$.Page.T.listing_not_available}}"{{end}}>
                                     <td class="px-2 sm:px-3 py-2">
                                         <div class="flex items-center">
                                             <img src="https://static.divine-pride.net/images/items/item/{{.ItemID}}.png" alt="" class="w-6 h-6 mr-2" style="image-rendering: pixelated;">
@@ -51,11 +64,11 @@
                                                 {{/* --- THIS IS THE FIX --- */}}
                                                 {{if and (eq $.Page.Lang "pt") .NamePT.Valid}}
                                                     <a href="/item?name={{.Name | urlquery}}" class="font-semibold hover:underline">{{.NamePT.String}}</a>
-                                                    <div class="text-xs text-gray-500 mt-1">({{.Name}})</div>
+                                                    <div class="text-xs text-gray-500 dark:text-gray-400 mt-1">({{.Name}})</div>
                                                 {{else}}
                                                     <a href="/item?name={{.Name | urlquery}}" class="font-semibold hover:underline">{{.Name}}</a>
                                                     {{if .NamePT.Valid}}
-                                                    <div class="text-xs text-gray-500 mt-1">({{.NamePT.String}})</div>
+                                                    <div class="text-xs text-gray-500 dark:text-gray-400 mt-1">({{.NamePT.String}})</div>
                                                     {{end}}
                                                 {{end}}
                                                 {{/* --- END FIX --- */}}
@@ -63,7 +76,7 @@
                                         </div>
                                     </td>
                                     <td class="px-2 sm:px-3 py-2">{{.Quantity}}</td>
-                                    <td class="px-2 sm:px-3 py-2 font-semibold text-green-700">{{.Price}}</td>
+                                    <td class="px-2 sm:px-3 py-2 font-semibold text-green-700 dark:text-green-400">{{.Price}}</td>
                                 </tr>
                                 {{end}}
                             </tbody>
@@ -73,19 +86,19 @@
             </div>
 
             <div class="md:w-72 flex-shrink-0">
-                <div class="bg-white shadow-md rounded-lg p-4 sticky top-20">
+                <div class="bg-white dark:bg-gray-800 shadow-md rounded-lg p-4 sticky top-20">
                     <div>
-                        <h3 class="text-xs font-semibold text-gray-500 uppercase tracking-wider">{{.Page.T.seller}}</h3>
-                        <a href="/character?name={{.Data.SellerName | urlquery}}" class="text-lg font-medium text-gray-800 hover:underline hover:text-blue-600">{{.Data.SellerName}}</a>
+                        <h3 class="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">{{.Page.T.seller}}</h3>
+                        <a href="/character?name={{.Data.SellerName | urlquery}}" class="text-lg font-medium text-gray-800 dark:text-gray-100 hover:underline hover:text-blue-600 dark:hover:text-blue-400">{{.Data.SellerName}}</a>
                     </div>
                     <div class="mt-4">
-                        <h3 class="text-xs font-semibold text-gray-500 uppercase tracking-wider">{{.Page.T.last_seen}}</h3>
-                        <p class="text-lg font-medium text-gray-800">{{ (index .Data.Items 0).Timestamp }}</p>
+                        <h3 class="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">{{.Page.T.last_seen}}</h3>
+                        <p class="text-lg font-medium text-gray-800 dark:text-gray-100">{{ (index .Data.Items 0).Timestamp }}</p>
                     </div>
                     <div class="mt-4">
-                        <h3 class="text-xs font-semibold text-gray-500 uppercase tracking-wider">{{.Page.T.location}}</h3>
+                        <h3 class="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">{{.Page.T.location}}</h3>
                         <div class="flex items-center gap-3 mt-1">
-                            <div class="relative w-24 h-24 bg-gray-200 border border-gray-300 map-container flex-shrink-0" data-coords="{{.Data.MapCoordinates}}">
+                            <div class="relative w-24 h-24 bg-gray-200 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 map-container flex-shrink-0" data-coords="{{.Data.MapCoordinates}}">
                                 <img
                                     src="https://projetoyufa.com/_next/image?url=%2Fimages%2Fmap%2F{{.Data.MapName}}.png&w=1080&q=75"
                                     alt="Map of {{.Data.MapName}}"
@@ -96,8 +109,8 @@
                                 <div class="marker absolute w-2 h-2 bg-red-600 border border-white rounded-full -ml-1 -mt-1" style="display: none;" title="{{.Data.MapCoordinates}}"></div>
                             </div>
                             <div>
-                                <div class="font-semibold text-gray-800">{{.Data.MapName}}</div>
-                                <a href="#" onclick="copyNavi(event, '{{.Data.MapName}}', '{{.Data.MapCoordinates}}')" title="{{.Page.T.click_to_copy}}" class="text-sm text-blue-600 hover:underline">{{.Data.MapCoordinates}}</a>
+                                <div class="font-semibold text-gray-800 dark:text-gray-100">{{.Data.MapName}}</div>
+                                <a href="#" onclick="copyNavi(event, '{{.Data.MapName}}', '{{.Data.MapCoordinates}}')" title="{{.Page.T.click_to_copy}}" class="text-sm text-blue-600 dark:text-blue-400 hover:underline">{{.Data.MapCoordinates}}</a>
                             </div>
                         </div>
                     </div>
@@ -126,7 +139,7 @@
                 const originalElement = event.target;
                 const originalText = originalElement.innerText;
                 originalElement.innerText = translations.copied;
-                originalElement.style.color = '#16a34a';
+                originalElement.style.color = '#16a34a'; /* Tailwind green-600 */
                 setTimeout(() => {
                     originalElement.innerText = originalText;
                     originalElement.style.color = '';
@@ -204,7 +217,6 @@
                     const now = new Date();
                     const secondsPast = Math.floor((now.getTime() - lastUpdateDate.getTime()) / 1000);
                     let timeAgoString;
-
                     if (lang === 'pt') {
                         if (secondsPast < 5) timeAgoString = 'agora mesmo';
                         else if (secondsPast < 60) timeAgoString = `${secondsPast}s`;
@@ -220,7 +232,7 @@
                     }
                     
                     const fullString = translations.updated_ago.replace('%s', timeAgoString);
-                    lastUpdateElement.innerHTML = `${fullString} <span class="text-gray-400 font-normal">(${formattedTimestamp})</span>`;
+                    lastUpdateElement.innerHTML = `${fullString} <span class="text-gray-400 dark:text-gray-500 font-normal">(${formattedTimestamp})</span>`;
                 };
 
                 updateTimeAgo();

@@ -4,7 +4,20 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{{.Page.T.mvp_kills_title}} - Yufa Market Tracker</title>
+
+    {{/* --- ADD ALL 3 SCRIPTS FROM THE "IMPORTANT REMINDER" HERE --- */}}
     <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = { darkMode: 'class' }
+    </script>
+    <script>
+        if (localStorage.theme === 'dark' || (!('theme' in localStorage) && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
+            document.documentElement.classList.add('dark');
+        } else {
+            document.documentElement.classList.remove('dark');
+        }
+    </script>
+    
     <style>
         html { font-size: 100%; }
         .container { max-width: 95% !important; }
@@ -15,28 +28,28 @@
         }
     </style>
 </head>
-<body class="bg-gray-100 text-gray-800 text-sm sm:text-base">
+<body class="bg-gray-100 dark:bg-gray-900 text-gray-800 dark:text-gray-200 text-sm sm:text-base">
 
     {{template "navbar.html" .}}
 
     <div class="container mx-auto px-4 py-6">
-        <div class="flex flex-col sm:flex-row justify-between sm:items-center gap-2 mb-4 border-b border-gray-200 pb-3">
-            <h1 class="text-2xl font-bold text-gray-800">{{.Page.T.mvp_kills_title}}</h1>
-            <div id="last-updated" class="text-sm text-gray-500" data-timestamp="{{.Data.LastScrapeTime}}"></div>
+        <div class="flex flex-col sm:flex-row justify-between sm:items-center gap-2 mb-4 border-b border-gray-200 dark:border-gray-700 pb-3">
+            <h1 class="text-2xl font-bold text-gray-800 dark:text-gray-100">{{.Page.T.mvp_kills_title}}</h1>
+            <div id="last-updated" class="text-sm text-gray-500 dark:text-gray-400" data-timestamp="{{.Data.LastScrapeTime}}"></div>
         </div>
 
-        <p class="text-sm text-gray-600 mb-3">{{printf .Page.T.showing_chars_mvp (len .Data.Players) | TmplHTML}}</p>
+        <p class="text-sm text-gray-600 dark:text-gray-400 mb-3">{{printf .Page.T.showing_chars_mvp (len .Data.Players) | TmplHTML}}</p>
 
-        <div class="bg-white shadow-lg rounded-lg overflow-hidden">
+        <div class="bg-white dark:bg-gray-800 shadow-lg rounded-lg overflow-hidden">
             <div class="overflow-x-auto">
                 <table class="min-w-full leading-normal">
                     <thead>
-                        <tr class="border-b-2 border-gray-200 bg-gray-50 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                        <tr class="border-b-2 border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-700 text-left text-xs font-semibold text-gray-600 dark:text-gray-300 uppercase tracking-wider">
                             {{$currentSort := .Data.SortBy}}
                             {{$currentOrder := .Data.Order}}
                             {{$revOrder := toggleOrder $currentOrder}}
 
-                            <th class="px-3 py-3 sticky left-0 bg-gray-50 z-10 w-48">
+                            <th class="px-3 py-3 sticky left-0 bg-gray-50 dark:bg-gray-700 z-10 w-48">
                                 <a href="/mvp-kills?sort_by=name&order={{if eq $currentSort "name"}}{{$revOrder}}{{else}}ASC{{end}}">
                                     {{.Page.T.character_name}} {{if eq $currentSort "name"}}{{if eq $currentOrder "ASC"}}<span class="text-gray-400">▲</span>{{else}}<span class="text-gray-400">▼</span>{{end}}{{end}}
                                 </a>
@@ -46,11 +59,11 @@
                             <th class="px-2 py-3 text-center">
                                 <a href="/mvp-kills?sort_by={{.MobID}}&order={{if eq $currentSort .MobID}}{{$revOrder}}{{else}}DESC{{end}}" class="flex flex-col items-center justify-end h-full">
                                     <div class="relative w-6 h-6 mb-2">
-                                     {{if ne "total" .MobID}}   
-                                    <img src="https://projetoyufa.com/_next/image?url=%2Fimages%2Fmvp%2F{{.MobID}}.png&w=1920&q=75" alt="{{.MobName}}" class="mx-auto" style="image-rendering: pixelated;">
-                                     {{else}}
-                                     <span class="text-lg font-bold">∑</span>
-                                     {{end}}
+                                        {{if ne "total" .MobID}}   
+                                            <img src="https://projetoyufa.com/_next/image?url=%2Fimages%2Fmvp%2F{{.MobID}}.png&w=1920&q=75" alt="{{.MobName}}" class="mx-auto" style="image-rendering: pixelated;">
+                                        {{else}}
+                                            <span class="text-lg font-bold">∑</span>
+                                        {{end}}
                                     </div>
                                     {{/* --- THIS IS THE FIX --- */}}
                                     <span class="text-center">{{if eq .MobID "total"}}{{$.Page.T.total_kills}}{{else}}{{.MobName}}{{end}}</span>
@@ -61,17 +74,17 @@
                             {{end}}
                         </tr>
                     </thead>
-                    <tbody class="text-gray-700 text-xs">
+                    <tbody class="text-gray-700 dark:text-gray-300 text-xs">
                         {{range .Data.Players}}
-                        <tr class="border-b border-gray-200 hover:bg-gray-50">
-                            <td class="px-3 py-2 font-semibold sticky left-0 bg-white hover:bg-gray-50 z-10 w-48 truncate">
-                                    <a href="/character?name={{.CharacterName}}" class="text-blue-600 hover:underline">
-                                    {{.CharacterName}}</a>
+                        <tr class="border-b border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700">
+                            <td class="px-3 py-2 font-semibold sticky left-0 bg-white dark:bg-gray-800 dark:group-hover:bg-gray-700 z-10 w-48 truncate">
+                                    <a href="/character?name={{.CharacterName}}" class="text-blue-600 dark:text-blue-400 hover:underline">
+                                        {{.CharacterName}}</a>
                             </td>
                             <td class="px-2 py-2 text-center font-bold">{{.TotalKills}}</td>
                              {{$playerKills := .Kills}}
                             {{range slice $.Data.Headers 1}}
-                            <td class="px-2 py-2 text-center {{if gt (getKillCount $playerKills .MobID) 0}}font-medium text-gray-800{{else}}text-gray-400{{end}}">
+                            <td class="px-2 py-2 text-center {{if gt (getKillCount $playerKills .MobID) 0}}font-medium text-gray-800 dark:text-gray-100{{else}}text-gray-400 dark:text-gray-500{{end}}">
                                 {{getKillCount $playerKills .MobID}}
                             </td>
                             {{end}}
@@ -125,7 +138,7 @@
                     }
                     
                     const fullString = translations.updated_ago.replace('%s', timeAgoString);
-                    lastUpdateElement.innerHTML = `${fullString} <span class="text-gray-400 font-normal">(${formattedTimestamp})</span>`;
+                    lastUpdateElement.innerHTML = `${fullString} <span class="text-gray-400 dark:text-gray-500 font-normal">(${formattedTimestamp})</span>`;
                 };
 
                 updateTimeAgo();

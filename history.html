@@ -4,7 +4,20 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{{.Data.ItemName}} - Yufa Market Tracker</title>
+    
+    {{/* --- ADD ALL 3 SCRIPTS FROM THE "IMPORTANT REMINDER" HERE --- */}}
     <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = { darkMode: 'class' }
+    </script>
+    <script>
+        if (localStorage.theme === 'dark' || (!('theme' in localStorage) && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
+            document.documentElement.classList.add('dark');
+        } else {
+            document.documentElement.classList.remove('dark');
+        }
+    </script>
+
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3.0.0/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
     <style>
@@ -14,25 +27,25 @@
         }
     </style>
 </head>
-<body class="bg-gray-100 text-gray-800 text-sm sm:text-base">
+<body class="bg-gray-100 dark:bg-gray-900 text-gray-800 dark:text-gray-200 text-sm sm:text-base">
 
     {{template "navbar.html" .}}
 
     <div class="container mx-auto px-4 py-6">
 
-        <div class="flex flex-col sm:flex-row justify-between sm:items-center gap-2 mb-4 border-b border-gray-200 pb-3">
+        <div class="flex flex-col sm:flex-row justify-between sm:items-center gap-2 mb-4 border-b border-gray-200 dark:border-gray-700 pb-3">
             <div class="flex items-center gap-4">
                 {{if .Data.ItemDetails}}
-                <img src="{{.Data.ItemDetails.ImageURL}}" alt="{{.Data.ItemDetails.Name}}" class="h-16 w-16 bg-gray-200 p-1 rounded-md" style="image-rendering: pixelated;">
+                <img src="{{.Data.ItemDetails.ImageURL}}" alt="{{.Data.ItemDetails.Name}}" class="h-16 w-16 bg-gray-200 dark:bg-gray-700 p-1 rounded-md" style="image-rendering: pixelated;">
                 {{else}}
-                <div class="h-16 w-16 bg-gray-200 p-1 rounded-md flex items-center justify-center">
-                    <svg class="w-8 h-8 text-gray-400" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                <div class="h-16 w-16 bg-gray-200 dark:bg-gray-700 p-1 rounded-md flex items-center justify-center">
+                    <svg class="w-8 h-8 text-gray-400 dark:text-gray-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" d="M9.879 7.519c1.171-1.025 3.071-1.025 4.242 0 1.172 1.025 1.172 2.687 0 3.712-.203.179-.43.326-.67.442-.745.361-1.45.999-1.45 1.827v.75M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Zm-9 5.25h.008v.008H12v-.008Z" />
                     </svg>
                 </div>
                 {{end}}
                 <div>
-                    <h1 class="text-3xl font-bold text-gray-800">
+                    <h1 class="text-3xl font-bold text-gray-800 dark:text-gray-100">
                         {{.Page.T.price_history_for}}
                         {{if and (eq .Page.Lang "pt") .Data.ItemNamePT.Valid}}
                             {{.Data.ItemNamePT.String}}
@@ -41,13 +54,13 @@
                         {{end}}
                     </h1>
                     {{if and (eq .Page.Lang "pt") .Data.ItemNamePT.Valid}}
-                        <p class="text-lg text-gray-600">{{.Data.ItemName}}</p>
+                        <p class="text-lg text-gray-600 dark:text-gray-300">{{.Data.ItemName}}</p>
                     {{else if .Data.ItemNamePT.Valid}}
-                        <p class="text-lg text-gray-600">{{.Data.ItemNamePT.String}}</p>
+                        <p class="text-lg text-gray-600 dark:text-gray-300">{{.Data.ItemNamePT.String}}</p>
                     {{end}}
                 </div>
             </div>
-            <div id="last-updated" class="text-sm text-gray-500" data-timestamp="{{.Data.LastScrapeTime}}"></div>
+            <div id="last-updated" class="text-sm text-gray-500 dark:text-gray-400" data-timestamp="{{.Data.LastScrapeTime}}"></div>
         </div>
 
         {{if .Data.ItemDetails}}
@@ -55,80 +68,80 @@
             
             <div class="md:col-span-2 space-y-6">
                 
-                <div class="bg-white p-4 rounded-lg shadow">
-                    <h3 class="text-lg font-semibold text-gray-700 mb-3">{{.Page.T.item_details}}</h3>
+                <div class="bg-white dark:bg-gray-800 p-4 rounded-lg shadow">
+                    <h3 class="text-lg font-semibold text-gray-700 dark:text-gray-200 mb-3">{{.Page.T.item_details}}</h3>
                     
                     <div class="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-4 text-sm">
                         <div>
-                            <span class="block text-xs font-medium text-gray-500">{{.Page.T.type}}</span>
-                            <span class="text-gray-800 font-medium">{{if .Data.ItemDetails.Type}}{{.Data.ItemDetails.Type}}{{else}}N/A{{end}}</span>
+                            <span class="block text-xs font-medium text-gray-500 dark:text-gray-400">{{.Page.T.type}}</span>
+                            <span class="text-gray-800 dark:text-gray-100 font-medium">{{if .Data.ItemDetails.Type}}{{.Data.ItemDetails.Type}}{{else}}N/A{{end}}</span>
                         </div>
                         <div>
-                            <span class="block text-xs font-medium text-gray-500">{{.Page.T.weight}}</span>
-                            <span class="text-gray-800 font-medium">{{if .Data.ItemDetails.Weight}}{{.Data.ItemDetails.Weight}}{{else}}N/A{{end}}</span>
+                            <span class="block text-xs font-medium text-gray-500 dark:text-gray-400">{{.Page.T.weight}}</span>
+                            <span class="text-gray-800 dark:text-gray-100 font-medium">{{if .Data.ItemDetails.Weight}}{{.Data.ItemDetails.Weight}}{{else}}N/A{{end}}</span>
                         </div>
                         <div>
-                            <span class="block text-xs font-medium text-gray-500">{{.Page.T.slots}}</span>
-                            <span class="text-gray-800 font-medium">{{.Data.ItemDetails.Slots}}</span>
+                            <span class="block text-xs font-medium text-gray-500 dark:text-gray-400">{{.Page.T.slots}}</span>
+                            <span class="text-gray-800 dark:text-gray-100 font-medium">{{.Data.ItemDetails.Slots}}</span>
                         </div>
                         <div>
-                            <span class="block text-xs font-medium text-gray-500">{{.Page.T.buy_sell}}</span>
-                            <span class="text-gray-800 font-medium">{{if .Data.ItemDetails.Buy}}{{.Data.ItemDetails.Buy}}{{else}}N/A{{end}} / {{if .Data.ItemDetails.Sell}}{{.Data.ItemDetails.Sell}}{{else}}N/A{{end}}</span>
+                            <span class="block text-xs font-medium text-gray-500 dark:text-gray-400">{{.Page.T.buy_sell}}</span>
+                            <span class="text-gray-800 dark:text-gray-100 font-medium">{{if .Data.ItemDetails.Buy}}{{.Data.ItemDetails.Buy}}{{else}}N/A{{end}} / {{if .Data.ItemDetails.Sell}}{{.Data.ItemDetails.Sell}}{{else}}N/A{{end}}</span>
                         </div>
                     </div>
 
                     {{if .Data.ItemDetails.Script}}
                     <div>
-                        <h3 class="font-medium text-gray-500">{{.Page.T.item_script}}</h3>
-                        <pre class="mt-2 bg-gray-800 text-white text-xs rounded-md p-3 overflow-auto max-h-48 font-mono">{{.Data.ItemDetails.Script}}</pre>
+                        <h3 class="font-medium text-gray-500 dark:text-gray-400">{{.Page.T.item_script}}</h3>
+                        <pre class="mt-2 bg-gray-800 dark:bg-gray-900 text-white dark:text-gray-200 text-xs rounded-md p-3 overflow-auto max-h-48 font-mono">{{.Data.ItemDetails.Script}}</pre>
                     </div>
                     {{end}}
                 </div>
 
-                <div class="bg-white p-4 rounded-lg shadow">
+                <div class="bg-white dark:bg-gray-800 p-4 rounded-lg shadow">
                     <canvas id="priceChart" data-price-json="{{.Data.PriceDataJSON}}" data-lowest-json="{{.Data.CurrentLowestJSON}}" data-highest-json="{{.Data.CurrentHighestJSON}}"></canvas>
                 </div>
             </div>
             <div class="md:col-span-1 space-y-4">
-                <div class="bg-white p-4 rounded-lg shadow">
-                    <h3 class="font-medium text-gray-500">{{.Page.T.all_time_price_range}}</h3>
+                <div class="bg-white dark:bg-gray-800 p-4 rounded-lg shadow">
+                    <h3 class="font-medium text-gray-500 dark:text-gray-400">{{.Page.T.all_time_price_range}}</h3>
                     <p class="text-lg font-mono">{{formatZeny .Data.OverallLowest}}z - {{formatZeny .Data.OverallHighest}}z</p>
                 </div>
                 {{if .Data.CurrentLowest}}
-                <div class="bg-white p-4 rounded-lg shadow">
-                    <h3 class="font-medium text-green-700">{{.Page.T.lowest_current_price}}</h3>
-                    <p class="text-2xl font-bold font-mono text-green-700">{{formatZeny .Data.CurrentLowest.Price}} z</p>
-                    <p class="text-sm text-gray-600"><strong class="font-medium">{{.Page.T.quantity}}</strong> {{.Data.CurrentLowest.Quantity}}</p>
-                    <p class="text-sm text-gray-600"><strong class="font-medium">{{.Page.T.location}}</strong> <a href="/store?name={{.Data.CurrentLowest.StoreName | urlquery}}&seller={{.Data.CurrentLowest.SellerName | urlquery}}" class="italic hover:underline">{{.Data.CurrentLowest.StoreName}} ({{.Data.CurrentLowest.SellerName}})</a></p>
-                    <p class="text-sm text-gray-600"><strong class="font-medium">{{.Page.T.date}}</strong> {{.Data.CurrentLowest.Timestamp}}</p>
+                <div class="bg-white dark:bg-gray-800 p-4 rounded-lg shadow">
+                    <h3 class="font-medium text-green-700 dark:text-green-400">{{.Page.T.lowest_current_price}}</h3>
+                    <p class="text-2xl font-bold font-mono text-green-700 dark:text-green-400">{{formatZeny .Data.CurrentLowest.Price}} z</p>
+                    <p class="text-sm text-gray-600 dark:text-gray-300"><strong class="font-medium">{{.Page.T.quantity}}</strong> {{.Data.CurrentLowest.Quantity}}</p>
+                    <p class="text-sm text-gray-600 dark:text-gray-300"><strong class="font-medium">{{.Page.T.location}}</strong> <a href="/store?name={{.Data.CurrentLowest.StoreName | urlquery}}&seller={{.Data.CurrentLowest.SellerName | urlquery}}" class="italic hover:underline">{{.Data.CurrentLowest.StoreName}} ({{.Data.CurrentLowest.SellerName}})</a></p>
+                    <p class="text-sm text-gray-600 dark:text-gray-300"><strong class="font-medium">{{.Page.T.date}}</strong> {{.Data.CurrentLowest.Timestamp}}</p>
                 </div>
                 {{end}}
                 {{if .Data.CurrentHighest}}
-                <div class="bg-white p-4 rounded-lg shadow">
-                    <h3 class="font-medium text-red-700">{{.Page.T.highest_current_price}}</h3>
-                    <p class="text-2xl font-bold font-mono text-red-700">{{formatZeny .Data.CurrentHighest.Price}} z</p>
-                     <p class="text-sm text-gray-600"><strong class="font-medium">{{.Page.T.quantity}}</strong> {{.Data.CurrentHighest.Quantity}}</p>
-                    <p class="text-sm text-gray-600"><strong class="font-medium">{{.Page.T.location}}</strong> <a href="/store?name={{.Data.CurrentHighest.StoreName | urlquery}}&seller={{.Data.CurrentHighest.SellerName | urlquery}}" class="italic hover:underline">{{.Data.CurrentHighest.StoreName}} ({{.Data.CurrentHighest.SellerName}})</a></p>
-                    <p class="text-sm text-gray-600"><strong class="font-medium">{{.Page.T.date}}</strong> {{.Data.CurrentHighest.Timestamp}}</p>
+                <div class="bg-white dark:bg-gray-800 p-4 rounded-lg shadow">
+                    <h3 class="font-medium text-red-700 dark:text-red-400">{{.Page.T.highest_current_price}}</h3>
+                    <p class="text-2xl font-bold font-mono text-red-700 dark:text-red-400">{{formatZeny .Data.CurrentHighest.Price}} z</p>
+                     <p class="text-sm text-gray-600 dark:text-gray-300"><strong class="font-medium">{{.Page.T.quantity}}</strong> {{.Data.CurrentHighest.Quantity}}</p>
+                    <p class="text-sm text-gray-600 dark:text-gray-300"><strong class="font-medium">{{.Page.T.location}}</strong> <a href="/store?name={{.Data.CurrentHighest.StoreName | urlquery}}&seller={{.Data.CurrentHighest.SellerName | urlquery}}" class="italic hover:underline">{{.Data.CurrentHighest.StoreName}} ({{.Data.CurrentHighest.SellerName}})</a></p>
+                    <p class="text-sm text-gray-600 dark:text-gray-300"><strong class="font-medium">{{.Page.T.date}}</strong> {{.Data.CurrentHighest.Timestamp}}</p>
                 </div>
                 {{end}}
                 
                 {{/* --- NEW: Item Drop History --- */}}
-                <div class="bg-white p-4 rounded-lg shadow">
-                    <h3 class="font-medium text-gray-700 mb-2 border-b pb-2">{{.Page.T.item_drop_history}}</h3>
+                <div class="bg-white dark:bg-gray-800 p-4 rounded-lg shadow">
+                    <h3 class="font-medium text-gray-700 dark:text-gray-200 mb-2 border-b dark:border-gray-700 pb-2">{{.Page.T.item_drop_history}}</h3>
                     <div class="overflow-x-auto max-h-48 overflow-y-auto">
                         <table class="min-w-full text-sm">
-                            <tbody class="divide-y divide-gray-200">
+                            <tbody class="divide-y divide-gray-200 dark:divide-gray-700">
                                 {{range .Data.DropHistory}}
-                                <tr class="hover:bg-gray-50">
-                                    <td class="py-1.5 px-1 text-gray-500 whitespace-nowrap">{{.Timestamp}}</td>
-                                    <td class="py-1.5 px-1 text-gray-700">
-                                        <a href="/character?name={{.PlayerName | urlquery}}" class="font-semibold text-blue-600 hover:underline">{{.PlayerName}}</a>
+                                <tr class="hover:bg-gray-50 dark:hover:bg-gray-700">
+                                    <td class="py-1.5 px-1 text-gray-500 dark:text-gray-400 whitespace-nowrap">{{.Timestamp}}</td>
+                                    <td class="py-1.5 px-1 text-gray-700 dark:text-gray-300">
+                                        <a href="/character?name={{.PlayerName | urlquery}}" class="font-semibold text-blue-600 dark:text-blue-400 hover:underline">{{.PlayerName}}</a>
                                     </td>
                                 </tr>
                                 {{else}}
                                 <tr>
-                                    <td colspan="2" class="py-4 text-center text-gray-500">{{.Page.T.no_item_drop_history}}</td>
+                                    <td colspan="2" class="py-4 text-center text-gray-500 dark:text-gray-400">{{.Page.T.no_item_drop_history}}</td>
                                 </tr>
                                 {{end}}
                             </tbody>
@@ -140,17 +153,17 @@
                 </div>
             </div>
         {{else}}
-        <div class="bg-white p-6 rounded-lg shadow text-center text-gray-500">
+        <div class="bg-white dark:bg-gray-800 p-6 rounded-lg shadow text-center text-gray-500 dark:text-gray-400">
             <p>{{.Page.T.no_detailed_info}}</p>
         </div>
         {{end}}
 
-        <div class="bg-white shadow-lg rounded-lg overflow-hidden mt-6">
-            <h2 class="text-xl font-semibold p-4 border-b border-gray-200">{{.Page.T.all_recorded_listings}} <span class="text-base font-normal text-gray-500">{{printf .Page.T.total_listings .Data.TotalListings}}</span></h2>
+        <div class="bg-white dark:bg-gray-800 shadow-lg rounded-lg overflow-hidden mt-6">
+            <h2 class="text-xl font-semibold p-4 border-b border-gray-200 dark:border-gray-700 text-gray-800 dark:text-gray-100">{{.Page.T.all_recorded_listings}} <span class="text-base font-normal text-gray-500 dark:text-gray-400">{{printf .Page.T.total_listings .Data.TotalListings}}</span></h2>
             <div class="overflow-x-auto">
                 <table class="min-w-full leading-normal">
                     <thead>
-                        <tr class="border-b-2 border-gray-200 bg-gray-50 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                        <tr class="border-b-2 border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-700 text-left text-xs font-semibold text-gray-600 dark:text-gray-300 uppercase tracking-wider">
                             <th class="px-2 sm:px-3 py-2">{{.Page.T.price}}</th>
                             <th class="px-2 sm:px-3 py-2">{{.Page.T.qty}}</th>
                             <th class="px-2 sm:px-3 py-2">{{.Page.T.store}}</th>
@@ -159,10 +172,10 @@
                             <th class="px-2 sm:px-3 py-2">{{.Page.T.date_scanned}}</th>
                         </tr>
                     </thead>
-                    <tbody class="text-gray-700 text-xs">
+                    <tbody class="text-gray-700 dark:text-gray-300 text-xs">
                         {{range .Data.AllListings}}
-                        <tr class="border-b border-gray-200 hover:bg-gray-50 {{if not .IsAvailable}}opacity-60{{end}}" {{if not .IsAvailable}}title="{{$.Page.T.listing_not_available}}"{{end}}>
-                            <td class="px-2 sm:px-3 py-2 font-semibold text-green-700">{{.Price}}</td>
+                        <tr class="border-b border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700 {{if not .IsAvailable}}opacity-60{{end}}" {{if not .IsAvailable}}title="{{$.Page.T.listing_not_available}}"{{end}}>
+                            <td class="px-2 sm:px-3 py-2 font-semibold text-green-700 dark:text-green-400">{{.Price}}</td>
                             <td class="px-2 sm:px-3 py-2">{{.Quantity}}</td>
                             <td class="px-2 sm:px-3 py-2">
                                 <a href="/store?name={{.StoreName | urlquery}}&seller={{.SellerName | urlquery}}" class="font-semibold hover:underline">{{.StoreName}}</a>
@@ -171,7 +184,7 @@
                                 <a href="/character?name={{.SellerName | urlquery}}" class="hover:underline">{{.SellerName}}</a>
                             </td>
                             <td class="px-2 sm:px-3 py-2">
-                                {{.MapName}} <span class="text-gray-500">{{.MapCoordinates}}</span>
+                                {{.MapName}} <span class="text-gray-500 dark:text-gray-400">{{.MapCoordinates}}</span>
                             </td>
                             <td class="px-2 sm:px-3 py-2 whitespace-nowrap">{{.Timestamp}}</td>
                         </tr>
@@ -198,6 +211,9 @@
                 js_lowest_price: '{{.Page.T.js_lowest_price}}',
                 js_highest_price: '{{.Page.T.js_highest_price}}'
             };
+            const isDarkMode = document.documentElement.classList.contains('dark');
+            const gridColor = isDarkMode ? 'rgba(107, 114, 128, 0.2)' : 'rgba(209, 213, 219, 0.2)';
+            const labelColor = isDarkMode ? 'rgba(209, 213, 219, 1)' : 'rgba(107, 114, 128, 1)';
 
             const lastUpdateElement = document.getElementById('last-updated');
             if (lastUpdateElement) {
@@ -240,7 +256,7 @@
                     fullString = fullString.replace('%s', '').trim(); 
                     
                     // Append the timestamp like before
-                    lastUpdateElement.innerHTML = `${fullString} <span class="text-gray-400 font-normal">(${formattedTimestamp})</span>`;
+                    lastUpdateElement.innerHTML = `${fullString} <span class="text-gray-400 dark:text-gray-500 font-normal">(${formattedTimestamp})</span>`;
                 };
 
                 updateTimeAgo();
@@ -302,15 +318,25 @@
                                 scales: {
                                     y: {
                                         ticks: {
+                                            color: labelColor,
                                             callback: function(value, index, values) {
                                                 if (value >= 1000000) return (value / 1000000) + 'm';
                                                 if (value >= 1000) return (value / 1000) + 'k';
                                                 return value;
                                             }
+                                        },
+                                        grid: {
+                                            color: gridColor
                                         }
                                     },
                                     x: {
                                         type: 'time',
+                                        ticks: {
+                                            color: labelColor
+                                        },
+                                        grid: {
+                                            color: gridColor
+                                        },
                                         time: {
                                             unit: 'day',
                                             tooltipFormat: 'yyyy-MM-dd HH:mm',
@@ -336,6 +362,11 @@
                                                 }
                                                 return label;
                                             }
+                                        }
+                                    },
+                                    legend: {
+                                        labels: {
+                                            color: labelColor
                                         }
                                     }
                                 }

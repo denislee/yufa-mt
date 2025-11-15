@@ -11,23 +11,23 @@
 
 <div class="mt-6 flex justify-center items-center space-x-2">
     {{if $p.HasPrevPage}}
-        <a href="?page=1{{if $filter}}{{$filter}}{{end}}" class="px-3 py-1 rounded-md text-sm font-medium bg-white text-gray-600 hover:bg-gray-50 shadow-sm">&laquo; {{$t.first}}</a>
-        <a href="?page={{$p.PrevPage}}{{if $filter}}{{$filter}}{{end}}" class="px-3 py-1 rounded-md text-sm font-medium bg-white text-gray-600 hover:bg-gray-50 shadow-sm">&lsaquo; {{$t.previous}}</a>
+        <a href="?page=1{{if $filter}}{{$filter}}{{end}}" class="px-3 py-1 rounded-md text-sm font-medium bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 shadow-sm">&laquo; {{$t.first}}</a>
+        <a href="?page={{$p.PrevPage}}{{if $filter}}{{$filter}}{{end}}" class="px-3 py-1 rounded-md text-sm font-medium bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 shadow-sm">&lsaquo; {{$t.previous}}</a>
     {{else}}
-        <span class="px-3 py-1 rounded-md text-sm font-medium bg-gray-200 text-gray-400 shadow-sm cursor-not-allowed">&laquo; {{$t.first}}</span>
-        <span class="px-3 py-1 rounded-md text-sm font-medium bg-gray-200 text-gray-400 shadow-sm cursor-not-allowed">&lsaquo; {{$t.previous}}</span>
+        <span class="px-3 py-1 rounded-md text-sm font-medium bg-gray-200 dark:bg-gray-700 text-gray-400 dark:text-gray-500 shadow-sm cursor-not-allowed">&laquo; {{$t.first}}</span>
+        <span class="px-3 py-1 rounded-md text-sm font-medium bg-gray-200 dark:bg-gray-700 text-gray-400 dark:text-gray-500 shadow-sm cursor-not-allowed">&lsaquo; {{$t.previous}}</span>
     {{end}}
 
-    <span class="px-3 py-1 rounded-md text-sm font-medium text-gray-700 bg-gray-100">
+    <span class="px-3 py-1 rounded-md text-sm font-medium text-gray-700 dark:text-gray-200 bg-gray-100 dark:bg-gray-800">
         {{printf $t.page_of $p.CurrentPage $p.TotalPages | TmplHTML}}
     </span>
 
     {{if $p.HasNextPage}}
-        <a href="?page={{$p.NextPage}}{{if $filter}}{{$filter}}{{end}}" class="px-3 py-1 rounded-md text-sm font-medium bg-white text-gray-600 hover:bg-gray-50 shadow-sm">{{$t.next}} &rsaquo;</a>
-        <a href="?page={{$p.TotalPages}}{{if $filter}}{{$filter}}{{end}}" class="px-3 py-1 rounded-md text-sm font-medium bg-white text-gray-600 hover:bg-gray-50 shadow-sm">{{$t.last}} &raquo;</a>
+        <a href="?page={{$p.NextPage}}{{if $filter}}{{$filter}}{{end}}" class="px-3 py-1 rounded-md text-sm font-medium bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 shadow-sm">{{$t.next}} &rsaquo;</a>
+        <a href="?page={{$p.TotalPages}}{{if $filter}}{{$filter}}{{end}}" class="px-3 py-1 rounded-md text-sm font-medium bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 shadow-sm">{{$t.last}} &raquo;</a>
     {{else}}
-        <span class="px-3 py-1 rounded-md text-sm font-medium bg-gray-200 text-gray-400 shadow-sm cursor-not-allowed">{{$t.next}} &rsaquo;</span>
-        <span class="px-3 py-1 rounded-md text-sm font-medium bg-gray-200 text-gray-400 shadow-sm cursor-not-allowed">{{$t.last}} &raquo;</span>
+        <span class="px-3 py-1 rounded-md text-sm font-medium bg-gray-200 dark:bg-gray-700 text-gray-400 dark:text-gray-500 shadow-sm cursor-not-allowed">{{$t.next}} &rsaquo;</span>
+        <span class="px-3 py-1 rounded-md text-sm font-medium bg-gray-200 dark:bg-gray-700 text-gray-400 dark:text-gray-500 shadow-sm cursor-not-allowed">{{$t.last}} &raquo;</span>
     {{end}}
 </div>
 {{end}}

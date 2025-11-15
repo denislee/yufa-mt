@@ -4,11 +4,24 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{{.Page.T.online_player_history}} - Yufa Market Tracker</title> {{/* <-- MODIFIED */}}
+    
+    {{/* --- ADD ALL 3 SCRIPTS FROM THE "IMPORTANT REMINDER" HERE --- */}}
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = { darkMode: 'class' }
+    </script>
+    <script>
+        if (localStorage.theme === 'dark' || (!('theme' in localStorage) && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
+            document.documentElement.classList.add('dark');
+        } else {
+            document.documentElement.classList.remove('dark');
+        }
+    </script>
+
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/date-fns@3/index.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-annotation@3.0.1/dist/chartjs-plugin-annotation.min.js"></script>
-    <script src="https://cdn.tailwindcss.com"></script>
     <style>
         html { font-size: 100%; }
         .container {
@@ -16,78 +29,79 @@
         }
     </style>
 </head>
-<body class="bg-gray-100 text-gray-800 text-sm sm:text-base">
+<body class="bg-gray-100 dark:bg-gray-900 text-gray-800 dark:text-gray-200 text-sm sm:text-base">
 
     {{template "navbar.html" .}}
 
     <div class="container mx-auto px-4 py-6">
-        <div class="flex flex-col sm:flex-row justify-between sm:items-center gap-2 mb-4 border-b border-gray-200 pb-3">
-            <h1 class="text-2xl font-bold text-gray-800">{{.Page.T.online_player_history}}</h1> {{/* <-- MODIFIED */}}
-            <div id="last-updated" class="text-sm text-gray-500" data-timestamp="{{.Data.LastScrapeTime}}"></div> {{/* <-- MODIFIED */}}
+        <div class="flex flex-col sm:flex-row justify-between sm:items-center gap-2 mb-4 border-b border-gray-200 dark:border-gray-700 pb-3">
+            <h1 class="text-2xl font-bold text-gray-800 dark:text-gray-100">{{.Page.T.online_player_history}}</h1> {{/* <-- MODIFIED */}}
+            <div id="last-updated" class="text-sm text-gray-500 dark:text-gray-400" data-timestamp="{{.Data.LastScrapeTime}}"></div> {{/* <-- MODIFIED */}}
         </div>
 
         <div class="flex flex-wrap items-stretch gap-4 mb-4">
             {{/* MODIFIED: Use .Data and .Page.T */}}
-            <div class="bg-white p-3 rounded-lg shadow">
+            <div class="bg-white dark:bg-gray-800 p-3 rounded-lg shadow">
                 <div class="text-center h-full flex flex-col justify-center px-2">
-                    <span class="text-gray-500 text-xs block">{{.Page.T.active_players_now}}</span>
-                    <strong class="text-2xl font-bold text-blue-600">{{.Data.LatestActivePlayers}}</strong>
+                    <span class="text-gray-500 dark:text-gray-400 text-xs block">{{.Page.T.active_players_now}}</span>
+                    <strong class="text-2xl font-bold text-blue-600 dark:text-blue-400">{{.Data.LatestActivePlayers}}</strong>
                 </div>
             </div>
 
-            <div class="bg-white p-3 rounded-lg shadow">
+            <div class="bg-white dark:bg-gray-800 p-3 rounded-lg shadow">
                 <div class="text-center h-full flex flex-col justify-center px-2">
-                    <span class="text-gray-500 text-xs block">{{.Page.T.historical_max_active}}</span>
-                    <strong class="text-2xl font-bold text-green-600">{{.Data.HistoricalMaxActivePlayers}}</strong>
-                    <span class="text-gray-400 text-xs mt-1">{{.Data.HistoricalMaxActivePlayersTime}}</span>
+                    <span class="text-gray-500 dark:text-gray-400 text-xs block">{{.Page.T.historical_max_active}}</span>
+                    <strong class="text-2xl font-bold text-green-600 dark:text-green-400">{{.Data.HistoricalMaxActivePlayers}}</strong>
+                    <span class="text-gray-400 dark:text-gray-500 text-xs mt-1">{{.Data.HistoricalMaxActivePlayersTime}}</span>
                 </div>
             </div>
 
-            <div class="bg-white p-3 rounded-lg shadow">
+            <div class="bg-white dark:bg-gray-800 p-3 rounded-lg shadow">
                 <div class="text-center h-full flex flex-col justify-center px-2">
-                    <span class="text-gray-500 text-xs block">{{printf .Page.T.peak_active_interval .Data.SelectedInterval}}</span>
-                    <strong class="text-2xl font-bold text-orange-600">{{.Data.IntervalPeakActive}}</strong>
-                    <span class="text-gray-400 text-xs mt-1">{{.Data.IntervalPeakActiveTime}}</span>
+                    <span class="text-gray-500 dark:text-gray-400 text-xs block">{{printf .Page.T.peak_active_interval .Data.SelectedInterval}}</span>
+                    <strong class="text-2xl font-bold text-orange-600 dark:text-orange-400">{{.Data.IntervalPeakActive}}</strong>
+                    <span class="text-gray-400 dark:text-gray-500 text-xs mt-1">{{.Data.IntervalPeakActiveTime}}</span>
                 </div>
             </div>
 
-            <div class="bg-white p-3 rounded-lg shadow">
+            <div class="bg-white dark:bg-gray-800 p-3 rounded-lg shadow">
                 <div class="text-center h-full flex flex-col justify-center px-2">
-                    <span class="text-gray-500 text-xs block">{{printf .Page.T.avg_active_interval .Data.SelectedInterval}}</span>
-                    <strong class="text-2xl font-bold text-indigo-600">{{.Data.IntervalAvgActive}}</strong>
+                    <span class="text-gray-500 dark:text-gray-400 text-xs block">{{printf .Page.T.avg_active_interval .Data.SelectedInterval}}</span>
+                    <strong class="text-2xl font-bold text-indigo-600 dark:text-indigo-400">{{.Data.IntervalAvgActive}}</strong>
                 </div>
             </div>
 
-            <div class="bg-white p-3 rounded-lg shadow">
+            <div class="bg-white dark:bg-gray-800 p-3 rounded-lg shadow">
                 <div class="text-center h-full flex flex-col justify-center px-2">
-                    <span class="text-gray-500 text-xs block">{{printf .Page.T.low_active_interval .Data.SelectedInterval}}</span>
-                    <strong class="text-2xl font-bold text-gray-600">{{.Data.IntervalLowActive}}</strong>
+                    <span class="text-gray-500 dark:text-gray-400 text-xs block">{{printf .Page.T.low_active_interval .Data.SelectedInterval}}</span>
+                    <strong class="text-2xl font-bold text-gray-600 dark:text-gray-300">{{.Data.IntervalLowActive}}</strong>
                 </div>
             </div>
 
-            <div class="bg-white p-3 rounded-lg shadow flex-grow">
+            <div class="bg-white dark:bg-gray-800 p-3 rounded-lg shadow flex-grow">
                 <form id="playerFilterForm" class="h-full">
                     <div class="flex flex-wrap items-center justify-between gap-4 h-full">
                         <div class="flex flex-wrap items-center gap-2">
-                            <span class="text-sm font-medium text-gray-700 mr-2">{{.Page.T.interval}}</span>
-                            <a href="/players?interval=6h" class="filter-interval text-sm font-medium px-3 py-1 rounded-full {{if eq .Data.SelectedInterval "6h"}}bg-blue-500 text-white{{else}}bg-gray-200 text-gray-700 hover:bg-gray-300{{end}}">6h</a>
-                            <a href="/players?interval=24h" class="filter-interval text-sm font-medium px-3 py-1 rounded-full {{if eq .Data.SelectedInterval "24h"}}bg-blue-500 text-white{{else}}bg-gray-200 text-gray-700 hover:bg-gray-300{{end}}">24h</a>
-                            <a href="/players?interval=7d" class="filter-interval text-sm font-medium px-3 py-1 rounded-full {{if eq .Data.SelectedInterval "7d"}}bg-blue-500 text-white{{else}}bg-gray-200 text-gray-700 hover:bg-gray-300{{end}}">7d</a>
-                            <a href="/players?interval=30d" class="filter-interval text-sm font-medium px-3 py-1 rounded-full {{if eq .Data.SelectedInterval "30d"}}bg-blue-500 text-white{{else}}bg-gray-200 text-gray-700 hover:bg-gray-300{{end}}">30d</a>
+                            <span class="text-sm font-medium text-gray-700 dark:text-gray-200 mr-2">{{.Page.T.interval}}</span>
+                            <a href="/players?interval=6h" class="filter-interval text-sm font-medium px-3 py-1 rounded-full {{if eq .Data.SelectedInterval "6h"}}bg-blue-500 text-white{{else}}bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-200 hover:bg-gray-300 dark:hover:bg-gray-600{{end}}">6h</a>
+                            <a href="/players?interval=24h" class="filter-interval text-sm font-medium px-3 py-1 rounded-full {{if eq .Data.SelectedInterval "24h"}}bg-blue-500 text-white{{else}}bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-200 hover:bg-gray-300 dark:hover:bg-gray-600{{end}}">24h</a>
+                            <a href="/players?interval=7d" class="filter-interval text-sm font-medium px-3 py-1 rounded-full {{if eq .Data.SelectedInterval "7d"}}bg-blue-500 text-white{{else}}bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-200 hover:bg-gray-300 dark:hover:bg-gray-600{{end}}">7d</a>
+                            <a href="/players?interval=30d" class="filter-interval text-sm font-medium px-3 py-1 rounded-full {{if eq .Data.SelectedInterval "30d"}}bg-blue-500 text-white{{else}}bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-200 hover:bg-gray-300 dark:hover:bg-gray-600{{end}}">30d</a>
                         </div>
+                        
                         <div class="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm">
-                            <strong class="text-gray-700">{{.Page.T.show}}</strong>
-                            <label class="flex items-center gap-2"><input type="checkbox" id="togglePlayers" class="rounded"> {{.Page.T.players}}</label>
-                            <label class="flex items-center gap-2"><input type="checkbox" id="toggleSellers" class="rounded"> {{.Page.T.sellers}}</label>
-                            <label class="flex items-center gap-2"><input type="checkbox" id="toggleDelta" checked class="rounded"> {{.Page.T.active_delta}}</label>
-                            <label class="flex items-center gap-2"><input type="checkbox" id="toggleEvents" checked class="rounded"> {{.Page.T.events}}</label>
+                            <strong class="text-gray-700 dark:text-gray-200">{{.Page.T.show}}</strong>
+                            <label class="flex items-center gap-2"><input type="checkbox" id="togglePlayers" class="rounded dark:bg-gray-700 dark:border-gray-600"> {{.Page.T.players}}</label>
+                            <label class="flex items-center gap-2"><input type="checkbox" id="toggleSellers" class="rounded dark:bg-gray-700 dark:border-gray-600"> {{.Page.T.sellers}}</label>
+                            <label class="flex items-center gap-2"><input type="checkbox" id="toggleDelta" checked class="rounded dark:bg-gray-700 dark:border-gray-600"> {{.Page.T.active_delta}}</label>
+                            <label class="flex items-center gap-2"><input type="checkbox" id="toggleEvents" checked class="rounded dark:bg-gray-700 dark:border-gray-600"> {{.Page.T.events}}</label>
                         </div>
                     </div>
                 </form>
             </div>
         </div>
 
-        <div class="bg-white p-3 rounded-lg shadow">
+        <div class="bg-white dark:bg-gray-800 p-3 rounded-lg shadow">
             <canvas id="playerChart"></canvas>
         </div>
     </div>
@@ -109,6 +123,9 @@
                 js_count: '{{.Page.T.js_count}}',
                 js_date_time: '{{.Page.T.js_date_time}}'
             };
+            const isDarkMode = document.documentElement.classList.contains('dark');
+            const gridColor = isDarkMode ? 'rgba(107, 114, 128, 0.2)' : 'rgba(209, 213, 219, 0.2)';
+            const labelColor = isDarkMode ? 'rgba(209, 213, 219, 1)' : 'rgba(107, 114, 128, 1)';
 
             // --- MODIFIED: Use translations for last-updated ---
             const lastUpdateElement = document.getElementById('last-updated');
@@ -146,7 +163,7 @@
                     }
 
                     const fullString = translations.updated_ago.replace('%s', timeAgoString);
-                    lastUpdateElement.innerHTML = `${fullString} <span class="text-gray-400 font-normal">(${formattedTimestamp})</span>`;
+                    lastUpdateElement.innerHTML = `${fullString} <span class="text-gray-400 dark:text-gray-500 font-normal">(${formattedTimestamp})</span>`;
                 };
 
                 updateTimeAgo();
@@ -209,7 +226,7 @@
             }
             const initialAnnotations = toggleEvents.checked ? createAnnotations(eventData) : {};
             
-            // --- MODIFIED: Use translations in Chart ---
+            // --- MODIFIED: Use translations and dark mode colors in Chart ---
             const ctx = document.getElementById('playerChart').getContext('2d');
             const playerChart = new Chart(ctx, {
                 type: 'line',
@@ -227,10 +244,18 @@
                 },
                 options: {
                     scales: {
-                        y: { min: 0, max: chartMaxY, title: { display: true, text: translations.js_count } },
+                        y: { 
+                            min: 0, 
+                            max: chartMaxY, 
+                            title: { display: true, text: translations.js_count, color: labelColor },
+                            ticks: { color: labelColor },
+                            grid: { color: gridColor }
+                        },
                         x: {
                             type: 'time',
-                            title: { display: true, text: translations.js_date_time },
+                            title: { display: true, text: translations.js_date_time, color: labelColor },
+                            ticks: { color: labelColor },
+                            grid: { color: gridColor },
                             time: {
                                 unit: 'day',
                                 tooltipFormat: 'yyyy-MM-dd HH:mm',
@@ -241,7 +266,15 @@
                             }
                         }
                     },
-                    plugins: { tooltip: { mode: 'index', intersect: false, }, annotation: { annotations: initialAnnotations } }
+                    plugins: { 
+                        tooltip: { mode: 'index', intersect: false, }, 
+                        annotation: { annotations: initialAnnotations },
+                        legend: {
+                            labels: {
+                                color: labelColor
+                            }
+                        }
+                    }
                 }
             });
 
