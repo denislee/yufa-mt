@@ -723,6 +723,29 @@ func processGuildData(allGuilds map[string]Guild, allMembers map[string]string) 
 	characterMutex.Lock()
 	defer characterMutex.Unlock()
 
+	// --- SAFETY CHECK: PREVENT PARTIAL SCRAPES FROM WIPING DB ---
+	var currentGuildCount int
+	if err := db.QueryRow("SELECT COUNT(*) FROM guilds").Scan(&currentGuildCount); err != nil {
+		log.Printf("[E] [Scraper/Guild] Failed to query current guild count for safety check: %v. Aborting update.", err)
+		return
+	}
+
+	scrapedCount := len(allGuilds)
+	// We only apply the safety check if there is significant data already in the DB (> 10 guilds).
+	// We allow a drop to 80% of the previous count. Anything lower suggests a partial scrape/network issue.
+	const safetyThresholdRatio = 0.80
+
+	if currentGuildCount > 10 {
+		minAcceptableCount := int(float64(currentGuildCount) * safetyThresholdRatio)
+
+		if scrapedCount < minAcceptableCount {
+			log.Printf("[W] [Scraper/Guild] SAFETY ABORT: Scraped %d guilds, but DB contains %d. This is a drop of over %.0f%%. Keeping existing data to prevent partial wipe.",
+				scrapedCount, currentGuildCount, (1.0-safetyThresholdRatio)*100)
+			return
+		}
+	}
+	// --- END SAFETY CHECK ---
+
 	// 1. Fetch old associations for comparison
 	oldAssociations := make(map[string]string)
 	oldGuildRows, err := db.Query("SELECT name, guild_name FROM characters WHERE guild_name IS NOT NULL")
@@ -2967,4 +2990,3 @@ func toComparable(item Item) comparableItem {
 		MapCoordinates: item.MapCoordinates,
 	}
 }
-
