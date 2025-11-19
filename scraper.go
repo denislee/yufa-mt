@@ -1764,18 +1764,15 @@ func fetchExistingMvpKills() (map[string]map[string]int, error) {
 }
 
 // processMvpKills handles all database logic for the MVP scraper.
+// OPTIMIZATION: Removed the memory-heavy fetchExistingMvpKills() call.
+// Logic for keeping the highest kill count is now handled natively by SQLite's MAX() function in the UPSERT.
 func processMvpKills(allMvpKills map[string]map[string]int) {
 	characterMutex.Lock()
 	defer characterMutex.Unlock()
 
 	// 1. Fetch prerequisite data
+	// We still fetch names to enforce Foreign Key integrity cheaply before attempting inserts
 	allCharacterNames, err := fetchAllCharacterNames()
-	if err != nil {
-		log.Printf("[E] [Scraper/MVP] %v. Aborting update.", err)
-		return
-	}
-
-	allExistingKills, err := fetchExistingMvpKills()
 	if err != nil {
 		log.Printf("[E] [Scraper/MVP] %v. Aborting update.", err)
 		return
@@ -1793,11 +1790,16 @@ func processMvpKills(allMvpKills map[string]map[string]int) {
 	columnNames := []string{"character_name"}
 	valuePlaceholders := []string{"?"}
 	updateSetters := []string{}
+
 	for _, mobID := range mvpMobIDs {
 		colName := fmt.Sprintf("mvp_%s", mobID)
 		columnNames = append(columnNames, colName)
 		valuePlaceholders = append(valuePlaceholders, "?")
-		updateSetters = append(updateSetters, fmt.Sprintf("%s=excluded.%s", colName, colName))
+
+		// OPTIMIZATION: Use SQLite scalar MAX() to ensure we only update if the new value is higher.
+		// 'excluded' refers to the value we are trying to insert.
+		// 'character_mvp_kills' refers to the value currently in the database.
+		updateSetters = append(updateSetters, fmt.Sprintf("%s=MAX(character_mvp_kills.%s, excluded.%s)", colName, colName, colName))
 	}
 
 	queryStr := fmt.Sprintf(`
@@ -1821,23 +1823,10 @@ func processMvpKills(allMvpKills map[string]map[string]int) {
 		}
 		updateCount++
 
-		existingKills := allExistingKills[charName]
-		if existingKills == nil {
-			existingKills = make(map[string]int)
-		}
-
 		params := []interface{}{charName}
 		for _, mobID := range mvpMobIDs {
-			newKillCount := newKills[mobID]           // 0 if not in map
-			existingKillCount := existingKills[mobID] // 0 if not in map
-
-			// This is your stale data protection logic:
-			// Only update if the new count is >= the existing one.
-			finalKillCount := newKillCount
-			if existingKillCount > newKillCount {
-				finalKillCount = existingKillCount
-			}
-			params = append(params, finalKillCount)
+			newKillCount := newKills[mobID] // 0 if not in map
+			params = append(params, newKillCount)
 		}
 
 		if _, err := stmt.Exec(params...); err != nil {
