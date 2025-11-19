@@ -262,6 +262,8 @@ func registerAdminRoutes() *http.ServeMux {
 	adminRouter.HandleFunc("/scrape/pt-names", adminTriggerScrapeHandler(populateMissingPortugueseNames, "PT-Name-Populator"))
 	adminRouter.HandleFunc("/scrape/woe", adminTriggerScrapeHandler(scrapeWoeCharacterRankings, "WoE-Char-Rankings"))
 
+	adminRouter.HandleFunc("/cleanup/guild-history", adminCleanupGuildHistoryHandler)
+
 	return adminRouter
 }
 

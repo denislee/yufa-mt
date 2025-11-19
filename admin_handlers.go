@@ -1324,3 +1324,101 @@ func backfillDropLogsToChangelog() (int64, error) {
 
 	return newEntriesCount, nil
 }
+
+// --- NEW: Handler to cleanup redundant guild history ---
+func adminCleanupGuildHistoryHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Redirect(w, r, "/admin", http.StatusSeeOther)
+		return
+	}
+
+	log.Println("[I] [Admin] Manual cleanup of guild history duplicates triggered.")
+
+	// 1. Query all guild-related logs, ordered by character and then time
+	// We need strictly ordered logs to compare current vs previous row.
+	rows, err := db.Query(`
+		SELECT id, character_name, activity_description 
+		FROM character_changelog 
+		WHERE activity_description LIKE '%guild%' 
+		ORDER BY character_name ASC, change_time ASC, id ASC
+	`)
+	if err != nil {
+		log.Printf("[E] [Admin] Failed to query guild logs for cleanup: %v", err)
+		http.Redirect(w, r, adminRedirectURL(r, "Database error querying logs."), http.StatusSeeOther)
+		return
+	}
+	defer rows.Close()
+
+	var idsToDelete []interface{}
+	var lastChar string
+	var lastDesc string
+
+	// 2. Iterate and find sequential duplicates
+	for rows.Next() {
+		var id int
+		var charName, desc string
+		if err := rows.Scan(&id, &charName, &desc); err != nil {
+			continue
+		}
+
+		// If we switched characters, reset the tracker
+		if charName != lastChar {
+			lastChar = charName
+			lastDesc = desc
+			continue
+		}
+
+		// Same character. Check if description is identical to the previous one.
+		// This catches:
+		// 1. "Joined guild A" -> "Joined guild A" (Delete 2nd)
+		// 2. "Left guild B" -> "Left guild B" (Delete 2nd)
+		if desc == lastDesc {
+			idsToDelete = append(idsToDelete, id)
+		} else {
+			// Update lastDesc only if it wasn't a duplicate (keep the "original" as the comparison point)
+			lastDesc = desc
+		}
+	}
+
+	if len(idsToDelete) == 0 {
+		http.Redirect(w, r, adminRedirectURL(r, "No duplicate guild entries found."), http.StatusSeeOther)
+		return
+	}
+
+	// 3. Perform Deletion (in batches to be safe with SQL variable limits)
+	tx, err := db.Begin()
+	if err != nil {
+		http.Redirect(w, r, adminRedirectURL(r, "Transaction error."), http.StatusSeeOther)
+		return
+	}
+	defer tx.Rollback()
+
+	batchSize := 50
+	totalDeleted := 0
+
+	for i := 0; i < len(idsToDelete); i += batchSize {
+		end := i + batchSize
+		if end > len(idsToDelete) {
+			end = len(idsToDelete)
+		}
+		batch := idsToDelete[i:end]
+
+		placeholders := strings.Repeat("?,", len(batch)-1) + "?"
+		query := fmt.Sprintf("DELETE FROM character_changelog WHERE id IN (%s)", placeholders)
+
+		if _, err := tx.Exec(query, batch...); err != nil {
+			log.Printf("[E] [Admin] Failed to delete batch of duplicate logs: %v", err)
+		} else {
+			totalDeleted += len(batch)
+		}
+	}
+
+	if err := tx.Commit(); err != nil {
+		http.Redirect(w, r, adminRedirectURL(r, "Commit error."), http.StatusSeeOther)
+		return
+	}
+
+	msg := fmt.Sprintf("Successfully removed %d duplicate guild history entries.", totalDeleted)
+	log.Printf("[I] [Admin] %s", msg)
+	http.Redirect(w, r, adminRedirectURL(r, msg), http.StatusSeeOther)
+}

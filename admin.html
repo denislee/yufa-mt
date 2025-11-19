@@ -163,6 +163,28 @@
                                 <button type="submit" class="bg-teal-500 hover:bg-teal-700 text-white font-bold py-2 px-4 rounded">Backfill Drop Logs to Changelog</button>
                             </form>
                         </div>
+
+                        <div class="bg-white p-6 rounded-lg shadow mb-8">
+                            <h2 class="text-xl font-bold mb-4">Data Backfill & Cleanup</h2>
+                            
+                            <p class="text-sm text-gray-600 mb-4">This will scan the entire chat log, parse all item drop messages, and insert them into the character changelog. This is idempotent (safe to run multiple times).</p>
+                            <form action="/admin/backfill/drops" method="POST" onsubmit="return confirm('This may take a moment. Are you sure you want to backfill all drop logs into the changelog?');">
+                                <button type="submit" class="bg-teal-500 hover:bg-teal-700 text-white font-bold py-2 px-4 rounded mb-6">Backfill Drop Logs to Changelog</button>
+                            </form>
+
+                            <hr class="border-gray-200 mb-4">
+                            <h3 class="text-lg font-semibold mb-2">Fix Guild Inconsistencies</h3>
+                            <p class="text-sm text-gray-600 mb-4">
+                                This will detect and remove impossible consecutive guild history entries (e.g., "Joined Guild A" followed immediately by another "Joined Guild A" without leaving).
+                            </p>
+                            <form action="/admin/cleanup/guild-history" method="POST" onsubmit="return confirm('Are you sure you want to remove duplicate guild history entries? This cannot be undone.');">
+                                <button type="submit" class="bg-indigo-500 hover:bg-indigo-700 text-white font-bold py-2 px-4 rounded">
+                                    Cleanup Guild History Duplicates
+                                </button>
+                            </form>
+                        </div>
+
+
                         </div>
                     <div>
                         <div class="bg-white p-6 rounded-lg shadow mb-8">
