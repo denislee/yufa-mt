@@ -239,18 +239,30 @@
             try {
                 // This chart expects a JSON map: {"ClassA": 10, "ClassB": 20}
                 const chartData = JSON.parse(classChartCanvas.dataset.chartJson || '{}');
-                const labels = Object.keys(chartData);
-                const data = Object.values(chartData);
+
+                // --- MODIFICATION START: Sort Data Descending ---
+                // 1. Convert the object to an array of objects
+                let dataArray = Object.keys(chartData).map(key => {
+                    return { label: key, data: chartData[key] };
+                });
+
+                // 2. Sort the array by 'data' (count) in descending order
+                dataArray.sort((a, b) => b.data - a.data);
+
+                // 3. Extract the sorted labels and data arrays
+                const labels = dataArray.map(item => item.label);
+                const data = dataArray.map(item => item.data);
+                // --- MODIFICATION END ---
 
                 if (labels.length > 0) {
                     const ctx = classChartCanvas.getContext('2d');
                     new Chart(ctx, {
                         type: 'bar',
                         data: {
-                            labels: labels,
+                            labels: labels, // Use sorted labels
                             datasets: [{
                                 label: translations.js_char_count,
-                                data: data,
+                                data: data, // Use sorted data
                                 backgroundColor: 'rgba(59, 130, 246, 0.6)',
                                 borderColor: 'rgba(59, 130, 246, 1)',
                                 borderWidth: 1
