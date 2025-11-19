@@ -510,26 +510,21 @@ func cleanupStalePlayers(scrapedPlayerNames map[string]bool, existingPlayers map
 }
 
 // processPlayerData is the modified "consumer" function.
-// --- MODIFICATION ---
 func processPlayerData(playerChan <-chan PlayerCharacter) {
-	// --- END MODIFICATION ---
 	characterMutex.Lock()
 	defer characterMutex.Unlock()
 
 	log.Println("[I] [Scraper/Char] DB worker started. Processing scraped data...")
 
-	// 1. Fetch existing player data
+	// 1. Fetch existing player data for comparison
 	existingPlayers, err := fetchExistingPlayers()
 	if err != nil {
 		log.Printf("[E] [Scraper/Char] %v", err)
 		// Continue with an empty map, logging will just be incomplete
 	}
 
-	// --- MODIFICATION ---
-	// Generate the timestamp *after* data is confirmed to be ready for processing
-	// and *before* the transaction begins.
+	// Generate the timestamp
 	updateTime := time.Now().Format(time.RFC3339)
-	// --- END MODIFICATION ---
 
 	// 2. Prepare database transaction and statements
 	tx, err := db.Begin()
@@ -537,7 +532,7 @@ func processPlayerData(playerChan <-chan PlayerCharacter) {
 		log.Printf("[E] [Scraper/Char] Failed to begin transaction: %v", err)
 		return
 	}
-	defer tx.Rollback() // Rollback on error
+	defer tx.Rollback() // Rollback on error or if safety check fails
 
 	stmt, err := tx.Prepare(`
 		INSERT INTO characters (rank, name, base_level, job_level, experience, class, last_updated, last_active)
@@ -591,6 +586,26 @@ func processPlayerData(playerChan <-chan PlayerCharacter) {
 		}
 	}
 
+	// --- SAFETY CHECK: PREVENT PARTIAL SCRAPES FROM WIPING DB ---
+	// We check the count AFTER processing the channel but BEFORE committing.
+	var currentDBCount int
+	if err := db.QueryRow("SELECT COUNT(*) FROM characters").Scan(&currentDBCount); err != nil {
+		log.Printf("[E] [Scraper/Char] Failed to query current character count for safety check: %v. Aborting update.", err)
+		return // Implicit rollback via defer
+	}
+
+	const safetyThresholdRatio = 0.80
+	if currentDBCount > 100 { // Minimum DB size to enforce check
+		minAcceptableCount := int(float64(currentDBCount) * safetyThresholdRatio)
+
+		if totalProcessed < minAcceptableCount {
+			log.Printf("[W] [Scraper/Char] SAFETY ABORT: Scraped %d characters, but DB contains %d. This is a drop of over %.0f%%. Rolling back to prevent data loss/stale cleanup.",
+				totalProcessed, currentDBCount, (1.0-safetyThresholdRatio)*100)
+			return // Implicit rollback via defer
+		}
+	}
+	// --- END SAFETY CHECK ---
+
 	// 4. Commit the transaction
 	if err := tx.Commit(); err != nil {
 		log.Printf("[E] [Scraper/Char] Failed to commit transaction: %v", err)
@@ -600,10 +615,11 @@ func processPlayerData(playerChan <-chan PlayerCharacter) {
 
 	if totalProcessed == 0 {
 		log.Println("[W] [Scraper/Char] Scraper processed 0 total characters. This might be a parsing error. Skipping stale player cleanup to avoid wiping data.")
-		return // Abort before cleanup
+		return
 	}
 
 	// 5. Clean up stale records (outside the transaction)
+	// We only run this if the safety check passed (transaction committed)
 	cleanupStalePlayers(scrapedPlayerNames, existingPlayers)
 
 	log.Printf("[I] [Scraper/Char] Scrape and update process complete.")
@@ -1004,16 +1020,34 @@ func formatWithCommas(n int64) string {
 }
 
 // processZenyData handles fetching old zeny data, comparing, and updating the database.
-// --- MODIFICATION ---
 func processZenyData(allZenyInfo map[string]int64) {
-	// --- END MODIFICATION ---
 	characterMutex.Lock()
 	defer characterMutex.Unlock()
 
-	// --- MODIFICATION ---
-	// Timestamp is generated *after* scraping is complete.
+	// --- SAFETY CHECK: PREVENT PARTIAL SCRAPES FROM CORRUPTING STATS ---
+	// We compare the number of scraped zeny records against the number of characters
+	// in the DB that currently have zeny data (zeny > 0).
+	var currentZenyCount int
+	if err := db.QueryRow("SELECT COUNT(*) FROM characters WHERE zeny > 0").Scan(&currentZenyCount); err != nil {
+		log.Printf("[E] [Scraper/Zeny] Failed to query current zeny count for safety check: %v. Aborting update.", err)
+		return
+	}
+
+	scrapedCount := len(allZenyInfo)
+	const safetyThresholdRatio = 0.80
+
+	if currentZenyCount > 50 { // Minimum DB size to enforce check
+		minAcceptableCount := int(float64(currentZenyCount) * safetyThresholdRatio)
+
+		if scrapedCount < minAcceptableCount {
+			log.Printf("[W] [Scraper/Zeny] SAFETY ABORT: Scraped %d zeny records, but DB has %d characters with zeny. This is a drop of over %.0f%%. Aborting update to prevent partial data.",
+				scrapedCount, currentZenyCount, (1.0-safetyThresholdRatio)*100)
+			return
+		}
+	}
+	// --- END SAFETY CHECK ---
+
 	updateTime := time.Now().Format(time.RFC3339)
-	// --- END MODIFICATION ---
 
 	log.Println("[D] [Scraper/Zeny] Fetching existing character zeny data for activity comparison...")
 	existingCharacters := make(map[string]CharacterZenyInfo)
@@ -1043,7 +1077,7 @@ func processZenyData(allZenyInfo map[string]int64) {
 
 	stmt, err := tx.Prepare("UPDATE characters SET zeny = ?, last_active = ? WHERE name = ?")
 	if err != nil {
-		log.Printf("[E... ] [Scraper/Zeny] Failed to prepare update statement: %v", err)
+		log.Printf("[E] [Scraper/Zeny] Failed to prepare update statement: %v", err)
 		return
 	}
 	defer stmt.Close()
