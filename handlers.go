@@ -28,6 +28,22 @@ type BasePageData struct {
 	RequestURL string
 }
 
+// Add these package-level variables to handlers.go
+var (
+	itemCacheOnce sync.Once
+	// Map for O(1) exact lookups: key format "lowercasename_slots" -> itemID
+	itemExactCache map[string]int64
+	// Slice for iteration/fuzzy searching
+	itemFuzzyCache []cachedItem
+)
+
+type cachedItem struct {
+	id     int64
+	name   string
+	namePT string
+	slots  int
+}
+
 // Package-level variables for templates, translations, and helper maps.
 var (
 	templateCache = make(map[string]*template.Template)
@@ -2625,137 +2641,151 @@ func tradingPostListHandler(w http.ResponseWriter, r *http.Request) {
 	renderTemplate(w, r, "trading_post.html", data)
 }
 
-// findItemIDInCache attempts to find an item ID using the local item DB.
-// This version uses LIKE and Levenshtein distance for proximity matching.
-// --- MODIFICATION: Added 'slots' parameter ---
+// findItemIDInCache attempts to find an item ID using an in-memory cache of the local item DB.
+// This replaces the expensive SQL "LIKE %...%" query.
 func findItemIDInCache(cleanItemName string, slots int) (sql.NullInt64, bool) {
+	// 1. Lazy Load: Populate cache from DB only once
+	itemCacheOnce.Do(func() {
+		itemExactCache = make(map[string]int64)
+		// Pre-allocate estimate (Ragnarok has ~30k-50k items)
+		itemFuzzyCache = make([]cachedItem, 0, 40000)
 
-	// --- MODIFICATION: Build case-insensitive query ---
-	// Lowercase the search term *once*
+		// Fetch all items including slots
+		rows, err := db.Query("SELECT item_id, name, COALESCE(name_pt, ''), COALESCE(slots, 0) FROM internal_item_db")
+		if err != nil {
+			log.Printf("[E] [ItemID] Failed to load item cache: %v", err)
+			return
+		}
+		defer rows.Close()
+
+		for rows.Next() {
+			var i cachedItem
+			if err := rows.Scan(&i.id, &i.name, &i.namePT, &i.slots); err != nil {
+				continue
+			}
+
+			// Add to iteration slice
+			itemFuzzyCache = append(itemFuzzyCache, i)
+
+			// Add to exact match map (Key: "name_slots")
+			// We cache both English and PT names
+			keyEN := fmt.Sprintf("%s_%d", strings.ToLower(i.name), i.slots)
+			itemExactCache[keyEN] = i.id
+
+			if i.namePT != "" {
+				keyPT := fmt.Sprintf("%s_%d", strings.ToLower(i.namePT), i.slots)
+				itemExactCache[keyPT] = i.id
+			}
+		}
+		log.Printf("[I] [ItemID] Loaded %d items into in-memory cache.", len(itemFuzzyCache))
+	})
+
 	lowerCleanItemName := strings.ToLower(cleanItemName)
-	likeQuery := "%" + strings.ReplaceAll(lowerCleanItemName, " ", "%") + "%"
 
-	var queryParams []interface{}
-	queryParams = append(queryParams, likeQuery, likeQuery)
-
-	var slotClause string
-	if slots == 0 {
-		// If slots are 0, match 0 or NULL (since NULL slots also mean 0)
-		slotClause = "AND (slots = 0 OR slots IS NULL)"
-	} else {
-		// If slots > 0, match that exact number
-		slotClause = "AND slots = ?"
-		queryParams = append(queryParams, slots)
+	// 2. Fast Path: Exact Match O(1)
+	// Generate key based on request slots. If slots is 0, we assume the item in DB has 0 slots.
+	exactKey := fmt.Sprintf("%s_%d", lowerCleanItemName, slots)
+	if id, ok := itemExactCache[exactKey]; ok {
+		log.Printf("[D] [ItemID] Found in-memory exact match for '%s': ID %d", cleanItemName, id)
+		return sql.NullInt64{Int64: id, Valid: true}, true
 	}
 
-	// Use LOWER() on columns for case-insensitive matching
-	query := fmt.Sprintf(`
-		SELECT item_id, name, name_pt 
-		FROM internal_item_db 
-		WHERE (LOWER(name) LIKE ? OR LOWER(name_pt) LIKE ?)
-		%s
-		LIMIT 10`, slotClause) // Limit to 10 potential matches
-
-	rows, err := db.Query(query, queryParams...)
-	// --- END MODIFICATION ---
-	if err != nil {
-		log.Printf("[W] [ItemID] Error during LIKE query for '%s' (slots: %d): %v", likeQuery, slots, err)
-		return sql.NullInt64{Valid: false}, false
-	}
-	defer rows.Close()
-
+	// 3. Slow Path: Fuzzy Search (Iterate Memory instead of SQL Table Scan)
+	// This replicates the original "LIKE %query%" logic but in RAM.
 	type potentialMatch struct {
 		id     int64
-		name   string // This is the original name from the DB (e.g., "Jur")
-		namePT string // This is the original PT name (e.g., "Jur")
+		name   string
+		namePT string
 	}
 	var potentialMatches []potentialMatch
 
-	for rows.Next() {
-		var match potentialMatch
-		var namePT sql.NullString
-		if err := rows.Scan(&match.id, &match.name, &namePT); err == nil {
-			if namePT.Valid {
-				match.namePT = namePT.String
+	// We limit results to 50 to keep Levenshtein calc fast (original SQL used LIMIT 10)
+	matchCount := 0
+
+	for _, item := range itemFuzzyCache {
+		// Filter by slots if specified
+		if slots > 0 && item.slots != slots {
+			continue
+		}
+
+		// Check substring (equivalent to SQL LIKE %...%)
+		// We check both English and PT names
+		isMatch := strings.Contains(strings.ToLower(item.name), lowerCleanItemName) ||
+			(item.namePT != "" && strings.Contains(strings.ToLower(item.namePT), lowerCleanItemName))
+
+		if isMatch {
+			potentialMatches = append(potentialMatches, potentialMatch{
+				id:     item.id,
+				name:   item.name,
+				namePT: item.namePT,
+			})
+			matchCount++
+			if matchCount >= 50 {
+				break
 			}
-			potentialMatches = append(potentialMatches, match)
 		}
 	}
+
+	// 4. Disambiguation Logic (Levenshtein)
+	// (This logic remains largely identical to the original, operating on the memory slice)
 
 	if len(potentialMatches) == 1 {
 		itemID := potentialMatches[0].id
-		log.Printf("[D] [ItemID] Found unique local LIKE match for '%s': ID %d", cleanItemName, itemID)
+		log.Printf("[D] [ItemID] Found unique memory substring match for '%s': ID %d", cleanItemName, itemID)
 		return sql.NullInt64{Int64: itemID, Valid: true}, true
 	}
 
-	// Disambiguation logic (Levenshtein) remains the same as before
-	// We already have lowerCleanItemName from above.
-
-	// 1. Check for a perfect match first
-	for _, match := range potentialMatches {
-		if strings.ToLower(match.name) == lowerCleanItemName || strings.ToLower(match.namePT) == lowerCleanItemName {
-			log.Printf("[D] [ItemID] Found perfect match '%s' (ID %d) within %d LIKE results.", cleanItemName, match.id, len(potentialMatches))
-			return sql.NullInt64{Int64: match.id, Valid: true}, true
-		}
-	}
-
-	// 2. No perfect match, find the closest Levenshtein distance.
+	// Calculate Levenshtein distance to find the "best" match among the candidates
 	const maxLevenshteinDistance = 2
-
 	bestMatchID := int64(-1)
 	bestMatchName := ""
 	minDistance := 100
 
-	log.Printf("[D] [ItemID/Levenshtein] No perfect match for '%s'. Calculating proximity for %d candidates.", cleanItemName, len(potentialMatches))
+	if len(potentialMatches) > 0 {
+		log.Printf("[D] [ItemID/Levenshtein] Calculating proximity for %d candidates.", len(potentialMatches))
 
-	for _, match := range potentialMatches {
-		lowerNameEN := strings.ToLower(match.name)
-		distEN := levenshtein.ComputeDistance(lowerCleanItemName, lowerNameEN)
-
-		currentBestName := match.name
-		currentMinDist := distEN
-
-		logMsg := fmt.Sprintf("[D] [ItemID/Levenshtein] ...vs EN '%s' (ID %d): dist %d.", lowerNameEN, match.id, distEN)
-
-		if match.namePT != "" {
-			lowerNamePT := strings.ToLower(match.namePT)
-			distPT := levenshtein.ComputeDistance(lowerCleanItemName, lowerNamePT)
-			logMsg += fmt.Sprintf(" vs PT '%s': dist %d.", lowerNamePT, distPT)
-
-			if distPT < currentMinDist {
-				currentMinDist = distPT
-				currentBestName = match.namePT
+		for _, match := range potentialMatches {
+			// Check perfect match case-insensitive first within candidates
+			lowerNameEN := strings.ToLower(match.name)
+			if lowerNameEN == lowerCleanItemName || strings.ToLower(match.namePT) == lowerCleanItemName {
+				return sql.NullInt64{Int64: match.id, Valid: true}, true
 			}
-		}
 
-		log.Print(logMsg)
+			// Compute Distance
+			distEN := levenshtein.ComputeDistance(lowerCleanItemName, lowerNameEN)
+			currentBestName := match.name
+			currentMinDist := distEN
 
-		if currentMinDist < minDistance {
-			minDistance = currentMinDist
-			bestMatchID = match.id
-			bestMatchName = currentBestName
+			if match.namePT != "" {
+				distPT := levenshtein.ComputeDistance(lowerCleanItemName, strings.ToLower(match.namePT))
+				if distPT < currentMinDist {
+					currentMinDist = distPT
+					currentBestName = match.namePT
+				}
+			}
+
+			if currentMinDist < minDistance {
+				minDistance = currentMinDist
+				bestMatchID = match.id
+				bestMatchName = currentBestName
+			}
 		}
 	}
 
-	log.Printf("[DF] [ItemID/Levenshtein] Best proximity match for '%s' is '%s' (ID %d) with distance %d.", cleanItemName, bestMatchName, bestMatchID, minDistance)
-
-	// 3. Check if the best match is within our acceptable threshold
 	if bestMatchID != -1 && minDistance <= maxLevenshteinDistance {
-		log.Printf("[D] [ItemID] Accepting proximity match for '%s' (ID %d). Distance %d is <= %d.", cleanItemName, bestMatchID, minDistance, maxLevenshteinDistance)
+		log.Printf("[D] [ItemID] Accepting proximity match for '%s' -> '%s' (ID %d). Dist: %d", cleanItemName, bestMatchName, bestMatchID, minDistance)
 		return sql.NullInt64{Int64: bestMatchID, Valid: true}, true
 	}
 
-	// 4. Fallback for cards (unchanged)
+	// Fallback for Cards if generic search failed but keyword exists
 	if strings.Contains(lowerCleanItemName, "card") || strings.Contains(lowerCleanItemName, "carta") {
 		if len(potentialMatches) > 0 {
-			itemID := potentialMatches[0].id // Trust the first result from LIKE
-			log.Printf("[D] [ItemID] Found %d LIKE matches for '%s'. Proximity match rejected (dist %d > %d). Using first result (ID %d) due to 'card'/'carta' keyword.", len(potentialMatches), cleanItemName, minDistance, maxLevenshteinDistance, itemID)
+			itemID := potentialMatches[0].id
+			log.Printf("[D] [ItemID] Using first result (ID %d) due to 'card' keyword fallback.", itemID)
 			return sql.NullInt64{Int64: itemID, Valid: true}, true
 		}
 	}
 
-	// 5. All ambiguity checks failed.
-	log.Printf("[D] [ItemID] Found %d ambiguous LIKE matches for '%s'. Proximity match rejected (dist %d > %d). Proceeding to online search.", len(potentialMatches), cleanItemName, minDistance, maxLevenshteinDistance)
 	return sql.NullInt64{Valid: false}, false
 }
 
