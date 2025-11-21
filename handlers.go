@@ -1059,58 +1059,6 @@ func getCombinedItemIDs(searchQuery string) ([]int, error) {
 	return idList, nil
 }
 
-// searchRODatabaseAsync is a helper for getCombinedItemIDs.
-// It scrapes rodatabase.com and sends the results to a channel.
-func searchRODatabaseAsync(wg *sync.WaitGroup, resultChan chan<- []int, searchQuery string) {
-	defer wg.Done()
-
-	results, err := scrapeRODatabaseSearch(searchQuery, 0)
-	if err != nil {
-		log.Printf("[W] [HTTP] Concurrent scrape failed for '%s': %v", searchQuery, err)
-		resultChan <- nil // Send nil on error
-		return
-	}
-
-	if results == nil {
-		resultChan <- nil // Send nil if no results
-		return
-	}
-
-	ids := make([]int, 0, len(results))
-	for _, res := range results {
-		ids = append(ids, res.ID)
-	}
-	resultChan <- ids
-}
-
-// searchLocalDBAsync is a helper for getCombinedItemIDs.
-// It searches the local DB and sends the results to a channel.
-func searchLocalDBAsync(wg *sync.WaitGroup, resultChan chan<- []int, searchQuery string) {
-	defer wg.Done()
-
-	const query = `
-		SELECT item_id FROM internal_item_db
-		WHERE name LIKE ? OR name_pt LIKE ?
-	`
-	likeQuery := "%" + searchQuery + "%"
-	rows, err := db.Query(query, likeQuery, likeQuery)
-	if err != nil {
-		log.Printf("[W] [HTTP] Concurrent local ID search failed for '%s': %v", searchQuery, err)
-		resultChan <- nil
-		return
-	}
-	defer rows.Close()
-
-	var ids []int
-	for rows.Next() {
-		var id int
-		if err := rows.Scan(&id); err == nil {
-			ids = append(ids, id)
-		}
-	}
-	resultChan <- ids
-}
-
 func getItemTypeTabs() []ItemTypeTab {
 	var itemTypes []ItemTypeTab
 	rows, err := db.Query("SELECT DISTINCT type FROM internal_item_db WHERE type IS NOT NULL AND type != '' ORDER BY type ASC")
@@ -3975,68 +3923,6 @@ func fetchItemDetails(itemID int) *RMSItem {
 	return nil // Not found
 }
 
-// fetchCurrentLowestListing gets only the single lowest-priced available listing.
-func fetchCurrentLowestListing(itemName string) (*ItemListing, error) {
-	query := `
-		SELECT CAST(REPLACE(REPLACE(price, ',', ''), 'z', '') AS INTEGER) as price_int, 
-		       quantity, store_name, seller_name, map_name, map_coordinates, date_and_time_retrieved
-		FROM items WHERE name_of_the_item = ? AND is_available = 1 
-		ORDER BY price_int ASC, id DESC
-		LIMIT 1;
-	`
-	var listing ItemListing
-	var timestampStr string
-	err := db.QueryRow(query, itemName).Scan(
-		&listing.Price, &listing.Quantity, &listing.StoreName,
-		&listing.SellerName, &listing.MapName, &listing.MapCoordinates, &timestampStr,
-	)
-
-	if err != nil {
-		if err == sql.ErrNoRows {
-			return nil, nil // No listing found is not an error
-		}
-		return nil, fmt.Errorf("current lowest listing query error: %w", err)
-	}
-
-	if parsedTime, pErr := time.Parse(time.RFC3339, timestampStr); pErr == nil {
-		listing.Timestamp = parsedTime.Format("2006-01-02 15:04")
-	} else {
-		listing.Timestamp = timestampStr
-	}
-	return &listing, nil
-}
-
-// fetchCurrentHighestListing gets only the single highest-priced available listing.
-func fetchCurrentHighestListing(itemName string) (*ItemListing, error) {
-	query := `
-		SELECT CAST(REPLACE(REPLACE(price, ',', ''), 'z', '') AS INTEGER) as price_int, 
-		       quantity, store_name, seller_name, map_name, map_coordinates, date_and_time_retrieved
-		FROM items WHERE name_of_the_item = ? AND is_available = 1 
-		ORDER BY price_int DESC, id DESC
-		LIMIT 1;
-	`
-	var listing ItemListing
-	var timestampStr string
-	err := db.QueryRow(query, itemName).Scan(
-		&listing.Price, &listing.Quantity, &listing.StoreName,
-		&listing.SellerName, &listing.MapName, &listing.MapCoordinates, &timestampStr,
-	)
-
-	if err != nil {
-		if err == sql.ErrNoRows {
-			return nil, nil // No listing found is not an error
-		}
-		return nil, fmt.Errorf("current highest listing query error: %w", err)
-	}
-
-	if parsedTime, pErr := time.Parse(time.RFC3339, timestampStr); pErr == nil {
-		listing.Timestamp = parsedTime.Format("2006-01-02 15:04")
-	} else {
-		listing.Timestamp = timestampStr
-	}
-	return &listing, nil
-}
-
 // fetchPriceHistory aggregates the lowest/highest price points over time for the graph.
 // This optimized version uses window functions to avoid correlated subqueries.
 func fetchPriceHistory(itemName string) ([]PricePointDetails, error) {
@@ -5283,77 +5169,6 @@ func fetchItemDropHistory(itemName string) ([]PlayerDropInfo, error) {
 	}
 
 	return dropHistory, nil
-}
-
-// countCharacterActivity counts all non-drop changelog entries for a character, with an optional search filter.
-func countCharacterActivity(charName, searchQuery string) (int, error) {
-	var totalEntries int
-	var whereConditions []string
-	var params []interface{}
-
-	whereConditions = append(whereConditions, "character_name = ?")
-	params = append(params, charName)
-
-	// --- ADDED: Exclude drop logs ---
-	whereConditions = append(whereConditions, "activity_description NOT LIKE 'Dropped item: %'")
-
-	if searchQuery != "" {
-		whereConditions = append(whereConditions, "activity_description LIKE ?")
-		params = append(params, "%"+searchQuery+"%")
-	}
-
-	whereClause := "WHERE " + strings.Join(whereConditions, " AND ")
-	query := fmt.Sprintf("SELECT COUNT(*) FROM character_changelog %s", whereClause)
-
-	err := db.QueryRow(query, params...).Scan(&totalEntries)
-	if err != nil {
-		return 0, fmt.Errorf("could not count activity changelog: %w", err)
-	}
-	return totalEntries, nil
-}
-
-// fetchCharacterActivity retrieves the paginated non-drop changelog for a character.
-func fetchCharacterActivity(charName string, searchQuery string, pagination PaginationData) ([]CharacterChangelog, error) {
-	var whereConditions []string
-	var params []interface{}
-
-	whereConditions = append(whereConditions, "character_name = ?")
-	params = append(params, charName)
-
-	// --- ADDED: Exclude drop logs ---
-	whereConditions = append(whereConditions, "activity_description NOT LIKE 'Dropped item: %'")
-
-	if searchQuery != "" {
-		whereConditions = append(whereConditions, "activity_description LIKE ?")
-		params = append(params, "%"+searchQuery+"%")
-	}
-	whereClause := "WHERE " + strings.Join(whereConditions, " AND ")
-
-	changelogQuery := fmt.Sprintf(`SELECT change_time, activity_description FROM character_changelog 
-		%s ORDER BY change_time DESC LIMIT ? OFFSET ?`, whereClause)
-
-	params = append(params, pagination.ItemsPerPage, pagination.Offset)
-
-	changelogRows, err := db.Query(changelogQuery, params...)
-	if err != nil {
-		return nil, fmt.Errorf("could not query activity changelog: %w", err)
-	}
-	defer changelogRows.Close()
-
-	var changelogEntries []CharacterChangelog
-	for changelogRows.Next() {
-		var entry CharacterChangelog
-		var timestampStr string
-		if err := changelogRows.Scan(&timestampStr, &entry.ActivityDescription); err == nil {
-			if t, err := time.Parse(time.RFC3339, timestampStr); err == nil {
-				entry.ChangeTime = t.Format("2006-01-02 15:04:05")
-			} else {
-				entry.ChangeTime = timestampStr
-			}
-			changelogEntries = append(changelogEntries, entry)
-		}
-	}
-	return changelogEntries, nil
 }
 
 // fetchCharacterSpecialHistory retrieves all Drop and Guild logs for a character in one query.

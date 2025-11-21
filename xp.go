@@ -244,31 +244,3 @@ func calculateXPTotal(cumulativeMap map[int]int64, deltaTable []int64, level int
 
 	return baseXP + extraXP
 }
-
-func calculateXPTotalOptimized(cumulativeMap map[int]int64, deltaTable []int64, level int, percentage float64) int64 {
-	// 1. Base XP from Level 1 to current Level
-	// The map stores total XP required to REACH level X.
-	// So levelXPCumulative[level] is the XP needed to be at level X with 0%.
-	baseXP, ok := cumulativeMap[level]
-	if !ok {
-		// Fallback or bounds check (return 0 or max)
-		if level > len(cumulativeMap) {
-			return 0 // Or handle max level case
-		}
-		return 0
-	}
-
-	var extraXP int64 = 0
-
-	// 2. Add Percentage of current level
-	// We need the delta for the *current* level to calculate the % progress.
-	// The slice 'deltaTable' is 0-indexed. Index 0 = Level 1->2.
-	// So for level X, we need index X-1.
-	sliceIndex := level - 1
-	if sliceIndex >= 0 && sliceIndex < len(deltaTable) {
-		currentLevelTotalXP := deltaTable[sliceIndex]
-		extraXP = int64((percentage / 100.0) * float64(currentLevelTotalXP))
-	}
-
-	return baseXP + extraXP
-}

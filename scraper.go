@@ -1743,46 +1743,6 @@ func fetchAllCharacterNames() (map[string]bool, error) {
 	return allCharacterNames, nil
 }
 
-// fetchExistingMvpKills retrieves the current kill counts from the database.
-func fetchExistingMvpKills() (map[string]map[string]int, error) {
-	allExistingKills := make(map[string]map[string]int)
-
-	// Build the SELECT query dynamically
-	selectCols := make([]string, 0, len(mvpMobIDs)+1)
-	selectCols = append(selectCols, "character_name")
-	scanDest := make([]interface{}, len(mvpMobIDs)+1)
-	scanDest[0] = new(string)
-	columnValues := make([]sql.NullInt64, len(mvpMobIDs))
-
-	for i, mobID := range mvpMobIDs {
-		selectCols = append(selectCols, fmt.Sprintf("mvp_%s", mobID))
-		scanDest[i+1] = &columnValues[i]
-	}
-
-	mvpQuery := fmt.Sprintf("SELECT %s FROM character_mvp_kills", strings.Join(selectCols, ", "))
-	mvpRows, err := db.Query(mvpQuery)
-	if err != nil {
-		return nil, fmt.Errorf("failed to pre-fetch MVP kills: %w", err)
-	}
-	defer mvpRows.Close()
-
-	for mvpRows.Next() {
-		if err := mvpRows.Scan(scanDest...); err != nil {
-			log.Printf("[W] [Scraper/MVP] Failed to scan existing MVP row: %v", err)
-			continue
-		}
-		charName := *(scanDest[0].(*string))
-		playerKills := make(map[string]int)
-		for i, mobID := range mvpMobIDs {
-			if columnValues[i].Valid {
-				playerKills[mobID] = int(columnValues[i].Int64)
-			}
-		}
-		allExistingKills[charName] = playerKills
-	}
-	return allExistingKills, nil
-}
-
 // processMvpKills handles all database logic for the MVP scraper.
 // OPTIMIZATION: Removed the memory-heavy fetchExistingMvpKills() call.
 // Logic for keeping the highest kill count is now handled natively by SQLite's MAX() function in the UPSERT.
