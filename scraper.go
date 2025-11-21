@@ -1366,6 +1366,39 @@ func determineRemovalType(listing Item, activeSellers map[string]bool, dbStoreSi
 	return "REMOVED"
 }
 
+// Helper function to execute bulk inserts for items
+func bulkInsertItems(tx *sql.Tx, items []Item, retrievalTime string) error {
+	if len(items) == 0 {
+		return nil
+	}
+
+	const batchSize = 50
+	baseQuery := "INSERT INTO items(name_of_the_item, item_id, quantity, price, store_name, seller_name, date_and_time_retrieved, map_name, map_coordinates, is_available) VALUES "
+
+	for i := 0; i < len(items); i += batchSize {
+		end := i + batchSize
+		if end > len(items) {
+			end = len(items)
+		}
+		batch := items[i:end]
+
+		valueStrings := make([]string, 0, len(batch))
+		valueArgs := make([]interface{}, 0, len(batch)*9)
+
+		for _, item := range batch {
+			valueStrings = append(valueStrings, "(?, ?, ?, ?, ?, ?, ?, ?, ?, 1)")
+			valueArgs = append(valueArgs, item.Name, item.ItemID, item.Quantity, item.Price, item.StoreName, item.SellerName, retrievalTime, item.MapName, item.MapCoordinates)
+		}
+
+		query := baseQuery + strings.Join(valueStrings, ",")
+		if _, err := tx.Exec(query, valueArgs...); err != nil {
+			return fmt.Errorf("bulk insert failed: %w", err)
+		}
+	}
+	return nil
+}
+
+// scrapeData performs the main market scraping logic with performance optimizations.
 func scrapeData() {
 	log.Println("[I] [Scraper/Market] Starting scrape...")
 
@@ -1377,9 +1410,8 @@ func scrapeData() {
 	scrapedItemsByName := make(map[string][]Item)
 	activeSellers := make(map[string]bool)
 
-	// --- MODIFICATION: Added retry loop for parsing ---
+	// 1. Network & Parsing Phase (Retry Logic)
 	for attempt := 1; attempt <= maxParseRetries; attempt++ {
-		// Use the new helper function. All the retry logic is now encapsulated.
 		htmlContent, err = scraperClient.getPage(requestURL, "[Scraper/Market]")
 		if err != nil {
 			log.Printf("[E] [Scraper/Market] Network/HTTP error (attempt %d/%d): %v. Retrying...", attempt, maxParseRetries, err)
@@ -1390,7 +1422,6 @@ func scrapeData() {
 		doc, err = goquery.NewDocumentFromReader(strings.NewReader(htmlContent))
 		if err != nil {
 			log.Printf("[E] [Scraper/Market] Failed to parse HTML: %v", err)
-			// This is a critical error, don't retry
 			return
 		}
 
@@ -1398,13 +1429,12 @@ func scrapeData() {
 		scrapedItemsByName = make(map[string][]Item)
 		activeSellers = make(map[string]bool)
 
-		// --- Main Scraper Loop ---
+		// Parse HTML structure
 		doc.Find("svg.lucide-user").Each(func(i int, s *goquery.Selection) {
 			card := s.Closest("div.border")
 			if card.Length() == 0 {
 				card = s.Closest("article")
 				if card.Length() == 0 {
-					log.Printf("[W] [Scraper/Market] Could not find parent 'card' for a lucide-user icon. Skipping shop.")
 					return
 				}
 			}
@@ -1417,66 +1447,50 @@ func scrapeData() {
 				shopName = strings.TrimSpace(card.Find("h3").First().Text())
 			}
 			if shopName == "" {
-				if enableMarketScraperDebugLogs {
-					log.Printf("[D] [Scraper/Market] Shop name is empty. Renaming to '(empty)'.")
-				}
 				shopName = "(empty)"
 			}
 
 			sellerName := strings.TrimSpace(s.Next().Text())
 			mapName := strings.TrimSpace(card.Find("svg.lucide-map-pin").Next().Text())
 			mapCoordinates := strings.TrimSpace(card.Find("svg.lucide-copy").Next().Text())
-			activeSellers[sellerName] = true
 
-			if enableMarketScraperDebugLogs == true {
-				log.Printf("[D] [Scraper/Market] shop name: %s, seller name: %s, map_name: %s, mapcoord: %s", shopName, sellerName, mapName, mapCoordinates)
+			if sellerName != "" {
+				activeSellers[sellerName] = true
+
+				card.Find(".flex.items-center.space-x-2").Each(func(j int, itemSelection *goquery.Selection) {
+					item, ok := parseMarketItem(itemSelection)
+					if !ok {
+						return
+					}
+
+					item.StoreName = shopName
+					item.SellerName = sellerName
+					item.MapName = mapName
+					item.MapCoordinates = mapCoordinates
+
+					scrapedItemsByName[item.Name] = append(scrapedItemsByName[item.Name], item)
+				})
 			}
-
-			if sellerName == "" {
-				log.Printf("[W] [Scraper/Market] Skipping shop with missing seller name (Shop: '%s').", shopName)
-				return
-			}
-
-			card.Find(".flex.items-center.space-x-2").Each(func(j int, itemSelection *goquery.Selection) {
-				item, ok := parseMarketItem(itemSelection)
-				if !ok {
-					return
-				}
-
-				item.StoreName = shopName
-				item.SellerName = sellerName
-				item.MapName = mapName
-				item.MapCoordinates = mapCoordinates
-
-				if enableMarketScraperDebugLogs == true {
-					log.Printf("[D] [Scraper/Market] name: %s, id: %d, qtd: %d price %s store: %s seller: %s map: %s coord %s", item.Name, item.ItemID, item.Quantity, item.Price, shopName, sellerName, mapName, mapCoordinates)
-				}
-
-				scrapedItemsByName[item.Name] = append(scrapedItemsByName[item.Name], item)
-			})
 		})
 
-		if len(scrapedItemsByName) == 0 {
-			// --- THIS IS THE NEW LOGIC ---
-			log.Printf("[W] [Scraper/Market] Market page returned 0 items on parse attempt %d/%d. Retrying...", attempt, maxParseRetries)
-			time.Sleep(parseRetryDelay)
-			continue // Try fetching and parsing again
+		if len(scrapedItemsByName) > 0 {
+			break // Successful parse
 		}
 
-		// Success, break from retry loop
-		break
+		log.Printf("[W] [Scraper/Market] Market page returned 0 items on parse attempt %d/%d. Retrying...", attempt, maxParseRetries)
+		time.Sleep(parseRetryDelay)
 	}
-	// --- END MODIFICATION ---
 
 	log.Printf("[I] [Scraper/Market] Scrape parsed. Found %d unique item names.", len(scrapedItemsByName))
 
 	if len(scrapedItemsByName) == 0 {
-		log.Println("[W] [Scraper/Market] Scraper found 0 items on the market page after all retries. This might be a parsing error or an empty market. Skipping this update cycle to avoid wiping data.")
-		return // Abort the function here
+		log.Println("[W] [Scraper/Market] Scraper found 0 items. Skipping update.")
+		return
 	}
 
-	retrievalTime := time.Now().Format(time.RFC3339) // Get time *after* successful parse
+	retrievalTime := time.Now().Format(time.RFC3339)
 
+	// 2. Database Phase (Critical Section)
 	marketMutex.Lock()
 	defer marketMutex.Unlock()
 
@@ -1487,14 +1501,13 @@ func scrapeData() {
 	}
 	defer tx.Rollback()
 
-	// --- Database logic from here down is unchanged ---
-
 	_, err = tx.Exec("INSERT OR IGNORE INTO scrape_history (timestamp) VALUES (?)", retrievalTime)
 	if err != nil {
 		log.Printf("[E] [Scraper/Market] Failed to log scrape history: %v", err)
 		return
 	}
 
+	// Pre-load seller counts for logic
 	dbStoreSizes := make(map[string]int)
 	sellerItems := make(map[string]map[string]bool)
 	rows, err := tx.Query("SELECT seller_name, name_of_the_item FROM items WHERE is_available = 1")
@@ -1503,13 +1516,12 @@ func scrapeData() {
 	} else {
 		for rows.Next() {
 			var sellerName, itemName string
-			if err := rows.Scan(&sellerName, &itemName); err != nil {
-				continue
+			if err := rows.Scan(&sellerName, &itemName); err == nil {
+				if _, ok := sellerItems[sellerName]; !ok {
+					sellerItems[sellerName] = make(map[string]bool)
+				}
+				sellerItems[sellerName][itemName] = true
 			}
-			if _, ok := sellerItems[sellerName]; !ok {
-				sellerItems[sellerName] = make(map[string]bool)
-			}
-			sellerItems[sellerName][itemName] = true
 		}
 		rows.Close()
 		for seller, items := range sellerItems {
@@ -1517,6 +1529,7 @@ func scrapeData() {
 		}
 	}
 
+	// Load all currently available items to compare
 	dbAvailableItemsMap := make(map[string][]Item)
 	dbAvailableNames := make(map[string]bool)
 
@@ -1529,7 +1542,6 @@ func scrapeData() {
 		var item Item
 		err := rows.Scan(&item.Name, &item.ItemID, &item.Quantity, &item.Price, &item.StoreName, &item.SellerName, &item.MapName, &item.MapCoordinates)
 		if err != nil {
-			log.Printf("[W] [Scraper/Market] Failed to scan existing item: %v", err)
 			continue
 		}
 		dbAvailableItemsMap[item.Name] = append(dbAvailableItemsMap[item.Name], item)
@@ -1537,14 +1549,41 @@ func scrapeData() {
 	}
 	rows.Close()
 
+	// Prepare necessary statements (Insert removed; using batch helper instead)
+	stmtInsertEvent, err := tx.Prepare(`INSERT INTO market_events (event_timestamp, event_type, item_name, item_id, details) VALUES (?, ?, ?, ?, ?)`)
+	if err != nil {
+		log.Printf("[E] [Scraper/Market] Failed to prepare insert event statement: %v", err)
+		return
+	}
+	defer stmtInsertEvent.Close()
+
+	stmtUpdateUnavailable, err := tx.Prepare(`UPDATE items SET is_available = 0 WHERE name_of_the_item = ?`)
+	if err != nil {
+		log.Printf("[E] [Scraper/Market] Failed to prepare update unavailable statement: %v", err)
+		return
+	}
+	defer stmtUpdateUnavailable.Close()
+
+	stmtGetLowestPrice, err := tx.Prepare(`SELECT MIN(CAST(REPLACE(price, ',', '') AS INTEGER)) FROM items WHERE name_of_the_item = ?`)
+	if err != nil {
+		log.Printf("[E] [Scraper/Market] Failed to prepare get lowest price statement: %v", err)
+		return
+	}
+	defer stmtGetLowestPrice.Close()
+
 	itemsUpdated := 0
 	itemsUnchanged := 0
 	itemsAdded := 0
+	itemsRemoved := 0
 
+	// Optimization: Collection slice for Bulk Insert
+	var allNewItems []Item
+
+	// 3. Diff Logic
 	for itemName, currentScrapedItems := range scrapedItemsByName {
-
 		lastAvailableItems := dbAvailableItemsMap[itemName]
 
+		// Check for changes/sales logic
 		if !areItemSetsIdentical(currentScrapedItems, lastAvailableItems) {
 			currentSet := make(map[comparableItem]bool)
 			for _, item := range currentScrapedItems {
@@ -1553,11 +1592,7 @@ func scrapeData() {
 
 			for _, lastItem := range lastAvailableItems {
 				if _, found := currentSet[toComparable(lastItem)]; !found {
-
-					// --- REFACTOR ---
-					// Use the new helper function
 					eventType := determineRemovalType(lastItem, activeSellers, dbStoreSizes)
-					// --- END REFACTOR ---
 
 					details, _ := json.Marshal(map[string]interface{}{
 						"price":      lastItem.Price,
@@ -1565,9 +1600,10 @@ func scrapeData() {
 						"seller":     lastItem.SellerName,
 						"store_name": lastItem.StoreName,
 					})
-					_, err := tx.Exec(`INSERT INTO market_events (event_timestamp, event_type, item_name, item_id, details) VALUES (?, ?, ?, ?, ?)`, retrievalTime, eventType, lastItem.Name, lastItem.ItemID, string(details))
+
+					_, err := stmtInsertEvent.Exec(retrievalTime, eventType, lastItem.Name, lastItem.ItemID, string(details))
 					if err != nil {
-						log.Printf("[E] [Scraper/Market] Failed to log %s event for %s: %v", eventType, lastItem.Name, err)
+						log.Printf("[E] [Scraper/Market] Failed to log %s event: %v", eventType, err)
 					}
 				}
 			}
@@ -1578,26 +1614,18 @@ func scrapeData() {
 			continue
 		}
 
-		if _, err := tx.Exec("UPDATE items SET is_available = 0 WHERE name_of_the_item = ?", itemName); err != nil {
+		// Mark old items unavailable
+		if _, err := stmtUpdateUnavailable.Exec(itemName); err != nil {
 			log.Printf("[E] [Scraper/Market] Failed to mark old %s as unavailable: %v", itemName, err)
 			continue
 		}
 
-		insertSQL := `INSERT INTO items(name_of_the_item, item_id, quantity, price, store_name, seller_name, date_and_time_retrieved, map_name, map_coordinates, is_available) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1)`
-		stmt, err := tx.Prepare(insertSQL)
-		if err != nil {
-			log.Printf("[W] [Scraper/Market] Could not prepare insert for %s: %v", itemName, err)
-			continue
-		}
-		for _, item := range currentScrapedItems {
-			if _, err := stmt.Exec(item.Name, item.ItemID, item.Quantity, item.Price, item.StoreName, item.SellerName, retrievalTime, item.MapName, item.MapCoordinates); err != nil {
-				log.Printf("[WF] [Scraper/Market] Could not execute insert for %s: %v", item.Name, err)
-			}
-		}
-		stmt.Close()
+		// Queue new items for Batch Insert (Optimization)
+		allNewItems = append(allNewItems, currentScrapedItems...)
 
 		if len(lastAvailableItems) == 0 {
 			itemsAdded++
+			// Log 'ADDED' event
 			if len(currentScrapedItems) > 0 {
 				firstItem := currentScrapedItems[0]
 				details, _ := json.Marshal(map[string]interface{}{
@@ -1606,17 +1634,12 @@ func scrapeData() {
 					"seller":     firstItem.SellerName,
 					"store_name": firstItem.StoreName,
 				})
-				_, err := tx.Exec(`INSERT INTO market_events (event_timestamp, event_type, item_name, item_id, details) VALUES (?, 'ADDED', ?, ?, ?)`, retrievalTime, itemName, firstItem.ItemID, string(details))
-				if err != nil {
-					log.Printf("[E] [Scraper/Market] Failed to log ADDED event for %s: %v", itemName, err)
-				}
+				stmtInsertEvent.Exec(retrievalTime, "ADDED", itemName, firstItem.ItemID, string(details))
 			}
 
+			// Check for 'NEW_LOW'
 			var historicalLowestPrice sql.NullInt64
-			err := tx.QueryRow(`SELECT MIN(CAST(REPLACE(price, ',', '') AS INTEGER)) FROM items WHERE name_of_the_item = ?`, itemName).Scan(&historicalLowestPrice)
-			if err != nil && err != sql.ErrNoRows {
-				log.Printf("[W] [Scraper/Market] Could not get historical lowest price for %s: %v", itemName, err)
-			}
+			stmtGetLowestPrice.QueryRow(itemName).Scan(&historicalLowestPrice)
 
 			var lowestPriceListingInBatch Item
 			lowestPriceInBatch := -1
@@ -1639,28 +1662,19 @@ func scrapeData() {
 					"seller":     lowestPriceListingInBatch.SellerName,
 					"store_name": lowestPriceListingInBatch.StoreName,
 				})
-				_, err := tx.Exec(`INSERT INTO market_events (event_timestamp, event_type, item_name, item_id, details) VALUES (?, 'NEW_LOW', ?, ?, ?)`, retrievalTime, itemName, lowestPriceListingInBatch.ItemID, string(details))
-				if err != nil {
-					log.Printf("[E] [Scraper/Market] Failed to log NEW_LOW event for %s: %v", itemName, err)
-				}
+				stmtInsertEvent.Exec(retrievalTime, "NEW_LOW", itemName, lowestPriceListingInBatch.ItemID, string(details))
 			}
 		} else {
 			itemsUpdated++
 		}
 	}
 
-	itemsRemoved := 0
+	// Handle items completely removed from market
 	for name := range dbAvailableNames {
 		if _, foundInScrape := scrapedItemsByName[name]; !foundInScrape {
-
 			removedListings := dbAvailableItemsMap[name]
-
 			for _, listing := range removedListings {
-
-				// --- REFACTOR ---
-				// Use the new helper function
 				eventType := determineRemovalType(listing, activeSellers, dbStoreSizes)
-				// --- END REFACTOR ---
 
 				details, _ := json.Marshal(map[string]interface{}{
 					"price":      listing.Price,
@@ -1668,17 +1682,23 @@ func scrapeData() {
 					"seller":     listing.SellerName,
 					"store_name": listing.StoreName,
 				})
-				_, err = tx.Exec(`INSERT INTO market_events (event_timestamp, event_type, item_name, item_id, details) VALUES (?, ?, ?, ?, ?)`, retrievalTime, eventType, name, listing.ItemID, string(details))
-				if err != nil {
-					log.Printf("[E] [Scraper/Market] Failed to log %s event for removed item %s: %v", eventType, name, err)
-				}
+				stmtInsertEvent.Exec(retrievalTime, eventType, name, listing.ItemID, string(details))
 			}
 
-			if _, err := tx.Exec("UPDATE items SET is_available = 0 WHERE name_of_the_item = ?", name); err != nil {
-				log.Printf("[E] [Scraper/Market] Failed to mark disappeared item %s as unavailable: %v", name, err)
+			if _, err := stmtUpdateUnavailable.Exec(name); err != nil {
+				log.Printf("[E] [Scraper/Market] Failed to mark disappeared item %s: %v", name, err)
 			} else {
 				itemsRemoved++
 			}
+		}
+	}
+
+	// 4. Bulk Insert Phase (Optimization)
+	// Execute the accumulated inserts in batches
+	if len(allNewItems) > 0 {
+		if err := bulkInsertItems(tx, allNewItems, retrievalTime); err != nil {
+			log.Printf("[E] [Scraper/Market] Bulk insert failed, rolling back: %v", err)
+			return // Rollback occurs via defer
 		}
 	}
 

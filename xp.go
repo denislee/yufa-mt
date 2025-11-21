@@ -138,7 +138,7 @@ func init() {
 	// --- END ADDITION ---
 }
 
-// xpCalculatorHandler handles the new XP calculator page
+// xpCalculatorHandler handles the XP calculator page request and form submission.
 func xpCalculatorHandler(w http.ResponseWriter, r *http.Request) {
 	data := XPCalculatorPageData{
 		PageTitle:      "XP Calculator",
@@ -169,21 +169,22 @@ func xpCalculatorHandler(w http.ResponseWriter, r *http.Request) {
 		data.TimeMinutes, _ = strconv.Atoi(r.FormValue("time_minutes"))
 		data.CalcType = r.FormValue("calc_type")
 
-		// Get the correct XP table
-		var xpTable []int64
+		// Select the correct Cumulative Map and Delta Table based on type
+		var cumulativeMap map[int]int64
+		var deltaTable []int64
+		var maxLevel int
+
 		if data.CalcType == "job" {
-			xpTable = jobXPTable
+			cumulativeMap = jobLevelXPCumulative
+			deltaTable = jobXPTable
+			maxLevel = len(jobXPTable) + 1 // 50
 		} else {
-			xpTable = baseXPTable
+			cumulativeMap = levelXPCumulative
+			deltaTable = baseXPTable
+			maxLevel = len(baseXPTable) + 1 // 99
 		}
 
 		// Validate inputs
-		// Max level (99 or 50) is allowed as Start or End
-		maxLevel := len(xpTable) + 1 // 98 deltas -> max level 99
-		if data.CalcType == "job" {
-			maxLevel = len(jobXPTable) + 1 // 49 deltas -> max level 50
-		}
-
 		if data.StartLevel < 1 || data.StartLevel > maxLevel ||
 			data.EndLevel < 1 || data.EndLevel > maxLevel ||
 			data.EndLevel < data.StartLevel {
@@ -191,11 +192,10 @@ func xpCalculatorHandler(w http.ResponseWriter, r *http.Request) {
 			renderTemplate(w, r, "xp_calculator.html", data)
 			return
 		}
-		// (Further validation for perc, time, etc. could be added)
 
-		// Calculate total XP
-		startXp := calculateXPTotal(xpTable, data.StartLevel, data.StartPerc)
-		endXp := calculateXPTotal(xpTable, data.EndLevel, data.EndPerc)
+		// Calculate total XP using O(1) optimization
+		startXp := calculateXPTotal(cumulativeMap, deltaTable, data.StartLevel, data.StartPerc)
+		endXp := calculateXPTotal(cumulativeMap, deltaTable, data.EndLevel, data.EndPerc)
 
 		data.TotalXPGained = endXp - startXp
 		if data.TotalXPGained < 0 {
@@ -217,26 +217,58 @@ func xpCalculatorHandler(w http.ResponseWriter, r *http.Request) {
 	renderTemplate(w, r, "xp_calculator.html", data)
 }
 
-// calculateXPTotal is a helper for the XP calculator.
-func calculateXPTotal(xpTable []int64, level int, percentage float64) int64 {
-	var totalXp int64
-
-	// Add XP from all previous levels
-	// We use level-1 because xpTable is 0-indexed (level 1 is index 0)
-	for i := 0; i < level-1; i++ {
-		totalXp += xpTable[i]
+// calculateXPTotal calculates total XP using O(1) map lookups.
+// It replaces the previous iterative approach.
+func calculateXPTotal(cumulativeMap map[int]int64, deltaTable []int64, level int, percentage float64) int64 {
+	// 1. Base Cumulative XP (O(1) lookup)
+	// The map stores total XP required to REACH level X.
+	baseXP, ok := cumulativeMap[level]
+	if !ok {
+		return 0
 	}
 
-	// Add the percentage of the current level
-	// Check if level is valid AND not max level (e.g., level-1 must be a valid index)
-	if level > 0 && level-1 < len(xpTable) {
-		currentLevelXp := xpTable[level-1]
-		percentageXp := (percentage / 100.0) * float64(currentLevelXp)
-		totalXp += int64(percentageXp)
-	}
-	// If level-1 is not in the table (i.e., it's max level), we add 0% extra,
-	// which is correct.
+	// 2. Add Percentage of current level
+	var extraXP int64 = 0
 
-	return totalXp
+	// deltaTable is 0-indexed. Index 0 represents XP needed for Level 1 -> 2.
+	// So for Level X, we look at index X-1.
+	sliceIndex := level - 1
+
+	// Ensure we don't go out of bounds (e.g., if level is Max Level, there is no "next" level XP)
+	if sliceIndex >= 0 && sliceIndex < len(deltaTable) {
+		currentLevelReqXP := deltaTable[sliceIndex]
+		if percentage > 0 {
+			extraXP = int64((percentage / 100.0) * float64(currentLevelReqXP))
+		}
+	}
+
+	return baseXP + extraXP
 }
 
+func calculateXPTotalOptimized(cumulativeMap map[int]int64, deltaTable []int64, level int, percentage float64) int64 {
+	// 1. Base XP from Level 1 to current Level
+	// The map stores total XP required to REACH level X.
+	// So levelXPCumulative[level] is the XP needed to be at level X with 0%.
+	baseXP, ok := cumulativeMap[level]
+	if !ok {
+		// Fallback or bounds check (return 0 or max)
+		if level > len(cumulativeMap) {
+			return 0 // Or handle max level case
+		}
+		return 0
+	}
+
+	var extraXP int64 = 0
+
+	// 2. Add Percentage of current level
+	// We need the delta for the *current* level to calculate the % progress.
+	// The slice 'deltaTable' is 0-indexed. Index 0 = Level 1->2.
+	// So for level X, we need index X-1.
+	sliceIndex := level - 1
+	if sliceIndex >= 0 && sliceIndex < len(deltaTable) {
+		currentLevelTotalXP := deltaTable[sliceIndex]
+		extraXP = int64((percentage / 100.0) * float64(currentLevelTotalXP))
+	}
+
+	return baseXP + extraXP
+}

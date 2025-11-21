@@ -35,7 +35,6 @@ func basicAuth(handler http.Handler) http.Handler {
 	})
 }
 
-// --- NEW HELPER FUNCTION ---
 // adminRedirectURL builds an admin redirect URL that includes the active tab.
 func adminRedirectURL(r *http.Request, msg string) string {
 	// PostFormValue ensures the form is parsed and reads from the body
@@ -47,14 +46,38 @@ func adminRedirectURL(r *http.Request, msg string) string {
 	return redirectURL
 }
 
-// --- END NEW HELPER FUNCTION ---
+// Define a struct for caching stats
+var dashboardStatsCache struct {
+	sync.RWMutex
+	data   AdminDashboardData
+	expiry time.Time
+}
 
-// in admin_handlers.go
-
-// getDashboardStats populates the main database statistics concurrently.
+// getDashboardStats populates the main database statistics, utilizing a TTL cache.
 func getDashboardStats(stats *AdminDashboardData) error {
-	// Use an errgroup for cleaner concurrent error handling
+	// 1. Check Cache
+	dashboardStatsCache.RLock()
+	if time.Now().Before(dashboardStatsCache.expiry) {
+		// Copy cached values to the target struct
+		stats.TotalItems = dashboardStatsCache.data.TotalItems
+		stats.AvailableItems = dashboardStatsCache.data.AvailableItems
+		stats.UniqueItems = dashboardStatsCache.data.UniqueItems
+		stats.CachedItems = dashboardStatsCache.data.CachedItems
+		stats.TotalCharacters = dashboardStatsCache.data.TotalCharacters
+		stats.TotalGuilds = dashboardStatsCache.data.TotalGuilds
+		stats.PlayerHistoryEntries = dashboardStatsCache.data.PlayerHistoryEntries
+		stats.MarketEvents = dashboardStatsCache.data.MarketEvents
+		stats.ChangelogEntries = dashboardStatsCache.data.ChangelogEntries
+		stats.TotalVisitors = dashboardStatsCache.data.TotalVisitors
+		stats.VisitorsToday = dashboardStatsCache.data.VisitorsToday
+		dashboardStatsCache.RUnlock()
+		return nil
+	}
+	dashboardStatsCache.RUnlock()
+
+	// 2. Cache expired or empty, run queries
 	var g errgroup.Group
+	var newStats AdminDashboardData
 
 	// Helper function to run a query and assign the result
 	runQuery := func(query string, target *int) func() error {
@@ -63,31 +86,50 @@ func getDashboardStats(stats *AdminDashboardData) error {
 			err := db.QueryRow(query).Scan(&count)
 			if err != nil {
 				log.Printf("[W] [Admin/Stats] Dashboard stats query failed (%s): %v", query, err)
-				return err // Return the error to the group
+				return err
 			}
 			*target = int(count.Int64)
 			return nil
 		}
 	}
 
-	g.Go(runQuery("SELECT COUNT(*) FROM items", &stats.TotalItems))
-	g.Go(runQuery("SELECT COUNT(*) FROM items WHERE is_available = 1", &stats.AvailableItems))
-	g.Go(runQuery("SELECT COUNT(DISTINCT name_of_the_item) FROM items", &stats.UniqueItems))
-	// --- MODIFICATION: Query internal_item_db ---
-	g.Go(runQuery("SELECT COUNT(*) FROM internal_item_db", &stats.CachedItems))
-	// --- END MODIFICATION ---
-	g.Go(runQuery("SELECT COUNT(*) FROM characters", &stats.TotalCharacters))
-	g.Go(runQuery("SELECT COUNT(*) FROM guilds", &stats.TotalGuilds))
-	g.Go(runQuery("SELECT COUNT(*) FROM player_history", &stats.PlayerHistoryEntries))
-	g.Go(runQuery("SELECT COUNT(*) FROM market_events", &stats.MarketEvents))
-	g.Go(runQuery("SELECT COUNT(*) FROM character_changelog", &stats.ChangelogEntries))
-	g.Go(runQuery("SELECT COUNT(*) FROM visitors", &stats.TotalVisitors))
-	g.Go(runQuery("SELECT COUNT(*) FROM visitors WHERE date(last_visit) = date('now', 'localtime')", &stats.VisitorsToday))
+	// Execute queries concurrently
+	g.Go(runQuery("SELECT COUNT(*) FROM items", &newStats.TotalItems))
+	g.Go(runQuery("SELECT COUNT(*) FROM items WHERE is_available = 1", &newStats.AvailableItems))
+	g.Go(runQuery("SELECT COUNT(DISTINCT name_of_the_item) FROM items", &newStats.UniqueItems))
+	g.Go(runQuery("SELECT COUNT(*) FROM internal_item_db", &newStats.CachedItems))
+	g.Go(runQuery("SELECT COUNT(*) FROM characters", &newStats.TotalCharacters))
+	g.Go(runQuery("SELECT COUNT(*) FROM guilds", &newStats.TotalGuilds))
+	g.Go(runQuery("SELECT COUNT(*) FROM player_history", &newStats.PlayerHistoryEntries))
+	g.Go(runQuery("SELECT COUNT(*) FROM market_events", &newStats.MarketEvents))
+	g.Go(runQuery("SELECT COUNT(*) FROM character_changelog", &newStats.ChangelogEntries))
+	g.Go(runQuery("SELECT COUNT(*) FROM visitors", &newStats.TotalVisitors))
+	g.Go(runQuery("SELECT COUNT(*) FROM visitors WHERE date(last_visit) = date('now', 'localtime')", &newStats.VisitorsToday))
 
-	// Wait for all queries to finish and return the first error, if any
+	// Wait for all queries to finish
 	if err := g.Wait(); err != nil {
 		return fmt.Errorf("could not query for one or more dashboard stats: %w", err)
 	}
+
+	// 3. Update Cache
+	dashboardStatsCache.Lock()
+	dashboardStatsCache.data = newStats
+	dashboardStatsCache.expiry = time.Now().Add(30 * time.Second) // Cache for 30 seconds
+	dashboardStatsCache.Unlock()
+
+	// 4. Copy to output
+	stats.TotalItems = newStats.TotalItems
+	stats.AvailableItems = newStats.AvailableItems
+	stats.UniqueItems = newStats.UniqueItems
+	stats.CachedItems = newStats.CachedItems
+	stats.TotalCharacters = newStats.TotalCharacters
+	stats.TotalGuilds = newStats.TotalGuilds
+	stats.PlayerHistoryEntries = newStats.PlayerHistoryEntries
+	stats.MarketEvents = newStats.MarketEvents
+	stats.ChangelogEntries = newStats.ChangelogEntries
+	stats.TotalVisitors = newStats.TotalVisitors
+	stats.VisitorsToday = newStats.VisitorsToday
+
 	return nil
 }
 
@@ -261,7 +303,6 @@ func performRMSCacheSearch(r *http.Request, stats *AdminDashboardData) {
 		return
 	}
 
-	// --- MODIFICATION: Use LIKE on internal_item_db ---
 	likeQuery := "%" + strings.ReplaceAll(rmsQuery, " ", "%") + "%"
 	searchRows, err := db.Query(`
 		SELECT item_id, name, name_pt 
@@ -269,7 +310,6 @@ func performRMSCacheSearch(r *http.Request, stats *AdminDashboardData) {
 		WHERE name LIKE ? OR name_pt LIKE ?
 		ORDER BY item_id 
 		LIMIT 50`, likeQuery, likeQuery)
-	// --- END MODIFICATION ---
 	if err != nil {
 		log.Printf("[W] [Admin/Stats] Admin Internal DB query error: %v", err)
 		return
@@ -294,15 +334,10 @@ func performRMSLiveSearch(r *http.Request, stats *AdminDashboardData) {
 
 	log.Printf("[I] [Admin] Admin performing live search for: '%s'", rmsLiveSearchQuery)
 	var wg sync.WaitGroup
-	// --- MODIFICATION: Removed rmsResults and rmsErr ---
 	var rodbResults []ItemSearchResult
 	var rodbErr error
 
-	// --- MODIFICATION: Removed one item from wg.Add() ---
 	wg.Add(1)
-	// --- MODIFICATION: Removed goroutine for scrapeRMSItemSearch ---
-	// go func() { ... }()
-	// --- END MODIFICATION ---
 
 	go func() {
 		defer wg.Done()
@@ -316,7 +351,6 @@ func performRMSLiveSearch(r *http.Request, stats *AdminDashboardData) {
 	combinedResults := make([]ItemSearchResult, 0)
 	seenIDs := make(map[int]bool)
 
-	// --- MODIFICATION: Removed loop for rmsResults ---
 	if rodbResults != nil {
 		for _, res := range rodbResults {
 			if !seenIDs[res.ID] {
@@ -325,7 +359,6 @@ func performRMSLiveSearch(r *http.Request, stats *AdminDashboardData) {
 			}
 		}
 	}
-	// --- END MODIFICATION ---
 
 	stats.RMSLiveSearchResults = combinedResults
 	log.Printf("[I] [Admin] Admin live search for '%s' found %d combined results.", rmsLiveSearchQuery, len(combinedResults))
@@ -469,11 +502,9 @@ func adminDeleteCacheEntryHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// --- MODIFICATION: This action is no longer supported ---
 	log.Printf("[WW] [Admin] Admin attempted to use 'Delete Cache Entry', which is disabled (internal_item_db is YAML-based).")
 	msg := "Error: Cannot manually delete entry. Item database is now populated from YAML files."
 	http.Redirect(w, r, adminRedirectURL(r, msg), http.StatusSeeOther)
-	// --- END MODIFICATION ---
 }
 
 func adminHandler(w http.ResponseWriter, r *http.Request) {
@@ -545,10 +576,8 @@ func adminTriggerScrapeHandler(scraperFunc func(), name string) http.HandlerFunc
 		}
 		log.Printf("[I] [Admin] Admin triggered '%s' scrape manually.", name)
 		go scraperFunc()
-		// --- MODIFICATION: Use adminRedirectURL helper ---
 		msg := fmt.Sprintf("%s scrape started.", name)
 		http.Redirect(w, r, adminRedirectURL(r, msg), http.StatusSeeOther)
-		// --- END MODIFICATION ---
 	}
 }
 
@@ -566,7 +595,6 @@ func adminCacheActionHandler(w http.ResponseWriter, r *http.Request) {
 	action := r.FormValue("action")
 	var msg string
 
-	// --- MODIFICATION: Target internal_item_db ---
 	// Note: No mutex is needed here as this is an admin action
 	// and we are not using rmsCacheMutex anymore.
 	switch action {
@@ -595,11 +623,8 @@ func adminCacheActionHandler(w http.ResponseWriter, r *http.Request) {
 	default:
 		msg = "Unknown cache action."
 	}
-	// --- END MODIFICATION ---
 
-	// --- MODIFICATION: Use adminRedirectURL helper ---
 	http.Redirect(w, r, adminRedirectURL(r, msg), http.StatusSeeOther)
-	// --- END MODIFICATION ---
 }
 
 func adminUpdateGuildEmblemHandler(w http.ResponseWriter, r *http.Request) {
@@ -636,9 +661,7 @@ func adminUpdateGuildEmblemHandler(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// --- MODIFICATION: Use adminRedirectURL helper ---
 	http.Redirect(w, r, adminRedirectURL(r, msg), http.StatusSeeOther)
-	// --- END MODIFICATION ---
 }
 
 func adminClearLastActiveHandler(w http.ResponseWriter, r *http.Request) {
@@ -660,9 +683,7 @@ func adminClearLastActiveHandler(w http.ResponseWriter, r *http.Request) {
 		msg = fmt.Sprintf("Successfully reset last_active time for %d characters.", rowsAffected)
 	}
 
-	// --- MODIFICATION: Use adminRedirectURL helper ---
 	http.Redirect(w, r, adminRedirectURL(r, msg), http.StatusSeeOther)
-	// --- END MODIFICATION ---
 }
 
 func adminClearMvpKillsHandler(w http.ResponseWriter, r *http.Request) {
@@ -682,9 +703,7 @@ func adminClearMvpKillsHandler(w http.ResponseWriter, r *http.Request) {
 		log.Printf("[I] [Admin] Admin cleared all MVP kill data (%d records).", rowsAffected)
 	}
 
-	// --- MODIFICATION: Use adminRedirectURL helper ---
 	http.Redirect(w, r, adminRedirectURL(r, msg), http.StatusSeeOther)
-	// --- END MODIFICATION ---
 }
 
 func adminDeleteVisitorViewsHandler(w http.ResponseWriter, r *http.Request) {
@@ -950,7 +969,6 @@ func adminShowEditTradingPostPage(w http.ResponseWriter, r *http.Request, postID
 	}
 	post.CreatedAt = createdAtStr
 
-	// --- MODIFICATION: Join internal_item_db ---
 	itemRows, err := db.Query(`
 		SELECT i.item_name, i.item_id, i.quantity, i.price_zeny, i.price_rmt, i.payment_methods, 
 		       i.refinement, i.slots, i.card1, i.card2, i.card3, i.card4, local_db.name_pt
@@ -958,7 +976,6 @@ func adminShowEditTradingPostPage(w http.ResponseWriter, r *http.Request, postID
 		LEFT JOIN internal_item_db local_db ON i.item_id = local_db.item_id
 		WHERE i.post_id = ?
 	`, postID)
-	// --- END MODIFICATION ---
 	if err != nil {
 		http.Error(w, "Database item query failed", http.StatusInternalServerError)
 		return
@@ -1299,7 +1316,6 @@ func backfillDropLogsToChangelog() (int64, error) {
 		log.Printf("[D] [Backfill] Attempting to insert: CHAR='%s', TIME='%s', DESC='%s'", playerName, timestampStr, activityDesc)
 		_, err := stmt.Exec(playerName, timestampStr, activityDesc)
 		if err != nil {
-			// --- MODIFIED LOG ---
 			log.Printf("[W] [Backfill] FAILED to insert log for '%s' (time: %s, item: %s). Error: %v", playerName, timestampStr, itemName, err)
 			failedInsert++
 			continue

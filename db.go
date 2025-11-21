@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"fmt"
 	"strings"
+	"time"
 
 	_ "github.com/mattn/go-sqlite3"
 )
@@ -295,13 +296,24 @@ func applyMigrations(db *sql.DB) error {
 	return nil
 }
 
+// In db.go
+
 // initDB opens the database connection and orchestrates the schema setup.
 func initDB(filepath string) (*sql.DB, error) {
 	var err error
-	db, err = sql.Open("sqlite3", filepath)
+	db, err = sql.Open("sqlite3", filepath+"?_journal_mode=WAL&_busy_timeout=5000&_sync=NORMAL")
 	if err != nil {
 		return nil, err
 	}
+
+	// Optimize connection pool for SQLite (Single writer, multiple readers)
+	db.SetMaxOpenConns(1) // Recommended for SQLite to avoid "database is locked" errors with concurrent writes
+	// Note: If using WAL mode, you can technically increase MaxOpenConns,
+	// but keeping it at 1 with a connection mutex in Go is often safest for heavy scrapers.
+	// However, with WAL, let's allow some read concurrency:
+	db.SetMaxOpenConns(10)
+	db.SetMaxIdleConns(5)
+	db.SetConnMaxLifetime(time.Hour)
 
 	if err := createTables(db); err != nil {
 		return nil, fmt.Errorf("failed to create tables: %w", err)
