@@ -2533,6 +2533,25 @@ func logChatActivityPeriodically() {
 	}
 }
 
+// logSystemStatusMessage injects a status message (Connect/Disconnect) into the chat DB.
+func logSystemStatusMessage(message string) {
+	// We use "System" as the channel so it appears in the "All" tab but is distinct from "Local".
+	// We use "Status" as the character name.
+	msg := ChatMessage{
+		Timestamp:     time.Now().Format(time.RFC3339),
+		Channel:       "System",
+		CharacterName: "Status",
+		Message:       message,
+	}
+
+	// Reuse the existing save function (wrapping single message in a slice)
+	if err := saveChatMessagesToDB([]ChatMessage{msg}); err != nil {
+		log.Printf("[E] [Scraper/Status] Failed to log system status: %v", err)
+	} else {
+		log.Printf("[I] [Scraper/Status] %s", message)
+	}
+}
+
 // startChatPacketCapture is the new long-running service to replace processChatLogFile
 func startChatPacketCapture(ctx context.Context) {
 	log.Println("[I] [Scraper/Chat] Initializing live packet capture...")
@@ -2598,6 +2617,10 @@ func startChatPacketCapture(ctx context.Context) {
 	flushTicker := time.NewTicker(5 * time.Second) // Flush messages to DB every 5s
 	defer flushTicker.Stop()
 
+	// Status tracking
+	isConnected := false
+	const disconnectTimeout = 30 * time.Second
+
 	for {
 		select {
 		case <-ctx.Done():
@@ -2613,7 +2636,7 @@ func startChatPacketCapture(ctx context.Context) {
 			return
 
 		case <-flushTicker.C:
-			// Periodic flush to DB
+			// 1. Periodic DB Flush
 			if len(newMessages) > 0 {
 				log.Printf("[I] [Scraper/Chat] Flushing %d batched messages to DB.", len(newMessages))
 				// Call and check error
@@ -2623,11 +2646,28 @@ func startChatPacketCapture(ctx context.Context) {
 				newMessages = nil // Clear the batch
 			}
 
+			// 2. Watchdog: Check for Disconnection
+			lastUnix := lastChatPacketTime.Load()
+			if isConnected && lastUnix > 0 {
+				lastPacketTime := time.Unix(lastUnix, 0)
+				if time.Since(lastPacketTime) > disconnectTimeout {
+					isConnected = false
+					logSystemStatusMessage("🔴 Chat capture disconnected (No traffic detected).")
+				}
+			}
+
 		case packet := <-packetSource.Packets():
 
-			// 1. Update the "last seen" time (for navbar)
+			// 1. Update the "last seen" time (for navbar and watchdog)
 			lastChatPacketTime.Store(time.Now().Unix())
-			// 2. Log this minute's activity for the graph
+
+			// 2. Check for Reconnection
+			if !isConnected {
+				isConnected = true
+				logSystemStatusMessage("🟢 Chat capture active/reconnected.")
+			}
+
+			// 3. Log this minute's activity for the graph
 			logChatActivityPeriodically()
 
 			if enableChatScraperDebugLogs {
@@ -2649,8 +2689,7 @@ func startChatPacketCapture(ctx context.Context) {
 				log.Printf("[D] [Scraper/Chat] Found TCP packet. Payload size: %d bytes", len(payload))
 				// Log the full payload in hex and as a sanitized string
 
-				// --- FIX: Decode payload from Latin-1 for logging ---
-				// *** CHANGED HERE ***
+				// Decode payload from Latin-1 for logging
 				reader := transform.NewReader(bytes.NewReader(payload), charmap.ISO8859_1.NewDecoder())
 				utf8Bytes, _ := io.ReadAll(reader) // Ignore error for logging
 
@@ -2660,12 +2699,12 @@ func startChatPacketCapture(ctx context.Context) {
 					}
 					return '.' // Replace non-printable with a dot
 				}, string(utf8Bytes)) // Use the decoded bytes
-				// --- END FIX ---
+
 				log.Printf("[D] [Scraper/Chat] RAW PAYLOAD (HEX): %s", hex.EncodeToString(payload))
 				log.Printf("[D] [Scraper/Chat] RAW PAYLOAD (STR): %s", sanitizedPayload)
 			}
 
-			// --- REFACTORED PARSING LOOP ---
+			// --- PARSING LOOP ---
 			i := 0
 			for i < len(payload) {
 				firstPrefixIdx := -1
@@ -2734,22 +2773,19 @@ func startChatPacketCapture(ctx context.Context) {
 					log.Printf("[D] [Scraper/Chat] Extracted message (raw hex): %s", hex.EncodeToString(msgBytes))
 				}
 
-				// --- FIX: Decode from Latin-1 (ISO-8859-1) to UTF-8 ---
-				// The game client likely sends in a legacy encoding.
-				// *** CHANGED HERE ***
+				// Decode from Latin-1 (ISO-8859-1) to UTF-8
 				reader := transform.NewReader(bytes.NewReader(msgBytes), charmap.ISO8859_1.NewDecoder())
 				utf8Bytes, err := io.ReadAll(reader)
 				if err != nil {
 					log.Printf("[W] [Scraper/Chat] Failed to decode message from Latin-1: %v", err)
-					// Fallback to the old (broken) method just in case
+					// Fallback to the old method just in case
 					utf8Bytes = msgBytes
 				}
 
 				// Trim NULL bytes *after* decoding
 				message := string(bytes.Trim(utf8Bytes, "\x00"))
-				// --- END FIX ---
 
-				// Sanitize (this part now operates on a valid UTF-8 string)
+				// Sanitize
 				message = strings.Map(func(r rune) rune {
 					if unicode.IsPrint(r) {
 						return r
@@ -2762,26 +2798,20 @@ func startChatPacketCapture(ctx context.Context) {
 					log.Printf("[D] [Scraper/Chat] Sanitized message: '%s'", message)
 				}
 
-				// --- UPDATED PARSING LOGIC TO HANDLE DROPS ---
+				// --- PARSING LOGIC ---
 				if message != "" {
 					var channel, charName, chatMsg string
 
-					// --- NEW: Check for Drop Packet ---
-					// We can compare the prefix of the definition we just used to parse
+					// Check for Drop Packet
 					if bytes.Equal(def.prefix, []byte{0x9a, 0x00}) {
 						channel = "Drop"
-						// This is an announcement/drop packet.
 						// Check if it's the specific 0.01% drop message.
 						if strings.Contains(message, "(chance: 0.01%)") && (strings.Contains(message, "got") || strings.Contains(message, "stole")) {
 							channel = "Drop"
 
-							// <<< --- START: Real-time Drop Logging --- >>>
-							// We have a drop message. Let's parse it for the changelog.
-							// We use the regexes from handlers.go (same 'main' package).
+							// Parse for changelog
 							dropMatches := dropMessageRegex.FindStringSubmatch(message)
 							if len(dropMatches) == 4 {
-								// dropMatches[1] = character name (e.g., "Lindinha GC")
-								// dropMatches[3] = rest of message (e.g., "Raydric's Iron Cain (chance: 0.01%)")
 								playerName := dropMatches[1]
 								itemMsgFragment := dropMatches[3]
 
@@ -2801,16 +2831,11 @@ func startChatPacketCapture(ctx context.Context) {
 								itemName = strings.TrimSpace(itemName)
 
 								if playerName != "" && itemName != "" {
-									// We have both! Log it to the changelog in real-time.
-									// We use a goroutine so it doesn't block the packet capture loop.
-									// The new function handles duplicate protection.
 									go logDropToChangelog(time.Now().Format(time.RFC3339), playerName, itemName)
 								}
 							}
-							// <<< --- END: Real-time Drop Logging --- >>>
 
 						} else {
-							// Otherwise, it's a general announcement.
 							channel = "Announcement"
 						}
 						charName = "System"
@@ -2833,14 +2858,12 @@ func startChatPacketCapture(ctx context.Context) {
 							chatMsg = strings.TrimSpace(chatMsgPart)   // "bom dia!"
 						} else {
 							// No colon. Is it a system broadcast?
-							// Whitelist known system channels.
 							if channel == "Notice" {
 								charName = "System"
 								chatMsg = strings.TrimSpace(rest)
 							} else {
-								// It's [Global] golbin or [Trade] M2LOKERO (no colon)
-								// This is not a chat message. Discard it.
-								chatMsg = "" // Set to empty to be discarded
+								// Discard non-chat messages (e.g. [Trade] M2LOKERO)
+								chatMsg = ""
 								if enableChatScraperDebugLogs {
 									log.Printf("[D] [Scraper/Chat] Discarding non-chat message (no ' : ' in channel '%s'): '%s'", channel, message)
 								}
@@ -2858,9 +2881,8 @@ func startChatPacketCapture(ctx context.Context) {
 							chatMsg = strings.TrimSpace(chatMsgPart)   // "segunda aaa"
 						} else {
 							// No colon. Assume it's a local system broadcast.
-							// Case: "Welcome to the server!"
 							charName = "System"
-							chatMsg = message // message is already trimmed
+							chatMsg = message
 						}
 					}
 
@@ -2875,12 +2897,10 @@ func startChatPacketCapture(ctx context.Context) {
 						log.Printf("[D] [Scraper/Chat] Parsed an empty message. Discarding.")
 					}
 				}
-				// --- END UPDATED PARSING LOGIC ---
 
 				// Continue search *after* this full message
 				i = msgEnd
 			}
-			// --- END REFACTORED PARSING LOOP ---
 		}
 	}
 }
