@@ -2619,7 +2619,7 @@ func startChatPacketCapture(ctx context.Context) {
 
 	// Status tracking
 	isConnected := false
-	const disconnectTimeout = 30 * time.Second
+	const disconnectTimeout = 5 * time.Minute // <-- CHANGED from 30 * time.Second
 
 	for {
 		select {
@@ -2652,7 +2652,7 @@ func startChatPacketCapture(ctx context.Context) {
 				lastPacketTime := time.Unix(lastUnix, 0)
 				if time.Since(lastPacketTime) > disconnectTimeout {
 					isConnected = false
-					logSystemStatusMessage("🔴 Chat capture disconnected (No traffic detected).")
+					logSystemStatusMessage("🔴 Chat listener disconnected.")
 				}
 			}
 
@@ -2664,7 +2664,7 @@ func startChatPacketCapture(ctx context.Context) {
 			// 2. Check for Reconnection
 			if !isConnected {
 				isConnected = true
-				logSystemStatusMessage("🟢 Chat capture active/reconnected.")
+				logSystemStatusMessage("🟢 Chat listener active/reconnected.")
 			}
 
 			// 3. Log this minute's activity for the graph

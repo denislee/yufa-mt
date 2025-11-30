@@ -419,6 +419,14 @@ func getAdminDashboardData(r *http.Request) (AdminDashboardData, error) {
 		return nil
 	})
 
+	// Task 7: Chat Messages (Only if tab is chat)
+	if r.URL.Query().Get("tab") == "chat" {
+		g.Go(func() error {
+			getAdminChatMessages(r, &stats)
+			return nil
+		})
+	}
+
 	g.Go(func() error {
 		if err := getDashboardPageVisitCounts(&stats); err != nil {
 			// Log but don't fail the whole page.
@@ -1436,5 +1444,134 @@ func adminCleanupGuildHistoryHandler(w http.ResponseWriter, r *http.Request) {
 
 	msg := fmt.Sprintf("Successfully removed %d duplicate guild history entries.", totalDeleted)
 	log.Printf("[I] [Admin] %s", msg)
+	http.Redirect(w, r, adminRedirectURL(r, msg), http.StatusSeeOther)
+}
+
+// 1. New Helper: Fetch Chat Messages for Admin
+func getAdminChatMessages(r *http.Request, stats *AdminDashboardData) {
+	const messagesPerPage = 50
+	pageStr := r.URL.Query().Get("chat_page")
+	page, _ := strconv.Atoi(pageStr)
+	if page < 1 {
+		page = 1
+	}
+	searchQuery := r.URL.Query().Get("chat_query")
+	stats.ChatSearchQuery = searchQuery
+
+	// Build WHERE clause
+	whereClause := "1=1"
+	var params []interface{}
+	if searchQuery != "" {
+		whereClause += " AND (message LIKE ? OR character_name LIKE ?)"
+		params = append(params, "%"+searchQuery+"%", "%"+searchQuery+"%")
+	}
+
+	// Count total
+	var total int
+	db.QueryRow("SELECT COUNT(*) FROM chat WHERE "+whereClause, params...).Scan(&total)
+	stats.ChatTotalMessages = total
+	stats.ChatTotalPages = (total + messagesPerPage - 1) / messagesPerPage
+	stats.ChatCurrentPage = page
+
+	if page > 1 {
+		stats.ChatHasPrevPage = true
+		stats.ChatPrevPage = page - 1
+	}
+	if page < stats.ChatTotalPages {
+		stats.ChatHasNextPage = true
+		stats.ChatNextPage = page + 1
+	}
+
+	offset := (page - 1) * messagesPerPage
+
+	// Fetch Data
+	query := fmt.Sprintf(`
+		SELECT id, timestamp, channel, character_name, message 
+		FROM chat 
+		WHERE %s 
+		ORDER BY timestamp DESC 
+		LIMIT ? OFFSET ?`, whereClause)
+
+	params = append(params, messagesPerPage, offset)
+
+	rows, err := db.Query(query, params...)
+	if err != nil {
+		log.Printf("[E] [Admin/Chat] Failed to query chat messages: %v", err)
+		return
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var msg ChatMessage
+		var ts string
+		if err := rows.Scan(&msg.ID, &ts, &msg.Channel, &msg.CharacterName, &msg.Message); err == nil {
+			if t, parseErr := time.Parse(time.RFC3339, ts); parseErr == nil {
+				msg.Timestamp = t.Format("2006-01-02 15:04:05")
+			} else {
+				msg.Timestamp = ts
+			}
+			stats.ChatMessages = append(stats.ChatMessages, msg)
+		}
+	}
+}
+
+// 2. Update getAdminDashboardData to call the helper when on the 'chat' tab
+// Find the existing getAdminDashboardData function and add this block:
+/*
+	// ... existing tasks ...
+
+*/
+
+// 3. New Handler: Delete Chat Message
+func adminDeleteChatHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Redirect(w, r, "/admin?tab=chat", http.StatusSeeOther)
+		return
+	}
+
+	idStr := r.FormValue("id")
+	if idStr == "" {
+		http.Redirect(w, r, adminRedirectURL(r, "Error: Missing ID."), http.StatusSeeOther)
+		return
+	}
+
+	_, err := db.Exec("DELETE FROM chat WHERE id = ?", idStr)
+	msg := "Chat message deleted."
+	if err != nil {
+		log.Printf("[E] [Admin] Failed to delete chat message %s: %v", idStr, err)
+		msg = "Error deleting message."
+	} else {
+		log.Printf("[I] [Admin] Deleted chat message ID %s.", idStr)
+	}
+
+	http.Redirect(w, r, adminRedirectURL(r, msg), http.StatusSeeOther)
+}
+
+// 4. New Handler: Edit Chat Message
+func adminEditChatHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Redirect(w, r, "/admin?tab=chat", http.StatusSeeOther)
+		return
+	}
+
+	idStr := r.FormValue("id")
+	charName := r.FormValue("character_name")
+	message := r.FormValue("message")
+	channel := r.FormValue("channel")
+
+	if idStr == "" || message == "" {
+		http.Redirect(w, r, adminRedirectURL(r, "Error: Missing ID or Message."), http.StatusSeeOther)
+		return
+	}
+
+	_, err := db.Exec("UPDATE chat SET character_name = ?, message = ?, channel = ? WHERE id = ?", charName, message, channel, idStr)
+	msg := "Chat message updated."
+	if err != nil {
+		log.Printf("[E] [Admin] Failed to update chat message %s: %v", idStr, err)
+		msg = "Error updating message."
+	} else {
+		log.Printf("[I] [Admin] Updated chat message ID %s.", idStr)
+	}
+
 	http.Redirect(w, r, adminRedirectURL(r, msg), http.StatusSeeOther)
 }

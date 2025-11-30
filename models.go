@@ -611,6 +611,16 @@ type AdminDashboardData struct {
 
 	RMSLiveSearchQuery   string
 	RMSLiveSearchResults []ItemSearchResult
+
+	ChatMessages      []ChatMessage
+	ChatSearchQuery   string
+	ChatCurrentPage   int
+	ChatTotalPages    int
+	ChatHasPrevPage   bool
+	ChatHasNextPage   bool
+	ChatPrevPage      int
+	ChatNextPage      int
+	ChatTotalMessages int
 }
 
 type AdminEditPostPageData struct {
@@ -716,6 +726,7 @@ func (fi FlatTradingPostItem) OriginalName() string {
 
 // ChatMessage holds a single chat log entry
 type ChatMessage struct {
+	ID            int
 	Timestamp     string
 	Channel       string
 	CharacterName string
