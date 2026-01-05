@@ -639,11 +639,6 @@ func scrapePlayerCharacters() {
 
 	log.Printf("[I] [Scraper/Char] Scraping all %d pages...", lastPage)
 	for page := 1; page <= lastPage; page++ {
-		// --- MODIFIED: Added 3-second interval between page requests ---
-		if page > 1 {
-			time.Sleep(3 * time.Second)
-		}
-		// --- END MODIFICATION ---
 
 		wg.Add(1)
 		sem <- struct{}{}
@@ -655,6 +650,11 @@ func scrapePlayerCharacters() {
 			var pagePlayers []PlayerCharacter
 
 			for attempt := 1; attempt <= maxParseRetries; attempt++ {
+
+				if page > 1 {
+					time.Sleep(3 * time.Second)
+				}
+
 				bodyContent, err := scraperClient.getPage(url, "[Characters]")
 				if err != nil {
 					log.Printf("[E] [Scraper/Char] Network/HTTP error for page %d (attempt %d/%d): %v. Retrying...", pageIndex, attempt, maxParseRetries, err)
