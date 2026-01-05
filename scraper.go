@@ -632,13 +632,19 @@ func scrapePlayerCharacters() {
 
 	playerChan := make(chan PlayerCharacter, 100)
 	var wg sync.WaitGroup
-	sem := make(chan struct{}, 5) // Concurrency semaphore
+	// --- MODIFIED: Reduced concurrency semaphore from 5 to 2 ---
+	sem := make(chan struct{}, 2)
+	// --- END MODIFICATION ---
 
 	// Start the single DB consumer goroutine
 	go processPlayerData(playerChan)
 
 	log.Printf("[I] [Scraper/Char] Scraping all %d pages...", lastPage)
 	for page := 1; page <= lastPage; page++ {
+		// (Optional: retain the 3s sleep from previous step if desired)
+		if page > 1 {
+			time.Sleep(3 * time.Second)
+		}
 
 		wg.Add(1)
 		sem <- struct{}{}
@@ -650,11 +656,6 @@ func scrapePlayerCharacters() {
 			var pagePlayers []PlayerCharacter
 
 			for attempt := 1; attempt <= maxParseRetries; attempt++ {
-
-				if page > 1 {
-					time.Sleep(3 * time.Second)
-				}
-
 				bodyContent, err := scraperClient.getPage(url, "[Characters]")
 				if err != nil {
 					log.Printf("[E] [Scraper/Char] Network/HTTP error for page %d (attempt %d/%d): %v. Retrying...", pageIndex, attempt, maxParseRetries, err)
@@ -665,7 +666,6 @@ func scrapePlayerCharacters() {
 				pagePlayers, err = parseCharacterPage(bodyContent, pageIndex, attempt)
 				if err != nil {
 					// Error was a parsing failure (e.g., 0 items)
-					// The parseCharacterPage function returns an error if 0 items are found, triggering this retry block.
 					log.Printf("[W] [Scraper/Char] %v. Retrying...", err)
 					time.Sleep(parseRetryDelay)
 					continue // Try fetching and parsing again
