@@ -109,7 +109,7 @@ const (
 )
 
 const (
-	maxParseRetries = 3 // Max attempts to parse a page if it returns 0 items
+	maxParseRetries = 30 // Max attempts to parse a page if it returns 0 items
 	parseRetryDelay = 2 * time.Second
 )
 
