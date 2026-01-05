@@ -631,63 +631,53 @@ func scrapePlayerCharacters() {
 	lastPage := scraperClient.findLastPage(firstPageURL, "[Characters]")
 
 	playerChan := make(chan PlayerCharacter, 100)
-	var wg sync.WaitGroup
-	// --- MODIFIED: Reduced concurrency semaphore from 5 to 2 ---
-	sem := make(chan struct{}, 2)
-	// --- END MODIFICATION ---
 
 	// Start the single DB consumer goroutine
 	go processPlayerData(playerChan)
 
 	log.Printf("[I] [Scraper/Char] Scraping all %d pages...", lastPage)
 	for page := 1; page <= lastPage; page++ {
-		// (Optional: retain the 3s sleep from previous step if desired)
+		// Interval between requests
 		if page > 1 {
 			time.Sleep(3 * time.Second)
 		}
 
-		wg.Add(1)
-		sem <- struct{}{}
-		go func(pageIndex int) {
-			defer wg.Done()
-			defer func() { <-sem }()
+		// --- MODIFIED: Removed goroutine wrapping for purely sequential execution ---
+		url := fmt.Sprintf("https://projetoyufa.com/rankings?page=%d", page)
+		var pagePlayers []PlayerCharacter
 
-			url := fmt.Sprintf("https://projetoyufa.com/rankings?page=%d", pageIndex)
-			var pagePlayers []PlayerCharacter
-
-			for attempt := 1; attempt <= maxParseRetries; attempt++ {
-				bodyContent, err := scraperClient.getPage(url, "[Characters]")
-				if err != nil {
-					log.Printf("[E] [Scraper/Char] Network/HTTP error for page %d (attempt %d/%d): %v. Retrying...", pageIndex, attempt, maxParseRetries, err)
-					time.Sleep(parseRetryDelay)
-					continue
-				}
-
-				pagePlayers, err = parseCharacterPage(bodyContent, pageIndex, attempt)
-				if err != nil {
-					// Error was a parsing failure (e.g., 0 items)
-					log.Printf("[W] [Scraper/Char] %v. Retrying...", err)
-					time.Sleep(parseRetryDelay)
-					continue // Try fetching and parsing again
-				}
-
-				// Success
-				break
+		for attempt := 1; attempt <= maxParseRetries; attempt++ {
+			bodyContent, err := scraperClient.getPage(url, "[Characters]")
+			if err != nil {
+				log.Printf("[E] [Scraper/Char] Network/HTTP error for page %d (attempt %d/%d): %v. Retrying...", page, attempt, maxParseRetries, err)
+				time.Sleep(parseRetryDelay)
+				continue
 			}
 
-			// Send found players (if any) to the consumer
-			if len(pagePlayers) > 0 {
-				for _, player := range pagePlayers {
-					playerChan <- player
-				}
-				log.Printf("[D] [Scraper/Char] Scraped page %d/%d, sent %d chars to DB worker.", pageIndex, lastPage, len(pagePlayers))
-			} else {
-				log.Printf("[E] [Scraper/Char] Failed to scrape page %d/%d after all retries.", pageIndex, lastPage)
+			pagePlayers, err = parseCharacterPage(bodyContent, page, attempt)
+			if err != nil {
+				// Error was a parsing failure (e.g., 0 items)
+				log.Printf("[W] [Scraper/Char] %v. Retrying...", err)
+				time.Sleep(parseRetryDelay)
+				continue // Try fetching and parsing again
 			}
-		}(page)
+
+			// Success
+			break
+		}
+
+		// Send found players (if any) to the consumer
+		if len(pagePlayers) > 0 {
+			for _, player := range pagePlayers {
+				playerChan <- player
+			}
+			log.Printf("[D] [Scraper/Char] Scraped page %d/%d, sent %d chars to DB worker.", page, lastPage, len(pagePlayers))
+		} else {
+			log.Printf("[E] [Scraper/Char] Failed to scrape page %d/%d after all retries.", page, lastPage)
+		}
+		// --- END MODIFICATION ---
 	}
 
-	wg.Wait()
 	close(playerChan) // Signal consumer that all scraping is done
 	log.Printf("[I] [Scraper/Char] Finished scraping all pages. DB worker is now processing data...")
 }
