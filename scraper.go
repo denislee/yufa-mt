@@ -195,7 +195,6 @@ func (sc *ScraperClient) findLastPage(firstPageURL, logPrefix string) int {
 		return 1
 	}
 
-	// --- START MODIFICATION ---
 	// 2. Try to find the specific "Page/Página X of/de Y" div text.
 	// This regex handles "Page 1 of 15" and "Página 1 de 15", ignoring comments.
 	pageOfRegex := regexp.MustCompile(`(?:Page|Página)\s+\d+\s+(?:of|de)\s+(\d+)`)
@@ -226,7 +225,6 @@ func (sc *ScraperClient) findLastPage(firstPageURL, logPrefix string) int {
 
 	// 3. If "Page X of Y" div fails, fall back to parsing the links.
 	log.Printf("[W] %s Could not find 'Page X of Y' div. Falling back to link parsing...", logPrefix)
-	// --- END MODIFICATION ---
 
 	lastPage := 1
 	pageRegex := regexp.MustCompile(`page=(\d+)`)
@@ -641,6 +639,12 @@ func scrapePlayerCharacters() {
 
 	log.Printf("[I] [Scraper/Char] Scraping all %d pages...", lastPage)
 	for page := 1; page <= lastPage; page++ {
+		// --- MODIFIED: Added 3-second interval between page requests ---
+		if page > 1 {
+			time.Sleep(3 * time.Second)
+		}
+		// --- END MODIFICATION ---
+
 		wg.Add(1)
 		sem <- struct{}{}
 		go func(pageIndex int) {
@@ -661,6 +665,7 @@ func scrapePlayerCharacters() {
 				pagePlayers, err = parseCharacterPage(bodyContent, pageIndex, attempt)
 				if err != nil {
 					// Error was a parsing failure (e.g., 0 items)
+					// The parseCharacterPage function returns an error if 0 items are found, triggering this retry block.
 					log.Printf("[W] [Scraper/Char] %v. Retrying...", err)
 					time.Sleep(parseRetryDelay)
 					continue // Try fetching and parsing again
@@ -1164,7 +1169,6 @@ func scrapeZeny() {
 			var err error
 			var numRows int
 
-			// --- MODIFICATION: Added retry loop for parsing ---
 			for attempt := 1; attempt <= maxParseRetries; attempt++ {
 				url := fmt.Sprintf("https://projetoyufa.com/rankings/zeny?page=%d", pageIndex)
 				bodyContent, err = scraperClient.getPage(url, "[Scraper/Zeny]")
@@ -1230,7 +1234,6 @@ func scrapeZeny() {
 				// Success, break from retry loop
 				break
 			}
-			// --- END MODIFICATION ---
 
 			// Log final status for this page
 			if numRows > 0 {
@@ -2066,7 +2069,6 @@ func scrapeWoeCharacterRankings() {
 			var err error
 			var numRows int
 
-			// --- MODIFICATION: Added retry loop for parsing ---
 			for attempt := 1; attempt <= maxParseRetries; attempt++ {
 				pageURL := fmt.Sprintf("https://projetoyufa.com/rankings/woe?page=%d", pageIndex)
 				if enableWoeScraperDebugLogs {
@@ -2190,7 +2192,6 @@ func scrapeWoeCharacterRankings() {
 				// Success, break from retry loop
 				break
 			}
-			// --- END MODIFICATION ---
 
 			if numRows == 0 {
 				log.Printf("[E] [Scraper/WoE] Failed to scrape page %d/%d after all retries.", pageIndex, lastPage)
@@ -2244,7 +2245,6 @@ func scrapeMvpKills() {
 			var numPlayerBlocks int
 			var pageKills map[string]map[string]int
 
-			// --- MODIFICATION: Added retry loop for parsing ---
 			for attempt := 1; attempt <= maxParseRetries; attempt++ {
 				url := fmt.Sprintf("https://projetoyufa.com/rankings/mvp?page=%d", pageIndex)
 				bodyContent, err = scraperClient.getPage(url, "[Scraper/MVP]")
@@ -2282,7 +2282,6 @@ func scrapeMvpKills() {
 				// Success, break from retry loop
 				break
 			}
-			// --- END MODIFICATION ---
 
 			if len(pageKills) > 0 {
 				mu.Lock()
@@ -2996,9 +2995,6 @@ func startBackgroundJobs(ctx context.Context) {
 	}
 
 	go startChatPacketCapture(ctx)
-	// --- MODIFICATION: Removed the entire "Special RMS Cache Refresh Job" goroutine ---
-	// The go func() { ... } block that called runFullRMSCacheJob() is deleted.
-	// --- END MODIFICATION ---
 }
 
 func toComparable(item Item) comparableItem {
