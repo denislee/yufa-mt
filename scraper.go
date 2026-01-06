@@ -623,6 +623,123 @@ func processPlayerData(playerChan <-chan PlayerCharacter) {
 	log.Printf("[I] [Scraper/Char] Scrape and update process complete.")
 }
 
+// savePlayerCharacters handles the database transaction to update player data.
+// It accepts a complete slice of players to minimize transaction duration.
+func savePlayerCharacters(players []PlayerCharacter) {
+	characterMutex.Lock()
+	defer characterMutex.Unlock()
+
+	log.Println("[I] [Scraper/Char] DB update started. Processing scraped data...")
+
+	// 1. Fetch existing player data for comparison
+	existingPlayers, err := fetchExistingPlayers()
+	if err != nil {
+		log.Printf("[E] [Scraper/Char] %v", err)
+		// Continue with an empty map, logging will just be incomplete
+	}
+
+	// Generate the timestamp
+	updateTime := time.Now().Format(time.RFC3339)
+
+	// 2. Prepare database transaction and statements
+	tx, err := db.Begin()
+	if err != nil {
+		log.Printf("[E] [Scraper/Char] Failed to begin transaction: %v", err)
+		return
+	}
+	defer tx.Rollback() // Rollback on error or if safety check fails
+
+	stmt, err := tx.Prepare(`
+		INSERT INTO characters (rank, name, base_level, job_level, experience, class, last_updated, last_active)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+		ON CONFLICT(name) DO UPDATE SET
+			rank=excluded.rank,
+			base_level=excluded.base_level,
+			job_level=excluded.job_level,
+			experience=excluded.experience,
+			class=excluded.class,
+			last_updated=excluded.last_updated,
+			last_active=excluded.last_active
+	`)
+	if err != nil {
+		log.Printf("[E] [Scraper/Char] Failed to prepare characters upsert statement: %v", err)
+		return
+	}
+	defer stmt.Close()
+
+	changelogStmt, err := tx.Prepare(`
+		INSERT INTO character_changelog (character_name, change_time, activity_description)
+		VALUES (?, ?, ?)
+	`)
+	if err != nil {
+		log.Printf("[E] [Scraper/Char] Failed to prepare changelog statement: %v", err)
+		return
+	}
+	defer changelogStmt.Close()
+
+	scrapedPlayerNames := make(map[string]bool)
+	totalProcessed := 0
+
+	// 3. Process all players from the slice
+	for _, p := range players {
+		p.LastUpdated = updateTime // Use the new timestamp
+		scrapedPlayerNames[p.Name] = true
+		totalProcessed++
+
+		lastActiveTime := updateTime // Assume active for new players
+		if oldPlayer, exists := existingPlayers[p.Name]; exists {
+			// Check for activity changes and get the correct lastActiveTime
+			lastActiveTime = checkAndLogCharacterActivity(changelogStmt, p, oldPlayer)
+		} else {
+			// This is a new player
+			logCharacterActivity(changelogStmt, p.Name, fmt.Sprintf("New character '%s' detected (Class: %s, Level: %d).", p.Name, p.Class, p.BaseLevel))
+		}
+
+		// Upsert the player
+		if _, err := stmt.Exec(p.Rank, p.Name, p.BaseLevel, p.JobLevel, p.Experience, p.Class, p.LastUpdated, lastActiveTime); err != nil {
+			log.Printf("[W] [Scraper/Char] Failed to upsert character for player %s: %v", p.Name, err)
+		}
+	}
+
+	// --- SAFETY CHECK: PREVENT PARTIAL SCRAPES FROM WIPING DB ---
+	// We check the count AFTER processing the channel but BEFORE committing.
+	var currentDBCount int
+	if err := db.QueryRow("SELECT COUNT(*) FROM characters").Scan(&currentDBCount); err != nil {
+		log.Printf("[E] [Scraper/Char] Failed to query current character count for safety check: %v. Aborting update.", err)
+		return // Implicit rollback via defer
+	}
+
+	const safetyThresholdRatio = 0.80
+	if currentDBCount > 100 { // Minimum DB size to enforce check
+		minAcceptableCount := int(float64(currentDBCount) * safetyThresholdRatio)
+
+		if totalProcessed < minAcceptableCount {
+			log.Printf("[W] [Scraper/Char] SAFETY ABORT: Scraped %d characters, but DB contains %d. This is a drop of over %.0f%%. Rolling back to prevent data loss/stale cleanup.",
+				totalProcessed, currentDBCount, (1.0-safetyThresholdRatio)*100)
+			return // Implicit rollback via defer
+		}
+	}
+	// --- END SAFETY CHECK ---
+
+	// 4. Commit the transaction
+	if err := tx.Commit(); err != nil {
+		log.Printf("[E] [Scraper/Char] Failed to commit transaction: %v", err)
+		return
+	}
+	log.Printf("[I] [Scraper/Char] Saved/updated %d records.", totalProcessed)
+
+	if totalProcessed == 0 {
+		log.Println("[W] [Scraper/Char] Scraper processed 0 total characters. This might be a parsing error. Skipping stale player cleanup to avoid wiping data.")
+		return
+	}
+
+	// 5. Clean up stale records (outside the transaction)
+	// We only run this if the safety check passed (transaction committed)
+	cleanupStalePlayers(scrapedPlayerNames, existingPlayers)
+
+	log.Printf("[I] [Scraper/Char] Scrape and update process complete.")
+}
+
 // scrapePlayerCharacters is the concurrent "producer" for character data.
 func scrapePlayerCharacters() {
 	log.Println("[I] [Scraper/Char] Starting player character scrape...")
@@ -630,10 +747,7 @@ func scrapePlayerCharacters() {
 	const firstPageURL = "https://projetoyufa.com/rankings?page=1"
 	lastPage := scraperClient.findLastPage(firstPageURL, "[Characters]")
 
-	playerChan := make(chan PlayerCharacter, 100)
-
-	// Start the single DB consumer goroutine
-	go processPlayerData(playerChan)
+	var allScrapedPlayers []PlayerCharacter
 
 	log.Printf("[I] [Scraper/Char] Scraping all %d pages...", lastPage)
 	for page := 1; page <= lastPage; page++ {
@@ -666,20 +780,19 @@ func scrapePlayerCharacters() {
 			break
 		}
 
-		// Send found players (if any) to the consumer
+		// Collect players into the slice
 		if len(pagePlayers) > 0 {
-			for _, player := range pagePlayers {
-				playerChan <- player
-			}
-			log.Printf("[D] [Scraper/Char] Scraped page %d/%d, sent %d chars to DB worker.", page, lastPage, len(pagePlayers))
+			allScrapedPlayers = append(allScrapedPlayers, pagePlayers...)
+			log.Printf("[D] [Scraper/Char] Scraped page %d/%d, collected %d chars.", page, lastPage, len(pagePlayers))
 		} else {
-			log.Printf("[E] [Scraper/Char] Failed to scrape page %d/%d after all retries.", page, lastPage)
+			log.Printf("[E] [Scraper/Char] Failed to scrape page %d/%d after all retries.", page,
+				lastPage)
 		}
 		// --- END MODIFICATION ---
 	}
 
-	close(playerChan) // Signal consumer that all scraping is done
-	log.Printf("[I] [Scraper/Char] Finished scraping all pages. DB worker is now processing data...")
+	log.Printf("[I] [Scraper/Char] Finished scraping all pages. Found %d total characters. Saving to DB...", len(allScrapedPlayers))
+	savePlayerCharacters(allScrapedPlayers)
 }
 
 // parseCharacterPage contains all the parsing logic for a character page.
