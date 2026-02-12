@@ -155,7 +155,6 @@ const (
 			character_changelog
 		ORDER BY
 			change_time DESC;`
-	// --- NEW WOE TABLES ---
 	createWoeSeasonsTableSQL = `
 	CREATE TABLE IF NOT EXISTS woe_seasons (
 		"season_id" INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
@@ -187,7 +186,6 @@ const (
 		PRIMARY KEY("event_id", "character_name"),
 		FOREIGN KEY("event_id") REFERENCES "woe_events"("event_id") ON DELETE CASCADE
 	);`
-	// --- END NEW WOE TABLES ---
 )
 
 const (
@@ -306,11 +304,8 @@ func initDB(filepath string) (*sql.DB, error) {
 		return nil, err
 	}
 
-	// Optimize connection pool for SQLite (Single writer, multiple readers)
-	db.SetMaxOpenConns(1) // Recommended for SQLite to avoid "database is locked" errors with concurrent writes
-	// Note: If using WAL mode, you can technically increase MaxOpenConns,
-	// but keeping it at 1 with a connection mutex in Go is often safest for heavy scrapers.
-	// However, with WAL, let's allow some read concurrency:
+	// With WAL mode enabled, SQLite supports concurrent reads alongside a single writer.
+	// Setting MaxOpenConns > 1 allows multiple read operations in parallel.
 	db.SetMaxOpenConns(10)
 	db.SetMaxIdleConns(5)
 	db.SetConnMaxLifetime(time.Hour)
@@ -350,9 +345,9 @@ func createTables(db *sql.DB) error {
 		"trading_posts":         createTradingPostsTableSQL,
 		"trading_post_items":    createTradingPostItemsTableSQL,
 		"internal_item_db":      createInternalItemDBTableSQL,
-		"woe_seasons":           createWoeSeasonsTableSQL,       // ADDED
-		"woe_events":            createWoeEventsTableSQL,        // ADDED
-		"woe_event_rankings":    createWoeEventRankingsTableSQL, // ADDED
+		"woe_seasons":           createWoeSeasonsTableSQL,
+		"woe_events":            createWoeEventsTableSQL,
+		"woe_event_rankings":    createWoeEventRankingsTableSQL,
 		"chat":                  createChatTableSQL,
 		"chat_activity_log":     createChatActivityLogTableSQL,
 		// RMS FTS tables and triggers are not in the original map, adding them.

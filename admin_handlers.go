@@ -7,7 +7,7 @@ import (
 	"html/template"
 	"log"
 	"net/http"
-	"net/url" // <-- IMPORTED
+	"net/url"
 	"strconv"
 	"strings"
 	"sync"
@@ -53,38 +53,40 @@ var dashboardStatsCache struct {
 	expiry time.Time
 }
 
+// copyDashboardStats copies the cacheable stats fields from src to dst.
+func copyDashboardStats(dst, src *AdminDashboardData) {
+	dst.TotalItems = src.TotalItems
+	dst.AvailableItems = src.AvailableItems
+	dst.UniqueItems = src.UniqueItems
+	dst.CachedItems = src.CachedItems
+	dst.TotalCharacters = src.TotalCharacters
+	dst.TotalGuilds = src.TotalGuilds
+	dst.PlayerHistoryEntries = src.PlayerHistoryEntries
+	dst.MarketEvents = src.MarketEvents
+	dst.ChangelogEntries = src.ChangelogEntries
+	dst.TotalVisitors = src.TotalVisitors
+	dst.VisitorsToday = src.VisitorsToday
+}
+
 // getDashboardStats populates the main database statistics, utilizing a TTL cache.
 func getDashboardStats(stats *AdminDashboardData) error {
 	// 1. Check Cache
 	dashboardStatsCache.RLock()
 	if time.Now().Before(dashboardStatsCache.expiry) {
-		// Copy cached values to the target struct
-		stats.TotalItems = dashboardStatsCache.data.TotalItems
-		stats.AvailableItems = dashboardStatsCache.data.AvailableItems
-		stats.UniqueItems = dashboardStatsCache.data.UniqueItems
-		stats.CachedItems = dashboardStatsCache.data.CachedItems
-		stats.TotalCharacters = dashboardStatsCache.data.TotalCharacters
-		stats.TotalGuilds = dashboardStatsCache.data.TotalGuilds
-		stats.PlayerHistoryEntries = dashboardStatsCache.data.PlayerHistoryEntries
-		stats.MarketEvents = dashboardStatsCache.data.MarketEvents
-		stats.ChangelogEntries = dashboardStatsCache.data.ChangelogEntries
-		stats.TotalVisitors = dashboardStatsCache.data.TotalVisitors
-		stats.VisitorsToday = dashboardStatsCache.data.VisitorsToday
+		copyDashboardStats(stats, &dashboardStatsCache.data)
 		dashboardStatsCache.RUnlock()
 		return nil
 	}
 	dashboardStatsCache.RUnlock()
 
-	// 2. Cache expired or empty, run queries
+	// 2. Cache expired or empty, run queries concurrently
 	var g errgroup.Group
 	var newStats AdminDashboardData
 
-	// Helper function to run a query and assign the result
 	runQuery := func(query string, target *int) func() error {
 		return func() error {
 			var count sql.NullInt64
-			err := db.QueryRow(query).Scan(&count)
-			if err != nil {
+			if err := db.QueryRow(query).Scan(&count); err != nil {
 				log.Printf("[W] [Admin/Stats] Dashboard stats query failed (%s): %v", query, err)
 				return err
 			}
@@ -93,7 +95,6 @@ func getDashboardStats(stats *AdminDashboardData) error {
 		}
 	}
 
-	// Execute queries concurrently
 	g.Go(runQuery("SELECT COUNT(*) FROM items", &newStats.TotalItems))
 	g.Go(runQuery("SELECT COUNT(*) FROM items WHERE is_available = 1", &newStats.AvailableItems))
 	g.Go(runQuery("SELECT COUNT(DISTINCT name_of_the_item) FROM items", &newStats.UniqueItems))
@@ -106,7 +107,6 @@ func getDashboardStats(stats *AdminDashboardData) error {
 	g.Go(runQuery("SELECT COUNT(*) FROM visitors", &newStats.TotalVisitors))
 	g.Go(runQuery("SELECT COUNT(*) FROM visitors WHERE date(last_visit) = date('now', 'localtime')", &newStats.VisitorsToday))
 
-	// Wait for all queries to finish
 	if err := g.Wait(); err != nil {
 		return fmt.Errorf("could not query for one or more dashboard stats: %w", err)
 	}
@@ -114,22 +114,11 @@ func getDashboardStats(stats *AdminDashboardData) error {
 	// 3. Update Cache
 	dashboardStatsCache.Lock()
 	dashboardStatsCache.data = newStats
-	dashboardStatsCache.expiry = time.Now().Add(30 * time.Second) // Cache for 30 seconds
+	dashboardStatsCache.expiry = time.Now().Add(30 * time.Second)
 	dashboardStatsCache.Unlock()
 
 	// 4. Copy to output
-	stats.TotalItems = newStats.TotalItems
-	stats.AvailableItems = newStats.AvailableItems
-	stats.UniqueItems = newStats.UniqueItems
-	stats.CachedItems = newStats.CachedItems
-	stats.TotalCharacters = newStats.TotalCharacters
-	stats.TotalGuilds = newStats.TotalGuilds
-	stats.PlayerHistoryEntries = newStats.PlayerHistoryEntries
-	stats.MarketEvents = newStats.MarketEvents
-	stats.ChangelogEntries = newStats.ChangelogEntries
-	stats.TotalVisitors = newStats.TotalVisitors
-	stats.VisitorsToday = newStats.VisitorsToday
-
+	copyDashboardStats(stats, &newStats)
 	return nil
 }
 

@@ -21,8 +21,7 @@ var levelXPDelta = map[int]int64{
 	90: 9738720, 91: 11649960, 92: 13643520, 93: 18339300, 94: 23836800, 95: 35658000, 96: 48687000, 97: 58135000, 98: 99999998,
 }
 
-// --- REPLACED: Job Level XP Data (from xp-job.txt) ---
-
+// jobLevelXPDelta stores the XP required to go from Job Level X to Job Level X+1.
 var jobLevelXPDelta = map[int]int64{
 	1:  184,
 	2:  284,
@@ -78,21 +77,16 @@ var jobLevelXPDelta = map[int]int64{
 // levelXPCumulative stores the TOTAL XP required to reach Level X (at 0.0%)
 var levelXPCumulative = make(map[int]int64)
 
-// --- ADDED: Job Level Cumulative Map ---
 var jobLevelXPCumulative = make(map[int]int64)
 
-// --- ADDED: Slices for the calculator ---
 var baseXPTable []int64
 var jobXPTable []int64
 
-// init function to populate the cumulative map
-// This will run automatically as it's part of the 'main' package
 func init() {
-	log.Println("[I] [XP] Populating cumulative XP table...")
+	log.Println("[I] [XP] Populating cumulative XP tables...")
 	var currentCumulativeXP int64 = 0
-	levelXPCumulative[1] = 0 // Base case
+	levelXPCumulative[1] = 0
 
-	// Max level is 99
 	for i := 1; i <= 98; i++ {
 		xpDelta, ok := levelXPDelta[i]
 		if !ok {
@@ -101,41 +95,30 @@ func init() {
 		currentCumulativeXP += xpDelta
 		levelXPCumulative[i+1] = currentCumulativeXP
 	}
-	log.Println("[I] [XP] Cumulative XP table populated.")
 
-	// --- ADDED: Populate Job XP Cumulative Table ---
-	log.Println("[I] [XP] Populating cumulative Job XP table...")
 	var currentJobCumulativeXP int64 = 0
-	jobLevelXPCumulative[1] = 0 // Base case
+	jobLevelXPCumulative[1] = 0
 
-	// Max job level is 50
 	for i := 1; i <= 49; i++ {
-		jobXPDelt, ok := jobLevelXPDelta[i]
+		jobXPDelta, ok := jobLevelXPDelta[i]
 		if !ok {
 			log.Fatalf("[F] [XP] Missing Job XP delta for level %d", i)
 		}
-		currentJobCumulativeXP += jobXPDelt
+		currentJobCumulativeXP += jobXPDelta
 		jobLevelXPCumulative[i+1] = currentJobCumulativeXP
 	}
-	log.Println("[I] [XP] Cumulative Job XP table populated.")
-	// --- END ADDITION ---
 
-	// --- ADDED: Populate the delta slices for the calculator ---
-	// baseXPTable[0] will be XP for 1->2 (which is levelXPDelta[1])
-	// Max base level is 99, so there are 98 deltas (1->2, 2->3, ... 98->99)
+	// Populate delta slices for the XP calculator
 	baseXPTable = make([]int64, 98)
 	for i := 0; i < 98; i++ {
 		baseXPTable[i] = levelXPDelta[i+1]
 	}
 
-	// jobXPTable[0] will be XP for 1->2 (which is jobLevelXPDelta[1])
-	// Max job level is 50, so there are 49 deltas (1->2, 2->3, ... 49->50)
 	jobXPTable = make([]int64, 49)
 	for i := 0; i < 49; i++ {
 		jobXPTable[i] = jobLevelXPDelta[i+1]
 	}
-	log.Println("[I] [XP] Delta slices populated.")
-	// --- END ADDITION ---
+	log.Println("[I] [XP] XP tables populated successfully.")
 }
 
 // xpCalculatorHandler handles the XP calculator page request and form submission.

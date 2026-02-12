@@ -112,11 +112,6 @@ Here is the message to parse:
 ---`
 )
 
-// in gemini_parser.go
-
-// This regex is no longer needed, as we are forcing a JSON response type.
-// var jsonRegex = regexp.MustCompile("(?s)```json(.*)```")
-
 func parseTradeMessageWithGemini(message string) (*GeminiTradeResult, error) {
 	apiKey := os.Getenv("GEMINI_API_KEY")
 	if apiKey == "" {
@@ -148,16 +143,12 @@ func parseTradeMessageWithGemini(message string) (*GeminiTradeResult, error) {
 		return nil, fmt.Errorf("received an empty or invalid response from Gemini API")
 	}
 
-	// --- REFACTORED PART ---
-	// Directly access the text part of the response.
 	part := resp.Candidates[0].Content.Parts[0]
 	text, ok := part.(genai.Text)
 	if !ok {
 		return nil, fmt.Errorf("gemini response part was not of type genai.Text, but %T", part)
 	}
-	// The response is raw JSON, no stripping needed.
 	rawJSON := string(text)
-	// --- END REFACTORED PART ---
 
 	log.Printf("[D] [Gemini] Received JSON response: %s", rawJSON)
 

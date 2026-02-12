@@ -118,8 +118,5 @@ func messageCreate(s *discordgo.Session, m *discordgo.MessageCreate) {
 			postIDStrings = append(postIDStrings, fmt.Sprintf("#%d", pid))
 		}
 		log.Printf("[I] [DB] Successfully created trading post(s) %s for '%s'.", strings.Join(postIDStrings, ", "), m.Author.Username)
-
-		_ = fmt.Sprintf("✅ Trade post(s) %s created for **%s**.", strings.Join(postIDStrings, ", "), m.Author.Username)
-
 	}()
 }

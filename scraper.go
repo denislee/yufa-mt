@@ -76,6 +76,27 @@ var (
 	lastChatPacketTime atomic.Int64 // Stores Unix timestamp
 	lastActivityLog    time.Time
 	activityLogMutex   sync.Mutex
+
+	// Pre-compiled regexes used by scrapers (avoids re-compilation on every call)
+	pageOfRegex        = regexp.MustCompile(`(?:Page|Página)\s+\d+\s+(?:of|de)\s+(\d+)`)
+	pageRegex          = regexp.MustCompile(`page=(\d+)`)
+	onlinePlayerRegex  = regexp.MustCompile(`Online(?:\s|<!--.*?-->)*?(\d+)`)
+	charRankRegex      = regexp.MustCompile(`p\-1 text\-center font\-medium\\",\\"children\\":(\d+)\}\]`)
+	charNameRegex      = regexp.MustCompile(`max-w-10 truncate p-1 font-semibold">([^<]+)</td>`)
+	charBaseLevelRegex = regexp.MustCompile(`\\"level\\":(\d+),`)
+	charJobLevelRegex  = regexp.MustCompile(`\\"job_level\\":(\d+),\\"exp`)
+	charExpRegex       = regexp.MustCompile(`\\"exp\\":(\d+)`)
+	charClassRegex     = regexp.MustCompile(`"hidden text\-sm sm:inline\\",\\"children\\":\\"([^"]+)\\"`)
+	guildNameRegex     = regexp.MustCompile(`<span class="font-medium">([^<]+)</span>`)
+	guildLevelRegex    = regexp.MustCompile(`\\"guild_lv\\":(\d+),\\"connect_member\\"`)
+	guildMasterRegex   = regexp.MustCompile(`\\"master\\":\\"([^"]+)\\",\\"members\\"`)
+	guildMembersRegex  = regexp.MustCompile(`\\"members\\":\[(.*?)\]\}`)
+	guildMemberName    = regexp.MustCompile(`\\"name\\":\\"([^"]+)\\",\\"base_level\\"`)
+	reRefineMid        = regexp.MustCompile(`\s(\+\d+)`)
+	reRefineStart      = regexp.MustCompile(`^(\+\d+)\s`)
+	guildIDRegex       = regexp.MustCompile(`/(\d+)$`)
+	mvpPlayerBlock     = regexp.MustCompile(`\\"name\\":\\"([^"]+)\\",\\"base_level\\".*?\\"mvp_kills\\":\[(.*?)]`)
+	mvpKillsRegex      = regexp.MustCompile(`{\\"mob_id\\":(\d+),\\"kills\\":(\d+)}`)
 )
 
 type chatPacketDefinition struct {
@@ -197,7 +218,6 @@ func (sc *ScraperClient) findLastPage(firstPageURL, logPrefix string) int {
 
 	// 2. Try to find the specific "Page/Página X of/de Y" div text.
 	// This regex handles "Page 1 of 15" and "Página 1 de 15", ignoring comments.
-	pageOfRegex := regexp.MustCompile(`(?:Page|Página)\s+\d+\s+(?:of|de)\s+(\d+)`)
 	var foundLastPageFromText bool
 	var lastPageFromText int
 
@@ -227,7 +247,6 @@ func (sc *ScraperClient) findLastPage(firstPageURL, logPrefix string) int {
 	log.Printf("[W] %s Could not find 'Page X of Y' div. Falling back to link parsing...", logPrefix)
 
 	lastPage := 1
-	pageRegex := regexp.MustCompile(`page=(\d+)`)
 	var foundLastPageLink bool
 
 	// 4. Try to find the "Last Page" link (e.g., '>>')
@@ -305,8 +324,7 @@ func scrapeAndStorePlayerCount() {
 	}
 
 	// --- THIS IS THE UPDATED SECTION ---
-	// Define a regex to match the exact pattern "Online 100" and capture the number
-	onlinePlayerRegex := regexp.MustCompile(`Online(?:\s|<!--.*?-->)*?(\d+)`)
+	// Match the exact pattern "Online 100" and capture the number
 
 	var onlineCount int
 	var found bool
@@ -797,19 +815,12 @@ func scrapePlayerCharacters() {
 
 // parseCharacterPage contains all the parsing logic for a character page.
 func parseCharacterPage(bodyContent string, pageIndex, attempt int) ([]PlayerCharacter, error) {
-	rankRegex := regexp.MustCompile(`p\-1 text\-center font\-medium\\",\\"children\\":(\d+)\}\]`)
-	nameRegex := regexp.MustCompile(`max-w-10 truncate p-1 font-semibold">([^<]+)</td>`)
-	baseLevelRegex := regexp.MustCompile(`\\"level\\":(\d+),`)
-	jobLevelRegex := regexp.MustCompile(`\\"job_level\\":(\d+),\\"exp`)
-	expRegex := regexp.MustCompile(`\\"exp\\":(\d+)`)
-	classRegex := regexp.MustCompile(`"hidden text\-sm sm:inline\\",\\"children\\":\\"([^"]+)\\"`)
-
-	rankMatches := rankRegex.FindAllStringSubmatch(bodyContent, -1)
-	nameMatches := nameRegex.FindAllStringSubmatch(bodyContent, -1)
-	baseLevelMatches := baseLevelRegex.FindAllStringSubmatch(bodyContent, -1)
-	jobLevelMatches := jobLevelRegex.FindAllStringSubmatch(bodyContent, -1)
-	expMatches := expRegex.FindAllStringSubmatch(bodyContent, -1)
-	classMatches := classRegex.FindAllStringSubmatch(bodyContent, -1)
+	rankMatches := charRankRegex.FindAllStringSubmatch(bodyContent, -1)
+	nameMatches := charNameRegex.FindAllStringSubmatch(bodyContent, -1)
+	baseLevelMatches := charBaseLevelRegex.FindAllStringSubmatch(bodyContent, -1)
+	jobLevelMatches := charJobLevelRegex.FindAllStringSubmatch(bodyContent, -1)
+	expMatches := charExpRegex.FindAllStringSubmatch(bodyContent, -1)
+	classMatches := charClassRegex.FindAllStringSubmatch(bodyContent, -1)
 
 	numChars := len(nameMatches)
 	if numChars == 0 {
@@ -1065,16 +1076,10 @@ func scrapeGuilds() {
 
 // parseGuildPage contains all the parsing logic for a guild page.
 func parseGuildPage(bodyContent string, pageIndex, attempt int) ([]Guild, map[string]string, error) {
-	nameRegex := regexp.MustCompile(`<span class="font-medium">([^<]+)</span>`)
-	levelRegex := regexp.MustCompile(`\\"guild_lv\\":(\d+),\\"connect_member\\"`)
-	masterRegex := regexp.MustCompile(`\\"master\\":\\"([^"]+)\\",\\"members\\"`)
-	membersRegex := regexp.MustCompile(`\\"members\\":\[(.*?)\]\}`)
-	memberNameRegex := regexp.MustCompile(`\\"name\\":\\"([^"]+)\\",\\"base_level\\"`)
-
-	nameMatches := nameRegex.FindAllStringSubmatch(bodyContent, -1)
-	levelMatches := levelRegex.FindAllStringSubmatch(bodyContent, -1)
-	masterMatches := masterRegex.FindAllStringSubmatch(bodyContent, -1)
-	membersMatches := membersRegex.FindAllStringSubmatch(bodyContent, -1)
+	nameMatches := guildNameRegex.FindAllStringSubmatch(bodyContent, -1)
+	levelMatches := guildLevelRegex.FindAllStringSubmatch(bodyContent, -1)
+	masterMatches := guildMasterRegex.FindAllStringSubmatch(bodyContent, -1)
+	membersMatches := guildMembersRegex.FindAllStringSubmatch(bodyContent, -1)
 
 	numGuilds := len(nameMatches)
 	if numGuilds == 0 {
@@ -1097,7 +1102,7 @@ func parseGuildPage(bodyContent string, pageIndex, attempt int) ([]Guild, map[st
 
 		pageGuilds = append(pageGuilds, Guild{Name: name, Level: level, Master: master})
 
-		members := memberNameRegex.FindAllStringSubmatch(membersMatches[i][1], -1)
+		members := guildMemberName.FindAllStringSubmatch(membersMatches[i][1], -1)
 		for _, member := range members {
 			pageMembers[member[1]] = name // charName -> guildName
 		}
@@ -1110,21 +1115,9 @@ type CharacterZenyInfo struct {
 	LastActive string
 }
 
-// formatWithCommas is a small helper for formatting zeny values in logs.
+// formatWithCommas formats a number with comma separators for log readability.
 func formatWithCommas(n int64) string {
-	s := strconv.FormatInt(n, 10)
-	if len(s) <= 3 {
-		return s
-	}
-	var result []string
-	for i := len(s); i > 0; i -= 3 {
-		start := i - 3
-		if start < 0 {
-			start = 0
-		}
-		result = append([]string{s[start:i]}, result...)
-	}
-	return strings.Join(result, ",")
+	return formatZeny(n)
 }
 
 // processZenyData handles fetching old zeny data, comparing, and updating the database.
@@ -1364,10 +1357,6 @@ func scrapeZeny() {
 // parseMarketItem extracts all item details from a goquery selection.
 // This helper function isolates the complex name-parsing logic from the main scraper loop.
 func parseMarketItem(itemSelection *goquery.Selection) (Item, bool) {
-	// --- Regex for +Refine levels ---
-	reRefineMid := regexp.MustCompile(`\s(\+\d+)`)    // e.g., "Item +7 Name"
-	reRefineStart := regexp.MustCompile(`^(\+\d+)\s`) // e.g., "+7 Item Name"
-
 	// --- 1. Get Base Name ---
 	baseItemName := strings.TrimSpace(itemSelection.Find("p.font-medium.truncate").Text()) // Guess: added font-medium
 	if baseItemName == "" {
@@ -2254,7 +2243,7 @@ func scrapeWoeCharacterRankings() {
 					if guildName != "" && guildName != "N/A" {
 						c.GuildName = sql.NullString{String: guildName, Valid: true}
 						guildImgSrc, _ := guildCell.Find("img").Attr("src")
-						guildIDStr := regexp.MustCompile(`/(\d+)$`).FindStringSubmatch(guildImgSrc)
+						guildIDStr := guildIDRegex.FindStringSubmatch(guildImgSrc)
 						if len(guildIDStr) > 1 {
 							if guildID, err := strconv.ParseInt(guildIDStr[1], 10, 64); err == nil {
 								c.GuildID = sql.NullInt64{Int64: guildID, Valid: true}
@@ -2324,9 +2313,6 @@ func scrapeWoeCharacterRankings() {
 func scrapeMvpKills() {
 	log.Println("[I] [Scraper/MVP] Starting MVP kill count scrape...")
 
-	playerBlockRegex := regexp.MustCompile(`\\"name\\":\\"([^"]+)\\",\\"base_level\\".*?\\"mvp_kills\\":\[(.*?)]`)
-	mvpKillsRegex := regexp.MustCompile(`{\\"mob_id\\":(\d+),\\"kills\\":(\d+)}`)
-
 	const firstPageURL = "https://projetoyufa.com/rankings/mvp?page=1"
 	lastPage := scraperClient.findLastPage(firstPageURL, "[Scraper/MVP]")
 
@@ -2357,7 +2343,7 @@ func scrapeMvpKills() {
 					continue
 				}
 
-				playerBlocks := playerBlockRegex.FindAllStringSubmatch(bodyContent, -1)
+				playerBlocks := mvpPlayerBlock.FindAllStringSubmatch(bodyContent, -1)
 				numPlayerBlocks = len(playerBlocks)
 				pageKills = make(map[string]map[string]int) // Reset
 
@@ -2721,7 +2707,7 @@ func startChatPacketCapture(ctx context.Context) {
 
 	// Status tracking
 	isConnected := false
-	const disconnectTimeout = 5 * time.Minute // <-- CHANGED from 30 * time.Second
+	const disconnectTimeout = 5 * time.Minute
 
 	for {
 		select {
@@ -3065,7 +3051,6 @@ func runJobOnTicker(ctx context.Context, job Job) {
 	defer ticker.Stop()
 
 	log.Printf("[I] [Job] Starting initial run for %s job...", job.Name)
-	//job.Func() // Run immediately on start
 
 	for {
 		select {
@@ -3088,7 +3073,7 @@ func startBackgroundJobs(ctx context.Context) {
 		{Name: "Guild", Func: scrapeGuilds, Interval: 1 * time.Hour},
 		{Name: "Zeny", Func: scrapeZeny, Interval: 6 * time.Hour},
 		{Name: "MVP Kill", Func: scrapeMvpKills, Interval: 5 * time.Minute},
-		//		{Name: "PT-Name-Populator", Func: populateMissingPortugueseNames, Interval: 6 * time.Hour},
+		// {Name: "PT-Name-Populator", Func: populateMissingPortugueseNames, Interval: 6 * time.Hour},
 		{Name: "WoE-Char-Rankings", Func: scrapeWoeCharacterRankings, Interval: 12 * time.Hour},
 	}
 

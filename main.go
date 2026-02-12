@@ -9,9 +9,9 @@ import (
 	"net"
 	"net/http"
 	"os"
-	"os/signal" // Added for graceful shutdown
+	"os/signal"
 	"strings"
-	"syscall" // Added for graceful shutdown
+	"syscall"
 	"time"
 
 	"github.com/joho/godotenv"
@@ -27,8 +27,6 @@ func flushBatchIfFull(batch []pageViewLog, maxSize int) []pageViewLog {
 }
 
 func getVisitorHash(r *http.Request) string {
-	// This function remains unchanged, but is included for context
-	// as it's a small function in the same file.
 	ip := r.Header.Get("X-Forwarded-For")
 	if ip == "" {
 		ip, _, _ = net.SplitHostPort(r.RemoteAddr)
@@ -165,7 +163,6 @@ func startVisitorLogger(ctx context.Context) {
 
 func visitorTracker(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		// This function remains unchanged
 		visitorHash := getVisitorHash(r)
 		now := time.Now().Format(time.RFC3339)
 		pageURI := r.URL.RequestURI()
@@ -305,7 +302,7 @@ func main() {
 	if adminPass == "" {
 		log.Println("[I] [Main] ADMIN_PASSWORD not set. Generating a new random password.")
 		adminPass = generateRandomPassword(16)
-		if err := os.WriteFile("pwd.txt", []byte(adminPass), 0644); err != nil {
+		if err := os.WriteFile("pwd.txt", []byte(adminPass), 0600); err != nil {
 			log.Printf("[W] [Main] Could not write generated admin password to file: %v", err)
 		} else {
 			log.Println("[I] [Main] Generated admin password saved to pwd.txt")

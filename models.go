@@ -42,8 +42,6 @@ var (
 	}
 )
 
-// --- NEW STRUCTS FOR YAML ITEM DB ---
-
 // ItemDBEntry represents a single item entry in the YAML 'Body'.
 type ItemDBEntry struct {
 	ID            int             `yaml:"Id"`
@@ -66,8 +64,6 @@ type ItemDBFile struct {
 	Header map[string]interface{} `yaml:"Header"`
 	Body   []ItemDBEntry          `yaml:"Body"`
 }
-
-// --- END NEW STRUCTS ---
 
 type Item struct {
 	ID             int
@@ -119,7 +115,7 @@ type ItemSummary struct {
 }
 
 type ItemListing struct {
-	Price          int64  `json:"Price"` // <-- CHANGED
+	Price          int64  `json:"Price"`
 	Quantity       int    `json:"Quantity"`
 	StoreName      string `json:"StoreName"`
 	SellerName     string `json:"SellerName"`
@@ -298,7 +294,6 @@ type PlayerCountPageData struct {
 	HistoricalMaxActivePlayersTime string
 	PageTitle                      string
 
-	// --- NEW FIELDS ---
 	IntervalPeakActive     int
 	IntervalPeakActiveTime string
 	IntervalAvgActive      int
@@ -375,21 +370,19 @@ type WoeGuildClassRank struct {
 type WoeGuildRank struct {
 	GuildName      sql.NullString
 	GuildID        sql.NullInt64
-	MemberCount    int64 // <-- CHANGED
-	TotalKills     int64 // <-- CHANGED
-	TotalDeaths    int64 // <-- CHANGED
+	MemberCount    int64
+	TotalKills     int64
+	TotalDeaths    int64
 	TotalDamage    int64
 	TotalHealing   int64
-	TotalEmpKills  int64 // <-- CHANGED
-	TotalPoints    int64 // <-- CHANGED
+	TotalEmpKills  int64
+	TotalPoints    int64
 	KillDeathRatio float64
 }
 
-// ... (other structs) ...
-
-// WoeCharacterRank remains unchanged
+// WoeCharacterRank holds per-character WoE ranking data.
 type WoeCharacterRank struct {
-	Name         string // Now the primary identifier
+	Name         string
 	Class        string
 	GuildID      sql.NullInt64
 	GuildName    sql.NullString
@@ -497,7 +490,7 @@ type CharacterDetailPageData struct {
 	ClassImageURL        string
 	ActivityHistory      []CharacterChangelog // This will hold the paginated/searched list
 	DropHistory          []CharacterChangelog // This will hold the full drop list
-	ChangelogPagination  PaginationData       // <-- RENAMED (from ActivityPagination)
+	ChangelogPagination  PaginationData
 	PageTitle            string
 	Filter               template.URL
 	ChangelogSearchQuery string
@@ -669,8 +662,9 @@ type TradingPostPageData struct {
 	Filter         template.URL
 }
 
-func (tp TradingPost) CreatedAgo() string {
-	t, err := time.Parse(time.RFC3339, tp.CreatedAt)
+// timeAgo formats an RFC3339 timestamp as a human-readable relative time string.
+func timeAgo(rfc3339 string) string {
+	t, err := time.Parse(time.RFC3339, rfc3339)
 	if err != nil {
 		return "a while ago"
 	}
@@ -689,25 +683,8 @@ func (tp TradingPost) CreatedAgo() string {
 	return fmt.Sprintf("%d days ago", int(d.Hours()/24))
 }
 
-func (fi FlatTradingPostItem) CreatedAgo() string {
-	t, err := time.Parse(time.RFC3339, fi.CreatedAt)
-	if err != nil {
-		return "a while ago"
-	}
-
-	d := time.Since(t)
-	if d.Hours() < 1 {
-		m := int(d.Minutes())
-		if m < 1 {
-			return "just now"
-		}
-		return fmt.Sprintf("%d minutes ago", m)
-	}
-	if d.Hours() < 24 {
-		return fmt.Sprintf("%d hours ago", int(d.Hours()))
-	}
-	return fmt.Sprintf("%d days ago", int(d.Hours()/24))
-}
+func (tp TradingPost) CreatedAgo() string       { return timeAgo(tp.CreatedAt) }
+func (fi FlatTradingPostItem) CreatedAgo() string { return timeAgo(fi.CreatedAt) }
 
 func (fi FlatTradingPostItem) DisplayName() string {
 	if fi.NamePT.Valid && fi.NamePT.String != "" {
@@ -761,10 +738,10 @@ type DropStatsPageData struct {
 	PlayerStats     []DropStatPlayer
 	TotalDrops      int64
 	UniqueDropItems int64
-	ItemSortBy      string // <-- MODIFIED
-	ItemOrder       string // <-- MODIFIED
-	PlayerSortBy    string // <-- ADDED
-	PlayerOrder     string // <-- ADDED
+	ItemSortBy      string
+	ItemOrder       string
+	PlayerSortBy    string
+	PlayerOrder     string
 }
 
 // XPCalculatorPageData holds all data for the xp_calculator.html template
@@ -793,8 +770,6 @@ type PageViewSummary struct {
 	Path string
 	Hits int
 }
-
-// --- NEW: Structs for Global Search ---
 
 // GlobalSearchCharacterResult holds a single character result.
 type GlobalSearchCharacterResult struct {

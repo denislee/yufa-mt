@@ -6,11 +6,10 @@ import (
 	"fmt"
 	"io"
 	"log"
-	"sync" // Added
+	"sync"
 	"time"
 )
 
-// --- NEW ---
 // updateTimeCacheEntry holds a cached timestamp and its expiry.
 type updateTimeCacheEntry struct {
 	value  string
@@ -21,10 +20,8 @@ type updateTimeCacheEntry struct {
 var (
 	updateTimeCache      = make(map[string]updateTimeCacheEntry)
 	updateTimeCacheMutex sync.RWMutex
-	updateTimeCacheTTL   = 30 * time.Second // Cache for 30 seconds
+	updateTimeCacheTTL   = 30 * time.Second
 )
-
-// --- END NEW ---
 
 func generateRandomPassword(length int) string {
 	const chars = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
@@ -46,18 +43,16 @@ func GetLastUpdateTime(columnName, tableName string) string {
 	cacheKey := fmt.Sprintf("%s.%s", tableName, columnName)
 	now := time.Now()
 
-	// --- OPTIMIZATION: Check cache first (Read Lock) ---
+	// Check cache first (read lock)
 	updateTimeCacheMutex.RLock()
 	entry, found := updateTimeCache[cacheKey]
 	updateTimeCacheMutex.RUnlock()
 
 	if found && now.Before(entry.expiry) {
-		// Cache hit and not expired
 		return entry.value
 	}
-	// --- END OPTIMIZATION ---
 
-	// Cache miss or expired, run the query
+	// Cache miss or expired, query the database
 	var lastTimestamp sql.NullString
 	query := fmt.Sprintf("SELECT MAX(%s) FROM %s", columnName, tableName)
 	err := db.QueryRow(query).Scan(&lastTimestamp)
@@ -77,14 +72,13 @@ func GetLastUpdateTime(columnName, tableName string) string {
 		resultValue = "Never"
 	}
 
-	// --- OPTIMIZATION: Update cache (Write Lock) ---
+	// Update cache (write lock)
 	updateTimeCacheMutex.Lock()
 	updateTimeCache[cacheKey] = updateTimeCacheEntry{
 		value:  resultValue,
 		expiry: now.Add(updateTimeCacheTTL),
 	}
 	updateTimeCacheMutex.Unlock()
-	// --- END OPTIMIZATION ---
 
 	return resultValue
 }

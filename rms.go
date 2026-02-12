@@ -1,7 +1,6 @@
 package main
 
 import (
-	"crypto/tls"
 	"database/sql"
 	"fmt"
 	"io"
@@ -74,10 +73,14 @@ func getItemDetailsFromCache(itemID int) (*RMSItem, error) {
 	return &item, nil
 }
 
-func scrapeRODatabaseSearch(query string, slots int) ([]ItemSearchResult, error) {
+// Pre-compiled regexes for RO Database scraping
+var (
+	rmsSlotRegex  = regexp.MustCompile(`\s*\[\d+\]\s*`)
+	rmsIDNameRegex = regexp.MustCompile(`href="[^"]*/pt-BR/item/id/(\d+)"[^>]*>\s*([^<]+)\s*</a>`)
+)
 
-	reSlots := regexp.MustCompile(`\s*\[\d+\]\s*`)
-	searchQuery := reSlots.ReplaceAllString(query, " ")
+func scrapeRODatabaseSearch(query string, slots int) ([]ItemSearchResult, error) {
+	searchQuery := rmsSlotRegex.ReplaceAllString(query, " ")
 	searchQuery = strings.TrimSpace(searchQuery)
 
 	v := url.Values{}
@@ -91,12 +94,8 @@ func scrapeRODatabaseSearch(query string, slots int) ([]ItemSearchResult, error)
 	log.Printf("[I] [RODB/Search] Performing search for: '%s' (Original: '%s', Slots: %d)", searchQuery, query, slots)
 	log.Printf("[D] [RODB/Search] URL: %s", searchURL)
 
-	customTransport := &http.Transport{
-		TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
-	}
 	client := http.Client{
-		Timeout:   10 * time.Second,
-		Transport: customTransport,
+		Timeout: 10 * time.Second,
 	}
 	res, err := client.Get(searchURL)
 	if err != nil {
@@ -116,8 +115,7 @@ func scrapeRODatabaseSearch(query string, slots int) ([]ItemSearchResult, error)
 		return nil, fmt.Errorf("failed to read response body: %w", err)
 	}
 
-	idNameRegex := regexp.MustCompile(`href="[^"]*/pt-BR/item/id/(\d+)"[^>]*>\s*([^<]+)\s*</a>`)
-	matches := idNameRegex.FindAllStringSubmatch(string(body), -1)
+	matches := rmsIDNameRegex.FindAllStringSubmatch(string(body), -1)
 
 	if len(matches) == 0 {
 		log.Printf("[D] [RODB/Search] No item IDs found on the page for query '%s'.", query)

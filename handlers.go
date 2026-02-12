@@ -18,7 +18,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/agnivade/levenshtein" // <-- ADD THIS IMPORT
+	"github.com/agnivade/levenshtein"
 	"golang.org/x/sync/errgroup"
 )
 
@@ -119,7 +119,7 @@ var (
 			"nav_guilds":             "Guilds",
 			"nav_mvp_kills":          "MVP Kills",
 			"nav_woe_rankings":       "WoE Rankings",
-			"nav_woe_guild_by_class": "Guilds by Class", // <-- ADD THIS
+			"nav_woe_guild_by_class": "Guilds by Class",
 			// --- NEW for activity.html ---
 			"recent_market_activity": "Recent Market Activity",
 			"show_only_sold":         "Show only sold items",
@@ -440,7 +440,7 @@ var (
 			"top_richest_chars":   "Top Richest Characters",
 			"top_exp_chars":       "Top Characters by Exp",
 
-			"nav_toggle_theme": "Toggle Theme", // <-- ADD THIS
+			"nav_toggle_theme": "Toggle Theme",
 		},
 		"pt": {
 			"market_summary":         "Resumo do Mercado",
@@ -470,7 +470,7 @@ var (
 			"nav_guilds":             "Guilds",
 			"nav_mvp_kills":          "MVPs Mortos",
 			"nav_woe_rankings":       "Rankings WoE",
-			"nav_woe_guild_by_class": "Guilds por Classe", // <-- ADD THIS
+			"nav_woe_guild_by_class": "Guilds por Classe",
 			// --- NEW for activity.html ---
 			"recent_market_activity": "Atividade Recente do Mercado",
 			"show_only_sold":         "Mostrar apenas vendidos",
@@ -794,7 +794,7 @@ var (
 			"top_richest_chars":   "Top Personagens Ricos",
 			"top_exp_chars":       "Top Personagens por Exp",
 
-			"nav_toggle_theme": "Alternar Tema", // <-- ADD THIS
+			"nav_toggle_theme": "Alternar Tema",
 		},
 	}
 )
@@ -802,7 +802,7 @@ var (
 // (NOTE: The full content of the translations map is omitted for brevity,
 // but it is moved to the var block as shown.)
 
-// --- NEW: getTranslations returns the correct map ---
+// getTranslations returns the translation map for the given language.
 func getTranslations(lang string) map[string]string {
 	if trans, ok := translations[lang]; ok {
 		return trans
@@ -811,7 +811,7 @@ func getTranslations(lang string) map[string]string {
 	return translations["en"]
 }
 
-// --- NEW: getLang reads the language from the cookie ---
+// getLang reads the language preference from the cookie.
 func getLang(r *http.Request) string {
 	cookie, err := r.Cookie("lang")
 	if err != nil {
@@ -825,7 +825,7 @@ func getLang(r *http.Request) string {
 	return "pt"
 }
 
-// --- NEW: setLangHandler sets the cookie and redirects ---
+// setLangHandler sets the language cookie and redirects back.
 func setLangHandler(w http.ResponseWriter, r *http.Request) {
 	lang := r.URL.Query().Get("lang")
 	redirectURL := r.URL.Query().Get("redirect")
@@ -883,6 +883,8 @@ var (
 	reSlotRemover    = regexp.MustCompile(`\s*\[\d+\]\s*`)
 	dropMessageRegex = regexp.MustCompile(`'(.+)'\s+(got|stole)\s+(.+)`)
 	reItemFromDrop   = regexp.MustCompile(`(?:(?:\d+\s*x\s*)?'(.+?)'|.+\'s\s+(.+?)|(.+?))\s*(?:\(chance:.*)?$`)
+	aliasSanitizer   = regexp.MustCompile(`[^a-zA-Z0-9_]`)
+	reRefineRemover  = regexp.MustCompile(`\s*\+\d+\s*`)
 )
 
 const MvpKillCountOffset = 3
@@ -954,7 +956,7 @@ func buildItemSearchClause(searchQuery, tableAlias string) (string, []interface{
 		return "", nil, nil
 	}
 
-	alias := strings.Trim(regexp.MustCompile(`[^a-zA-Z0-9_]`).ReplaceAllString(tableAlias, ""), ".")
+	alias := strings.Trim(aliasSanitizer.ReplaceAllString(tableAlias, ""), ".")
 	if alias != "" {
 		alias += "."
 	}
@@ -3634,9 +3636,8 @@ func aboutHandler(w http.ResponseWriter, r *http.Request) {
 // This function remains unchanged but is shown for context.
 func findItemIDByName(itemName string, allowRetry bool, slots int) (sql.NullInt64, error) {
 	// 1. Clean the name
-	reRefine := regexp.MustCompile(`\s*\+\d+\s*`)
 	cleanItemName := reSlotRemover.ReplaceAllString(itemName, " ")
-	cleanItemName = reRefine.ReplaceAllString(cleanItemName, "")
+	cleanItemName = reRefineRemover.ReplaceAllString(cleanItemName, "")
 	cleanItemName = strings.TrimSpace(cleanItemName)
 	cleanItemName = sanitizeString(cleanItemName, itemSanitizer)
 
@@ -4826,7 +4827,7 @@ func fetchTradeResults(wg *sync.WaitGroup, results *[]GlobalSearchTradeResult, l
 	}
 }
 
-// --- NEW: globalSearchHandler ---
+// globalSearchHandler handles the cross-table search page.
 func globalSearchHandler(w http.ResponseWriter, r *http.Request) {
 	searchQuery := r.URL.Query().Get("q")
 
