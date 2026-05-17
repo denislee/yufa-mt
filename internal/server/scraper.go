@@ -80,8 +80,6 @@ var (
 	guildMasterRegex   = regexp.MustCompile(`\\"master\\":\\"([^"]+)\\",\\"members\\"`)
 	guildMembersRegex  = regexp.MustCompile(`\\"members\\":\[(.*?)\]\}`)
 	guildMemberName    = regexp.MustCompile(`\\"name\\":\\"([^"]+)\\",\\"base_level\\"`)
-	reRefineMid        = regexp.MustCompile(`\s(\+\d+)`)
-	reRefineStart      = regexp.MustCompile(`^(\+\d+)\s`)
 	guildIDRegex       = regexp.MustCompile(`/(\d+)$`)
 	mvpPlayerBlock     = regexp.MustCompile(`\\"name\\":\\"([^"]+)\\",\\"base_level\\".*?\\"mvp_kills\\":\[(.*?)]`)
 	mvpKillsRegex      = regexp.MustCompile(`{\\"mob_id\\":(\d+),\\"kills\\":(\d+)}`)
@@ -1342,93 +1340,153 @@ func scrapeZeny() {
 
 // in scraper.go
 
-// parseMarketItem extracts all item details from a goquery selection.
-// This helper function isolates the complex name-parsing logic from the main scraper loop.
-func parseMarketItem(itemSelection *goquery.Selection) (Item, bool) {
-	// --- 1. Get Base Name ---
-	baseItemName := strings.TrimSpace(itemSelection.Find("p.font-medium.truncate").Text()) // Guess: added font-medium
-	if baseItemName == "" {
-		baseItemName = strings.TrimSpace(itemSelection.Find("p.truncate").Text()) // Fallback to old
-	}
-	if baseItemName == "" {
-		return Item{}, false // No name, invalid item
-	}
+// The market page is server-rendered by Next.js, which embeds the full shop
+// listing as a JSON payload inside a `self.__next_f.push([1,"<chunkID>:[...]"])`
+// script tag. Parsing that payload is far more robust than chasing the
+// markup, which changes whenever the frontend is restyled.
 
-	// --- 2. Normalize Refinements (unchanged) ---
-	if match := reRefineMid.FindStringSubmatch(baseItemName); len(match) > 1 && !strings.HasSuffix(baseItemName, match[0]) {
-		cleanedName := strings.Replace(baseItemName, match[0], "", 1)
-		cleanedName = strings.Join(strings.Fields(cleanedName), " ") // Remove extra spaces
-		baseItemName = cleanedName + match[0]
-	} else if match := reRefineStart.FindStringSubmatch(baseItemName); len(match) > 1 {
-		cleanedName := strings.Replace(baseItemName, match[0], "", 1)
-		cleanedName = strings.Join(strings.Fields(cleanedName), " ") // Remove extra spaces
-		baseItemName = cleanedName + " " + match[1]
-	}
+type flightShop struct {
+	ID        int64        `json:"id"`
+	AccountID int64        `json:"account_id"`
+	CharID    int64        `json:"char_id"`
+	Map       string       `json:"map"`
+	X         int          `json:"x"`
+	Y         int          `json:"y"`
+	Title     string       `json:"title"`
+	Char      flightChar   `json:"char"`
+	Items     []flightItem `json:"items"`
+}
 
-	// --- 3. Extract ID and Card Names (NEW FIX) ---
-	var cardNames []string
-	idStr := ""
+type flightChar struct {
+	Name string `json:"name"`
+}
 
-	// Find all elements matching the "badge" structure you provided.
-	itemSelection.Find("div.inline-flex.items-center.rounded-full.border.font-semibold").Each(func(k int, sel *goquery.Selection) {
-		badgeText := strings.TrimSpace(sel.Text())
-		if badgeText == "" {
-			return
+type flightItem struct {
+	Index           int            `json:"index"`
+	CartInventoryID int64          `json:"cartinventory_id"`
+	Amount          int            `json:"amount"`
+	Price           int64          `json:"price"`
+	CartItem        flightCartItem `json:"cart_item"`
+}
+
+type flightCartItem struct {
+	NameID int            `json:"nameid"`
+	Refine int            `json:"refine"`
+	Item   flightItemMeta `json:"item"`
+}
+
+type flightItemMeta struct {
+	NameEnglish string  `json:"name_english"`
+	Slots       *int    `json:"slots"`
+	Card0Name   *string `json:"card0_name"`
+	Card1Name   *string `json:"card1_name"`
+	Card2Name   *string `json:"card2_name"`
+	Card3Name   *string `json:"card3_name"`
+}
+
+// extractMarketShops finds the Next.js Flight payload containing the market
+// listing and returns the decoded shops. Returns (nil, nil) if no payload was
+// found — callers should retry, since the page sometimes ships a loading
+// placeholder.
+func extractMarketShops(html string) ([]flightShop, error) {
+	const needle = `self.__next_f.push([1,"`
+	const end = `"])`
+	var payload string
+	for i := 0; ; {
+		s := strings.Index(html[i:], needle)
+		if s < 0 {
+			break
 		}
-
-		if strings.HasPrefix(badgeText, "ID: ") {
-			// It's the ID.
-			// Text might be "ID: 1095"
-			idStrWithJunk := strings.TrimPrefix(badgeText, "ID: ")
-			idStr = strings.Fields(idStrWithJunk)[0] // Get just the first part
-		} else {
-			// It's not an ID, so it must be a card or refinement.
-			// We'll append it to the name.
-			cardName := strings.TrimSpace(strings.TrimSuffix(badgeText, " Card"))
-			if cardName != "" {
-				cardNames = append(cardNames, cardName)
-			}
+		s += i + len(needle)
+		e := strings.Index(html[s:], end)
+		if e < 0 {
+			break
 		}
-	})
-	// --- END NEW FIX ---
-
-	// --- 4. Finalize Name ---
-	finalItemName := baseItemName
-	if len(cardNames) > 0 {
-		wrapped := make([]string, len(cardNames))
-		for i, c := range cardNames {
-			wrapped[i] = fmt.Sprintf(" [%s]", c)
+		chunk := html[s : s+e]
+		i = s + e + len(end)
+		if strings.Contains(chunk, `account_id`) && strings.Contains(chunk, `cart_item`) {
+			payload = chunk
+			break
 		}
-		// We join and then clean up, just in case the base name
-		// already had a refinement that was *also* picked up as a badge.
-		// e.g., "Manteau [1] +7" + " [+7]" becomes "Manteau [1] +7 [+7]"
-		// This is hard to de-duplicate, but appending is safer.
-		finalItemName = fmt.Sprintf("%s%s", baseItemName, strings.Join(wrapped, ""))
 	}
-
-	// --- 5. Get Other Details ---
-	quantityStr := strings.TrimSuffix(strings.TrimSpace(itemSelection.Find("span[class*='text-muted-foreground']").Text()), "x")
-	priceStr := strings.TrimSpace(itemSelection.Find("span[class*='text-green']").Text())
-
-	if priceStr == "" {
-		priceStr = strings.TrimSpace(itemSelection.Find("span.text-xs.font-medium.text-green-600").Text())
+	if payload == "" {
+		return nil, nil
 	}
-	if priceStr == "" {
-		return Item{}, false // No price, invalid item
+	// The payload is the body of a JavaScript string literal. Re-quote it
+	// and let JSON's unescaper handle \", \\, \n, \uXXXX, etc.
+	var unescaped string
+	if err := json.Unmarshal([]byte(`"`+payload+`"`), &unescaped); err != nil {
+		return nil, fmt.Errorf("unescape flight payload: %w", err)
 	}
-
-	quantity, _ := strconv.Atoi(quantityStr)
-	if quantity == 0 {
-		quantity = 1 // Default to 1 if parsing fails or 0
+	// Strip the leading "<chunkID>:" prefix to get the bare JSON array.
+	if colon := strings.IndexByte(unescaped, ':'); colon >= 0 {
+		unescaped = unescaped[colon+1:]
 	}
-	itemID, _ := strconv.Atoi(idStr) // idStr is now correctly populated
+	unescaped = strings.TrimSpace(unescaped)
+	var shops []flightShop
+	if err := json.Unmarshal([]byte(unescaped), &shops); err != nil {
+		return nil, fmt.Errorf("decode market JSON: %w", err)
+	}
+	return shops, nil
+}
 
-	return Item{
-		Name:     finalItemName,
-		ItemID:   itemID,
-		Quantity: quantity,
-		Price:    priceStr,
-	}, true
+// buildMarketItemName reconstructs the historical item-name format
+// "<name> [<slots>] +<refine> [<card>] ..." so existing DB rows and queries
+// keep their meaning across the rewrite.
+func buildMarketItemName(fi flightItem) string {
+	name := fi.CartItem.Item.NameEnglish
+	if name == "" {
+		return ""
+	}
+	if s := fi.CartItem.Item.Slots; s != nil && *s > 0 {
+		name = fmt.Sprintf("%s [%d]", name, *s)
+	}
+	if fi.CartItem.Refine > 0 {
+		name = fmt.Sprintf("%s +%d", name, fi.CartItem.Refine)
+	}
+	for _, cn := range []*string{
+		fi.CartItem.Item.Card0Name,
+		fi.CartItem.Item.Card1Name,
+		fi.CartItem.Item.Card2Name,
+		fi.CartItem.Item.Card3Name,
+	} {
+		if cn == nil {
+			continue
+		}
+		c := strings.TrimSpace(strings.TrimSuffix(*cn, " Card"))
+		if c == "" {
+			continue
+		}
+		name = fmt.Sprintf("%s [%s]", name, c)
+	}
+	return name
+}
+
+// formatMarketPrice mirrors the historical price-string format ("1,234,567z")
+// so the lowest-price comparisons in scrapeData keep matching old rows.
+func formatMarketPrice(p int64) string {
+	s := strconv.FormatInt(p, 10)
+	n := len(s)
+	if n <= 3 {
+		return s + "z"
+	}
+	var b strings.Builder
+	b.Grow(n + n/3 + 1)
+	first := n % 3
+	if first > 0 {
+		b.WriteString(s[:first])
+		if n > first {
+			b.WriteByte(',')
+		}
+	}
+	for i := first; i < n; i += 3 {
+		b.WriteString(s[i : i+3])
+		if i+3 < n {
+			b.WriteByte(',')
+		}
+	}
+	b.WriteByte('z')
+	return b.String()
 }
 
 // in scraper.go
@@ -1489,7 +1547,6 @@ func scrapeData() {
 
 	var htmlContent string
 	var err error
-	var doc *goquery.Document
 	scrapedItemsByName := make(map[string][]Item)
 	activeSellers := make(map[string]bool)
 
@@ -1502,59 +1559,52 @@ func scrapeData() {
 			continue
 		}
 
-		doc, err = goquery.NewDocumentFromReader(strings.NewReader(htmlContent))
-		if err != nil {
-			log.Printf("[E] [Scraper/Market] Failed to parse HTML: %v", err)
-			return
+		shops, decodeErr := extractMarketShops(htmlContent)
+		if decodeErr != nil {
+			log.Printf("[E] [Scraper/Market] Failed to decode flight payload (attempt %d/%d): %v", attempt, maxParseRetries, decodeErr)
+			time.Sleep(parseRetryDelay)
+			continue
 		}
 
-		// Reset maps for this attempt
 		scrapedItemsByName = make(map[string][]Item)
 		activeSellers = make(map[string]bool)
 
-		// Parse HTML structure
-		doc.Find("svg.lucide-user").Each(func(i int, s *goquery.Selection) {
-			card := s.Closest("div.border")
-			if card.Length() == 0 {
-				card = s.Closest("article")
-				if card.Length() == 0 {
-					return
-				}
+		for _, shop := range shops {
+			sellerName := strings.TrimSpace(shop.Char.Name)
+			if sellerName == "" {
+				continue
 			}
+			activeSellers[sellerName] = true
 
-			shopName := strings.TrimSpace(card.Find("div.font-semibold.tracking-tight.line-clamp-1.text-lg").First().Text())
-			if shopName == "" {
-				shopName = strings.TrimSpace(card.Find("div.font-semibold").First().Text())
-			}
-			if shopName == "" {
-				shopName = strings.TrimSpace(card.Find("h3").First().Text())
-			}
+			shopName := strings.TrimSpace(shop.Title)
 			if shopName == "" {
 				shopName = "(empty)"
 			}
+			mapName := strings.TrimSpace(shop.Map)
+			mapCoords := fmt.Sprintf("(%d,%d)", shop.X, shop.Y)
 
-			sellerName := strings.TrimSpace(s.Next().Text())
-			mapName := strings.TrimSpace(card.Find("svg.lucide-map-pin").Next().Text())
-			mapCoordinates := strings.TrimSpace(card.Find("svg.lucide-copy").Next().Text())
-
-			if sellerName != "" {
-				activeSellers[sellerName] = true
-
-				card.Find(".flex.items-center.space-x-2").Each(func(j int, itemSelection *goquery.Selection) {
-					item, ok := parseMarketItem(itemSelection)
-					if !ok {
-						return
-					}
-
-					item.StoreName = shopName
-					item.SellerName = sellerName
-					item.MapName = mapName
-					item.MapCoordinates = mapCoordinates
-
-					scrapedItemsByName[item.Name] = append(scrapedItemsByName[item.Name], item)
-				})
+			for _, fi := range shop.Items {
+				name := buildMarketItemName(fi)
+				if name == "" {
+					continue
+				}
+				qty := fi.Amount
+				if qty <= 0 {
+					qty = 1
+				}
+				item := Item{
+					Name:           name,
+					ItemID:         fi.CartItem.NameID,
+					Quantity:       qty,
+					Price:          formatMarketPrice(fi.Price),
+					StoreName:      shopName,
+					SellerName:     sellerName,
+					MapName:        mapName,
+					MapCoordinates: mapCoords,
+				}
+				scrapedItemsByName[name] = append(scrapedItemsByName[name], item)
 			}
-		})
+		}
 
 		if len(scrapedItemsByName) > 0 {
 			break // Successful parse
