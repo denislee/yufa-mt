@@ -289,7 +289,7 @@ func logCharacterActivity(changelogStmt *sql.Stmt, charName string, description 
 
 func scrapeAndStorePlayerCount() {
 	log.Println("[I] [Scraper/PlayerCount] Checking player and seller count...")
-	const url = "https://projetoyufa.com/info"
+	const url = "https://projetoyufa.com/en/info"
 
 	// Use the shared client's getPage method.
 	bodyContent, err := scraperClient.getPage(url, "[Counter]")
@@ -315,39 +315,35 @@ func scrapeAndStorePlayerCount() {
 	var onlineCount int
 	var found bool
 
-	// Iterate over all <p> tags
-	doc.Find("p").Each(func(i int, s *goquery.Selection) {
-		if found { // Stop searching once we have a valid match
+	doc.Find("span").Each(func(i int, s *goquery.Selection) {
+		if found {
 			return
 		}
 
 		text := s.Text()
 		matches := onlinePlayerRegex.FindStringSubmatch(text)
 
-		// matches[0] will be "Online 100"
-		// matches[1] will be "100"
 		if len(matches) > 1 {
 			if enablePlayerCountDebugLogs {
-				log.Printf("[D] [Scraper/PlayerCount] Found <p> tag text matching regex: '%s'", text)
+				log.Printf("[D] [Scraper/PlayerCount] Found <span> tag text matching regex: '%s'", text)
 				log.Printf("[D] [Scraper/PlayerCount] Regex captured number string: '%s'", matches[1])
 			}
 
 			if num, err := strconv.Atoi(matches[1]); err == nil {
 				onlineCount = num
-				found = true // Set found to true to stop the loop
+				found = true
 				if enablePlayerCountDebugLogs {
 					log.Printf("[D] [Scraper/PlayerCount] Parsed onlineCount: %d", onlineCount)
 				}
 			}
 		} else if enablePlayerCountDebugLogs && strings.HasPrefix(text, "Online") {
-			// This debug log helps if the structure changes slightly
-			log.Printf("[D] [Scraper/PlayerCount] Found <p> tag starting with 'Online' but it did NOT match regex: '%s'", text)
+			log.Printf("[D] [Scraper/PlayerCount] Found <span> tag starting with 'Online' but it did NOT match regex: '%s'", text)
 		}
 	})
 	// --- END OF UPDATE ---
 
 	if !found {
-		log.Println("[W] [Scraper/PlayerCount] Could not find player count on the info page after successful load. The selector `p` with text matching regex 'Online\\s+(\\d+)' may need updating.")
+		log.Println("[W] [Scraper/PlayerCount] Could not find player count on the info page after successful load. The selector `span` with text matching regex 'Online\\s+(\\d+)' may need updating.")
 		return
 	}
 
