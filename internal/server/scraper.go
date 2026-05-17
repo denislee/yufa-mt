@@ -1248,7 +1248,8 @@ func scrapeZeny() {
 
 			var bodyContent string
 			var err error
-			var numRows int
+			var validRows int
+			parseFailed := false
 
 			for attempt := 1; attempt <= maxParseRetries; attempt++ {
 				url := fmt.Sprintf("https://projetoyufa.com/rankings/zeny?page=%d", pageIndex)
@@ -1262,21 +1263,18 @@ func scrapeZeny() {
 				doc, err := goquery.NewDocumentFromReader(strings.NewReader(bodyContent))
 				if err != nil {
 					log.Printf("[E] [Scraper/Zeny] Failed to parse body for page %d: %v", pageIndex, err)
-					// Don't retry on parse error, just fail this page
-					numRows = -1 // Mark as failed
+					parseFailed = true
 					break
 				}
 
-				rows := doc.Find("table tbody tr")
-				numRows = rows.Length()
+				// The Next.js page is sometimes served mid-stream: only a few rows
+				// are fully rendered in the visible table while remaining cells are
+				// emitted as <table hidden> fragments awaiting client-side hydration.
+				// Treat that as a partial response and retry.
+				partialStream := doc.Find("table[hidden]").Length() > 0
 
-				if numRows == 0 {
-					// --- THIS IS THE NEW LOGIC ---
-					log.Printf("[W] [Scraper/Zeny] Page %d returned 0 zeny rows on parse attempt %d/%d. Retrying...", pageIndex, attempt, maxParseRetries)
-					time.Sleep(parseRetryDelay)
-					continue // Try fetching and parsing again
-				}
-
+				rows := doc.Find("table:not([hidden]) tbody tr")
+				pageZeny := make(map[string]int64)
 				rows.Each(func(i int, s *goquery.Selection) {
 					cells := s.Find("td")
 					if cells.Length() < 3 {
@@ -1306,22 +1304,40 @@ func scrapeZeny() {
 						return
 					}
 
-					mu.Lock()
-					allZenyInfo[nameStr] = zenyVal
-					mu.Unlock()
+					pageZeny[nameStr] = zenyVal
 				})
-				// --- End parsing logic ---
+				validRows = len(pageZeny)
 
-				// Success, break from retry loop
+				if validRows == 0 {
+					log.Printf("[W] [Scraper/Zeny] Page %d returned 0 zeny rows on parse attempt %d/%d. Retrying...", pageIndex, attempt, maxParseRetries)
+					time.Sleep(parseRetryDelay)
+					continue
+				}
+
+				// On any non-last page we expect a full 10 rows. If we got fewer
+				// AND the streaming marker is present, the page was served partial.
+				if partialStream && pageIndex < lastPage && validRows < 10 {
+					log.Printf("[W] [Scraper/Zeny] Page %d served as partial stream (%d valid rows, hidden fragments present) on attempt %d/%d. Retrying...", pageIndex, validRows, attempt, maxParseRetries)
+					time.Sleep(parseRetryDelay)
+					continue
+				}
+
+				mu.Lock()
+				for name, zenyVal := range pageZeny {
+					allZenyInfo[name] = zenyVal
+				}
+				mu.Unlock()
+
 				break
 			}
 
-			// Log final status for this page
-			if numRows > 0 {
-				log.Printf("[D] [Scraper/Zeny] Scraped page %d/%d successfully.", pageIndex, lastPage)
-			} else if numRows == 0 {
+			if parseFailed {
+				// Already logged above.
+			} else if validRows > 0 {
+				log.Printf("[D] [Scraper/Zeny] Scraped page %d/%d successfully (%d rows).", pageIndex, lastPage, validRows)
+			} else {
 				log.Printf("[E] [Scraper/Zeny] Failed to scrape page %d/%d after all retries.", pageIndex, lastPage)
-			} // (numRows == -1 was logged already)
+			}
 		}(page)
 	}
 
