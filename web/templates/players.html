@@ -7,6 +7,8 @@
     
     {{/* --- ADD ALL 3 SCRIPTS FROM THE "IMPORTANT REMINDER" HERE --- */}}
     <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://static.divine-pride.net" crossorigin>
+    <link rel="stylesheet" href="/static/app.css">
     <script>
         tailwind.config = { darkMode: 'class' }
     </script>
@@ -22,13 +24,7 @@
     <script src="https://cdn.jsdelivr.net/npm/date-fns@3/index.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-annotation@3.0.1/dist/chartjs-plugin-annotation.min.js"></script>
-    <style>
-        html { font-size: 100%; }
-        .container {
-            max-width: 95% !important;
-        }
-    </style>
-</head>
+    </head>
 <body class="bg-gray-100 dark:bg-gray-900 text-gray-800 dark:text-gray-200 text-sm sm:text-base">
 
     {{template "navbar.html" .}}

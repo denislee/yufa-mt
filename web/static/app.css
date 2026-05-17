@@ -1,0 +1,136 @@
+/* yufa-mt UX polish — sits on top of Tailwind. Keep small and snappy. */
+
+:root {
+    --ymt-container: 1400px;
+    --ymt-font-sans: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont,
+        "Segoe UI", Inter, Roboto, "Helvetica Neue", Arial, sans-serif;
+    --ymt-font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+
+    color-scheme: light dark;
+}
+
+/* ---------- Base typography ---------- */
+html {
+    font-size: 15px;
+    -webkit-text-size-adjust: 100%;
+    text-size-adjust: 100%;
+    scroll-behavior: smooth;
+}
+
+body {
+    font-family: var(--ymt-font-sans);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+    font-feature-settings: "kern", "liga", "tnum";
+    line-height: 1.55;
+}
+
+code, pre, kbd, samp, [data-price] {
+    font-family: var(--ymt-font-mono);
+    font-variant-numeric: tabular-nums;
+}
+
+/* Tabular figures for numeric tables — keeps columns aligned */
+table td, table th {
+    font-variant-numeric: tabular-nums;
+}
+
+/* ---------- Layout: saner container ----------
+   The old `.container { max-width: 95% !important }` made huge monitors
+   uncomfortable to read. Cap at 1400px but stay fluid on small screens. */
+body .container,
+body .container.mx-auto {
+    max-width: min(1400px, 100% - 1.5rem) !important;
+    margin-left: auto !important;
+    margin-right: auto !important;
+}
+
+/* ---------- Focus: visible, not loud ---------- */
+:focus-visible {
+    outline: 2px solid #6366f1; /* indigo-500 */
+    outline-offset: 2px;
+    border-radius: 4px;
+}
+.dark :focus-visible {
+    outline-color: #818cf8; /* indigo-400 */
+}
+
+/* ---------- Links and buttons: subtle transitions ---------- */
+a, button, summary, [role="button"] {
+    transition: color 120ms ease, background-color 120ms ease,
+        border-color 120ms ease, opacity 120ms ease;
+}
+
+/* ---------- Tables: rounded, hairline borders ---------- */
+table thead th {
+    position: sticky;
+    top: 0;
+    background-clip: padding-box;
+}
+table tbody tr {
+    transition: background-color 100ms ease;
+}
+
+/* ---------- Cards/panels: softer shadow ---------- */
+.shadow,
+.shadow-md,
+.shadow-lg {
+    box-shadow:
+        0 1px 2px rgba(15, 23, 42, 0.04),
+        0 1px 3px rgba(15, 23, 42, 0.06) !important;
+}
+.dark .shadow,
+.dark .shadow-md,
+.dark .shadow-lg {
+    box-shadow:
+        0 1px 2px rgba(0, 0, 0, 0.35),
+        0 1px 3px rgba(0, 0, 0, 0.45) !important;
+}
+
+/* ---------- Scrollbars: thin and theme-aware ---------- */
+* {
+    scrollbar-width: thin;
+    scrollbar-color: rgba(100, 116, 139, 0.4) transparent;
+}
+*::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+}
+*::-webkit-scrollbar-thumb {
+    background: rgba(100, 116, 139, 0.35);
+    border-radius: 8px;
+    border: 2px solid transparent;
+    background-clip: padding-box;
+}
+*::-webkit-scrollbar-thumb:hover {
+    background: rgba(100, 116, 139, 0.6);
+    background-clip: padding-box;
+    border: 2px solid transparent;
+}
+*::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+/* ---------- Pixel-art item icons: keep crisp ---------- */
+img[src*="divine-pride.net"],
+img[src*="static.wikia"] {
+    image-rendering: pixelated;
+    image-rendering: -moz-crisp-edges;
+    image-rendering: crisp-edges;
+}
+
+/* ---------- Reduced motion ---------- */
+@media (prefers-reduced-motion: reduce) {
+    html { scroll-behavior: auto; }
+    *, *::before, *::after {
+        transition-duration: 0ms !important;
+        animation-duration: 0ms !important;
+    }
+}
+
+/* ---------- Print: drop chrome ---------- */
+@media print {
+    nav, .no-print { display: none !important; }
+    body { background: white !important; color: black !important; }
+}

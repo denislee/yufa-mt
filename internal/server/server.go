@@ -14,10 +14,13 @@ import (
 	"syscall"
 	"time"
 
+	"io/fs"
+
 	"github.com/denislee/yufa-mt/internal/config"
 	"github.com/denislee/yufa-mt/internal/i18n"
 	"github.com/denislee/yufa-mt/internal/middleware"
 	"github.com/denislee/yufa-mt/internal/visitor"
+	"github.com/denislee/yufa-mt/web"
 )
 
 // appConfig holds the validated config loaded by cmd/server/main.go and
@@ -58,6 +61,14 @@ func registerRoutes() *http.ServeMux {
 	mux.HandleFunc("/stats/market", visitorTracker(marketStatsHandler))
 	mux.HandleFunc("/stats/characters", visitorTracker(characterStatsHandler))
 
+	// --- Static Assets ---
+	// Embedded under web/static; served at /static/ with long-cache headers.
+	staticFS, err := fs.Sub(web.Static, "static")
+	if err != nil {
+		log.Fatalf("[F] [HTTP] static fs: %v", err)
+	}
+	mux.Handle("/static/", http.StripPrefix("/static/", cacheStatic(http.FileServer(http.FS(staticFS)))))
+
 	// --- Admin Routes ---
 	adminRouter := registerAdminRoutes()
 
@@ -66,6 +77,15 @@ func registerRoutes() *http.ServeMux {
 	mux.Handle("/admin/", middleware.BasicAuth(adminUser, adminPass, http.StripPrefix("/admin", adminRouter)))
 
 	return mux
+}
+
+// cacheStatic adds long-lived cache headers to embedded static assets so
+// the CSS file is only fetched once per visitor.
+func cacheStatic(h http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Cache-Control", "public, max-age=86400")
+		h.ServeHTTP(w, r)
+	})
 }
 
 // registerAdminRoutes creates a sub-router for all admin-facing endpoints.
