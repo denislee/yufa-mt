@@ -31,11 +31,13 @@ go.work.sum
 # .idea/
 # .vscode/
 
+# Runtime state (mutable; never committed). Seeds live under data/seed/.
+data/runtime/
+# legacy locations
 data/market_data.db*
 data/pwd.txt
 data/all.txt
 data/capture.out
-# legacy locations
 market_data.db*
 pwd.txt
 all.txt

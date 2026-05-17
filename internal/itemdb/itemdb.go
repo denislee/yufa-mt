@@ -6,8 +6,8 @@ package itemdb
 import (
 	"database/sql"
 	"encoding/json"
+	"io/fs"
 	"log"
-	"os"
 
 	"gopkg.in/yaml.v2"
 )
@@ -35,22 +35,22 @@ type File struct {
 	Body   []Entry        `yaml:"Body"`
 }
 
-// DefaultFiles is the list of YAML files this app expects under data/.
+// DefaultFiles is the list of YAML files this app expects under seed/.
 var DefaultFiles = []string{
-	"data/item_db_usable.yml",
-	"data/item_db_etc.yml",
-	"data/item_db_equip.yml",
+	"seed/item_db_usable.yml",
+	"seed/item_db_etc.yml",
+	"seed/item_db_equip.yml",
 }
 
-// Populate reads filenames, parses them as item_db YAML, and upserts the
-// rows into internal_item_db on db. Missing or malformed files are logged
-// and skipped rather than treated as fatal — the rest of the app degrades
-// gracefully when items are absent.
-func Populate(db *sql.DB, filenames []string) error {
+// Populate reads filenames from seedFS, parses them as item_db YAML, and
+// upserts the rows into internal_item_db on db. Missing or malformed files
+// are logged and skipped rather than treated as fatal — the rest of the
+// app degrades gracefully when items are absent.
+func Populate(db *sql.DB, seedFS fs.FS, filenames []string) error {
 	var all []Entry
 	for _, fn := range filenames {
 		log.Printf("[D] [ItemDB] Parsing file: %s", fn)
-		data, err := os.ReadFile(fn)
+		data, err := fs.ReadFile(seedFS, fn)
 		if err != nil {
 			log.Printf("[W] [ItemDB] Could not read file %s: %v. Skipping.", fn, err)
 			continue

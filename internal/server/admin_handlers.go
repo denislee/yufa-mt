@@ -67,7 +67,7 @@ func getDashboardStats(stats *AdminDashboardData) error {
 	runQuery := func(query string, target *int) func() error {
 		return func() error {
 			var count sql.NullInt64
-			if err := db.QueryRow(query).Scan(&count); err != nil {
+			if err := srv.db.QueryRow(query).Scan(&count); err != nil {
 				log.Printf("[W] [Admin/Stats] Dashboard stats query failed (%s): %v", query, err)
 				return err
 			}
@@ -105,7 +105,7 @@ func getDashboardStats(stats *AdminDashboardData) error {
 
 // getDashboardPageVisitCounts populates the page view summary.
 func getDashboardPageVisitCounts(stats *AdminDashboardData) error {
-	rows, err := db.Query(`
+	rows, err := srv.db.Query(`
 		SELECT page_path, COUNT(page_path) as Cnt
 		FROM page_views
 		GROUP BY page_path
@@ -130,7 +130,7 @@ func getDashboardPageVisitCounts(stats *AdminDashboardData) error {
 
 // getDashboardGuilds populates the guild list for the emblem editor.
 func getDashboardGuilds(stats *AdminDashboardData) error {
-	guildRows, err := db.Query("SELECT name, COALESCE(emblem_url, '') FROM guilds ORDER BY name ASC")
+	guildRows, err := srv.db.Query("SELECT name, COALESCE(emblem_url, '') FROM guilds ORDER BY name ASC")
 	if err != nil {
 		return fmt.Errorf("could not query for guild list for admin page: %w", err)
 	}
@@ -149,7 +149,7 @@ func getDashboardGuilds(stats *AdminDashboardData) error {
 
 // getDashboardPageViews populates the recent page views and analytics.
 func getDashboardPageViews(r *http.Request, stats *AdminDashboardData) {
-	err := db.QueryRow(`
+	err := srv.db.QueryRow(`
 		SELECT page_path, COUNT(page_path) as Cnt
 		FROM page_views
 		GROUP BY page_path
@@ -168,7 +168,9 @@ func getDashboardPageViews(r *http.Request, stats *AdminDashboardData) {
 		page = 1
 	}
 	var totalViews int
-	db.QueryRow("SELECT COUNT(*) FROM page_views").Scan(&totalViews)
+	if err := srv.db.QueryRow("SELECT COUNT(*) FROM page_views").Scan(&totalViews); err != nil {
+		log.Printf("[W] [Admin/Stats] Could not query total page views: %v", err)
+	}
 	stats.PageViewsTotal = totalViews
 	stats.PageViewsTotalPages = (totalViews + viewsPerPage - 1) / viewsPerPage
 	stats.PageViewsCurrentPage = page
@@ -181,7 +183,7 @@ func getDashboardPageViews(r *http.Request, stats *AdminDashboardData) {
 		stats.PageViewsNextPage = page + 1
 	}
 	offset := (page - 1) * viewsPerPage
-	viewRows, err := db.Query(`SELECT page_path, view_timestamp, visitor_hash FROM page_views ORDER BY view_timestamp DESC LIMIT ? OFFSET ?`, viewsPerPage, offset)
+	viewRows, err := srv.db.Query(`SELECT page_path, view_timestamp, visitor_hash FROM page_views ORDER BY view_timestamp DESC LIMIT ? OFFSET ?`, viewsPerPage, offset)
 	if err != nil {
 		log.Printf("[W] [Admin/Stats] Could not query for recent page views: %v", err)
 		return
@@ -208,7 +210,9 @@ func getDashboardTradingPosts(r *http.Request, stats *AdminDashboardData) {
 		tpPage = 1
 	}
 	var totalPosts int
-	db.QueryRow("SELECT COUNT(*) FROM trading_posts").Scan(&totalPosts)
+	if err := srv.db.QueryRow("SELECT COUNT(*) FROM trading_posts").Scan(&totalPosts); err != nil {
+		log.Printf("[W] [Admin/Stats] Could not query total trading posts: %v", err)
+	}
 	stats.TradingPostTotal = totalPosts
 	stats.TradingPostTotalPages = (totalPosts + postsPerPage - 1) / postsPerPage
 	stats.TradingPostCurrentPage = tpPage
@@ -222,7 +226,7 @@ func getDashboardTradingPosts(r *http.Request, stats *AdminDashboardData) {
 	}
 	tpOffset := (tpPage - 1) * postsPerPage
 
-	postRows, err := db.Query(`SELECT id, post_type, character_name, contact_info, created_at, notes FROM trading_posts ORDER BY created_at DESC LIMIT ? OFFSET ?`, postsPerPage, tpOffset)
+	postRows, err := srv.db.Query(`SELECT id, post_type, character_name, contact_info, created_at, notes FROM trading_posts ORDER BY created_at DESC LIMIT ? OFFSET ?`, postsPerPage, tpOffset)
 	if err != nil {
 		log.Printf("[W] [Admin/Stats] Admin Trading Post query error: %v", err)
 		return
@@ -248,7 +252,7 @@ func getDashboardTradingPosts(r *http.Request, stats *AdminDashboardData) {
 			SELECT post_id, item_name, quantity, price_zeny, price_rmt, refinement, card1 
 			FROM trading_post_items WHERE post_id IN (%s)
 		`, placeholders)
-		itemRows, _ := db.Query(itemQuery, postIDs...)
+		itemRows, _ := srv.db.Query(itemQuery, postIDs...)
 		if itemRows != nil {
 			defer itemRows.Close()
 			for itemRows.Next() {
@@ -274,7 +278,7 @@ func performRMSCacheSearch(r *http.Request, stats *AdminDashboardData) {
 	}
 
 	likeQuery := "%" + strings.ReplaceAll(rmsQuery, " ", "%") + "%"
-	searchRows, err := db.Query(`
+	searchRows, err := srv.db.Query(`
 		SELECT item_id, name, name_pt 
 		FROM internal_item_db 
 		WHERE name LIKE ? OR name_pt LIKE ?
@@ -392,6 +396,14 @@ func getAdminDashboardData(r *http.Request) (AdminDashboardData, error) {
 		return nil
 	})
 
+	// Scrape times (each hits its own SQLite MAX() query, cached for 30s
+	// inside GetLastUpdateTime). Run them inside the errgroup too.
+	var lastMarket, lastPlayer, lastChar, lastGuild string
+	g.Go(func() error { lastMarket = GetLastScrapeTime(); return nil })
+	g.Go(func() error { lastPlayer = GetLastPlayerCountTime(); return nil })
+	g.Go(func() error { lastChar = GetLastCharacterScrapeTime(); return nil })
+	g.Go(func() error { lastGuild = GetLastGuildScrapeTime(); return nil })
+
 	if mainErr := g.Wait(); mainErr != nil {
 		return stats, mainErr
 	}
@@ -432,10 +444,10 @@ func getAdminDashboardData(r *http.Request) (AdminDashboardData, error) {
 	stats.ChatNextPage = chatR.ChatNextPage
 	stats.ChatMessages = chatR.ChatMessages
 
-	stats.LastMarketScrape = GetLastScrapeTime()
-	stats.LastPlayerCountScrape = GetLastPlayerCountTime()
-	stats.LastCharacterScrape = GetLastCharacterScrapeTime()
-	stats.LastGuildScrape = GetLastGuildScrapeTime()
+	stats.LastMarketScrape = lastMarket
+	stats.LastPlayerCountScrape = lastPlayer
+	stats.LastCharacterScrape = lastChar
+	stats.LastGuildScrape = lastGuild
 
 	return stats, nil
 }
@@ -602,16 +614,16 @@ func adminCacheActionHandler(w http.ResponseWriter, r *http.Request) {
 	switch action {
 	case "clear":
 		log.Println("[I] [Admin] Admin triggered internal item DB clear.")
-		_, err := db.Exec("DELETE FROM internal_item_db")
+		_, err := srv.db.Exec("DELETE FROM internal_item_db")
 		if err != nil {
-			msg = "Error clearing internal item db."
+			msg = "Error clearing internal item srv.db."
 			log.Printf("[E] [Admin] Failed to clear internal_item_db: %v", err)
 		} else {
 			msg = "Internal item db cleared successfully."
 		}
 	case "drop":
 		log.Println("[I] [Admin] Admin triggered internal item DB table drop.")
-		_, err := db.Exec("DROP TABLE IF EXISTS internal_item_db")
+		_, err := srv.db.Exec("DROP TABLE IF EXISTS internal_item_db")
 		if err != nil {
 			msg = "Error dropping internal item db table."
 			log.Printf("[E] [Admin] Failed to drop internal_item_db table: %v", err)
@@ -650,7 +662,7 @@ func adminUpdateGuildEmblemHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	result, err := db.Exec("UPDATE guilds SET emblem_url = ? WHERE name = ?", emblemURL, guildName)
+	result, err := srv.db.Exec("UPDATE guilds SET emblem_url = ? WHERE name = ?", emblemURL, guildName)
 	if err != nil {
 		log.Printf("[E] [Admin] Failed to update emblem for guild '%s': %v", guildName, err)
 		msg = "Database error occurred."
@@ -676,7 +688,7 @@ func adminClearLastActiveHandler(w http.ResponseWriter, r *http.Request) {
 
 	zeroTime := time.Time{}.Format(time.RFC3339)
 
-	result, err := db.Exec("UPDATE characters SET last_active = ?", zeroTime)
+	result, err := srv.db.Exec("UPDATE characters SET last_active = ?", zeroTime)
 	if err != nil {
 		log.Printf("[E] [Admin] Failed to clear last_active times: %v", err)
 		msg = "Database error while clearing activity times."
@@ -695,7 +707,7 @@ func adminClearMvpKillsHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var msg string
-	result, err := db.Exec("DELETE FROM character_mvp_kills")
+	result, err := srv.db.Exec("DELETE FROM character_mvp_kills")
 	if err != nil {
 		log.Printf("[E] [Admin] Failed to clear MVP kills table: %v", err)
 		msg = "Database error while clearing MVP kills."
@@ -728,7 +740,7 @@ func adminDeleteVisitorViewsHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	tx, err := db.Begin()
+	tx, err := srv.db.Begin()
 	if err != nil {
 		log.Printf("[E] [Admin] Failed to begin transaction for deleting visitor: %v", err)
 		http.Redirect(w, r, adminRedirectURL(r, "Database error occurred."), http.StatusSeeOther)
@@ -779,7 +791,7 @@ func adminCleanupGuildHistoryHandler(w http.ResponseWriter, r *http.Request) {
 
 	// 1. Query all guild-related logs, ordered by character and then time
 	// We need strictly ordered logs to compare current vs previous row.
-	rows, err := db.Query(`
+	rows, err := srv.db.Query(`
 		SELECT id, character_name, activity_description 
 		FROM character_changelog 
 		WHERE activity_description LIKE '%guild%' 
@@ -829,7 +841,7 @@ func adminCleanupGuildHistoryHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// 3. Perform Deletion (in batches to be safe with SQL variable limits)
-	tx, err := db.Begin()
+	tx, err := srv.db.Begin()
 	if err != nil {
 		http.Redirect(w, r, adminRedirectURL(r, "Transaction error."), http.StatusSeeOther)
 		return
@@ -887,7 +899,9 @@ func getAdminChatMessages(r *http.Request, stats *AdminDashboardData) {
 
 	// Count total
 	var total int
-	db.QueryRow("SELECT COUNT(*) FROM chat WHERE "+whereClause, params...).Scan(&total)
+	if err := srv.db.QueryRow("SELECT COUNT(*) FROM chat WHERE "+whereClause, params...).Scan(&total); err != nil {
+		log.Printf("[W] [Admin/Chat] Could not count chat messages: %v", err)
+	}
 	stats.ChatTotalMessages = total
 	stats.ChatTotalPages = (total + messagesPerPage - 1) / messagesPerPage
 	stats.ChatCurrentPage = page
@@ -913,7 +927,7 @@ func getAdminChatMessages(r *http.Request, stats *AdminDashboardData) {
 
 	params = append(params, messagesPerPage, offset)
 
-	rows, err := db.Query(query, params...)
+	rows, err := srv.db.Query(query, params...)
 	if err != nil {
 		log.Printf("[E] [Admin/Chat] Failed to query chat messages: %v", err)
 		return
@@ -954,7 +968,7 @@ func adminDeleteChatHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	_, err := db.Exec("DELETE FROM chat WHERE id = ?", idStr)
+	_, err := srv.db.Exec("DELETE FROM chat WHERE id = ?", idStr)
 	msg := "Chat message deleted."
 	if err != nil {
 		log.Printf("[E] [Admin] Failed to delete chat message %s: %v", idStr, err)
@@ -983,7 +997,7 @@ func adminEditChatHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	_, err := db.Exec("UPDATE chat SET character_name = ?, message = ?, channel = ? WHERE id = ?", charName, message, channel, idStr)
+	_, err := srv.db.Exec("UPDATE chat SET character_name = ?, message = ?, channel = ? WHERE id = ?", charName, message, channel, idStr)
 	msg := "Chat message updated."
 	if err != nil {
 		log.Printf("[E] [Admin] Failed to update chat message %s: %v", idStr, err)

@@ -9,7 +9,6 @@ import (
 	"io"
 	"log"
 	"net"
-	"os"
 	"strings"
 	"time"
 	"unicode"
@@ -45,7 +44,7 @@ func saveChatMessagesToDB(messages []ChatMessage) error {
 		return nil
 	}
 
-	tx, err := db.Begin()
+	tx, err := srv.db.Begin()
 	if err != nil {
 		return fmt.Errorf("failed to start transaction: %w", err)
 	}
@@ -89,7 +88,7 @@ func logChatActivityPeriodically() {
 
 	// Use "INSERT OR IGNORE" to avoid errors on duplicate (which shouldn't
 	// happen with the mutex, but it's safer)
-	_, err := db.Exec("INSERT OR IGNORE INTO chat_activity_log (timestamp) VALUES (?)", timestamp)
+	_, err := srv.db.Exec("INSERT OR IGNORE INTO chat_activity_log (timestamp) VALUES (?)", timestamp)
 	if err != nil {
 		log.Printf("[E] [Scraper/Chat] Failed to log chat activity heartbeat: %v", err)
 	} else if enableChatScraperDebugLogs {
@@ -121,7 +120,7 @@ func startChatPacketCapture(ctx context.Context) {
 	log.Println("[I] [Scraper/Chat] Initializing live packet capture...")
 
 	// --- 1. Find Network Device ---
-	device := os.Getenv("CHAT_CAPTURE_DEVICE")
+	device := appConfig.ChatCaptureDevice
 	if device == "" {
 		// Use Go's standard 'net' package to find a suitable device.
 		ifaces, err := net.Interfaces()
@@ -153,7 +152,7 @@ func startChatPacketCapture(ctx context.Context) {
 	}
 
 	// --- 2. Get Port ---
-	port := os.Getenv("CHAT_CAPTURE_PORT")
+	port := appConfig.ChatCapturePort
 	if port == "" {
 		port = "6121" // Default Ragnarok Online Char Server port
 		log.Printf("[W] [Scraper/Chat] CHAT_CAPTURE_PORT not set. Defaulting to %s. This may not be correct.", port)
@@ -479,7 +478,7 @@ func logDropToChangelog(timestamp, charName, itemName string) {
 	// We perform a quick check to prevent duplicate entries if the packet is re-sent
 	// and processed multiple times in a short window (e.g., 5 seconds).
 	var exists int
-	err := db.QueryRow(`
+	err := srv.db.QueryRow(`
 		SELECT 1 FROM character_changelog 
 		WHERE character_name = ? 
 		  AND activity_description = ? 
@@ -498,7 +497,7 @@ func logDropToChangelog(timestamp, charName, itemName string) {
 	}
 
 	// Insert the new drop log entry
-	_, err = db.Exec(`
+	_, err = srv.db.Exec(`
 		INSERT INTO character_changelog (character_name, change_time, activity_description) 
 		VALUES (?, ?, ?)`,
 		charName, timestamp, activityDescription,

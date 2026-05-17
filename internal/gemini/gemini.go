@@ -156,10 +156,10 @@ func (c *Client) ParseTradeMessage(message string) (*TradeResult, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to create genai client: %w", err)
 	}
-	defer client.Close()
+	defer func() { _ = client.Close() }()
 
 	model := client.GenerativeModel(modelName)
-	model.GenerationConfig.ResponseMIMEType = "application/json"
+	model.ResponseMIMEType = "application/json"
 
 	prompt := fmt.Sprintf(promptTemplate, message)
 

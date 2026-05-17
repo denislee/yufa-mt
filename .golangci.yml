@@ -12,13 +12,20 @@ linters:
     - ineffassign
     - staticcheck
     - unused
-  exclusions:
-    rules:
-      # Generated/large legacy files have known violations to be cleaned up
-      # incrementally. Don't block CI on them.
-      - path: internal/server/handlers\.go
-        linters: [errcheck]
-      - path: internal/server/scraper.*\.go
-        linters: [errcheck]
-      - path: internal/server/admin_handlers\.go
-        linters: [errcheck]
+  settings:
+    errcheck:
+      # These are idiomatic Go patterns where the error genuinely cannot be
+      # acted on (defer Close in a read path, defer Rollback after a Commit,
+      # fmt.Fprintln to an http.ResponseWriter). Excluding them by signature
+      # is cleaner than blanket-excluding whole files.
+      exclude-functions:
+        - (*database/sql.Tx).Rollback
+        - (*database/sql.Rows).Close
+        - (*database/sql.Stmt).Close
+        - (*database/sql.DB).Close
+        - (io.Closer).Close
+        - (io.ReadCloser).Close
+        - (net/http.ResponseWriter).Write
+        - fmt.Fprintln
+        - fmt.Fprintf
+        - fmt.Fprint

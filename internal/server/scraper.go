@@ -264,16 +264,17 @@ func (sc *ScraperClient) findLastPage(firstPageURL, logPrefix string) int {
 	return lastPage
 }
 
-func logCharacterActivity(changelogStmt *sql.Stmt, charName string, description string) error {
+// logCharacterActivity inserts a row into character_changelog. Errors are
+// logged here so callers don't need to thread them through every branch
+// of the activity-detection logic.
+func logCharacterActivity(changelogStmt *sql.Stmt, charName string, description string) {
 	if description == "" {
-		return nil
+		return
 	}
 
-	_, err := changelogStmt.Exec(charName, time.Now().Format(time.RFC3339), description)
-	if err != nil {
+	if _, err := changelogStmt.Exec(charName, time.Now().Format(time.RFC3339), description); err != nil {
 		log.Printf("[E] [Changelog] Failed to log activity for %s: %v", charName, err)
 	}
-	return err
 }
 
 func scrapeAndStorePlayerCount() {
@@ -340,7 +341,7 @@ func scrapeAndStorePlayerCount() {
 	defer playerCountMutex.Unlock()
 
 	var sellerCount int
-	err = db.QueryRow("SELECT COUNT(DISTINCT seller_name) FROM items WHERE is_available = 1").Scan(&sellerCount)
+	err = srv.db.QueryRow("SELECT COUNT(DISTINCT seller_name) FROM items WHERE is_available = 1").Scan(&sellerCount)
 	if err != nil {
 		log.Printf("[W] [Scraper/PlayerCount] Could not query for unique seller count: %v", err)
 		sellerCount = 0
@@ -351,7 +352,7 @@ func scrapeAndStorePlayerCount() {
 
 	var lastPlayerCount int
 	var lastSellerCount sql.NullInt64
-	err = db.QueryRow("SELECT count, seller_count FROM player_history ORDER BY timestamp DESC LIMIT 1").Scan(&lastPlayerCount, &lastSellerCount)
+	err = srv.db.QueryRow("SELECT count, seller_count FROM player_history ORDER BY timestamp DESC LIMIT 1").Scan(&lastPlayerCount, &lastSellerCount)
 	if err != nil && err != sql.ErrNoRows {
 		log.Printf("[W] [Scraper/PlayerCount] Could not query for last player/seller count: %v", err)
 		return
@@ -377,7 +378,7 @@ func scrapeAndStorePlayerCount() {
 	}
 
 	retrievalTime := time.Now().Format(time.RFC3339)
-	_, err = db.Exec("INSERT INTO player_history (timestamp, count, seller_count) VALUES (?, ?, ?)", retrievalTime, onlineCount, sellerCount)
+	_, err = srv.db.Exec("INSERT INTO player_history (timestamp, count, seller_count) VALUES (?, ?, ?)", retrievalTime, onlineCount, sellerCount)
 	if err != nil {
 		log.Printf("[E] [Scraper/PlayerCount] Failed to insert new player/seller count: %v", err)
 		return
@@ -435,7 +436,7 @@ func fetchExistingPlayers() (map[string]PlayerCharacter, error) {
 		log.Println("[D] [Scraper/Char] Fetching existing player data for activity comparison...")
 	}
 	existingPlayers := make(map[string]PlayerCharacter)
-	rowsPre, err := db.Query("SELECT name, base_level, job_level, experience, class, last_active FROM characters")
+	rowsPre, err := srv.db.Query("SELECT name, base_level, job_level, experience, class, last_active FROM characters")
 	if err != nil {
 		return nil, fmt.Errorf("failed to query existing characters for comparison: %w", err)
 	}
@@ -483,7 +484,7 @@ func cleanupStalePlayers(scrapedPlayerNames map[string]bool, existingPlayers map
 		placeholders := "WHERE name IN (?" + strings.Repeat(",?", len(batch)-1) + ")"
 		query := "DELETE FROM characters " + placeholders
 
-		result, err := db.Exec(query, batch...)
+		result, err := srv.db.Exec(query, batch...)
 		if err != nil {
 			log.Printf("[E] [Scraper/Char] Failed to clean up batch of old player records: %v", err)
 			continue // Continue to next batch
@@ -515,7 +516,7 @@ func savePlayerCharacters(players []PlayerCharacter) {
 	updateTime := time.Now().Format(time.RFC3339)
 
 	// 2. Prepare database transaction and statements
-	tx, err := db.Begin()
+	tx, err := srv.db.Begin()
 	if err != nil {
 		log.Printf("[E] [Scraper/Char] Failed to begin transaction: %v", err)
 		return
@@ -577,7 +578,7 @@ func savePlayerCharacters(players []PlayerCharacter) {
 	// --- SAFETY CHECK: PREVENT PARTIAL SCRAPES FROM WIPING DB ---
 	// We check the count AFTER processing the channel but BEFORE committing.
 	var currentDBCount int
-	if err := db.QueryRow("SELECT COUNT(*) FROM characters").Scan(&currentDBCount); err != nil {
+	if err := srv.db.QueryRow("SELECT COUNT(*) FROM characters").Scan(&currentDBCount); err != nil {
 		log.Printf("[E] [Scraper/Char] Failed to query current character count for safety check: %v. Aborting update.", err)
 		return // Implicit rollback via defer
 	}
@@ -717,7 +718,7 @@ func processGuildData(allGuilds map[string]Guild, allMembers map[string]string) 
 	// Compare against the active guild count only; inactive (soft-deleted) rows
 	// are historical and would otherwise inflate the threshold over time.
 	var currentGuildCount int
-	if err := db.QueryRow("SELECT COUNT(*) FROM guilds WHERE is_active = 1").Scan(&currentGuildCount); err != nil {
+	if err := srv.db.QueryRow("SELECT COUNT(*) FROM guilds WHERE is_active = 1").Scan(&currentGuildCount); err != nil {
 		log.Printf("[E] [Scraper/Guild] Failed to query current guild count for safety check: %v. Aborting update.", err)
 		return
 	}
@@ -740,7 +741,7 @@ func processGuildData(allGuilds map[string]Guild, allMembers map[string]string) 
 
 	// 1. Fetch old associations for comparison
 	oldAssociations := make(map[string]string)
-	oldGuildRows, err := db.Query("SELECT name, guild_name FROM characters WHERE guild_name IS NOT NULL")
+	oldGuildRows, err := srv.db.Query("SELECT name, guild_name FROM characters WHERE guild_name IS NOT NULL")
 	if err != nil {
 		log.Printf("[W] [Scraper/Guild] Could not fetch old guild associations for comparison: %v", err)
 	} else {
@@ -754,7 +755,7 @@ func processGuildData(allGuilds map[string]Guild, allMembers map[string]string) 
 	}
 
 	// 2. Start transaction
-	tx, errDb := db.Begin()
+	tx, errDb := srv.db.Begin()
 	if errDb != nil {
 		log.Printf("[E] [Scraper/Guild] Failed to begin transaction for guilds update: %v", errDb)
 		return
@@ -1004,7 +1005,7 @@ func processZenyData(allZenyInfo map[string]int64) {
 	// We compare the number of scraped zeny records against the number of characters
 	// in the DB that currently have zeny data (zeny > 0).
 	var currentZenyCount int
-	if err := db.QueryRow("SELECT COUNT(*) FROM characters WHERE zeny > 0").Scan(&currentZenyCount); err != nil {
+	if err := srv.db.QueryRow("SELECT COUNT(*) FROM characters WHERE zeny > 0").Scan(&currentZenyCount); err != nil {
 		log.Printf("[E] [Scraper/Zeny] Failed to query current zeny count for safety check: %v. Aborting update.", err)
 		return
 	}
@@ -1027,7 +1028,7 @@ func processZenyData(allZenyInfo map[string]int64) {
 
 	log.Println("[D] [Scraper/Zeny] Fetching existing character zeny data for activity comparison...")
 	existingCharacters := make(map[string]CharacterZenyInfo)
-	rows, err := db.Query("SELECT name, zeny, last_active FROM characters")
+	rows, err := srv.db.Query("SELECT name, zeny, last_active FROM characters")
 	if err != nil {
 		log.Printf("[E] [Scraper/Zeny] Failed to query existing characters for comparison: %v", err)
 		// Continue with an empty map
@@ -1044,7 +1045,7 @@ func processZenyData(allZenyInfo map[string]int64) {
 		}
 	}
 
-	tx, err := db.Begin()
+	tx, err := srv.db.Begin()
 	if err != nil {
 		log.Printf("[E] [Scraper/Zeny] Failed to begin transaction: %v", err)
 		return
@@ -1532,7 +1533,7 @@ func scrapeData() {
 	marketMutex.Lock()
 	defer marketMutex.Unlock()
 
-	tx, err := db.Begin()
+	tx, err := srv.db.Begin()
 	if err != nil {
 		log.Printf("[E] [Scraper/Market] Failed to begin transaction: %v", err)
 		return
@@ -1672,12 +1673,16 @@ func scrapeData() {
 					"seller":     firstItem.SellerName,
 					"store_name": firstItem.StoreName,
 				})
-				stmtInsertEvent.Exec(retrievalTime, "ADDED", itemName, firstItem.ItemID, string(details))
+				if _, err := stmtInsertEvent.Exec(retrievalTime, "ADDED", itemName, firstItem.ItemID, string(details)); err != nil {
+					log.Printf("[W] [Scraper/Market] Failed to log ADDED event for %s: %v", itemName, err)
+				}
 			}
 
 			// Check for 'NEW_LOW'
 			var historicalLowestPrice sql.NullInt64
-			stmtGetLowestPrice.QueryRow(itemName).Scan(&historicalLowestPrice)
+			if err := stmtGetLowestPrice.QueryRow(itemName).Scan(&historicalLowestPrice); err != nil && err != sql.ErrNoRows {
+				log.Printf("[W] [Scraper/Market] Could not query historical lowest price for %s: %v", itemName, err)
+			}
 
 			var lowestPriceListingInBatch Item
 			lowestPriceInBatch := -1
@@ -1700,7 +1705,9 @@ func scrapeData() {
 					"seller":     lowestPriceListingInBatch.SellerName,
 					"store_name": lowestPriceListingInBatch.StoreName,
 				})
-				stmtInsertEvent.Exec(retrievalTime, "NEW_LOW", itemName, lowestPriceListingInBatch.ItemID, string(details))
+				if _, err := stmtInsertEvent.Exec(retrievalTime, "NEW_LOW", itemName, lowestPriceListingInBatch.ItemID, string(details)); err != nil {
+					log.Printf("[W] [Scraper/Market] Failed to log NEW_LOW event for %s: %v", itemName, err)
+				}
 			}
 		} else {
 			itemsUpdated++
@@ -1720,7 +1727,9 @@ func scrapeData() {
 					"seller":     listing.SellerName,
 					"store_name": listing.StoreName,
 				})
-				stmtInsertEvent.Exec(retrievalTime, eventType, name, listing.ItemID, string(details))
+				if _, err := stmtInsertEvent.Exec(retrievalTime, eventType, name, listing.ItemID, string(details)); err != nil {
+					log.Printf("[W] [Scraper/Market] Failed to log %s event for %s: %v", eventType, name, err)
+				}
 			}
 
 			if _, err := stmtUpdateUnavailable.Exec(name); err != nil {
@@ -1767,7 +1776,7 @@ func areItemSetsIdentical(setA, setB []Item) bool {
 // fetchAllCharacterNames provides a set of all valid character names.
 func fetchAllCharacterNames() (map[string]bool, error) {
 	allCharacterNames := make(map[string]bool)
-	charRows, err := db.Query("SELECT name FROM characters")
+	charRows, err := srv.db.Query("SELECT name FROM characters")
 	if err != nil {
 		return nil, fmt.Errorf("failed to pre-fetch character names: %w", err)
 	}
@@ -1797,7 +1806,7 @@ func processMvpKills(allMvpKills map[string]map[string]int) {
 	}
 
 	// 2. Begin transaction
-	tx, err := db.Begin()
+	tx, err := srv.db.Begin()
 	if err != nil {
 		log.Printf("[E] [Scraper/MVP] Failed to begin transaction: %v", err)
 		return
@@ -1940,7 +1949,7 @@ func processWoeCharacterData(allWoeChars map[string]WoeCharacterRank) {
 		currentCharacterCount++
 	}
 
-	tx, err := db.Begin()
+	tx, err := srv.db.Begin()
 	if err != nil {
 		log.Printf("[E] [Scraper/WoE] Failed to begin transaction: %v", err)
 		return
@@ -2065,7 +2074,7 @@ func scrapeWoeCharacterRankings() {
 	// --- Step 2: Fetch Character NAME mapping from the main 'characters' table ---
 	log.Println("[D] [Scraper/WoE] Fetching existing Character Names from 'characters' table...")
 	existingCharNames := make(map[string]bool) // Set of names
-	rows, err := db.Query("SELECT name FROM characters")
+	rows, err := srv.db.Query("SELECT name FROM characters")
 	if err != nil {
 		log.Printf("[E] [Scraper/WoE] Could not query characters table for Names: %v. Aborting WoE scrape.", err)
 		return
@@ -2392,7 +2401,7 @@ func fetchPortugueseName(itemID int) (string, error) {
 func fetchAndUpdatePortugueseName(itemID int) (string, error) {
 	// 1. Check current status in DB
 	var namePT sql.NullString
-	err := db.QueryRow("SELECT name_pt FROM internal_item_db WHERE item_id = ?", itemID).Scan(&namePT)
+	err := srv.db.QueryRow("SELECT name_pt FROM internal_item_db WHERE item_id = ?", itemID).Scan(&namePT)
 
 	if err != nil {
 		if err == sql.ErrNoRows {
@@ -2419,7 +2428,7 @@ func fetchAndUpdatePortugueseName(itemID int) (string, error) {
 	}
 
 	// 4. Update the DB
-	_, err = db.Exec("UPDATE internal_item_db SET name_pt = ? WHERE item_id = ?", fetchedName, itemID)
+	_, err = srv.db.Exec("UPDATE internal_item_db SET name_pt = ? WHERE item_id = ?", fetchedName, itemID)
 	if err != nil {
 		return "", fmt.Errorf("failed to update database for item %d: %w", itemID, err)
 	}
@@ -2439,7 +2448,7 @@ func populateMissingPortugueseNames() {
 	log.Println("[I] [Scraper/PT-Name] Starting job to populate missing Portuguese names...")
 
 	// 1. Get all item IDs that need a PT name
-	rows, err := db.Query("SELECT item_id FROM internal_item_db WHERE name_pt IS NULL OR name_pt = ''")
+	rows, err := srv.db.Query("SELECT item_id FROM internal_item_db WHERE name_pt IS NULL OR name_pt = ''")
 	if err != nil {
 		log.Printf("[E] [Scraper/PT-Name] Failed to query for items: %v", err)
 		return
@@ -2470,7 +2479,7 @@ func populateMissingPortugueseNames() {
 			failCount++
 		} else {
 			// Update the DB
-			_, err := db.Exec("UPDATE internal_item_db SET name_pt = ? WHERE item_id = ?", ptName, itemID)
+			_, err := srv.db.Exec("UPDATE internal_item_db SET name_pt = ? WHERE item_id = ?", ptName, itemID)
 			if err != nil {
 				log.Printf("[E] [Scraper/PT-Name] [%d/%d] Failed to update DB for item %d: %v", i+1, len(itemIDs), itemID, err)
 				failCount++

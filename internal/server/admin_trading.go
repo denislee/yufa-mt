@@ -28,7 +28,7 @@ func adminDeleteTradingPostHandler(w http.ResponseWriter, r *http.Request) {
 		msg = "Error: Missing post ID."
 	} else {
 
-		result, err := db.Exec("DELETE FROM trading_posts WHERE id = ?", postID)
+		result, err := srv.db.Exec("DELETE FROM trading_posts WHERE id = ?", postID)
 		if err != nil {
 			msg = "Database error occurred while deleting post."
 			log.Printf("[E] [Admin] Failed to delete trading post with ID %s: %v", postID, err)
@@ -48,7 +48,7 @@ func adminDeleteTradingPostHandler(w http.ResponseWriter, r *http.Request) {
 
 // reparseTradingPostItems handles the database transaction for updating items.
 func reparseTradingPostItems(postID int, itemsToUpdate []GeminiTradeItem) (int, error) {
-	tx, err := db.Begin()
+	tx, err := srv.db.Begin()
 	if err != nil {
 		return 0, fmt.Errorf("failed to start database transaction: %w", err)
 	}
@@ -135,7 +135,7 @@ func adminReparseTradingPostHandler(w http.ResponseWriter, r *http.Request) {
 	var originalMessage, originalPostType, characterName sql.NullString
 
 	// 1. Fetch the post to re-parse
-	err = db.QueryRow("SELECT notes, post_type, character_name FROM trading_posts WHERE id = ?", postID).Scan(&originalMessage, &originalPostType, &characterName)
+	err = srv.db.QueryRow("SELECT notes, post_type, character_name FROM trading_posts WHERE id = ?", postID).Scan(&originalMessage, &originalPostType, &characterName)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			msg = "Error: Post not found."
@@ -198,7 +198,7 @@ func adminReparseTradingPostHandler(w http.ResponseWriter, r *http.Request) {
 func adminShowEditTradingPostPage(w http.ResponseWriter, r *http.Request, postID int) {
 	var post TradingPost
 	var createdAtStr string
-	err := db.QueryRow(`
+	err := srv.db.QueryRow(`
 		SELECT id, post_type, character_name, contact_info, created_at, notes 
 		FROM trading_posts WHERE id = ?
 	`, postID).Scan(&post.ID, &post.PostType, &post.CharacterName, &post.ContactInfo, &createdAtStr, &post.Notes)
@@ -213,7 +213,7 @@ func adminShowEditTradingPostPage(w http.ResponseWriter, r *http.Request, postID
 	}
 	post.CreatedAt = createdAtStr
 
-	itemRows, err := db.Query(`
+	itemRows, err := srv.db.Query(`
 		SELECT i.item_name, i.item_id, i.quantity, i.price_zeny, i.price_rmt, i.payment_methods, 
 		       i.refinement, i.slots, i.card1, i.card2, i.card3, i.card4, local_db.name_pt
 		FROM trading_post_items i
@@ -261,7 +261,7 @@ func adminHandleEditTradingPost(w http.ResponseWriter, r *http.Request, postID i
 		return
 	}
 
-	tx, err := db.Begin()
+	tx, err := srv.db.Begin()
 	if err != nil {
 		http.Error(w, "Failed to start database transaction.", http.StatusInternalServerError)
 		return
@@ -331,7 +331,7 @@ func adminClearTradingPostItemsHandler(w http.ResponseWriter, r *http.Request) {
 
 	var msg string
 
-	_, err := db.Exec("DROP TABLE IF EXISTS trading_post_items")
+	_, err := srv.db.Exec("DROP TABLE IF EXISTS trading_post_items")
 	if err != nil {
 		log.Printf("[E] [Admin] Failed to drop trading_post_items table: %v", err)
 		msg = "Database error while dropping trading post items table."
@@ -352,7 +352,7 @@ func adminClearTradingPostsHandler(w http.ResponseWriter, r *http.Request) {
 	var msg string
 	var err error
 
-	_, err = db.Exec("DROP TABLE IF EXISTS trading_post_items")
+	_, err = srv.db.Exec("DROP TABLE IF EXISTS trading_post_items")
 	if err != nil {
 		log.Printf("[E] [Admin] Failed to drop trading_post_items table (dependency): %v", err)
 		msg = "Database error while dropping dependent items table."
@@ -360,7 +360,7 @@ func adminClearTradingPostsHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	_, err = db.Exec("DROP TABLE IF EXISTS trading_posts")
+	_, err = srv.db.Exec("DROP TABLE IF EXISTS trading_posts")
 	if err != nil {
 		log.Printf("[E... ] [Admin] Failed to drop trading_posts table: %v", err)
 		msg = "Database error while dropping trading_posts table."
@@ -471,7 +471,7 @@ func backfillDropLogsToChangelog() (int64, error) {
 	log.Println("[I] [Backfill] Starting drop log backfill process...")
 
 	// 1. Begin transaction
-	tx, err := db.Begin()
+	tx, err := srv.db.Begin()
 	if err != nil {
 		return 0, fmt.Errorf("failed to begin transaction: %w", err)
 	}
@@ -500,13 +500,8 @@ func backfillDropLogsToChangelog() (int64, error) {
 	}
 	defer stmt.Close()
 
-	var newEntriesCount int64 = 0
-	// --- ADDED: Counters for logging ---
-	var processedRows int = 0
-	var failedRegex1 int = 0
-	var failedRegex2 int = 0
-	var failedInsert int = 0
-	// --- END ADDED ---
+	var newEntriesCount int64
+	var processedRows, failedRegex1, failedRegex2, failedInsert int
 
 	// 5. Loop, Parse, and Insert
 	for rows.Next() {

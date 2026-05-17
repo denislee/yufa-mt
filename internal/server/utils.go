@@ -65,7 +65,7 @@ func GetLastUpdateTime(columnName, tableName string) string {
 	// Cache miss or expired, query the database
 	var lastTimestamp sql.NullString
 	query := fmt.Sprintf("SELECT MAX(%s) FROM %s", columnName, tableName)
-	err := db.QueryRow(query).Scan(&lastTimestamp)
+	err := srv.db.QueryRow(query).Scan(&lastTimestamp)
 	if err != nil {
 		log.Printf("[W] [Util] Could not get last update time for %s.%s: %v", tableName, columnName, err)
 	}
@@ -91,6 +91,16 @@ func GetLastUpdateTime(columnName, tableName string) string {
 	updateTimeCacheMutex.Unlock()
 
 	return resultValue
+}
+
+// queryCount runs the given COUNT(*) query and returns the result. It
+// keeps the noise of `var n int; srv.db.QueryRow(...).Scan(&n)` out of every
+// pagination handler. The query itself stays at the call site so the
+// SQL is grep-able.
+func queryCount(query string, params ...any) (int, error) {
+	var n int
+	err := srv.db.QueryRow(query, params...).Scan(&n)
+	return n, err
 }
 
 // GetLastScrapeTime gets the timestamp of the last market scrape.

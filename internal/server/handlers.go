@@ -19,6 +19,8 @@ import (
 	"time"
 
 	"github.com/agnivade/levenshtein"
+	"github.com/denislee/yufa-mt/internal/i18n"
+	"github.com/denislee/yufa-mt/web"
 	"golang.org/x/sync/errgroup"
 )
 
@@ -238,10 +240,10 @@ func renderTemplate(w http.ResponseWriter, r *http.Request, tmplFile string, dat
 	}
 
 	// Create the base page context
-	lang := getLang(r)
+	lang := i18n.Lang(r)
 	pageCtx := BasePageData{
 		Lang:       lang,
-		T:          getTranslations(lang),
+		T:          i18n.Translations(lang),
 		RequestURL: r.URL.RequestURI(),
 	}
 
@@ -270,7 +272,7 @@ func getCombinedItemIDs(searchQuery string) ([]int, error) {
 		WHERE name LIKE ? OR name_pt LIKE ?
 	`
 	likeQuery := "%" + searchQuery + "%"
-	rows, err := db.Query(query, likeQuery, likeQuery)
+	rows, err := srv.db.Query(query, likeQuery, likeQuery)
 	if err != nil {
 		log.Printf("[W] [HTTP] Local item ID search failed for '%s': %v", searchQuery, err)
 		return nil, fmt.Errorf("local item search failed: %w", err)
@@ -301,7 +303,7 @@ func getCombinedItemIDs(searchQuery string) ([]int, error) {
 
 func getItemTypeTabs() []ItemTypeTab {
 	var itemTypes []ItemTypeTab
-	rows, err := db.Query("SELECT DISTINCT type FROM internal_item_db WHERE type IS NOT NULL AND type != '' ORDER BY type ASC")
+	rows, err := srv.db.Query("SELECT DISTINCT type FROM internal_item_db WHERE type IS NOT NULL AND type != '' ORDER BY type ASC")
 	if err != nil {
 		log.Printf("[W] [HTTP] Could not query for item types: %v", err)
 		return itemTypes
@@ -477,18 +479,16 @@ func init() {
 		"character_stats.html",
 	}
 
-	const templateDir = "web/templates/"
 	for _, tmplName := range templates {
 		// Create the list of files to parse: the page itself + all common files
-		filesToParse := []string{templateDir + tmplName}
+		filesToParse := []string{"templates/" + tmplName}
 		for _, c := range commonFiles {
-			filesToParse = append(filesToParse, templateDir+c)
+			filesToParse = append(filesToParse, "templates/"+c)
 		}
 
 		// Parse all files, using the template name as the key
-		tmpl, err := template.New(tmplName).Funcs(templateFuncs).ParseFiles(filesToParse...)
+		tmpl, err := template.New(tmplName).Funcs(templateFuncs).ParseFS(web.Templates, filesToParse...)
 		if err != nil {
-			// If any template fails, it's a fatal error
 			log.Fatalf("[F] [HTTP] Could not parse template '%s': %v", tmplName, err)
 		}
 
@@ -497,7 +497,7 @@ func init() {
 
 	// Admin templates are standalone (no navbar/pagination partials).
 	for _, tmplName := range []string{"admin.html", "admin_edit_post.html"} {
-		tmpl, err := template.New(tmplName).Funcs(templateFuncs).ParseFiles(templateDir + tmplName)
+		tmpl, err := template.New(tmplName).Funcs(templateFuncs).ParseFS(web.Templates, "templates/"+tmplName)
 		if err != nil {
 			log.Fatalf("[F] [HTTP] Could not parse template '%s': %v", tmplName, err)
 		}
@@ -517,10 +517,7 @@ func summaryHandler(w http.ResponseWriter, r *http.Request) {
 
 	// Determine if we should show all items or only available ones
 	formSubmitted := len(r.Form) > 0
-	showAll := false
-	if formSubmitted && r.FormValue("only_available") != "true" {
-		showAll = true
-	}
+	showAll := formSubmitted && r.FormValue("only_available") != "true"
 
 	var innerWhereConditions []string
 	var innerParams []interface{}
@@ -578,10 +575,9 @@ func summaryHandler(w http.ResponseWriter, r *http.Request) {
 	`
 
 	// 4. Get total count
-	var totalUniqueItems int
 	countQuery := fmt.Sprintf("SELECT COUNT(*) %s", fmt.Sprintf(queryTemplate, innerWhereClause, outerWhereClause))
 	countParams := append(innerParams, outerParams...) // Combine params
-	err := db.QueryRow(countQuery, countParams...).Scan(&totalUniqueItems)
+	totalUniqueItems, err := queryCount(countQuery, countParams...)
 	if err != nil {
 		log.Printf("[E] [HTTP] Summary count query error: %v", err)
 		// Don't return, just show 0 items
@@ -612,7 +608,7 @@ func summaryHandler(w http.ResponseWriter, r *http.Request) {
 	)
 
 	mainParams := append(innerParams, outerParams...) // Combine params
-	rows, err := db.Query(selectQuery, mainParams...)
+	rows, err := srv.db.Query(selectQuery, mainParams...)
 	if err != nil {
 		log.Printf("[E] [HTTP] Summary query error: %v, Query: %s, Params: %v", err, selectQuery, mainParams)
 		http.Error(w, "Database query for summary failed", http.StatusInternalServerError)
@@ -631,7 +627,7 @@ func summaryHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var totalVisitors int
-	if err := db.QueryRow("SELECT COUNT(*) FROM visitors").Scan(&totalVisitors); err != nil {
+	if err := srv.db.QueryRow("SELECT COUNT(*) FROM visitors").Scan(&totalVisitors); err != nil {
 		log.Printf("[W] [HTTP] Could not query total visitors: %v", err)
 	}
 
@@ -662,10 +658,7 @@ func fullListHandler(w http.ResponseWriter, r *http.Request) {
 	selectedType := r.FormValue("type")
 
 	formSubmitted := len(r.Form) > 0
-	showAll := false
-	if formSubmitted && r.FormValue("only_available") != "true" {
-		showAll = true
-	}
+	showAll := formSubmitted && r.FormValue("only_available") != "true"
 
 	// Fetch all store names for the dropdown
 	allStoreNames := getAllStoreNames()
@@ -748,7 +741,7 @@ func fullListHandler(w http.ResponseWriter, r *http.Request) {
 	query := fmt.Sprintf(`%s %s %s;`, baseQuery, whereClause, orderByClause)
 	// --- End Query Building ---
 
-	rows, err := db.Query(query, queryParams...)
+	rows, err := srv.db.Query(query, queryParams...)
 	if err != nil {
 		log.Printf("[E] [HTTP] Database query error: %v", err)
 		http.Error(w, "Database query failed", http.StatusInternalServerError)
@@ -796,7 +789,7 @@ func fullListHandler(w http.ResponseWriter, r *http.Request) {
 // getAllStoreNames is a small helper to abstract the store name query
 func getAllStoreNames() []string {
 	var allStoreNames []string
-	storeRows, err := db.Query("SELECT DISTINCT store_name FROM items WHERE is_available = 1 ORDER BY store_name ASC")
+	storeRows, err := srv.db.Query("SELECT DISTINCT store_name FROM items WHERE is_available = 1 ORDER BY store_name ASC")
 	if err != nil {
 		log.Printf("[W] [HTTP] Could not query for store names: %v", err)
 		return nil
@@ -853,9 +846,8 @@ func activityHandler(w http.ResponseWriter, r *http.Request) {
 	`
 
 	// 1. Get total count
-	var totalEvents int
-	countQuery := fmt.Sprintf("SELECT COUNT(*) %s %s", baseQuery, whereClause)
-	if err := db.QueryRow(countQuery, params...).Scan(&totalEvents); err != nil {
+	totalEvents, err := queryCount(fmt.Sprintf("SELECT COUNT(*) %s %s", baseQuery, whereClause), params...)
+	if err != nil {
 		log.Printf("[E] [HTTP] Could not count market events: %v", err)
 		http.Error(w, "Could not count market events", http.StatusInternalServerError)
 		return
@@ -873,7 +865,7 @@ func activityHandler(w http.ResponseWriter, r *http.Request) {
 	// Append pagination params to the existing query params
 	queryArgs := append(params, eventsPerPage, pagination.Offset)
 
-	eventRows, err := db.Query(query, queryArgs...)
+	eventRows, err := srv.db.Query(query, queryArgs...)
 	if err != nil {
 		log.Printf("[E] [HTTP] Could not query for market events: %v", err)
 		http.Error(w, "Could not query for market events", http.StatusInternalServerError)
@@ -896,7 +888,9 @@ func activityHandler(w http.ResponseWriter, r *http.Request) {
 			event.Timestamp = timestampStr
 		}
 		// Unmarshal JSON details
-		json.Unmarshal([]byte(detailsStr), &event.Details)
+		if err := json.Unmarshal([]byte(detailsStr), &event.Details); err != nil {
+			log.Printf("[W] [HTTP/Activity] Could not unmarshal event details: %v", err)
+		}
 		marketEvents = append(marketEvents, event)
 	}
 
@@ -938,7 +932,7 @@ func fetchCurrentListingExtremes(itemName string) (*ItemListing, *ItemListing, e
 		)
 	`
 
-	rows, err := db.Query(query, itemName, itemName)
+	rows, err := srv.db.Query(query, itemName, itemName)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to query listing extremes: %w", err)
 	}
@@ -966,12 +960,11 @@ func fetchCurrentListingExtremes(itemName string) (*ItemListing, *ItemListing, e
 		}
 
 		// Assign to the correct pointer based on the 'type' column
-		if rowType == "min" {
-			// Create a copy for lowest
+		switch rowType {
+		case "min":
 			val := l
 			lowest = &val
-		} else if rowType == "max" {
-			// Create a copy for highest
+		case "max":
 			val := l
 			highest = &val
 		}
@@ -1284,9 +1277,8 @@ func guildHandler(w http.ResponseWriter, r *http.Request) {
 	orderByClause, sortBy, order := getSortClause(r, allowedSorts, "level", "DESC")
 
 	// 3. Get Total Count *before* pagination
-	var totalGuilds int
-	countQuery := fmt.Sprintf("SELECT COUNT(*) FROM guilds g %s", whereClause)
-	if err := db.QueryRow(countQuery, params...).Scan(&totalGuilds); err != nil {
+	totalGuilds, err := queryCount(fmt.Sprintf("SELECT COUNT(*) FROM guilds g %s", whereClause), params...)
+	if err != nil {
 		http.Error(w, "Could not count guilds", http.StatusInternalServerError)
 		return
 	}
@@ -1326,7 +1318,7 @@ func guildHandler(w http.ResponseWriter, r *http.Request) {
 
 	finalParams := append(params, pagination.ItemsPerPage, pagination.Offset)
 
-	rows, err := db.Query(query, finalParams...)
+	rows, err := srv.db.Query(query, finalParams...)
 	if err != nil {
 		log.Printf("[E] [HTTP/Guild] Could not query for guilds: %v", err)
 		http.Error(w, "Could not query for guilds", http.StatusInternalServerError)
@@ -1381,7 +1373,7 @@ func mvpKillsHandler(w http.ResponseWriter, r *http.Request) {
 
 	// 3. Fetch data
 	query := fmt.Sprintf("SELECT * FROM character_mvp_kills %s", orderByClause)
-	rows, err := db.Query(query)
+	rows, err := srv.db.Query(query)
 	if err != nil {
 		log.Printf("[E] [HTTP/MVP] Could not query for MVP kills: %v", err)
 		http.Error(w, "Could not query MVP kills", http.StatusInternalServerError)
@@ -1536,7 +1528,7 @@ func characterChangelogHandler(w http.ResponseWriter, r *http.Request) {
 	var totalEntries int
 
 	// 1. Get total count for pagination
-	err := db.QueryRow("SELECT COUNT(*) FROM character_changelog").Scan(&totalEntries)
+	err := srv.db.QueryRow("SELECT COUNT(*) FROM character_changelog").Scan(&totalEntries)
 	if err != nil {
 		log.Printf("[E] [HTTP/Changelog] Could not count changelog entries: %v", err)
 		http.Error(w, "Could not count changelog entries", http.StatusInternalServerError)
@@ -1551,7 +1543,7 @@ func characterChangelogHandler(w http.ResponseWriter, r *http.Request) {
 		FROM character_changelog 
 		ORDER BY change_time DESC LIMIT ? OFFSET ?`
 
-	rows, err := db.Query(query, pagination.ItemsPerPage, pagination.Offset)
+	rows, err := srv.db.Query(query, pagination.ItemsPerPage, pagination.Offset)
 	if err != nil {
 		log.Printf("[E] [HTTP/Changelog] Could not query for character changelog: %v", err)
 		http.Error(w, "Could not query for character changelog", http.StatusInternalServerError)
@@ -1685,7 +1677,7 @@ func storeDetailHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	signatureQuery += ` ORDER BY date_and_time_retrieved DESC, id DESC LIMIT 1`
 
-	err := db.QueryRow(signatureQuery, signatureQueryArgs...).Scan(&sellerName, &mapName, &mapCoords, &mostRecentTimestampStr)
+	err := srv.db.QueryRow(signatureQuery, signatureQueryArgs...).Scan(&sellerName, &mapName, &mapCoords, &mostRecentTimestampStr)
 
 	// 3. Fetch Items
 	var items []Item
@@ -1701,7 +1693,7 @@ func storeDetailHandler(w http.ResponseWriter, r *http.Request) {
 			SELECT id, name_of_the_item, name_pt, item_id, quantity, price, store_name, seller_name, date_and_time_retrieved, map_name, map_coordinates, is_available
 			FROM RankedItems WHERE rn = 1 %s`, orderByClause)
 
-		rows, queryErr := db.Query(query, storeName, sellerName, mapName, mapCoords)
+		rows, queryErr := srv.db.Query(query, storeName, sellerName, mapName, mapCoords)
 		if queryErr != nil {
 			http.Error(w, "Could not query for store items", http.StatusInternalServerError)
 			return
@@ -1805,17 +1797,19 @@ func tradingPostListHandler(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	if filterType == "selling" {
+	switch filterType {
+	case "selling":
 		whereConditions = append(whereConditions, "p.post_type = ?")
 		queryParams = append(queryParams, "selling")
-	} else if filterType == "buying" {
+	case "buying":
 		whereConditions = append(whereConditions, "p.post_type = ?")
 		queryParams = append(queryParams, "buying")
 	}
 
-	if filterCurrency == "zeny" {
+	switch filterCurrency {
+	case "zeny":
 		whereConditions = append(whereConditions, "(i.price_zeny > 0 OR i.payment_methods IN ('zeny', 'both'))")
-	} else if filterCurrency == "rmt" {
+	case "rmt":
 		whereConditions = append(whereConditions, "(i.price_rmt > 0 OR i.payment_methods IN ('rmt', 'both'))")
 	}
 
@@ -1860,7 +1854,7 @@ func tradingPostListHandler(w http.ResponseWriter, r *http.Request) {
 
 	// 4. Execute Query
 	finalQuery := baseQuery + whereClause + " " + orderByClause
-	rows, err := db.Query(finalQuery, queryParams...)
+	rows, err := srv.db.Query(finalQuery, queryParams...)
 	if err != nil {
 		log.Printf("[E] [HTTP/Trade] Trading Post flat list query error: %v", err)
 		http.Error(w, "Database query failed", http.StatusInternalServerError)
@@ -1909,7 +1903,7 @@ func findItemIDInCache(cleanItemName string, slots int) (sql.NullInt64, bool) {
 		itemFuzzyCache = make([]cachedItem, 0, 40000)
 
 		// Fetch all items including slots
-		rows, err := db.Query("SELECT item_id, name, COALESCE(name_pt, ''), COALESCE(slots, 0) FROM internal_item_db")
+		rows, err := srv.db.Query("SELECT item_id, name, COALESCE(name_pt, ''), COALESCE(slots, 0) FROM internal_item_db")
 		if err != nil {
 			log.Printf("[E] [ItemID] Failed to load item cache: %v", err)
 			return
@@ -2135,7 +2129,7 @@ func woeRankingsHandler(w http.ResponseWriter, r *http.Request) {
 
 	// --- 1. Fetch All Seasons ---
 	var allSeasons []WoeSeasonInfo
-	seasonRows, err := db.Query("SELECT season_id, start_date, end_date FROM woe_seasons ORDER BY start_date DESC")
+	seasonRows, err := srv.db.Query("SELECT season_id, start_date, end_date FROM woe_seasons ORDER BY start_date DESC")
 	if err != nil {
 		log.Printf("[E] [HTTP/WoE] Could not query for WoE seasons: %v", err)
 		http.Error(w, "Could not query WoE seasons", http.StatusInternalServerError)
@@ -2169,7 +2163,7 @@ func woeRankingsHandler(w http.ResponseWriter, r *http.Request) {
 
 	// --- 3. Fetch Events for the Selected Season ---
 	var eventsForSeason []WoeEventInfo
-	eventRows, err := db.Query("SELECT event_id, event_date, is_season_summary FROM woe_events WHERE season_id = ? ORDER BY event_date DESC", selectedSeasonID)
+	eventRows, err := srv.db.Query("SELECT event_id, event_date, is_season_summary FROM woe_events WHERE season_id = ? ORDER BY event_date DESC", selectedSeasonID)
 	if err != nil {
 		log.Printf("[E] [HTTP/WoE] Could not query for WoE events: %v", err)
 		http.Error(w, "Could not query WoE events", http.StatusInternalServerError)
@@ -2276,7 +2270,7 @@ func woeRankingsHandler(w http.ResponseWriter, r *http.Request) {
 			%s -- orderByClause
 		`, whereClause, orderByClause)
 
-		rows, err := db.Query(query, queryParams...)
+		rows, err := srv.db.Query(query, queryParams...)
 		if err != nil {
 			log.Printf("[E] [HTTP/WoE] Could not query for WoE guild rankings: %v", err)
 			http.Error(w, "Could not query WoE guild rankings", http.StatusInternalServerError)
@@ -2342,7 +2336,7 @@ func woeRankingsHandler(w http.ResponseWriter, r *http.Request) {
 			%s -- orderByClause
 		`, whereClause, orderByClause)
 
-		rows, err := db.Query(query, queryParams...)
+		rows, err := srv.db.Query(query, queryParams...)
 		if err != nil {
 			log.Printf("[E] [HTTP/WoE] Could not query for WoE guild-by-class rankings: %v", err)
 			http.Error(w, "Could not query WoE guild-by-class rankings", http.StatusInternalServerError)
@@ -2393,7 +2387,7 @@ func woeRankingsHandler(w http.ResponseWriter, r *http.Request) {
 			FROM woe_event_rankings
 			%s %s`, whereClause, orderByClause)
 
-		rows, err := db.Query(query, queryParams...)
+		rows, err := srv.db.Query(query, queryParams...)
 		if err != nil {
 			log.Printf("[E] [HTTP/WoE] Could not query for WoE character rankings: %v", err)
 			http.Error(w, "Could not query WoE rankings", http.StatusInternalServerError)
@@ -2460,7 +2454,7 @@ func getChatActivityGraphData() template.JS {
 	viewStart := now.Add(-24 * time.Hour).Truncate(time.Minute)
 
 	// 1. Get all heartbeats from the DB in the time range
-	rows, err := db.Query("SELECT timestamp FROM chat_activity_log WHERE timestamp >= ?", viewStart.Format(time.RFC3339))
+	rows, err := srv.db.Query("SELECT timestamp FROM chat_activity_log WHERE timestamp >= ?", viewStart.Format(time.RFC3339))
 	if err != nil {
 		log.Printf("[E] [HTTP/Chat] Could not query chat activity log: %v", err)
 		return template.JS("[]")
@@ -2581,9 +2575,8 @@ func chatHandler(w http.ResponseWriter, r *http.Request) {
 	whereClause := "WHERE " + strings.Join(whereConditions, " AND ")
 
 	// 4. Get total count
-	var totalMessages int
-	countQuery := fmt.Sprintf("SELECT COUNT(*) FROM chat %s", whereClause)
-	if err := db.QueryRow(countQuery, params...).Scan(&totalMessages); err != nil {
+	totalMessages, err := queryCount(fmt.Sprintf("SELECT COUNT(*) FROM chat %s", whereClause), params...)
+	if err != nil {
 		log.Printf("[E] [HTTP/Chat] Could not count chat messages: %v", err)
 		http.Error(w, "Could not count chat messages", http.StatusInternalServerError)
 		return
@@ -2601,7 +2594,7 @@ func chatHandler(w http.ResponseWriter, r *http.Request) {
 		LIMIT ? OFFSET ?`, whereClause)
 
 	queryArgs := append(params, data.Pagination.ItemsPerPage, data.Pagination.Offset)
-	rows, err := db.Query(query, queryArgs...)
+	rows, err := srv.db.Query(query, queryArgs...)
 	if err != nil {
 		log.Printf("[E] [HTTP/Chat] Could not query for chat messages: %v", err)
 		http.Error(w, "Could not query for chat messages", http.StatusInternalServerError)
@@ -2700,7 +2693,7 @@ func marketStatsHandler(w http.ResponseWriter, r *http.Request) {
 		SELECT COUNT(*), COALESCE(SUM(CAST(REPLACE(json_extract(details, '$.price'), ',', '') AS INTEGER)), 0)
 		FROM market_events %s`, whereConditions)
 	log.Printf("[D] [HTTP/Stats] KPI Query: %s; Params: %v", kpiQuery, params)
-	err := db.QueryRow(kpiQuery, params...).Scan(&data.TotalSoldItems, &data.TotalZenyTransacted)
+	err := srv.db.QueryRow(kpiQuery, params...).Scan(&data.TotalSoldItems, &data.TotalZenyTransacted)
 	if err != nil {
 		log.Printf("[E] [HTTP/Stats] Could not query market KPIs: %v", err)
 	}
@@ -2725,7 +2718,7 @@ func marketStatsHandler(w http.ResponseWriter, r *http.Request) {
 
 	// --- MODIFICATION: Handle table alias 'me.' for this query ---
 	// The "Top Sold Items" query aliases market_events as 'me', so we must adjust the where clause.
-	aliasedWhereConditions := strings.Replace(whereConditions, "details", "me.details", -1)
+	aliasedWhereConditions := strings.ReplaceAll(whereConditions, "details", "me.details")
 
 	itemsQuery := fmt.Sprintf(`
 		SELECT
@@ -2743,7 +2736,7 @@ func marketStatsHandler(w http.ResponseWriter, r *http.Request) {
 	// --- END MODIFICATION ---
 
 	log.Printf("[D] [HTTP/Stats] Top Items Query: %s; Params: %v", itemsQuery, params)
-	itemRows, err := db.Query(itemsQuery, params...)
+	itemRows, err := srv.db.Query(itemsQuery, params...)
 	if err != nil {
 		log.Printf("[E] [HTTP/Stats] Could not query top sold items: %v", err)
 	} else {
@@ -2789,7 +2782,7 @@ func marketStatsHandler(w http.ResponseWriter, r *http.Request) {
 		LIMIT %d`, whereConditions, sellerOrderByClause, topLimit)
 
 	log.Printf("[D] [HTTP/Stats] Top Sellers Query: %s; Params: %v", sellersQuery, params)
-	sellerRows, err := db.Query(sellersQuery, params...)
+	sellerRows, err := srv.db.Query(sellersQuery, params...)
 	if err != nil {
 		log.Printf("[E] [HTTP/Stats] Could not query top sellers: %v", err)
 	} else {
@@ -2817,7 +2810,7 @@ func marketStatsHandler(w http.ResponseWriter, r *http.Request) {
 		ORDER BY day ASC`, whereConditions)
 
 	log.Printf("[D] [HTTP/Stats] Chart Query: %s; Params: %v", chartQuery, params)
-	chartRows, err := db.Query(chartQuery, params...)
+	chartRows, err := srv.db.Query(chartQuery, params...)
 	if err != nil {
 		log.Printf("[E] [HTTP/Stats] Could not query chart data: %v", err)
 	} else {
@@ -2841,7 +2834,7 @@ func marketStatsHandler(w http.ResponseWriter, r *http.Request) {
 // Reverted to only exclude "Local". "Drop" is now a regular channel.
 func getAllChatChannels() []string {
 	var allChannels []string
-	channelRows, err := db.Query("SELECT DISTINCT channel FROM chat WHERE channel != 'Local' ORDER BY channel ASC")
+	channelRows, err := srv.db.Query("SELECT DISTINCT channel FROM chat WHERE channel != 'Local' ORDER BY channel ASC")
 	if err != nil {
 		log.Printf("[W] [HTTP/Chat] Could not query for distinct channels: %v", err)
 		return nil
@@ -2985,7 +2978,7 @@ func createSingleTradingPost(authorName, originalMessage, postType string, items
 		return 0, fmt.Errorf("could not hash token: %w", err)
 	}
 
-	tx, err := db.Begin()
+	tx, err := srv.db.Begin()
 	if err != nil {
 		return 0, fmt.Errorf("failed to start database transaction: %w", err)
 	}
@@ -3130,7 +3123,7 @@ func getItemIDAndNamePT(itemName string) (int, sql.NullString) {
 	var itemID int
 	var itemNamePT sql.NullString
 	// --- MODIFICATION: Join internal_item_db ---
-	err := db.QueryRow(`
+	err := srv.db.QueryRow(`
 		SELECT i.item_id, local_db.name_pt 
 		FROM items i 
 		LEFT JOIN internal_item_db local_db ON i.item_id = local_db.item_id
@@ -3214,7 +3207,7 @@ func fetchPriceHistory(itemName string) ([]PricePointDetails, error) {
 	`
 
 	// The original query used two parameters for `itemName`, this one only needs one.
-	rows, err := db.Query(priceChangeQuery, itemName)
+	rows, err := srv.db.Query(priceChangeQuery, itemName)
 	if err != nil {
 		return nil, fmt.Errorf("optimized history change query error: %w", err)
 	}
@@ -3250,18 +3243,20 @@ func fetchPriceHistory(itemName string) ([]PricePointDetails, error) {
 // getOverallPriceRange finds the all-time lowest and highest prices for an item.
 func getOverallPriceRange(itemName string) (sql.NullInt64, sql.NullInt64) {
 	var overallLowest, overallHighest sql.NullInt64
-	db.QueryRow(`
-        SELECT MIN(CAST(REPLACE(REPLACE(price, ',', ''), 'z', '') AS INTEGER)), 
+	if err := srv.db.QueryRow(`
+        SELECT MIN(CAST(REPLACE(REPLACE(price, ',', ''), 'z', '') AS INTEGER)),
                MAX(CAST(REPLACE(REPLACE(price, ',', ''), 'z', '') AS INTEGER))
         FROM items WHERE name_of_the_item = ?;
-    `, itemName).Scan(&overallLowest, &overallHighest)
+    `, itemName).Scan(&overallLowest, &overallHighest); err != nil {
+		log.Printf("[W] [HTTP] Could not query overall price range for %s: %v", itemName, err)
+	}
 	return overallLowest, overallHighest
 }
 
 // countAllListings returns the total number of historical listings for an item.
 func countAllListings(itemName string) (int, error) {
 	var totalListings int
-	err := db.QueryRow("SELECT COUNT(*) FROM items WHERE name_of_the_item = ?", itemName).Scan(&totalListings)
+	err := srv.db.QueryRow("SELECT COUNT(*) FROM items WHERE name_of_the_item = ?", itemName).Scan(&totalListings)
 	if err != nil {
 		return 0, fmt.Errorf("failed to count all listings: %w", err)
 	}
@@ -3281,7 +3276,7 @@ func fetchAllListings(itemName string, pagination PaginationData) ([]Item, error
 		LIMIT ? OFFSET ?;
 	`
 	// Use the values from the pagination struct
-	rows, err := db.Query(query, itemName, pagination.ItemsPerPage, pagination.Offset)
+	rows, err := srv.db.Query(query, itemName, pagination.ItemsPerPage, pagination.Offset)
 	if err != nil {
 		return nil, fmt.Errorf("all listings query error: %w", err)
 	}
@@ -3364,7 +3359,7 @@ func fetchPlayerHistory(interval playerCountInterval) ([]PlayerCountPoint, map[s
 		query = fmt.Sprintf("SELECT timestamp, count, seller_count FROM player_history %s ORDER BY timestamp ASC", whereClause)
 	}
 
-	rows, err := db.Query(query, params...)
+	rows, err := srv.db.Query(query, params...)
 	if err != nil {
 		return nil, nil, fmt.Errorf("could not query for player history: %w", err)
 	}
@@ -3431,7 +3426,7 @@ func calculateHistoryStats(history []PlayerCountPoint) playerHistoryStats {
 // getLatestPlayerCount returns the most recent "active" player count.
 func getLatestPlayerCount() int {
 	var latestCount, latestSellerCount int
-	err := db.QueryRow("SELECT count, seller_count FROM player_history ORDER BY timestamp DESC LIMIT 1").Scan(&latestCount, &latestSellerCount)
+	err := srv.db.QueryRow("SELECT count, seller_count FROM player_history ORDER BY timestamp DESC LIMIT 1").Scan(&latestCount, &latestSellerCount)
 	if err != nil && err != sql.ErrNoRows {
 		log.Printf("[W] [HTTP/Player] Could not query latest player count: %v", err)
 		return 0
@@ -3449,7 +3444,7 @@ func getHistoricalMaxPlayers() (int, string) {
 	var historicalMaxActive int
 	var historicalMaxTimestampStr sql.NullString
 	// Query calculates active players in SQL, clamping at 0
-	err := db.QueryRow("SELECT MAX(MAX(count - COALESCE(seller_count, 0), 0)), timestamp FROM player_history GROUP BY timestamp ORDER BY 1 DESC LIMIT 1").Scan(&historicalMaxActive, &historicalMaxTimestampStr)
+	err := srv.db.QueryRow("SELECT MAX(MAX(count - COALESCE(seller_count, 0), 0)), timestamp FROM player_history GROUP BY timestamp ORDER BY 1 DESC LIMIT 1").Scan(&historicalMaxActive, &historicalMaxTimestampStr)
 	if err != nil && err != sql.ErrNoRows {
 		log.Printf("[W] [HTTP/Player] Could not query historical max players: %v", err)
 	}
@@ -3467,7 +3462,7 @@ func getHistoricalMaxPlayers() (int, string) {
 // getGuildMasters fetches a set of all current guild masters.
 func getGuildMasters() map[string]bool {
 	guildMasters := make(map[string]bool)
-	masterRows, err := db.Query("SELECT DISTINCT master FROM guilds WHERE master IS NOT NULL AND master != ''")
+	masterRows, err := srv.db.Query("SELECT DISTINCT master FROM guilds WHERE master IS NOT NULL AND master != ''")
 	if err != nil {
 		log.Printf("[W] [HTTP/Char] Failed to query guild masters: %v", err)
 		return guildMasters
@@ -3486,7 +3481,7 @@ func getGuildMasters() map[string]bool {
 // getAllClasses fetches a sorted list of all unique character classes.
 func getAllClasses() []string {
 	var allClasses []string
-	classRows, err := db.Query("SELECT DISTINCT class FROM characters ORDER BY class ASC")
+	classRows, err := srv.db.Query("SELECT DISTINCT class FROM characters ORDER BY class ASC")
 	if err != nil {
 		log.Printf("[W] [HTTP/Char] Failed to query all classes: %v", err)
 		return nil
@@ -3530,7 +3525,7 @@ func buildCharacterWhereClause(searchName, selectedClass, selectedGuild string) 
 func getCharacterChartData(whereClause string, params []interface{}, graphFilter []string) (template.JS, map[string]bool, bool) {
 	classDistribution := make(map[string]int)
 	distQuery := fmt.Sprintf("SELECT class, COUNT(*) FROM characters %s GROUP BY class", whereClause)
-	distRows, err := db.Query(distQuery, params...)
+	distRows, err := srv.db.Query(distQuery, params...)
 	if err == nil {
 		defer distRows.Close()
 		for distRows.Next() {
@@ -3574,7 +3569,7 @@ func getCharacterStats(whereClause string, params []interface{}) (int, int64) {
 	var totalPlayers int
 	var totalZeny sql.NullInt64
 	countQuery := fmt.Sprintf("SELECT COUNT(*), SUM(zeny) FROM characters %s", whereClause)
-	if err := db.QueryRow(countQuery, params...).Scan(&totalPlayers, &totalZeny); err != nil {
+	if err := srv.db.QueryRow(countQuery, params...).Scan(&totalPlayers, &totalZeny); err != nil {
 		log.Printf("[W] [HTTP/Char] Could not count player characters: %v", err)
 		return 0, 0
 	}
@@ -3588,7 +3583,7 @@ func fetchCharacters(whereClause string, params []interface{}, orderByClause str
 
 	queryArgs := append(params, pagination.ItemsPerPage, pagination.Offset)
 
-	rows, err := db.Query(query, queryArgs...)
+	rows, err := srv.db.Query(query, queryArgs...)
 	if err != nil {
 		return nil, fmt.Errorf("could not query for player characters: %w", err)
 	}
@@ -3656,7 +3651,7 @@ func fetchGuildDetails(guildName string) (Guild, error) {
             COALESCE((SELECT AVG(base_level) FROM characters WHERE guild_name = guilds.name), 0)
         FROM guilds WHERE name = ?`
 
-	err := db.QueryRow(guildQuery, guildName).Scan(
+	err := srv.db.QueryRow(guildQuery, guildName).Scan(
 		&g.Name, &g.Level, &g.Experience, &g.Master, &g.EmblemURL,
 		&g.MemberCount, &g.TotalZeny, &g.AvgBaseLevel,
 	)
@@ -3672,7 +3667,7 @@ func fetchGuildMembersAndStats(guildName, guildMaster, orderByClause string) ([]
 		FROM characters
 		WHERE guild_name = ? %s`, orderByClause)
 
-	rows, err := db.Query(membersQuery, guildName)
+	rows, err := srv.db.Query(membersQuery, guildName)
 	if err != nil {
 		return nil, nil, fmt.Errorf("could not query for guild members: %w", err)
 	}
@@ -3706,7 +3701,7 @@ func fetchGuildChangelog(guildName string, r *http.Request, entriesPerPage int) 
 	likePattern := "%" + guildName + "%" // Find any log mentioning the guild
 
 	var totalChangelogEntries int
-	err := db.QueryRow("SELECT COUNT(*) FROM character_changelog WHERE activity_description LIKE ?", likePattern).Scan(&totalChangelogEntries)
+	err := srv.db.QueryRow("SELECT COUNT(*) FROM character_changelog WHERE activity_description LIKE ?", likePattern).Scan(&totalChangelogEntries)
 	if err != nil {
 		return nil, PaginationData{}, fmt.Errorf("could not count guild changelog: %w", err)
 	}
@@ -3716,7 +3711,7 @@ func fetchGuildChangelog(guildName string, r *http.Request, entriesPerPage int) 
 	changelogQuery := `SELECT change_time, character_name, activity_description FROM character_changelog
         WHERE activity_description LIKE ? ORDER BY change_time DESC LIMIT ? OFFSET ?`
 
-	changelogRows, err := db.Query(changelogQuery, likePattern, pagination.ItemsPerPage, pagination.Offset)
+	changelogRows, err := srv.db.Query(changelogQuery, likePattern, pagination.ItemsPerPage, pagination.Offset)
 	if err != nil {
 		return nil, pagination, fmt.Errorf("could not query for guild changelog: %w", err)
 	}
@@ -3742,7 +3737,7 @@ func fetchCharacterData(charName string) (PlayerCharacter, error) {
 	var lastUpdatedStr, lastActiveStr string
 	query := `SELECT rank, name, base_level, job_level, experience, class, guild_name, zeny, last_updated, last_active FROM characters WHERE name = ?`
 
-	err := db.QueryRow(query, charName).Scan(
+	err := srv.db.QueryRow(query, charName).Scan(
 		&p.Rank, &p.Name, &p.BaseLevel, &p.JobLevel, &p.Experience, &p.Class,
 		&p.GuildName, &p.Zeny, &lastUpdatedStr, &lastActiveStr,
 	)
@@ -3771,7 +3766,7 @@ func fetchCharacterGuild(guildName sql.NullString) (*Guild, error) {
 	guildQuery := `SELECT name, level, master, (SELECT COUNT(*) FROM characters WHERE guild_name = guilds.name) 
 		FROM guilds WHERE name = ?`
 
-	err := db.QueryRow(guildQuery, guildName.String).Scan(&g.Name, &g.Level, &g.Master, &g.MemberCount)
+	err := srv.db.QueryRow(guildQuery, guildName.String).Scan(&g.Name, &g.Level, &g.Master, &g.MemberCount)
 	if err != nil {
 		return nil, fmt.Errorf("could not query guild '%s': %w", guildName.String, err)
 	}
@@ -3796,7 +3791,7 @@ func fetchCharacterMvpKills(charName string) MvpKillEntry {
 		scanDest[i] = new(int)
 	}
 
-	if err := db.QueryRow(mvpQuery, charName).Scan(scanDest...); err == nil {
+	if err := srv.db.QueryRow(mvpQuery, charName).Scan(scanDest...); err == nil {
 		totalKills := 0
 		for i, mobID := range mvpMobIDs {
 			killCount := *scanDest[i].(*int)
@@ -3843,7 +3838,7 @@ func fetchCharacterChangelog(charName string, searchQuery string, pagination Pag
 
 	params = append(params, pagination.ItemsPerPage, pagination.Offset)
 
-	changelogRows, err := db.Query(changelogQuery, params...)
+	changelogRows, err := srv.db.Query(changelogQuery, params...)
 	if err != nil {
 		return nil, fmt.Errorf("could not query changelog: %w", err)
 	}
@@ -3976,7 +3971,7 @@ func dict(values ...interface{}) (map[string]interface{}, error) {
 func fetchCharacterResults(wg *sync.WaitGroup, results *[]GlobalSearchCharacterResult, likeQuery string) {
 	defer wg.Done()
 	query := "SELECT name, class, guild_name FROM characters WHERE name LIKE ? LIMIT 10"
-	rows, err := db.Query(query, likeQuery)
+	rows, err := srv.db.Query(query, likeQuery)
 	if err != nil {
 		log.Printf("[W] [GlobalSearch] Character search failed: %v", err)
 		return
@@ -3994,7 +3989,7 @@ func fetchCharacterResults(wg *sync.WaitGroup, results *[]GlobalSearchCharacterR
 func fetchGuildResults(wg *sync.WaitGroup, results *[]GlobalSearchGuildResult, likeQuery string) {
 	defer wg.Done()
 	query := "SELECT name, master FROM guilds WHERE name LIKE ? OR master LIKE ? LIMIT 10"
-	rows, err := db.Query(query, likeQuery, likeQuery)
+	rows, err := srv.db.Query(query, likeQuery, likeQuery)
 	if err != nil {
 		log.Printf("[W] [GlobalSearch] Guild search failed: %v", err)
 		return
@@ -4015,7 +4010,7 @@ func fetchChatResults(wg *sync.WaitGroup, results *[]GlobalSearchChatResult, lik
 		SELECT character_name, message, channel, timestamp FROM chat 
 		WHERE (character_name LIKE ? OR message LIKE ?) AND channel != 'Local' 
 		ORDER BY timestamp DESC LIMIT 20`
-	rows, err := db.Query(query, likeQuery, likeQuery)
+	rows, err := srv.db.Query(query, likeQuery, likeQuery)
 	if err != nil {
 		log.Printf("[W] [GlobalSearch] Chat search failed: %v", err)
 		return
@@ -4046,7 +4041,7 @@ func fetchTradeResults(wg *sync.WaitGroup, results *[]GlobalSearchTradeResult, l
 		GROUP BY p.id, i.item_name
 		ORDER BY p.created_at DESC LIMIT 20`
 
-	rows, err := db.Query(query, likeQuery)
+	rows, err := srv.db.Query(query, likeQuery)
 	if err != nil {
 		log.Printf("[W] [GlobalSearch] Trade search failed: %v", err)
 		return
@@ -4114,7 +4109,7 @@ func fetchMarketResults(wg *sync.WaitGroup, results *[]ItemSummary, likeQuery st
 		LIMIT 10
 	`
 
-	rows, err := db.Query(query, likeQuery, likeQuery)
+	rows, err := srv.db.Query(query, likeQuery, likeQuery)
 	if err != nil {
 		log.Printf("[W] [GlobalSearch] Market search failed: %v", err)
 		return
@@ -4143,7 +4138,7 @@ func fetchDropStatistics(itemSortBy, itemOrder, playerSortBy, playerOrder string
 			COUNT(DISTINCT SUBSTR(activity_description, 15))
 		FROM character_changelog
 		WHERE activity_description LIKE 'Dropped item: %'`
-	err := db.QueryRow(kpiQuery).Scan(&totalDrops, &uniqueDropItems)
+	err := srv.db.QueryRow(kpiQuery).Scan(&totalDrops, &uniqueDropItems)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			return nil, 0, 0, nil, nil // No drops, not an error
@@ -4211,7 +4206,7 @@ func fetchDropStatistics(itemSortBy, itemOrder, playerSortBy, playerOrder string
 			t.name_pt
 		%s`, cte, itemOrderBy)
 
-	rows, err := db.Query(itemQuery)
+	rows, err := srv.db.Query(itemQuery)
 	if err != nil {
 		return nil, totalDrops, uniqueDropItems, nil, fmt.Errorf("could not query for item drop stats: %w", err)
 	}
@@ -4264,7 +4259,7 @@ func fetchDropStatistics(itemSortBy, itemOrder, playerSortBy, playerOrder string
 			t.character_name
 		%s`, cte, playerOrderBy)
 
-	rows, err = db.Query(playerQuery)
+	rows, err = srv.db.Query(playerQuery)
 	if err != nil {
 		return nil, totalDrops, uniqueDropItems, nil, fmt.Errorf("could not query for player drop stats: %w", err)
 	}
@@ -4360,7 +4355,7 @@ func countCharacterChangelog(charName, searchQuery string) (int, error) {
 	whereClause := "WHERE " + strings.Join(whereConditions, " AND ")
 	query := fmt.Sprintf("SELECT COUNT(*) FROM character_changelog %s", whereClause)
 
-	err := db.QueryRow(query, params...).Scan(&totalEntries)
+	err := srv.db.QueryRow(query, params...).Scan(&totalEntries)
 	if err != nil {
 		return 0, fmt.Errorf("could not count changelog: %w", err)
 	}
@@ -4381,7 +4376,7 @@ func fetchItemDropHistory(itemName string) ([]PlayerDropInfo, error) {
 		ORDER BY change_time DESC
 	`
 
-	rows, err := db.Query(query, activityDesc)
+	rows, err := srv.db.Query(query, activityDesc)
 	if err != nil {
 		return nil, fmt.Errorf("could not query changelog for item drops: %w", err)
 	}
@@ -4417,7 +4412,7 @@ func fetchCharacterSpecialHistory(charName string) (guildHistory []CharacterChan
 		       OR activity_description LIKE '%left guild%')
 		ORDER BY change_time DESC
 	`
-	rows, err := db.Query(query, charName)
+	rows, err := srv.db.Query(query, charName)
 	if err != nil {
 		return nil, nil, fmt.Errorf("could not query special history: %w", err)
 	}
@@ -4457,7 +4452,7 @@ func getCharacterStatsKPIs() (int64, int64, float64, float64, error) {
 	var avgBase, avgJob float64
 
 	query := `SELECT COUNT(*), SUM(zeny), AVG(base_level), AVG(job_level) FROM characters`
-	err := db.QueryRow(query).Scan(&totalChars, &totalZeny, &avgBase, &avgJob)
+	err := srv.db.QueryRow(query).Scan(&totalChars, &totalZeny, &avgBase, &avgJob)
 	if err != nil {
 		return 0, 0, 0, 0, fmt.Errorf("could not query character KPIs: %w", err)
 	}
@@ -4486,7 +4481,7 @@ func getCharacterLevelDistribution() ([]LevelDistPoint, error) {
 		GROUP BY level_range
 		ORDER BY MIN(base_level) ASC
 	`
-	rows, err := db.Query(query)
+	rows, err := srv.db.Query(query)
 	if err != nil {
 		return nil, fmt.Errorf("could not query level distribution: %w", err)
 	}
@@ -4514,7 +4509,7 @@ func getTopCharacters(orderBy string, limit int) ([]PlayerCharacter, error) {
 		LIMIT %d
 	`, orderBy, limit)
 
-	rows, err := db.Query(query)
+	rows, err := srv.db.Query(query)
 	if err != nil {
 		return nil, fmt.Errorf("could not query top characters: %w", err)
 	}

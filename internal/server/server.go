@@ -14,8 +14,17 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/joho/godotenv"
+	"github.com/denislee/yufa-mt/internal/config"
+	"github.com/denislee/yufa-mt/internal/i18n"
+	"github.com/denislee/yufa-mt/internal/middleware"
+	"github.com/denislee/yufa-mt/internal/visitor"
 )
+
+// appConfig holds the validated config loaded by cmd/server/main.go and
+// passed into Run. It mirrors srv.cfg for the legacy free-function
+// scrape/discord/chat-capture call sites that don't yet thread srv
+// through their signatures.
+var appConfig *config.Config
 
 // pageViewLog, visitorTracker, and the batch flusher live in
 // visitor_logger.go.
@@ -43,7 +52,7 @@ func registerRoutes() *http.ServeMux {
 	mux.HandleFunc("/chat", visitorTracker(chatHandler))
 	mux.HandleFunc("/xp-calculator", visitorTracker(xpCalculatorHandler))
 	mux.HandleFunc("/about", visitorTracker(aboutHandler))
-	mux.HandleFunc("/set-lang", setLangHandler)
+	mux.HandleFunc("/set-lang", i18n.SetLangHandler)
 	mux.HandleFunc("/search", visitorTracker(globalSearchHandler))
 	mux.HandleFunc("/stats/drops", visitorTracker(dropStatsHandler))
 	mux.HandleFunc("/stats/market", visitorTracker(marketStatsHandler))
@@ -54,7 +63,7 @@ func registerRoutes() *http.ServeMux {
 
 	// Apply the basicAuth middleware to the entire admin router
 	// Note the trailing slash on "/admin/" is important for sub-path matching
-	mux.Handle("/admin/", basicAuth(http.StripPrefix("/admin", adminRouter)))
+	mux.Handle("/admin/", middleware.BasicAuth(adminUser, adminPass, http.StripPrefix("/admin", adminRouter)))
 
 	return mux
 }
@@ -103,21 +112,22 @@ func registerAdminRoutes() *http.ServeMux {
 	return adminRouter
 }
 
-// Run starts the application: loads .env, opens the database, hydrates
-// the item DB, launches background services (scrapers, Discord bot,
-// visitor logger), serves HTTP on :8080, and blocks until SIGINT/SIGTERM
-// triggers a graceful shutdown.
-func Run() {
-	if err := godotenv.Load(); err != nil {
-		log.Println("[I] [Main] No .env file found, relying on system environment variables.")
-	}
+// Run starts the application: opens the database, hydrates the item DB,
+// launches background services (scrapers, Discord bot, visitor logger),
+// serves HTTP, and blocks until SIGINT/SIGTERM triggers a graceful
+// shutdown. Config is loaded by the caller (cmd/server/main.go) and
+// passed in.
+func Run(cfg *config.Config) {
+	appConfig = cfg
+	initLogger()
 
-	var err error
-	db, err = initDB("./data/market_data.db")
+	dbh, err := initDB(cfg.DBPath)
 	if err != nil {
 		log.Fatalf("[F] [DB] Failed to initialize database: %v", err)
 	}
-	defer db.Close()
+	srv = &App{db: dbh, cfg: cfg}
+	visitorLogger = visitor.New(dbh)
+	defer srv.db.Close()
 
 	// Run this synchronously on startup before starting other services
 	populateItemDBOnStartup()
@@ -137,15 +147,11 @@ func Run() {
 	}()
 
 	// --- Admin Password Logic ---
-	adminPass = os.Getenv("ADMIN_PASSWORD")
+	adminUser = cfg.AdminUser
+	adminPass = cfg.AdminPassword
 	if adminPass == "" {
-		log.Println("[I] [Main] ADMIN_PASSWORD not set. Generating a new random password.")
+		log.Println("[I] [Main] ADMIN_PASSWORD not set. Generating a new random password (will be printed once, below).")
 		adminPass = generateRandomPassword(16)
-		if err := os.WriteFile("data/pwd.txt", []byte(adminPass), 0600); err != nil {
-			log.Printf("[W] [Main] Could not write generated admin password to file: %v", err)
-		} else {
-			log.Println("[I] [Main] Generated admin password saved to data/pwd.txt")
-		}
 	} else {
 		log.Println("[I] [Main] Loaded admin password from ADMIN_PASSWORD environment variable.")
 	}
@@ -176,8 +182,7 @@ func Run() {
 	mux := registerRoutes()
 
 	// --- Server Start and Shutdown ---
-	port := "8080"
-	server := &http.Server{Addr: ":" + port, Handler: mux}
+	server := &http.Server{Addr: cfg.HTTPAddr, Handler: mux}
 
 	// Goroutine to handle server shutdown when context is cancelled
 	go func() {
@@ -193,7 +198,7 @@ func Run() {
 	}()
 
 	// Start server and block
-	log.Printf("[I] [HTTP] Web server started. Open http://localhost:%s in your browser.", port)
+	log.Printf("[I] [HTTP] Web server started on %s.", cfg.HTTPAddr)
 	if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 		log.Fatalf("[F] [HTTP] Web server failed to start: %v", err)
 	}

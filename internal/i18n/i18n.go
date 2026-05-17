@@ -1,4 +1,4 @@
-package server
+package i18n
 
 import (
 	"net/http"
@@ -6,7 +6,7 @@ import (
 )
 
 var (
-	translations = map[string]map[string]string{
+	translationsMap = map[string]map[string]string{
 		"en": {
 			"market_summary":         "Market Summary",
 			"search_by_item_name":    "Search by item name or ID...",
@@ -715,17 +715,17 @@ var (
 	}
 )
 
-// getTranslations returns the translation map for the given language.
-func getTranslations(lang string) map[string]string {
-	if trans, ok := translations[lang]; ok {
+// Translations returns the translation map for the given language.
+func Translations(lang string) map[string]string {
+	if trans, ok := translationsMap[lang]; ok {
 		return trans
 	}
 	// Default to English
-	return translations["en"]
+	return translationsMap["en"]
 }
 
-// getLang reads the language preference from the cookie.
-func getLang(r *http.Request) string {
+// Lang reads the language preference from the cookie.
+func Lang(r *http.Request) string {
 	cookie, err := r.Cookie("lang")
 	if err != nil {
 		// No cookie, default to Portuguese
@@ -738,8 +738,8 @@ func getLang(r *http.Request) string {
 	return "pt"
 }
 
-// setLangHandler sets the language cookie and redirects back.
-func setLangHandler(w http.ResponseWriter, r *http.Request) {
+// SetLangHandler sets the language cookie and redirects back.
+func SetLangHandler(w http.ResponseWriter, r *http.Request) {
 	lang := r.URL.Query().Get("lang")
 	redirectURL := r.URL.Query().Get("redirect")
 

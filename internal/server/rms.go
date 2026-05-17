@@ -8,7 +8,7 @@ import (
 // RMSItem type. DroppedBy and ObtainableFrom are not populated from the
 // local DB.
 func getItemDetailsFromCache(itemID int) (*RMSItem, error) {
-	it, err := rms.Lookup(db, itemID)
+	it, err := rms.Lookup(srv.db, itemID)
 	if err != nil {
 		return nil, err
 	}
