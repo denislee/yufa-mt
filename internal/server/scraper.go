@@ -81,7 +81,7 @@ var (
 	guildMembersRegex  = regexp.MustCompile(`\\"members\\":\[(.*?)\]\}`)
 	guildExpRegex      = regexp.MustCompile(`\\"exp\\":\\"\$n(\d+)\\",\\"master\\"`)
 	guildMemberName    = regexp.MustCompile(`\\"name\\":\\"([^"]+)\\",\\"base_level\\"`)
-	guildIDRegex       = regexp.MustCompile(`/(\d+)$`)
+	guildIDRegex       = regexp.MustCompile(`/(\d+)(?:\?|$)`)
 	mvpPlayerBlock     = regexp.MustCompile(`\\"name\\":\\"([^"]+)\\",\\"base_level\\".*?\\"mvp_kills\\":\[(.*?)]`)
 	mvpKillsRegex      = regexp.MustCompile(`{\\"mob_id\\":(\d+),\\"kills\\":(\d+)}`)
 
@@ -2203,10 +2203,8 @@ func scrapeWoeCharacterRankings() {
 	// --- Step 3: Scrape all pages concurrently ---
 	var mu sync.Mutex
 	var wg sync.WaitGroup
-	sem := make(chan struct{}, 5)                 // Concurrency semaphore
-	var totalParsedCount, totalMatchedCount int32 // Use atomic or mutex for shared counters if needed, simple int32 for now
-	var emptyPageEncountered atomic.Bool          // Flag for an empty page
-	emptyPageEncountered.Store(false)             // Initialize to false
+	sem := make(chan struct{}, 5)
+	var totalParsedCount, totalMatchedCount int32
 
 	log.Printf("[I] [Scraper/WoE] Scraping all %d pages...", lastPage)
 	for page := 1; page <= lastPage; page++ {
@@ -2214,18 +2212,17 @@ func scrapeWoeCharacterRankings() {
 		sem <- struct{}{}
 		go func(pageIndex int) {
 			defer wg.Done()
-			defer func() { <-sem }() // Release semaphore when done
+			defer func() { <-sem }()
 
-			var bodyContent string
-			var err error
-			var numRows int
+			var validRows int
+			parseFailed := false
 
 			for attempt := 1; attempt <= maxParseRetries; attempt++ {
 				pageURL := fmt.Sprintf("https://projetoyufa.com/rankings/woe?page=%d", pageIndex)
 				if enableWoeScraperDebugLogs {
 					log.Printf("[D] [Scraper/WoE] Fetching page: %s (Attempt %d/%d)", pageURL, attempt, maxParseRetries)
 				}
-				bodyContent, err = scraperClient.getPage(pageURL, "[Scraper/WoE]")
+				bodyContent, err := scraperClient.getPage(pageURL, "[Scraper/WoE]")
 				if err != nil {
 					log.Printf("[E] [Scraper/WoE] Network/HTTP error for page %d (attempt %d/%d): %v. Retrying...", pageIndex, attempt, maxParseRetries, err)
 					time.Sleep(parseRetryDelay)
@@ -2235,25 +2232,20 @@ func scrapeWoeCharacterRankings() {
 				doc, err := goquery.NewDocumentFromReader(strings.NewReader(bodyContent))
 				if err != nil {
 					log.Printf("[E] [Scraper/WoE] Failed to parse WoE page %d HTML: %v", pageIndex, err)
-					numRows = -1 // Mark as failed
-					break        // Don't retry on parse error
+					parseFailed = true
+					break
 				}
 
-				rows := doc.Find("table tbody tr")
-				numRows = rows.Length()
+				// The Next.js page is sometimes served mid-stream: only a few rows
+				// are fully rendered in the visible table while remaining cells are
+				// emitted as <table hidden> fragments awaiting client-side hydration.
+				// Treat that as a partial response and retry.
+				partialStream := doc.Find("table[hidden]").Length() > 0
 
-				if numRows == 0 {
-					// --- THIS IS THE NEW LOGIC ---
-					log.Printf("[W] [Scraper/WoE] Page %d returned 0 WoE rows on parse attempt %d/%d. Retrying...", pageIndex, attempt, maxParseRetries)
-					emptyPageEncountered.Store(true) // Set flag in case *all* pages are empty
-					time.Sleep(parseRetryDelay)
-					continue // Try fetching and parsing again
-				}
-
-				// --- Found rows, clear the flag for this page and proceed ---
-				emptyPageEncountered.Store(false)
-				var pageParsedCount, pageMatchedCount int
-				rows.Each(func(i int, s *goquery.Selection) { // Use the 'rows' variable
+				rows := doc.Find("table:not([hidden]) tbody tr")
+				pageWoeChars := make(map[string]WoeCharacterRank)
+				var pageMatchedCount int
+				rows.Each(func(i int, s *goquery.Selection) {
 					cells := s.Find("td")
 					if cells.Length() < 8 {
 						if enableWoeScraperDebugLogs {
@@ -2272,8 +2264,7 @@ func scrapeWoeCharacterRankings() {
 						return
 					}
 
-					_, foundInDB := existingCharNames[scrapedName]
-					if !foundInDB {
+					if _, foundInDB := existingCharNames[scrapedName]; !foundInDB {
 						if enableWoeScraperDebugLogs {
 							log.Printf("[D] [Scraper/WoE] Scraped char '%s' (page %d) not found in DB. Skipping.", scrapedName, pageIndex)
 						}
@@ -2325,38 +2316,48 @@ func scrapeWoeCharacterRankings() {
 					c.Points, _ = strconv.Atoi(strings.TrimSpace(cells.Eq(7).Text()))
 					c.Score = 0
 
-					mu.Lock()
-					allWoeChars[c.Name] = c
-					mu.Unlock()
-					pageParsedCount++
-				}) // End .Each row
+					pageWoeChars[c.Name] = c
+				})
+				validRows = len(pageWoeChars)
 
-				// Update total counts
+				if validRows == 0 {
+					log.Printf("[W] [Scraper/WoE] Page %d returned 0 WoE rows on parse attempt %d/%d. Retrying...", pageIndex, attempt, maxParseRetries)
+					time.Sleep(parseRetryDelay)
+					continue
+				}
+
+				// On any non-last page we expect a full 10 rows. If we got fewer
+				// AND the streaming marker is present, the page was served partial.
+				if partialStream && pageIndex < lastPage && rows.Length() < 10 {
+					log.Printf("[W] [Scraper/WoE] Page %d served as partial stream (%d valid rows, hidden fragments present) on attempt %d/%d. Retrying...", pageIndex, validRows, attempt, maxParseRetries)
+					time.Sleep(parseRetryDelay)
+					continue
+				}
+
 				mu.Lock()
-				totalParsedCount += int32(pageParsedCount)
+				for name, c := range pageWoeChars {
+					allWoeChars[name] = c
+				}
+				totalParsedCount += int32(validRows)
 				totalMatchedCount += int32(pageMatchedCount)
 				mu.Unlock()
 
-				log.Printf("[D] [Scraper/WoE] Scraped page %d/%d. Matched %d chars from DB, parsed %d.", pageIndex, lastPage, pageMatchedCount, pageParsedCount)
-				// --- End parsing logic ---
-
-				// Success, break from retry loop
+				if enableWoeScraperDebugLogs {
+					log.Printf("[D] [Scraper/WoE] Scraped page %d/%d. Matched %d chars from DB, parsed %d.", pageIndex, lastPage, pageMatchedCount, validRows)
+				}
 				break
 			}
 
-			if numRows == 0 {
+			if parseFailed {
+				// Already logged above.
+			} else if validRows == 0 {
 				log.Printf("[E] [Scraper/WoE] Failed to scrape page %d/%d after all retries.", pageIndex, lastPage)
 			}
-		}(page) // <-- *** THIS IS THE FIX (was pageIndex) ***
-	} // End page loop
-
-	wg.Wait() // Wait for all page scraping goroutines to finish
-	// --- End Step 3 ---
-
-	if emptyPageEncountered.Load() {
-		log.Println("[W] [Scraper/WoE] Aborting database update because at least one page was found to be empty after retries. Selectors may be broken.")
-		return
+		}(page)
 	}
+
+	wg.Wait()
+	// --- End Step 3 ---
 
 	log.Printf("[I] [Scraper/WoE] Finished scraping all pages. Total Matched from DB: %d. Total Parsed Details: %d.", totalMatchedCount, totalParsedCount)
 
