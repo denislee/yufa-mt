@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"sync"
 	"syscall"
 	"time"
 
@@ -149,18 +150,27 @@ func Run() {
 		log.Println("[I] [Main] Loaded admin password from ADMIN_PASSWORD environment variable.")
 	}
 
-	go func() {
-		time.Sleep(5 * time.Second) // Give server time to start
-		log.Println("==================================================")
-		log.Printf("[I] [Main] Admin User: %s", adminUser)
-		log.Printf("[I] [Main] Admin Pass: %s", adminPass)
-		log.Println("==================================================")
-	}()
+	log.Println("==================================================")
+	log.Printf("[I] [Main] Admin User: %s", adminUser)
+	log.Printf("[I] [Main] Admin Pass: %s", adminPass)
+	log.Println("==================================================")
 
-	// Start Background Services with the cancellable context
-	go startBackgroundJobs(ctx)
-	go startDiscordBot(ctx)
-	go startVisitorLogger(ctx)
+	// Start Background Services with the cancellable context. The WaitGroup
+	// lets Run block on a clean shutdown of every background goroutine
+	// (visitor logger drains its channel, scrape jobs finish in-flight
+	// requests, discord bot closes its session) before returning.
+	var bgWg sync.WaitGroup
+	startBackgroundJobs(ctx, &bgWg)
+	bgWg.Add(1)
+	go func() {
+		defer bgWg.Done()
+		startDiscordBot(ctx)
+	}()
+	bgWg.Add(1)
+	go func() {
+		defer bgWg.Done()
+		startVisitorLogger(ctx)
+	}()
 
 	// --- Setup Routers ---
 	mux := registerRoutes()
@@ -187,6 +197,11 @@ func Run() {
 	if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 		log.Fatalf("[F] [HTTP] Web server failed to start: %v", err)
 	}
+
+	// HTTP server has finished shutting down. Now wait for background
+	// services to drain so the visitor logger flushes its final batch.
+	log.Println("[I] [Main] Waiting for background services to drain...")
+	bgWg.Wait()
 
 	log.Println("[I] [Main] All services shut down. Exiting.")
 }

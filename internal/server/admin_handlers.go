@@ -3,7 +3,6 @@ package server
 import (
 	"database/sql"
 	"fmt"
-	"html/template"
 	"log"
 	"net/http"
 	"net/url"
@@ -304,30 +303,19 @@ func performRMSLiveSearch(r *http.Request, stats *AdminDashboardData) {
 	}
 
 	log.Printf("[I] [Admin] Admin performing live search for: '%s'", rmsLiveSearchQuery)
-	var wg sync.WaitGroup
-	var rodbResults []ItemSearchResult
-	var rodbErr error
 
-	wg.Add(1)
-
-	go func() {
-		defer wg.Done()
-		rodbResults, rodbErr = scrapeRODatabaseSearch(rmsLiveSearchQuery, 0)
-		if rodbErr != nil {
-			log.Printf("[W] [Admin/Search] Admin RMS Live Search (RODB) query error: %v", rodbErr)
-		}
-	}()
-	wg.Wait()
+	rodbResults, rodbErr := scrapeRODatabaseSearch(rmsLiveSearchQuery, 0)
+	if rodbErr != nil {
+		log.Printf("[W] [Admin/Search] Admin RMS Live Search (RODB) query error: %v", rodbErr)
+	}
 
 	combinedResults := make([]ItemSearchResult, 0)
 	seenIDs := make(map[int]bool)
 
-	if rodbResults != nil {
-		for _, res := range rodbResults {
-			if !seenIDs[res.ID] {
-				combinedResults = append(combinedResults, res)
-				seenIDs[res.ID] = true
-			}
+	for _, res := range rodbResults {
+		if !seenIDs[res.ID] {
+			combinedResults = append(combinedResults, res)
+			seenIDs[res.ID] = true
 		}
 	}
 
@@ -336,22 +324,22 @@ func performRMSLiveSearch(r *http.Request, stats *AdminDashboardData) {
 }
 
 // getAdminDashboardData orchestrates fetching all data for the admin dashboard concurrently.
-// This version is refactored to use an errgroup for simpler concurrent error handling.
+// Each task writes to its own local AdminDashboardData so the goroutines never share
+// memory; results are merged into stats after g.Wait() returns.
 func getAdminDashboardData(r *http.Request) (AdminDashboardData, error) {
 	stats := AdminDashboardData{
 		Message: r.URL.Query().Get("msg"),
 	}
 
-	// An errgroup simplifies managing multiple concurrent tasks and their errors.
-	var g errgroup.Group
-
-	// --- Run data-fetching tasks concurrently ---
+	var (
+		g                                                                  errgroup.Group
+		statsR, guildsR, pageViewsR, tpR, rmsCacheR, rmsLiveR, visitsR, chatR AdminDashboardData
+	)
 
 	// Task 1: Main Stats (Critical)
 	g.Go(func() error {
-		if err := getDashboardStats(&stats); err != nil {
+		if err := getDashboardStats(&statsR); err != nil {
 			log.Printf("[E] [Admin] Failed to load dashboard stats: %v", err)
-			// Returning an error here will cause g.Wait() to return this error.
 			return err
 		}
 		return nil
@@ -359,60 +347,91 @@ func getAdminDashboardData(r *http.Request) (AdminDashboardData, error) {
 
 	// Task 2: Guilds (Not Critical)
 	g.Go(func() error {
-		if err := getDashboardGuilds(&stats); err != nil {
-			// Log but don't fail the whole page.
+		if err := getDashboardGuilds(&guildsR); err != nil {
 			log.Printf("[W] [Admin] Could not load dashboard guilds: %v", err)
 		}
-		return nil // Always return nil so this doesn't fail the group.
+		return nil
 	})
 
 	// Task 3: Page Views (Not Critical)
 	g.Go(func() error {
-		getDashboardPageViews(r, &stats)
+		getDashboardPageViews(r, &pageViewsR)
 		return nil
 	})
 
 	// Task 4: Trading Posts (Not Critical)
 	g.Go(func() error {
-		getDashboardTradingPosts(r, &stats)
+		getDashboardTradingPosts(r, &tpR)
 		return nil
 	})
 
 	// Task 5: RMS Cache Search (Not Critical)
 	g.Go(func() error {
-		performRMSCacheSearch(r, &stats)
+		performRMSCacheSearch(r, &rmsCacheR)
 		return nil
 	})
 
 	// Task 6: RMS Live Search (Not Critical)
 	g.Go(func() error {
-		performRMSLiveSearch(r, &stats)
+		performRMSLiveSearch(r, &rmsLiveR)
 		return nil
 	})
 
 	// Task 7: Chat Messages (Only if tab is chat)
 	if r.URL.Query().Get("tab") == "chat" {
 		g.Go(func() error {
-			getAdminChatMessages(r, &stats)
+			getAdminChatMessages(r, &chatR)
 			return nil
 		})
 	}
 
 	g.Go(func() error {
-		if err := getDashboardPageVisitCounts(&stats); err != nil {
-			// Log but don't fail the whole page.
+		if err := getDashboardPageVisitCounts(&visitsR); err != nil {
 			log.Printf("[W] [Admin] Could not load page visit counts: %v", err)
 		}
 		return nil
 	})
 
-	// Wait for all concurrent tasks to finish.
-	// mainErr will be the first non-nil error returned from any g.Go() func.
 	if mainErr := g.Wait(); mainErr != nil {
-		return stats, mainErr // Return if a critical task failed
+		return stats, mainErr
 	}
 
-	// --- Scrape times (these are fast, run sequentially) ---
+	// Merge disjoint fields back into stats.
+	copyDashboardStats(&stats, &statsR)
+	stats.AllGuilds = guildsR.AllGuilds
+	stats.MostVisitedPage = pageViewsR.MostVisitedPage
+	stats.MostVisitedPageCount = pageViewsR.MostVisitedPageCount
+	stats.PageViewsTotal = pageViewsR.PageViewsTotal
+	stats.PageViewsTotalPages = pageViewsR.PageViewsTotalPages
+	stats.PageViewsCurrentPage = pageViewsR.PageViewsCurrentPage
+	stats.PageViewsHasPrevPage = pageViewsR.PageViewsHasPrevPage
+	stats.PageViewsPrevPage = pageViewsR.PageViewsPrevPage
+	stats.PageViewsHasNextPage = pageViewsR.PageViewsHasNextPage
+	stats.PageViewsNextPage = pageViewsR.PageViewsNextPage
+	stats.RecentPageViews = pageViewsR.RecentPageViews
+	stats.TradingPostTotal = tpR.TradingPostTotal
+	stats.TradingPostTotalPages = tpR.TradingPostTotalPages
+	stats.TradingPostCurrentPage = tpR.TradingPostCurrentPage
+	stats.TradingPostHasPrevPage = tpR.TradingPostHasPrevPage
+	stats.TradingPostPrevPage = tpR.TradingPostPrevPage
+	stats.TradingPostHasNextPage = tpR.TradingPostHasNextPage
+	stats.TradingPostNextPage = tpR.TradingPostNextPage
+	stats.RecentTradingPosts = tpR.RecentTradingPosts
+	stats.RMSCacheSearchQuery = rmsCacheR.RMSCacheSearchQuery
+	stats.RMSCacheSearchResults = rmsCacheR.RMSCacheSearchResults
+	stats.RMSLiveSearchQuery = rmsLiveR.RMSLiveSearchQuery
+	stats.RMSLiveSearchResults = rmsLiveR.RMSLiveSearchResults
+	stats.PageVisitCounts = visitsR.PageVisitCounts
+	stats.ChatSearchQuery = chatR.ChatSearchQuery
+	stats.ChatTotalMessages = chatR.ChatTotalMessages
+	stats.ChatTotalPages = chatR.ChatTotalPages
+	stats.ChatCurrentPage = chatR.ChatCurrentPage
+	stats.ChatHasPrevPage = chatR.ChatHasPrevPage
+	stats.ChatPrevPage = chatR.ChatPrevPage
+	stats.ChatHasNextPage = chatR.ChatHasNextPage
+	stats.ChatNextPage = chatR.ChatNextPage
+	stats.ChatMessages = chatR.ChatMessages
+
 	stats.LastMarketScrape = GetLastScrapeTime()
 	stats.LastPlayerCountScrape = GetLastPlayerCountTime()
 	stats.LastCharacterScrape = GetLastCharacterScrapeTime()
@@ -494,14 +513,16 @@ func adminHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	tmpl, err := template.New("admin.html").Funcs(templateFuncs).ParseFiles("web/templates/admin.html")
-	if err != nil {
+	tmpl, ok := templateCache["admin.html"]
+	if !ok {
 		http.Error(w, "Could not load admin template", http.StatusInternalServerError)
-		log.Printf("[E] [HTTP] Could not load admin.html template: %v", err)
+		log.Println("[E] [HTTP] admin.html template missing from cache")
 		return
 	}
 
-	tmpl.Execute(w, stats)
+	if err := tmpl.Execute(w, stats); err != nil {
+		log.Printf("[E] [HTTP] Could not execute admin.html template: %v", err)
+	}
 }
 
 func adminParseTradeHandler(w http.ResponseWriter, r *http.Request) {
@@ -536,15 +557,17 @@ func adminParseTradeHandler(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	tmpl, err := template.New("admin.html").Funcs(templateFuncs).ParseFiles("web/templates/admin.html")
-	if err != nil {
+	tmpl, ok := templateCache["admin.html"]
+	if !ok {
 		http.Error(w, "Could not load admin template", http.StatusInternalServerError)
-		log.Printf("[E] [HTTP] Could not load admin.html template: %v", err)
+		log.Println("[E] [HTTP] admin.html template missing from cache")
 		return
 	}
 
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	tmpl.Execute(w, stats)
+	if err := tmpl.Execute(w, stats); err != nil {
+		log.Printf("[E] [HTTP] Could not execute admin.html template: %v", err)
+	}
 }
 
 func adminTriggerScrapeHandler(scraperFunc func(), name string) http.HandlerFunc {

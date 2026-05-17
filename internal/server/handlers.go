@@ -116,8 +116,6 @@ var definedEvents = []EventDefinition{
 
 var (
 	nameSanitizer    = regexp.MustCompile(`[^a-zA-Z0-9 ]+`)
-	contactSanitizer = regexp.MustCompile(`[^a-zA-Z0-9\s:.,#@-]+`)
-	notesSanitizer   = regexp.MustCompile(`[^a-zA-Z0-9\s.,?!'-]+`)
 	itemSanitizer    = regexp.MustCompile(`[^\p{L}0-9\s\[\]\+\-]+`)
 	reCardRemover    = regexp.MustCompile(`(?i)\s*\b(card|carta)\b\s*`)
 	reSlotRemover    = regexp.MustCompile(`\s*\[\d+\]\s*`)
@@ -496,6 +494,16 @@ func init() {
 
 		templateCache[tmplName] = tmpl
 	}
+
+	// Admin templates are standalone (no navbar/pagination partials).
+	for _, tmplName := range []string{"admin.html", "admin_edit_post.html"} {
+		tmpl, err := template.New(tmplName).Funcs(templateFuncs).ParseFiles(templateDir + tmplName)
+		if err != nil {
+			log.Fatalf("[F] [HTTP] Could not parse template '%s': %v", tmplName, err)
+		}
+		templateCache[tmplName] = tmpl
+	}
+
 	log.Println("[I] [HTTP] All templates parsed and cached successfully.")
 }
 
@@ -623,7 +631,9 @@ func summaryHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var totalVisitors int
-	db.QueryRow("SELECT COUNT(*) FROM visitors").Scan(&totalVisitors)
+	if err := db.QueryRow("SELECT COUNT(*) FROM visitors").Scan(&totalVisitors); err != nil {
+		log.Printf("[W] [HTTP] Could not query total visitors: %v", err)
+	}
 
 	data := SummaryPageData{
 		Items:            items,
@@ -2037,39 +2047,21 @@ func findItemIDInCache(cleanItemName string, slots int) (sql.NullInt64, bool) {
 	return sql.NullInt64{Valid: false}, false
 }
 
-// findItemIDOnline performs concurrent web scrapes to find an item ID.
+// findItemIDOnline performs a web scrape to find an item ID.
 func findItemIDOnline(cleanItemName string, slots int) (sql.NullInt64, bool) {
 	log.Printf("[D] [ItemID] No local FTS match for '%s'. Initiating online search...", cleanItemName)
 
-	var wg sync.WaitGroup
-	// --- MODIFICATION: Removed rmsResults and rmsErr ---
-	var rdbResults []ItemSearchResult
-	var rodbErr error
-
-	// --- MODIFICATION: Removed one item from wg.Add() ---
-	wg.Add(1)
-	// --- MODIFICATION: Removed goroutine for scrapeRMSItemSearch ---
-	// go func() { ... }()
-	// --- END MODIFICATION ---
-	go func() {
-		defer wg.Done()
-		rdbResults, rodbErr = scrapeRODatabaseSearch(cleanItemName, slots)
-		if rodbErr != nil {
-			log.Printf("[W] [ItemID] RDB Search failed for '%s': %v", cleanItemName, rodbErr)
-		}
-	}()
-	wg.Wait()
+	rdbResults, rodbErr := scrapeRODatabaseSearch(cleanItemName, slots)
+	if rodbErr != nil {
+		log.Printf("[W] [ItemID] RDB Search failed for '%s': %v", cleanItemName, rodbErr)
+	}
 
 	combinedIDs := make(map[int]string)
-	// --- MODIFICATION: Removed loop for rmsResults ---
-	if rdbResults != nil {
-		for _, res := range rdbResults {
-			if _, ok := combinedIDs[res.ID]; !ok {
-				combinedIDs[res.ID] = res.Name
-			}
+	for _, res := range rdbResults {
+		if _, ok := combinedIDs[res.ID]; !ok {
+			combinedIDs[res.ID] = res.Name
 		}
 	}
-	// --- END MODIFICATION ---
 
 	if len(combinedIDs) == 1 {
 		var foundID int
@@ -2980,7 +2972,7 @@ func createSingleTradingPost(authorName, originalMessage, postType string, items
 		return 0, fmt.Errorf("author name is empty after sanitization")
 	}
 
-	title := fmt.Sprintf("%s items via Discord", strings.Title(postType))
+	title := fmt.Sprintf("%s items via Discord", capitalizeASCII(postType))
 	discordContact := fmt.Sprintf("Discord: %s", authorName)
 
 	// Generate token hash

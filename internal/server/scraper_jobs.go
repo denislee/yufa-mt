@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"log"
+	"sync"
 	"time"
 )
 
@@ -33,7 +34,7 @@ func runJobOnTicker(ctx context.Context, job Job) {
 	}
 }
 
-func startBackgroundJobs(ctx context.Context) {
+func startBackgroundJobs(ctx context.Context, wg *sync.WaitGroup) {
 	// Define all scheduled jobs
 	jobs := []Job{
 		{Name: "Market", Func: scrapeData, Interval: 3 * time.Minute},
@@ -46,12 +47,19 @@ func startBackgroundJobs(ctx context.Context) {
 		{Name: "WoE-Char-Rankings", Func: scrapeWoeCharacterRankings, Interval: 12 * time.Hour},
 	}
 
-	// Start all standard jobs
 	for _, job := range jobs {
-		go runJobOnTicker(ctx, job)
+		wg.Add(1)
+		go func(j Job) {
+			defer wg.Done()
+			runJobOnTicker(ctx, j)
+		}(job)
 	}
 
-	go startChatPacketCapture(ctx)
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		startChatPacketCapture(ctx)
+	}()
 }
 
 func toComparable(item Item) comparableItem {

@@ -3,7 +3,6 @@ package server
 import (
 	"database/sql"
 	"fmt"
-	"html/template"
 	"log"
 	"net/http"
 	"net/url"
@@ -239,10 +238,10 @@ func adminShowEditTradingPostPage(w http.ResponseWriter, r *http.Request, postID
 		post.Items = append(post.Items, item)
 	}
 
-	tmpl, err := template.ParseFiles("web/templates/admin_edit_post.html")
-	if err != nil {
+	tmpl, ok := templateCache["admin_edit_post.html"]
+	if !ok {
 		http.Error(w, "Could not load edit template", http.StatusInternalServerError)
-		log.Printf("[E] [HTTP] Could not load admin_edit_post.html: %v", err)
+		log.Println("[E] [HTTP] admin_edit_post.html template missing from cache")
 		return
 	}
 
@@ -250,7 +249,9 @@ func adminShowEditTradingPostPage(w http.ResponseWriter, r *http.Request, postID
 		Post:           post,
 		LastScrapeTime: GetLastScrapeTime(),
 	}
-	tmpl.Execute(w, data)
+	if err := tmpl.Execute(w, data); err != nil {
+		log.Printf("[E] [HTTP] Could not execute admin_edit_post.html: %v", err)
+	}
 }
 
 // adminHandleEditTradingPost handles the POST request to save changes.

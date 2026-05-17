@@ -6,9 +6,19 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"strings"
 	"sync"
 	"time"
 )
+
+// capitalizeASCII title-cases a single ASCII word ("buying" -> "Buying").
+// Used instead of the deprecated strings.Title for the known post-type values.
+func capitalizeASCII(s string) string {
+	if s == "" {
+		return s
+	}
+	return strings.ToUpper(s[:1]) + s[1:]
+}
 
 // updateTimeCacheEntry holds a cached timestamp and its expiry.
 type updateTimeCacheEntry struct {

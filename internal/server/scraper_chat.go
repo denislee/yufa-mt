@@ -371,8 +371,6 @@ func startChatPacketCapture(ctx context.Context) {
 						channel = "Drop"
 						// Check if it's the specific 0.01% drop message.
 						if strings.Contains(message, "(chance: 0.01%)") && (strings.Contains(message, "got") || strings.Contains(message, "stole")) {
-							channel = "Drop"
-
 							// Parse for changelog
 							dropMatches := dropMessageRegex.FindStringSubmatch(message)
 							if len(dropMatches) == 4 {
