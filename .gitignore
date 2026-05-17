@@ -31,6 +31,11 @@ go.work.sum
 # .idea/
 # .vscode/
 
+data/market_data.db*
+data/pwd.txt
+data/all.txt
+data/capture.out
+# legacy locations
 market_data.db*
 pwd.txt
 all.txt

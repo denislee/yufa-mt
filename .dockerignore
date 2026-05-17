@@ -1,0 +1,14 @@
+.git
+.github
+.claude
+.idea
+.vscode
+data/market_data.db*
+data/pwd.txt
+data/all.txt
+data/capture.out
+*.test
+*.out
+coverage.*
+yufa-mt
+app

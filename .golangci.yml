@@ -1,0 +1,24 @@
+version: "2"
+
+run:
+  build-tags:
+    - fts5
+
+linters:
+  default: none
+  enable:
+    - errcheck
+    - govet
+    - ineffassign
+    - staticcheck
+    - unused
+  exclusions:
+    rules:
+      # Generated/large legacy files have known violations to be cleaned up
+      # incrementally. Don't block CI on them.
+      - path: internal/server/handlers\.go
+        linters: [errcheck]
+      - path: internal/server/scraper.*\.go
+        linters: [errcheck]
+      - path: internal/server/admin_handlers\.go
+        linters: [errcheck]
