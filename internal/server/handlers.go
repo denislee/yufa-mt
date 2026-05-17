@@ -1303,7 +1303,7 @@ func guildHandler(w http.ResponseWriter, r *http.Request) {
 	// This query uses a LEFT JOIN on a subquery to efficiently aggregate
 	// character stats (count, zeny, avg level) for each guild.
 	query := fmt.Sprintf(`
-		SELECT g.name, g.level, g.experience, g.master, g.emblem_url,
+		SELECT g.name, g.level, g.experience, g.master, g.emblem_url, COALESCE(g.emblem_local_path, ''),
 			COALESCE(cs.member_count, 0) as member_count,
 			COALESCE(cs.total_zeny, 0) as total_zeny,
 			COALESCE(cs.avg_base_level, 0) as avg_base_level
@@ -1329,7 +1329,7 @@ func guildHandler(w http.ResponseWriter, r *http.Request) {
 	var guilds []Guild
 	for rows.Next() {
 		var g Guild
-		if err := rows.Scan(&g.Name, &g.Level, &g.Experience, &g.Master, &g.EmblemURL, &g.MemberCount, &g.TotalZeny, &g.AvgBaseLevel); err != nil {
+		if err := rows.Scan(&g.Name, &g.Level, &g.Experience, &g.Master, &g.EmblemURL, &g.EmblemLocalPath, &g.MemberCount, &g.TotalZeny, &g.AvgBaseLevel); err != nil {
 			log.Printf("[W] [HTTP/Guild] Failed to scan guild row: %v", err)
 			continue
 		}
@@ -3645,14 +3645,14 @@ func buildCharacterFilter(searchName, selectedClass, selectedGuild string, selec
 func fetchGuildDetails(guildName string) (Guild, error) {
 	var g Guild
 	guildQuery := `
-        SELECT name, level, experience, master, emblem_url,
+        SELECT name, level, experience, master, emblem_url, COALESCE(emblem_local_path, ''),
             (SELECT COUNT(*) FROM characters WHERE guild_name = guilds.name),
             COALESCE((SELECT SUM(zeny) FROM characters WHERE guild_name = guilds.name), 0),
             COALESCE((SELECT AVG(base_level) FROM characters WHERE guild_name = guilds.name), 0)
         FROM guilds WHERE name = ?`
 
 	err := srv.db.QueryRow(guildQuery, guildName).Scan(
-		&g.Name, &g.Level, &g.Experience, &g.Master, &g.EmblemURL,
+		&g.Name, &g.Level, &g.Experience, &g.Master, &g.EmblemURL, &g.EmblemLocalPath,
 		&g.MemberCount, &g.TotalZeny, &g.AvgBaseLevel,
 	)
 	if err != nil {

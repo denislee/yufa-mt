@@ -69,6 +69,12 @@ func registerRoutes() *http.ServeMux {
 	}
 	mux.Handle("/static/", http.StripPrefix("/static/", cacheStatic(http.FileServer(http.FS(staticFS)))))
 
+	// Processed guild emblems live on disk under data/runtime/emblems
+	// (written by processGuildEmblems after each guild scrape).
+	if dir := emblemDir(); dir != "" {
+		mux.Handle("/emblems/", http.StripPrefix("/emblems/", cacheStatic(http.FileServer(http.Dir(dir)))))
+	}
+
 	// --- Admin Routes ---
 	adminRouter := registerAdminRoutes()
 
@@ -118,6 +124,7 @@ func registerAdminRoutes() *http.ServeMux {
 	adminRouter.HandleFunc("/scrape/players", adminTriggerScrapeHandler(scrapeAndStorePlayerCount, "Player-Count"))
 	adminRouter.HandleFunc("/scrape/characters", adminTriggerScrapeHandler(scrapePlayerCharacters, "Character"))
 	adminRouter.HandleFunc("/scrape/guilds", adminTriggerScrapeHandler(scrapeGuilds, "Guild"))
+	adminRouter.HandleFunc("/scrape/emblems", adminTriggerScrapeHandler(processGuildEmblems, "Emblem-Process"))
 	adminRouter.HandleFunc("/scrape/zeny", adminTriggerScrapeHandler(scrapeZeny, "Zeny"))
 	adminRouter.HandleFunc("/scrape/mvp", adminTriggerScrapeHandler(scrapeMvpKills, "MVP"))
 	adminRouter.HandleFunc("/scrape/pt-names", adminTriggerScrapeHandler(populateMissingPortugueseNames, "PT-Name-Populator"))

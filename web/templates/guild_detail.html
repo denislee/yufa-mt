@@ -29,7 +29,7 @@
     <div class="container mx-auto px-4 py-6">
         <div class="flex flex-col sm:flex-row justify-between sm:items-center gap-2 mb-4 border-b border-gray-200 dark:border-gray-700 pb-3">
             <div class="flex items-center gap-4">
-                <img src="{{.Data.Guild.EmblemURL}}" alt="Guild Emblem" class="h-16 w-16 bg-gray-200 dark:bg-gray-700 p-1 rounded-md" onerror="this.style.display='none'">
+                <img src="{{if .Data.Guild.EmblemLocalPath}}{{.Data.Guild.EmblemLocalPath}}{{else}}{{.Data.Guild.EmblemURL}}{{end}}" alt="Guild Emblem" class="h-16 w-16 bg-gray-200 dark:bg-gray-700 p-1 rounded-md" onerror="this.style.display='none'">
                 <div>
                     <h1 class="text-3xl font-bold text-gray-800 dark:text-gray-100">{{.Data.Guild.Name}}</h1>
                     <p class="text-lg text-gray-600 dark:text-gray-300">{{.Page.T.led_by}} <a href="/character?name={{.Data.Guild.Master | urlquery}}" class="font-semibold hover:underline">{{.Data.Guild.Master}}</a></p>

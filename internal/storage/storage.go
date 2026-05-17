@@ -307,6 +307,9 @@ func applyMigrations(db *sql.DB) error {
 	if err := addColumnIfMissing(db, "guilds", "is_active", "INTEGER NOT NULL DEFAULT 1"); err != nil {
 		return err
 	}
+	if err := addColumnIfMissing(db, "guilds", "emblem_local_path", "TEXT"); err != nil {
+		return err
+	}
 	return nil
 }
 

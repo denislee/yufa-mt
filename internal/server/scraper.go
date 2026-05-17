@@ -867,6 +867,9 @@ func processGuildData(allGuilds map[string]Guild, allMembers map[string]string) 
 	}
 
 	log.Printf("[I] [Scraper/Guild] Scrape and update complete. Saved %d guild records and updated character associations.", len(allGuilds))
+
+	// 7. Refresh on-disk processed emblems (magenta -> transparent).
+	processGuildEmblems()
 }
 
 // scrapeGuilds is the concurrent "producer" for guild data.

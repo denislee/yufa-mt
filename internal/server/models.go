@@ -172,15 +172,16 @@ type PlayerCharacter struct {
 }
 
 type Guild struct {
-	Rank         int
-	Name         string
-	Level        int
-	Experience   int
-	Master       string
-	EmblemURL    string
-	MemberCount  int
-	TotalZeny    int64
-	AvgBaseLevel float64
+	Rank            int
+	Name            string
+	Level           int
+	Experience      int
+	Master          string
+	EmblemURL       string
+	EmblemLocalPath string
+	MemberCount     int
+	TotalZeny       int64
+	AvgBaseLevel    float64
 }
 
 type MvpKillEntry struct {
