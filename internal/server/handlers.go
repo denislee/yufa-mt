@@ -1256,17 +1256,15 @@ func guildHandler(w http.ResponseWriter, r *http.Request) {
 	searchName := r.FormValue("name_query")
 	const guildsPerPage = 50
 
-	// 1. Build WHERE clause
-	var whereConditions []string
+	// 1. Build WHERE clause. The rankings view only lists guilds present in
+	// the latest scrape; soft-deleted ones remain queryable via guildDetailHandler.
+	whereConditions := []string{"g.is_active = 1"}
 	var params []interface{}
 	if searchName != "" {
 		whereConditions = append(whereConditions, "g.name LIKE ?")
 		params = append(params, "%"+searchName+"%")
 	}
-	whereClause := ""
-	if len(whereConditions) > 0 {
-		whereClause = "WHERE " + strings.Join(whereConditions, " AND ")
-	}
+	whereClause := "WHERE " + strings.Join(whereConditions, " AND ")
 
 	// 2. Get Sort Order
 	allowedSorts := map[string]string{

@@ -124,7 +124,8 @@ const (
 		"experience" INTEGER NOT NULL,
 		"master" TEXT NOT NULL,
 		"emblem_url" TEXT,
-		"last_updated" TEXT NOT NULL
+		"last_updated" TEXT NOT NULL,
+		"is_active" INTEGER NOT NULL DEFAULT 1
 	);`
 	createCharactersTableSQL = `
 	CREATE TABLE IF NOT EXISTS characters (
@@ -259,15 +260,13 @@ const (
 	);`
 )
 
-func applyMigrations(db *sql.DB) error {
-
-	rows, err := db.Query("PRAGMA table_info(characters);")
+func columnExists(db *sql.DB, table, column string) (bool, error) {
+	rows, err := db.Query(fmt.Sprintf("PRAGMA table_info(%s);", table))
 	if err != nil {
-		return fmt.Errorf("could not query table info for characters: %w", err)
+		return false, fmt.Errorf("could not query table info for %s: %w", table, err)
 	}
 	defer rows.Close()
 
-	var columnExists bool
 	for rows.Next() {
 		var (
 			cid       int
@@ -278,22 +277,36 @@ func applyMigrations(db *sql.DB) error {
 			pk        int
 		)
 		if err := rows.Scan(&cid, &name, &ctype, &notnull, &dfltValue, &pk); err != nil {
-			return err
+			return false, err
 		}
-		if name == "zeny" {
-			columnExists = true
-			break
-		}
-	}
-
-	if !columnExists {
-
-		_, err := db.Exec("ALTER TABLE characters ADD COLUMN zeny INTEGER NOT NULL DEFAULT 0;")
-		if err != nil {
-			return fmt.Errorf("failed to add 'zeny' column to 'characters' table: %w", err)
+		if name == column {
+			return true, nil
 		}
 	}
+	return false, nil
+}
 
+func addColumnIfMissing(db *sql.DB, table, column, columnDef string) error {
+	exists, err := columnExists(db, table, column)
+	if err != nil {
+		return err
+	}
+	if exists {
+		return nil
+	}
+	if _, err := db.Exec(fmt.Sprintf("ALTER TABLE %s ADD COLUMN %s %s;", table, column, columnDef)); err != nil {
+		return fmt.Errorf("failed to add '%s' column to '%s' table: %w", column, table, err)
+	}
+	return nil
+}
+
+func applyMigrations(db *sql.DB) error {
+	if err := addColumnIfMissing(db, "characters", "zeny", "INTEGER NOT NULL DEFAULT 0"); err != nil {
+		return err
+	}
+	if err := addColumnIfMissing(db, "guilds", "is_active", "INTEGER NOT NULL DEFAULT 1"); err != nil {
+		return err
+	}
 	return nil
 }
 

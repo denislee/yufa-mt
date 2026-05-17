@@ -79,6 +79,7 @@ var (
 	guildLevelRegex    = regexp.MustCompile(`\\"guild_lv\\":(\d+),\\"connect_member\\"`)
 	guildMasterRegex   = regexp.MustCompile(`\\"master\\":\\"([^"]+)\\",\\"members\\"`)
 	guildMembersRegex  = regexp.MustCompile(`\\"members\\":\[(.*?)\]\}`)
+	guildExpRegex      = regexp.MustCompile(`\\"exp\\":\\"\$n(\d+)\\",\\"master\\"`)
 	guildMemberName    = regexp.MustCompile(`\\"name\\":\\"([^"]+)\\",\\"base_level\\"`)
 	guildIDRegex       = regexp.MustCompile(`/(\d+)$`)
 	mvpPlayerBlock     = regexp.MustCompile(`\\"name\\":\\"([^"]+)\\",\\"base_level\\".*?\\"mvp_kills\\":\[(.*?)]`)
@@ -841,8 +842,10 @@ func processGuildData(allGuilds map[string]Guild, allMembers map[string]string) 
 	defer characterMutex.Unlock()
 
 	// --- SAFETY CHECK: PREVENT PARTIAL SCRAPES FROM WIPING DB ---
+	// Compare against the active guild count only; inactive (soft-deleted) rows
+	// are historical and would otherwise inflate the threshold over time.
 	var currentGuildCount int
-	if err := db.QueryRow("SELECT COUNT(*) FROM guilds").Scan(&currentGuildCount); err != nil {
+	if err := db.QueryRow("SELECT COUNT(*) FROM guilds WHERE is_active = 1").Scan(&currentGuildCount); err != nil {
 		log.Printf("[E] [Scraper/Guild] Failed to query current guild count for safety check: %v. Aborting update.", err)
 		return
 	}
@@ -856,7 +859,7 @@ func processGuildData(allGuilds map[string]Guild, allMembers map[string]string) 
 		minAcceptableCount := int(float64(currentGuildCount) * safetyThresholdRatio)
 
 		if scrapedCount < minAcceptableCount {
-			log.Printf("[W] [Scraper/Guild] SAFETY ABORT: Scraped %d guilds, but DB contains %d. This is a drop of over %.0f%%. Keeping existing data to prevent partial wipe.",
+			log.Printf("[W] [Scraper/Guild] SAFETY ABORT: Scraped %d guilds, but DB contains %d active. This is a drop of over %.0f%%. Keeping existing data to prevent partial wipe.",
 				scrapedCount, currentGuildCount, (1.0-safetyThresholdRatio)*100)
 			return
 		}
@@ -886,15 +889,26 @@ func processGuildData(allGuilds map[string]Guild, allMembers map[string]string) 
 	}
 	defer tx.Rollback()
 
-	// 3. Upsert guild information
+	// 3. Soft-delete: mark all guilds inactive; the upsert below re-activates
+	// only the ones we just scraped. Rows that no longer appear in the
+	// rankings stay in the table for historical reference with is_active = 0.
+	if _, err := tx.Exec("UPDATE guilds SET is_active = 0"); err != nil {
+		log.Printf("[E] [Scraper/Guild] Failed to mark guilds inactive: %v", err)
+		return
+	}
+
+	// 4. Upsert guild information
 	log.Println("[D] [Scraper/Guild] Upserting guild information into 'guilds' table...")
 	guildStmt, err := tx.Prepare(`
-		INSERT INTO guilds (rank, name, level, experience, master, emblem_url, last_updated)
-		VALUES (?, ?, ?, ?, ?, ?, ?)
+		INSERT INTO guilds (rank, name, level, experience, master, emblem_url, last_updated, is_active)
+		VALUES (?, ?, ?, ?, ?, ?, ?, 1)
 		ON CONFLICT(name) DO UPDATE SET
+			rank=excluded.rank,
 			level=excluded.level,
+			experience=excluded.experience,
 			master=excluded.master,
-			last_updated=excluded.last_updated
+			last_updated=excluded.last_updated,
+			is_active=1
 	`)
 	if err != nil {
 		log.Printf("[E] [Scraper/Guild] Failed to prepare guilds upsert statement: %v", err)
@@ -904,7 +918,7 @@ func processGuildData(allGuilds map[string]Guild, allMembers map[string]string) 
 
 	updateTime := time.Now().Format(time.RFC3339)
 	for _, g := range allGuilds {
-		if _, err := guildStmt.Exec(0, g.Name, g.Level, g.Experience, g.Master, g.EmblemURL, updateTime); err != nil {
+		if _, err := guildStmt.Exec(g.Rank, g.Name, g.Level, g.Experience, g.Master, g.EmblemURL, updateTime); err != nil {
 			log.Printf("[W] [Scraper/Guild] Failed to upsert guild '%s': %v", g.Name, err)
 		}
 	}
@@ -1056,21 +1070,26 @@ func scrapeGuilds() {
 	processGuildData(allGuilds, allMembers)
 }
 
+// guildsPerPage matches the ranking page size and is used to compute a
+// global rank from (pageIndex, position-on-page).
+const guildsPerPage = 10
+
 // parseGuildPage contains all the parsing logic for a guild page.
 func parseGuildPage(bodyContent string, pageIndex, attempt int) ([]Guild, map[string]string, error) {
 	nameMatches := guildNameRegex.FindAllStringSubmatch(bodyContent, -1)
 	levelMatches := guildLevelRegex.FindAllStringSubmatch(bodyContent, -1)
 	masterMatches := guildMasterRegex.FindAllStringSubmatch(bodyContent, -1)
 	membersMatches := guildMembersRegex.FindAllStringSubmatch(bodyContent, -1)
+	expMatches := guildExpRegex.FindAllStringSubmatch(bodyContent, -1)
 
 	numGuilds := len(nameMatches)
 	if numGuilds == 0 {
 		return nil, nil, fmt.Errorf("page %d returned 0 guilds on parse attempt %d/%d", pageIndex, attempt, maxParseRetries)
 	}
 
-	if len(levelMatches) != numGuilds || len(masterMatches) != numGuilds || len(membersMatches) != numGuilds {
-		log.Printf("[W] [Scraper/Guild] Mismatch in regex match counts on page %d. Skipping page. (Names: %d, Levels: %d, Masters: %d, Members: %d)",
-			pageIndex, len(nameMatches), len(levelMatches), len(masterMatches), len(membersMatches))
+	if len(levelMatches) != numGuilds || len(masterMatches) != numGuilds || len(membersMatches) != numGuilds || len(expMatches) != numGuilds {
+		log.Printf("[W] [Scraper/Guild] Mismatch in regex match counts on page %d. Skipping page. (Names: %d, Levels: %d, Masters: %d, Members: %d, Exp: %d)",
+			pageIndex, len(nameMatches), len(levelMatches), len(masterMatches), len(membersMatches), len(expMatches))
 		return nil, nil, nil // Data integrity issue, don't retry
 	}
 
@@ -1080,9 +1099,11 @@ func parseGuildPage(bodyContent string, pageIndex, attempt int) ([]Guild, map[st
 	for i := 0; i < numGuilds; i++ {
 		name := nameMatches[i][1]
 		level, _ := strconv.Atoi(levelMatches[i][1])
+		exp, _ := strconv.Atoi(expMatches[i][1])
 		master := masterMatches[i][1]
+		rank := (pageIndex-1)*guildsPerPage + i + 1
 
-		pageGuilds = append(pageGuilds, Guild{Name: name, Level: level, Master: master})
+		pageGuilds = append(pageGuilds, Guild{Rank: rank, Name: name, Level: level, Experience: exp, Master: master})
 
 		members := guildMemberName.FindAllStringSubmatch(membersMatches[i][1], -1)
 		for _, member := range members {
