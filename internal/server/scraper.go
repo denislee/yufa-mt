@@ -84,6 +84,12 @@ var (
 	guildIDRegex       = regexp.MustCompile(`/(\d+)$`)
 	mvpPlayerBlock     = regexp.MustCompile(`\\"name\\":\\"([^"]+)\\",\\"base_level\\".*?\\"mvp_kills\\":\[(.*?)]`)
 	mvpKillsRegex      = regexp.MustCompile(`{\\"mob_id\\":(\d+),\\"kills\\":(\d+)}`)
+
+	// Next.js streams the page as multiple __next_f.push chunks, so a single
+	// JSON string in the data can be split across `"])</script><script>self.__next_f.push([N,"`
+	// boundaries. Stripping these joins the adjacent string fragments back together,
+	// matching what the browser does at runtime.
+	nextChunkBoundary = regexp.MustCompile(`"\]\)</script><script>self\.__next_f\.push\(\[\d+,"`)
 )
 
 type chatPacketDefinition struct {
@@ -176,7 +182,7 @@ func (sc *ScraperClient) getPage(url, logPrefix string) (string, error) {
 		}
 
 		// Success
-		bodyContent = string(bodyBytes)
+		bodyContent = nextChunkBoundary.ReplaceAllString(string(bodyBytes), "")
 		return bodyContent, nil
 	}
 
