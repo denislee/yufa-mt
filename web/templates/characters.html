@@ -1,24 +1,8 @@
 <!DOCTYPE html>
 <html lang="{{.Page.Lang}}">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{{.Page.T.characters_title}} - Yufa Market Tracker</title>
-
-    {{/* --- ADD ALL 3 SCRIPTS FROM THE "IMPORTANT REMINDER" HERE --- */}}
-    <script src="https://cdn.tailwindcss.com"></script>
-    <link rel="preconnect" href="https://static.divine-pride.net" crossorigin>
-    <link rel="stylesheet" href="/static/app.css">
-    <script>
-        tailwind.config = { darkMode: 'class' }
-    </script>
-    <script>
-        if (localStorage.theme === 'dark' || (!('theme' in localStorage) && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
-            document.documentElement.classList.add('dark');
-        } else {
-            document.documentElement.classList.remove('dark');
-        }
-    </script>
+    {{template "head.html" .}}
 
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
     </head>

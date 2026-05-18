@@ -494,7 +494,7 @@ func backfillDropLogsToChangelog() (int64, error) {
 	defer rows.Close()
 
 	// 4. Prepare the INSERT statement
-	stmt, err := tx.Prepare("INSERT INTO character_changelog (character_name, change_time, activity_description) VALUES (?, ?, ?)")
+	stmt, err := tx.Prepare("INSERT INTO character_changelog (character_name, change_time, activity_description, event_kind) VALUES (?, ?, ?, ?)")
 	if err != nil {
 		return 0, fmt.Errorf("failed to prepare insert statement: %w", err)
 	}
@@ -555,7 +555,7 @@ func backfillDropLogsToChangelog() (int64, error) {
 
 		// --- ADDED LOG ---
 		log.Printf("[D] [Backfill] Attempting to insert: CHAR='%s', TIME='%s', DESC='%s'", playerName, timestampStr, activityDesc)
-		_, err := stmt.Exec(playerName, timestampStr, activityDesc)
+		_, err := stmt.Exec(playerName, timestampStr, activityDesc, changelogKindDrop)
 		if err != nil {
 			log.Printf("[W] [Backfill] FAILED to insert log for '%s' (time: %s, item: %s). Error: %v", playerName, timestampStr, itemName, err)
 			failedInsert++

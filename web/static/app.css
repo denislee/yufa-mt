@@ -6,7 +6,11 @@
         "Segoe UI", Inter, Roboto, "Helvetica Neue", Arial, sans-serif;
     --ymt-font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
 
-    color-scheme: light dark;
+    color-scheme: light;
+}
+
+html.dark {
+    color-scheme: dark;
 }
 
 /* ---------- Base typography ---------- */

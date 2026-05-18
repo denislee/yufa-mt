@@ -498,9 +498,9 @@ func logDropToChangelog(timestamp, charName, itemName string) {
 
 	// Insert the new drop log entry
 	_, err = srv.db.Exec(`
-		INSERT INTO character_changelog (character_name, change_time, activity_description) 
-		VALUES (?, ?, ?)`,
-		charName, timestamp, activityDescription,
+		INSERT INTO character_changelog (character_name, change_time, activity_description, event_kind)
+		VALUES (?, ?, ?, ?)`,
+		charName, timestamp, activityDescription, changelogKindDrop,
 	)
 
 	if err != nil {

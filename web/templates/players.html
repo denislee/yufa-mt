@@ -1,25 +1,9 @@
 <!DOCTYPE html>
 <html lang="{{.Page.Lang}}"> {{/* <-- MODIFIED */}}
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{{.Page.T.online_player_history}} - Yufa Market Tracker</title> {{/* <-- MODIFIED */}}
+    <title>{{.Page.T.online_player_history}} - Yufa Market Tracker</title>
+    {{template "head.html" .}} {{/* <-- MODIFIED */}}
     
-    {{/* --- ADD ALL 3 SCRIPTS FROM THE "IMPORTANT REMINDER" HERE --- */}}
-    <script src="https://cdn.tailwindcss.com"></script>
-    <link rel="preconnect" href="https://static.divine-pride.net" crossorigin>
-    <link rel="stylesheet" href="/static/app.css">
-    <script>
-        tailwind.config = { darkMode: 'class' }
-    </script>
-    <script>
-        if (localStorage.theme === 'dark' || (!('theme' in localStorage) && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
-            document.documentElement.classList.add('dark');
-        } else {
-            document.documentElement.classList.remove('dark');
-        }
-    </script>
-
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/date-fns@3/index.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3/dist/chartjs-adapter-date-fns.bundle.min.js"></script>

@@ -134,9 +134,17 @@ type ScraperClient struct {
 }
 
 // NewScraperClient creates a new client optimized for scraping.
+// The transport raises per-host connection caps from the net/http default
+// of 2, so parallel guild/WoE/market scrapers can keep connections alive
+// instead of churning new TCP+TLS handshakes per page.
 func NewScraperClient() *ScraperClient {
+	transport := http.DefaultTransport.(*http.Transport).Clone()
+	transport.MaxIdleConns = 100
+	transport.MaxIdleConnsPerHost = 10
+	transport.MaxConnsPerHost = 10
+	transport.IdleConnTimeout = 90 * time.Second
 	return &ScraperClient{
-		Client:    &http.Client{Timeout: defaultTimeout},
+		Client:    &http.Client{Timeout: defaultTimeout, Transport: transport},
 		UserAgent: defaultUserAgent,
 	}
 }
@@ -193,20 +201,29 @@ func (sc *ScraperClient) getPage(url, logPrefix string) (string, error) {
 // in scraper.go
 
 // findLastPage determines the total number of pages for a paginated ranking.
+// Callers that immediately scrape page 1 should prefer findLastPageAndBody
+// to avoid refetching the same page.
 func (sc *ScraperClient) findLastPage(firstPageURL, logPrefix string) int {
+	lastPage, _ := sc.findLastPageAndBody(firstPageURL, logPrefix)
+	return lastPage
+}
+
+// findLastPageAndBody returns the total page count and the raw body of
+// page 1, so the caller can parse it directly instead of refetching.
+func (sc *ScraperClient) findLastPageAndBody(firstPageURL, logPrefix string) (int, string) {
 	log.Printf("[I] %s Determining total number of pages...", logPrefix)
 
 	bodyContent, err := sc.getPage(firstPageURL, logPrefix)
 	if err != nil {
 		log.Printf("[W] %s Could not fetch page 1 to determine page count. Assuming 1 page. Error: %v", logPrefix, err)
-		return 1
+		return 1, ""
 	}
 
 	// 1. Use goquery to parse the document first.
 	doc, err := goquery.NewDocumentFromReader(strings.NewReader(bodyContent))
 	if err != nil {
 		log.Printf("[W] %s Could not parse page 1 HTML to determine page count. Assuming 1 page. Error: %v", logPrefix, err)
-		return 1
+		return 1, bodyContent
 	}
 
 	// 2. Try to find "Page/Página X of/de Y" anywhere in the body. The exact
@@ -214,7 +231,7 @@ func (sc *ScraperClient) findLastPage(firstPageURL, logPrefix string) int {
 	if matches := pageOfRegex.FindStringSubmatch(bodyContent); len(matches) > 1 {
 		if p, pErr := strconv.Atoi(matches[1]); pErr == nil {
 			log.Printf("[I] %s Found 'Page/Página X of/de Y' text. Total pages: %d", logPrefix, p)
-			return p
+			return p, bodyContent
 		}
 	}
 
@@ -261,18 +278,37 @@ func (sc *ScraperClient) findLastPage(firstPageURL, logPrefix string) int {
 		log.Printf("[I] %s No 'Last Page' (>>) link found. Using max of visible links. Total pages: %d", logPrefix, lastPage)
 	}
 
-	return lastPage
+	return lastPage, bodyContent
 }
 
-// logCharacterActivity inserts a row into character_changelog. Errors are
+// Event kinds populated into character_changelog.event_kind. Readers query
+// by kind to avoid scanning activity_description with LIKE wildcards.
+const (
+	changelogKindDrop        = "drop"
+	changelogKindGuildJoin   = "guild_join"
+	changelogKindGuildLeave  = "guild_leave"
+	changelogKindGuildMove   = "guild_move"
+	changelogKindLevelBase   = "level_base"
+	changelogKindLevelJob    = "level_job"
+	changelogKindExpGain     = "exp_gain"
+	changelogKindExpLoss     = "exp_loss"
+	changelogKindZenyUp      = "zeny_up"
+	changelogKindZenyDown    = "zeny_down"
+	changelogKindClassChange = "class_change"
+	changelogKindNewChar     = "new_char"
+	changelogKindOther       = "other"
+)
+
+// logCharacterActivity inserts a row into character_changelog. kind is the
+// indexed event category — see changelogKind* constants. Errors are
 // logged here so callers don't need to thread them through every branch
 // of the activity-detection logic.
-func logCharacterActivity(changelogStmt *sql.Stmt, charName string, description string) {
+func logCharacterActivity(changelogStmt *sql.Stmt, charName, kind, description string) {
 	if description == "" {
 		return
 	}
 
-	if _, err := changelogStmt.Exec(charName, time.Now().Format(time.RFC3339), description); err != nil {
+	if _, err := changelogStmt.Exec(charName, time.Now().Format(time.RFC3339), description, kind); err != nil {
 		log.Printf("[E] [Changelog] Failed to log activity for %s: %v", charName, err)
 	}
 }
@@ -383,6 +419,7 @@ func scrapeAndStorePlayerCount() {
 		log.Printf("[E] [Scraper/PlayerCount] Failed to insert new player/seller count: %v", err)
 		return
 	}
+	InvalidateUpdateTimeCache("timestamp", "player_history")
 
 	log.Printf("[I] [Scraper/PlayerCount] Player/seller count updated. New values: %d players, %d sellers", onlineCount, sellerCount)
 }
@@ -394,31 +431,31 @@ func checkAndLogCharacterActivity(changelogStmt *sql.Stmt, p PlayerCharacter, ol
 	// --- Activity Logging Logic ---
 	baseLeveledUp := false
 	if p.BaseLevel > oldPlayer.BaseLevel {
-		logCharacterActivity(changelogStmt, p.Name, fmt.Sprintf("Leveled up to Base Level %d!", p.BaseLevel))
+		logCharacterActivity(changelogStmt, p.Name, changelogKindLevelBase, fmt.Sprintf("Leveled up to Base Level %d!", p.BaseLevel))
 		baseLeveledUp = true
 		lastActiveTime = p.LastUpdated // Active
 	}
 	if p.JobLevel > oldPlayer.JobLevel {
-		logCharacterActivity(changelogStmt, p.Name, fmt.Sprintf("Leveled up to Job Level %d!", p.JobLevel))
+		logCharacterActivity(changelogStmt, p.Name, changelogKindLevelJob, fmt.Sprintf("Leveled up to Job Level %d!", p.JobLevel))
 		lastActiveTime = p.LastUpdated // Active
 	}
 
 	expDelta := p.Experience - oldPlayer.Experience
 	if !baseLeveledUp {
 		if expDelta > 0.001 {
-			logCharacterActivity(changelogStmt, p.Name, fmt.Sprintf("Gained %.2f%% experience (now at %.2f%%).", expDelta, p.Experience))
+			logCharacterActivity(changelogStmt, p.Name, changelogKindExpGain, fmt.Sprintf("Gained %.2f%% experience (now at %.2f%%).", expDelta, p.Experience))
 			lastActiveTime = p.LastUpdated // Active
 		} else if expDelta < -0.001 {
-			logCharacterActivity(changelogStmt, p.Name, fmt.Sprintf("Lost %.2f%% experience (now at %.2f%%).", -expDelta, p.Experience))
+			logCharacterActivity(changelogStmt, p.Name, changelogKindExpLoss, fmt.Sprintf("Lost %.2f%% experience (now at %.2f%%).", -expDelta, p.Experience))
 			lastActiveTime = p.LastUpdated // Active
 		}
 	} else if expDelta > 0.001 {
 		// Log experience gain even on level up, but only if it's positive
-		logCharacterActivity(changelogStmt, p.Name, fmt.Sprintf("Gained %.2f%% experience (now at %.2f%%).", p.Experience, p.Experience))
+		logCharacterActivity(changelogStmt, p.Name, changelogKindExpGain, fmt.Sprintf("Gained %.2f%% experience (now at %.2f%%).", p.Experience, p.Experience))
 	}
 
 	if p.Class != oldPlayer.Class {
-		logCharacterActivity(changelogStmt, p.Name, fmt.Sprintf("Changed class from '%s' to '%s'.", oldPlayer.Class, p.Class))
+		logCharacterActivity(changelogStmt, p.Name, changelogKindClassChange, fmt.Sprintf("Changed class from '%s' to '%s'.", oldPlayer.Class, p.Class))
 		lastActiveTime = p.LastUpdated // Active
 	}
 
@@ -542,8 +579,8 @@ func savePlayerCharacters(players []PlayerCharacter) {
 	defer stmt.Close()
 
 	changelogStmt, err := tx.Prepare(`
-		INSERT INTO character_changelog (character_name, change_time, activity_description)
-		VALUES (?, ?, ?)
+		INSERT INTO character_changelog (character_name, change_time, activity_description, event_kind)
+		VALUES (?, ?, ?, ?)
 	`)
 	if err != nil {
 		log.Printf("[E] [Scraper/Char] Failed to prepare changelog statement: %v", err)
@@ -566,7 +603,7 @@ func savePlayerCharacters(players []PlayerCharacter) {
 			lastActiveTime = checkAndLogCharacterActivity(changelogStmt, p, oldPlayer)
 		} else {
 			// This is a new player
-			logCharacterActivity(changelogStmt, p.Name, fmt.Sprintf("New character '%s' detected (Class: %s, Level: %d).", p.Name, p.Class, p.BaseLevel))
+			logCharacterActivity(changelogStmt, p.Name, changelogKindNewChar, fmt.Sprintf("New character '%s' detected (Class: %s, Level: %d).", p.Name, p.Class, p.BaseLevel))
 		}
 
 		// Upsert the player
@@ -600,6 +637,7 @@ func savePlayerCharacters(players []PlayerCharacter) {
 		log.Printf("[E] [Scraper/Char] Failed to commit transaction: %v", err)
 		return
 	}
+	InvalidateUpdateTimeCache("last_updated", "characters")
 	log.Printf("[I] [Scraper/Char] Saved/updated %d records.", totalProcessed)
 
 	if totalProcessed == 0 {
@@ -619,7 +657,7 @@ func scrapePlayerCharacters() {
 	log.Println("[I] [Scraper/Char] Starting player character scrape...")
 
 	const firstPageURL = "https://projetoyufa.com/rankings?page=1"
-	lastPage := scraperClient.findLastPage(firstPageURL, "[Characters]")
+	lastPage, firstPageBody := scraperClient.findLastPageAndBody(firstPageURL, "[Characters]")
 
 	var allScrapedPlayers []PlayerCharacter
 
@@ -635,11 +673,18 @@ func scrapePlayerCharacters() {
 		var pagePlayers []PlayerCharacter
 
 		for attempt := 1; attempt <= maxParseRetries; attempt++ {
-			bodyContent, err := scraperClient.getPage(url, "[Characters]")
-			if err != nil {
-				log.Printf("[E] [Scraper/Char] Network/HTTP error for page %d (attempt %d/%d): %v. Retrying...", page, attempt, maxParseRetries, err)
-				time.Sleep(parseRetryDelay)
-				continue
+			var bodyContent string
+			var err error
+			// Reuse findLastPageAndBody's page-1 fetch on the first attempt.
+			if page == 1 && attempt == 1 && firstPageBody != "" {
+				bodyContent = firstPageBody
+			} else {
+				bodyContent, err = scraperClient.getPage(url, "[Characters]")
+				if err != nil {
+					log.Printf("[E] [Scraper/Char] Network/HTTP error for page %d (attempt %d/%d): %v. Retrying...", page, attempt, maxParseRetries, err)
+					time.Sleep(parseRetryDelay)
+					continue
+				}
 			}
 
 			pagePlayers, err = parseCharacterPage(bodyContent, page, attempt)
@@ -823,8 +868,8 @@ func processGuildData(allGuilds map[string]Guild, allMembers map[string]string) 
 
 	// 5. Log guild changes
 	changelogStmt, err := tx.Prepare(`
-		INSERT INTO character_changelog (character_name, change_time, activity_description)
-		VALUES (?, ?, ?)
+		INSERT INTO character_changelog (character_name, change_time, activity_description, event_kind)
+		VALUES (?, ?, ?, ?)
 	`)
 	if err != nil {
 		log.Printf("[E] [Scraper/Guild] Failed to prepare changelog statement for guilds: %v", err)
@@ -851,11 +896,11 @@ func processGuildData(allGuilds map[string]Guild, allMembers map[string]string) 
 			newGuild, hasNew := allMembers[charName]
 
 			if hadOld && !hasNew {
-				logCharacterActivity(changelogStmt, charName, fmt.Sprintf("Left guild '%s'.", oldGuild))
+				logCharacterActivity(changelogStmt, charName, changelogKindGuildLeave, fmt.Sprintf("Left guild '%s'.", oldGuild))
 			} else if !hadOld && hasNew {
-				logCharacterActivity(changelogStmt, charName, fmt.Sprintf("Joined guild '%s'.", newGuild))
+				logCharacterActivity(changelogStmt, charName, changelogKindGuildJoin, fmt.Sprintf("Joined guild '%s'.", newGuild))
 			} else if hadOld && hasNew && oldGuild != newGuild {
-				logCharacterActivity(changelogStmt, charName, fmt.Sprintf("Moved from guild '%s' to '%s'.", oldGuild, newGuild))
+				logCharacterActivity(changelogStmt, charName, changelogKindGuildMove, fmt.Sprintf("Moved from guild '%s' to '%s'.", oldGuild, newGuild))
 			}
 		}
 	}
@@ -865,6 +910,7 @@ func processGuildData(allGuilds map[string]Guild, allMembers map[string]string) 
 		log.Printf("[E] [Scraper/Guild] Failed to commit guilds and characters transaction: %v", err)
 		return
 	}
+	InvalidateUpdateTimeCache("last_updated", "guilds")
 
 	log.Printf("[I] [Scraper/Guild] Scrape and update complete. Saved %d guild records and updated character associations.", len(allGuilds))
 
@@ -1063,8 +1109,8 @@ func processZenyData(allZenyInfo map[string]int64) {
 	defer stmt.Close()
 
 	changelogStmt, err := tx.Prepare(`
-		INSERT INTO character_changelog (character_name, change_time, activity_description)
-		VALUES (?, ?, ?)
+		INSERT INTO character_changelog (character_name, change_time, activity_description, event_kind)
+		VALUES (?, ?, ?, ?)
 	`)
 	if err != nil {
 		log.Printf("[E] [Scraper/Zeny] Failed to prepare changelog statement for zeny: %v", err)
@@ -1092,14 +1138,16 @@ func processZenyData(allZenyInfo map[string]int64) {
 			}
 			delta := newZeny - oldZeny
 			formattedNewZeny := formatWithCommas(newZeny)
-			var description string
+			var description, kind string
 
 			if delta > 0 {
+				kind = changelogKindZenyUp
 				description = fmt.Sprintf("Zeny increased by %sz (New total: %sz).", formatWithCommas(delta), formattedNewZeny)
 			} else if delta < 0 {
+				kind = changelogKindZenyDown
 				description = fmt.Sprintf("Zeny decreased by %sz (New total: %sz).", formatWithCommas(-delta), formattedNewZeny)
 			}
-			logCharacterActivity(changelogStmt, name, description)
+			logCharacterActivity(changelogStmt, name, kind, description)
 		}
 
 		// Update the database
@@ -1422,7 +1470,8 @@ func bulkInsertItems(tx *sql.Tx, items []Item, retrievalTime string) error {
 		return nil
 	}
 
-	const batchSize = 50
+	// 9 params per row × 100 = 900, under SQLite's default 999-param limit.
+	const batchSize = 100
 	baseQuery := "INSERT INTO items(name_of_the_item, item_id, quantity, price, store_name, seller_name, date_and_time_retrieved, map_name, map_coordinates, is_available) VALUES "
 
 	for i := 0; i < len(items); i += batchSize {
@@ -1549,47 +1598,36 @@ func scrapeData() {
 		return
 	}
 
-	// Pre-load seller counts for logic
+	// Single pass over the available-items snapshot — derive seller sizes,
+	// per-name availability, and the items map together to halve IO inside
+	// the write transaction (where marketMutex is held).
 	dbStoreSizes := make(map[string]int)
 	sellerItems := make(map[string]map[string]bool)
-	rows, err := tx.Query("SELECT seller_name, name_of_the_item FROM items WHERE is_available = 1")
-	if err != nil {
-		log.Printf("[E] [Scraper/Market] Could not pre-query seller item counts: %v", err)
-	} else {
-		for rows.Next() {
-			var sellerName, itemName string
-			if err := rows.Scan(&sellerName, &itemName); err == nil {
-				if _, ok := sellerItems[sellerName]; !ok {
-					sellerItems[sellerName] = make(map[string]bool)
-				}
-				sellerItems[sellerName][itemName] = true
-			}
-		}
-		rows.Close()
-		for seller, items := range sellerItems {
-			dbStoreSizes[seller] = len(items)
-		}
-	}
-
-	// Load all currently available items to compare
 	dbAvailableItemsMap := make(map[string][]Item)
 	dbAvailableNames := make(map[string]bool)
 
-	rows, err = tx.Query("SELECT name_of_the_item, item_id, quantity, price, store_name, seller_name, map_name, map_coordinates FROM items WHERE is_available = 1")
+	rows, err := tx.Query("SELECT name_of_the_item, item_id, quantity, price, store_name, seller_name, map_name, map_coordinates FROM items WHERE is_available = 1")
 	if err != nil {
 		log.Printf("[E] [Scraper/Market] Could not get list of all available items: %v", err)
 		return
 	}
 	for rows.Next() {
 		var item Item
-		err := rows.Scan(&item.Name, &item.ItemID, &item.Quantity, &item.Price, &item.StoreName, &item.SellerName, &item.MapName, &item.MapCoordinates)
-		if err != nil {
+		if err := rows.Scan(&item.Name, &item.ItemID, &item.Quantity, &item.Price, &item.StoreName, &item.SellerName, &item.MapName, &item.MapCoordinates); err != nil {
 			continue
 		}
 		dbAvailableItemsMap[item.Name] = append(dbAvailableItemsMap[item.Name], item)
 		dbAvailableNames[item.Name] = true
+
+		if _, ok := sellerItems[item.SellerName]; !ok {
+			sellerItems[item.SellerName] = make(map[string]bool)
+		}
+		sellerItems[item.SellerName][item.Name] = true
 	}
 	rows.Close()
+	for seller, items := range sellerItems {
+		dbStoreSizes[seller] = len(items)
+	}
 
 	// Prepare necessary statements (Insert removed; using batch helper instead)
 	stmtInsertEvent, err := tx.Prepare(`INSERT INTO market_events (event_timestamp, event_type, item_name, item_id, details) VALUES (?, ?, ?, ?, ?)`)
@@ -1756,6 +1794,7 @@ func scrapeData() {
 		log.Printf("[E] [Scraper/Market] Failed to commit transaction: %v", err)
 		return
 	}
+	InvalidateUpdateTimeCache("timestamp", "scrape_history")
 	log.Printf("[I] [Scraper/Market] Scrape complete. Unchanged: %d groups. Updated: %d groups. Newly Added: %d groups. Removed: %d groups.", itemsUnchanged, itemsUpdated, itemsAdded, itemsRemoved)
 }
 

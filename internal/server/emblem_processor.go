@@ -26,6 +26,18 @@ const (
 	emblemKeyBMin = 240
 )
 
+// emblemHTTPClient is the shared client used by all concurrent emblem
+// downloads. Reusing a single client lets the transport pool keep
+// connections to the emblem host alive across the (large) backfill jobs.
+var emblemHTTPClient = func() *http.Client {
+	transport := http.DefaultTransport.(*http.Transport).Clone()
+	transport.MaxIdleConns = 50
+	transport.MaxIdleConnsPerHost = 10
+	transport.MaxConnsPerHost = 10
+	transport.IdleConnTimeout = 90 * time.Second
+	return &http.Client{Timeout: 20 * time.Second, Transport: transport}
+}()
+
 // emblemDir returns the on-disk directory where processed emblems are
 // stored. It lives next to the SQLite DB so it shares the same backup /
 // runtime data path. Returns "" if the config is not yet loaded.
@@ -117,8 +129,7 @@ func downloadAndKeyEmblem(url, outPath string) error {
 	}
 	req.Header.Set("User-Agent", scraperClient.UserAgent)
 
-	client := &http.Client{Timeout: 20 * time.Second}
-	resp, err := client.Do(req)
+	resp, err := emblemHTTPClient.Do(req)
 	if err != nil {
 		return fmt.Errorf("download: %w", err)
 	}

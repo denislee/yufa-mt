@@ -20,6 +20,14 @@ func capitalizeASCII(s string) string {
 	return strings.ToUpper(s[:1]) + s[1:]
 }
 
+// updateTimeCacheKey is a struct key for the GetLastUpdateTime cache. Using
+// a struct avoids per-call fmt.Sprintf allocations on this hot helper, which
+// is called multiple times per request.
+type updateTimeCacheKey struct {
+	table  string
+	column string
+}
+
 // updateTimeCacheEntry holds a cached timestamp and its expiry.
 type updateTimeCacheEntry struct {
 	value  string
@@ -28,10 +36,20 @@ type updateTimeCacheEntry struct {
 
 // updateTimeCache holds the in-memory cache for GetLastUpdateTime.
 var (
-	updateTimeCache      = make(map[string]updateTimeCacheEntry)
+	updateTimeCache      = make(map[updateTimeCacheKey]updateTimeCacheEntry)
 	updateTimeCacheMutex sync.RWMutex
 	updateTimeCacheTTL   = 30 * time.Second
 )
+
+// InvalidateUpdateTimeCache drops the cached MAX(column) entry for a
+// table+column so a subsequent read sees the fresh write. Scrapers call
+// this right after committing instead of waiting up to 30s for the TTL.
+func InvalidateUpdateTimeCache(columnName, tableName string) {
+	key := updateTimeCacheKey{table: tableName, column: columnName}
+	updateTimeCacheMutex.Lock()
+	delete(updateTimeCache, key)
+	updateTimeCacheMutex.Unlock()
+}
 
 func generateRandomPassword(length int) string {
 	const chars = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
@@ -50,7 +68,7 @@ func generateRandomPassword(length int) string {
 // GetLastUpdateTime is a centralized helper to get the max timestamp from any table/column.
 // This version is optimized with an in-memory cache to reduce redundant DB queries.
 func GetLastUpdateTime(columnName, tableName string) string {
-	cacheKey := fmt.Sprintf("%s.%s", tableName, columnName)
+	cacheKey := updateTimeCacheKey{table: tableName, column: columnName}
 	now := time.Now()
 
 	// Check cache first (read lock)

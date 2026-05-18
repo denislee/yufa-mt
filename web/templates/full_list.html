@@ -1,24 +1,8 @@
 <!DOCTYPE html>
 <html lang="{{.Page.Lang}}"> {{/* <-- MODIFIED */}}
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{{.Page.T.full_market_list}} - Yufa Market Tracker</title> {{/* <-- MODIFIED */}}
-
-    {{/* --- ADD ALL 3 SCRIPTS FROM THE "IMPORTANT REMINDER" HERE --- */}}
-    <script src="https://cdn.tailwindcss.com"></script>
-    <link rel="preconnect" href="https://static.divine-pride.net" crossorigin>
-    <link rel="stylesheet" href="/static/app.css">
-    <script>
-        tailwind.config = { darkMode: 'class' }
-    </script>
-    <script>
-        if (localStorage.theme === 'dark' || (!('theme' in localStorage) && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
-            document.documentElement.classList.add('dark');
-        } else {
-            document.documentElement.classList.remove('dark');
-        }
-    </script>
+    <title>{{.Page.T.full_market_list}} - Yufa Market Tracker</title>
+    {{template "head.html" .}} {{/* <-- MODIFIED */}}
 
     </head>
 <body class="bg-gray-100 dark:bg-gray-900 text-gray-800 dark:text-gray-200 text-sm sm:text-base">
@@ -83,7 +67,6 @@
                 </a>
             {{end}}
         </div>
-
 
         {{/* MODIFIED: Use .Data and .Page.T */}}
         <p class="text-sm text-gray-600 dark:text-gray-400 mb-3">{{printf .Page.T.showing_listings (len .Data.Items) | TmplHTML}}</p>

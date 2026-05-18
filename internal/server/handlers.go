@@ -263,41 +263,32 @@ func sanitizeString(input string, sanitizer *regexp.Regexp) string {
 	return sanitizer.ReplaceAllString(input, "")
 }
 
-// getCombinedItemIDs searches the local item DB for matching item IDs.
-// This is the optimized version that *only* uses the local database
-// and removes the live (slow) web scrape.
+// getCombinedItemIDs searches the in-memory item cache for matching item IDs.
+// Avoids a full-table scan on internal_item_db (LIKE '%q%' can't use any index)
+// by iterating the cache that's already loaded for findItemIDInCache.
 func getCombinedItemIDs(searchQuery string) ([]int, error) {
-	const query = `
-		SELECT item_id FROM internal_item_db
-		WHERE name LIKE ? OR name_pt LIKE ?
-	`
-	likeQuery := "%" + searchQuery + "%"
-	rows, err := srv.db.Query(query, likeQuery, likeQuery)
-	if err != nil {
-		log.Printf("[W] [HTTP] Local item ID search failed for '%s': %v", searchQuery, err)
-		return nil, fmt.Errorf("local item search failed: %w", err)
+	ensureItemCache()
+	q := strings.ToLower(searchQuery)
+	if q == "" {
+		return nil, nil
 	}
-	defer rows.Close()
 
-	// Use a map to automatically handle de-duplication
 	idMap := make(map[int]struct{})
-	for rows.Next() {
-		var id int
-		if err := rows.Scan(&id); err == nil {
-			idMap[id] = struct{}{}
+	for _, item := range itemFuzzyCache {
+		if strings.Contains(strings.ToLower(item.name), q) ||
+			(item.namePT != "" && strings.Contains(strings.ToLower(item.namePT), q)) {
+			idMap[int(item.id)] = struct{}{}
 		}
 	}
 
 	if len(idMap) == 0 {
-		return nil, nil // No results
+		return nil, nil
 	}
 
-	// Convert map keys to a slice
 	idList := make([]int, 0, len(idMap))
 	for id := range idMap {
 		idList = append(idList, id)
 	}
-
 	return idList, nil
 }
 
@@ -450,6 +441,7 @@ func init() {
 
 	// Base templates that are included in others
 	commonFiles := []string{
+		"head.html",
 		"navbar.html",
 		"pagination.html",
 	}
@@ -495,9 +487,9 @@ func init() {
 		templateCache[tmplName] = tmpl
 	}
 
-	// Admin templates are standalone (no navbar/pagination partials).
+	// Admin templates are standalone (no navbar/pagination partials), but still need head.html.
 	for _, tmplName := range []string{"admin.html", "admin_edit_post.html"} {
-		tmpl, err := template.New(tmplName).Funcs(templateFuncs).ParseFS(web.Templates, "templates/"+tmplName)
+		tmpl, err := template.New(tmplName).Funcs(templateFuncs).ParseFS(web.Templates, "templates/"+tmplName, "templates/head.html")
 		if err != nil {
 			log.Fatalf("[F] [HTTP] Could not parse template '%s': %v", tmplName, err)
 		}
@@ -1893,16 +1885,14 @@ func tradingPostListHandler(w http.ResponseWriter, r *http.Request) {
 	renderTemplate(w, r, "trading_post.html", data)
 }
 
-// findItemIDInCache attempts to find an item ID using an in-memory cache of the local item DB.
-// This replaces the expensive SQL "LIKE %...%" query.
-func findItemIDInCache(cleanItemName string, slots int) (sql.NullInt64, bool) {
-	// 1. Lazy Load: Populate cache from DB only once
+// ensureItemCache lazily loads the in-memory item cache from internal_item_db.
+// Safe to call concurrently; the underlying sync.Once guarantees a single load.
+func ensureItemCache() {
 	itemCacheOnce.Do(func() {
 		itemExactCache = make(map[string]int64)
 		// Pre-allocate estimate (Ragnarok has ~30k-50k items)
 		itemFuzzyCache = make([]cachedItem, 0, 40000)
 
-		// Fetch all items including slots
 		rows, err := srv.db.Query("SELECT item_id, name, COALESCE(name_pt, ''), COALESCE(slots, 0) FROM internal_item_db")
 		if err != nil {
 			log.Printf("[E] [ItemID] Failed to load item cache: %v", err)
@@ -1915,15 +1905,10 @@ func findItemIDInCache(cleanItemName string, slots int) (sql.NullInt64, bool) {
 			if err := rows.Scan(&i.id, &i.name, &i.namePT, &i.slots); err != nil {
 				continue
 			}
-
-			// Add to iteration slice
 			itemFuzzyCache = append(itemFuzzyCache, i)
 
-			// Add to exact match map (Key: "name_slots")
-			// We cache both English and PT names
 			keyEN := fmt.Sprintf("%s_%d", strings.ToLower(i.name), i.slots)
 			itemExactCache[keyEN] = i.id
-
 			if i.namePT != "" {
 				keyPT := fmt.Sprintf("%s_%d", strings.ToLower(i.namePT), i.slots)
 				itemExactCache[keyPT] = i.id
@@ -1931,6 +1916,12 @@ func findItemIDInCache(cleanItemName string, slots int) (sql.NullInt64, bool) {
 		}
 		log.Printf("[I] [ItemID] Loaded %d items into in-memory cache.", len(itemFuzzyCache))
 	})
+}
+
+// findItemIDInCache attempts to find an item ID using an in-memory cache of the local item DB.
+// This replaces the expensive SQL "LIKE %...%" query.
+func findItemIDInCache(cleanItemName string, slots int) (sql.NullInt64, bool) {
+	ensureItemCache()
 
 	lowerCleanItemName := strings.ToLower(cleanItemName)
 
@@ -3697,11 +3688,17 @@ func fetchGuildMembersAndStats(guildName, guildMaster, orderByClause string) ([]
 }
 
 // fetchGuildChangelog fetches the paginated activity log for a guild.
+// Uses the event_kind index to limit the scan to guild-related rows
+// (a tiny fraction of changelog), then filters on the guild name.
 func fetchGuildChangelog(guildName string, r *http.Request, entriesPerPage int) ([]CharacterChangelog, PaginationData, error) {
-	likePattern := "%" + guildName + "%" // Find any log mentioning the guild
+	likePattern := "%" + guildName + "%"
+	guildKinds := []interface{}{changelogKindGuildJoin, changelogKindGuildLeave, changelogKindGuildMove}
 
 	var totalChangelogEntries int
-	err := srv.db.QueryRow("SELECT COUNT(*) FROM character_changelog WHERE activity_description LIKE ?", likePattern).Scan(&totalChangelogEntries)
+	err := srv.db.QueryRow(
+		`SELECT COUNT(*) FROM character_changelog WHERE event_kind IN (?, ?, ?) AND activity_description LIKE ?`,
+		append(append([]interface{}{}, guildKinds...), likePattern)...,
+	).Scan(&totalChangelogEntries)
 	if err != nil {
 		return nil, PaginationData{}, fmt.Errorf("could not count guild changelog: %w", err)
 	}
@@ -3709,9 +3706,11 @@ func fetchGuildChangelog(guildName string, r *http.Request, entriesPerPage int) 
 	pagination := newPaginationData(r, totalChangelogEntries, entriesPerPage)
 
 	changelogQuery := `SELECT change_time, character_name, activity_description FROM character_changelog
-        WHERE activity_description LIKE ? ORDER BY change_time DESC LIMIT ? OFFSET ?`
+        WHERE event_kind IN (?, ?, ?) AND activity_description LIKE ?
+        ORDER BY change_time DESC LIMIT ? OFFSET ?`
 
-	changelogRows, err := srv.db.Query(changelogQuery, likePattern, pagination.ItemsPerPage, pagination.Offset)
+	queryArgs := append(append([]interface{}{}, guildKinds...), likePattern, pagination.ItemsPerPage, pagination.Offset)
+	changelogRows, err := srv.db.Query(changelogQuery, queryArgs...)
 	if err != nil {
 		return nil, pagination, fmt.Errorf("could not query for guild changelog: %w", err)
 	}
@@ -3823,9 +3822,9 @@ func fetchCharacterChangelog(charName string, searchQuery string, pagination Pag
 	whereConditions = append(whereConditions, "character_name = ?")
 	params = append(params, charName)
 
-	// --- OPTIMIZATION: Exclude drop logs from the main query ---
-	whereConditions = append(whereConditions, "activity_description NOT LIKE 'Dropped item: %'")
-	// --- END OPTIMIZATION ---
+	// Drops are queried separately via fetchCharacterSpecialHistory;
+	// exclude them via the indexed event_kind column instead of LIKE.
+	whereConditions = append(whereConditions, "(event_kind IS NULL OR event_kind != 'drop')")
 
 	if searchQuery != "" {
 		whereConditions = append(whereConditions, "activity_description LIKE ?")
@@ -3833,7 +3832,7 @@ func fetchCharacterChangelog(charName string, searchQuery string, pagination Pag
 	}
 	whereClause := "WHERE " + strings.Join(whereConditions, " AND ")
 
-	changelogQuery := fmt.Sprintf(`SELECT change_time, activity_description FROM character_changelog 
+	changelogQuery := fmt.Sprintf(`SELECT change_time, activity_description FROM character_changelog
 		%s ORDER BY change_time DESC LIMIT ? OFFSET ?`, whereClause)
 
 	params = append(params, pagination.ItemsPerPage, pagination.Offset)
@@ -4137,7 +4136,7 @@ func fetchDropStatistics(itemSortBy, itemOrder, playerSortBy, playerOrder string
 			COUNT(*),
 			COUNT(DISTINCT SUBSTR(activity_description, 15))
 		FROM character_changelog
-		WHERE activity_description LIKE 'Dropped item: %'`
+		WHERE event_kind = 'drop'`
 	err := srv.db.QueryRow(kpiQuery).Scan(&totalDrops, &uniqueDropItems)
 	if err != nil {
 		if err == sql.ErrNoRows {
@@ -4168,7 +4167,7 @@ func fetchDropStatistics(itemSortBy, itemOrder, playerSortBy, playerOrder string
 		LEFT JOIN
 			internal_item_db i ON SUBSTR(cl.activity_description, 15) = i.name OR SUBSTR(cl.activity_description, 15) = i.name_pt
 		WHERE
-			cl.activity_description LIKE 'Dropped item: %%'
+			cl.event_kind = 'drop'
 		GROUP BY
 			cl.id, cl.change_time, cl.character_name, cl.activity_description
 	)
@@ -4343,9 +4342,7 @@ func countCharacterChangelog(charName, searchQuery string) (int, error) {
 	whereConditions = append(whereConditions, "character_name = ?")
 	params = append(params, charName)
 
-	// --- OPTIMIZATION: Exclude drop logs from the main count ---
-	whereConditions = append(whereConditions, "activity_description NOT LIKE 'Dropped item: %'")
-	// --- END OPTIMIZATION ---
+	whereConditions = append(whereConditions, "(event_kind IS NULL OR event_kind != 'drop')")
 
 	if searchQuery != "" {
 		whereConditions = append(whereConditions, "activity_description LIKE ?")
@@ -4404,12 +4401,10 @@ func fetchItemDropHistory(itemName string) ([]PlayerDropInfo, error) {
 // fetchCharacterSpecialHistory retrieves all Drop and Guild logs for a character in one query.
 func fetchCharacterSpecialHistory(charName string) (guildHistory []CharacterChangelog, dropHistory []CharacterChangelog, err error) {
 	query := `
-		SELECT change_time, activity_description 
+		SELECT change_time, activity_description
 		FROM character_changelog
-		WHERE character_name = ? 
-		  AND (activity_description LIKE 'Dropped item: %' 
-		       OR activity_description LIKE '%joined guild%' 
-		       OR activity_description LIKE '%left guild%')
+		WHERE character_name = ?
+		  AND event_kind IN ('drop', 'guild_join', 'guild_leave', 'guild_move')
 		ORDER BY change_time DESC
 	`
 	rows, err := srv.db.Query(query, charName)

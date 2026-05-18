@@ -310,7 +310,62 @@ func applyMigrations(db *sql.DB) error {
 	if err := addColumnIfMissing(db, "guilds", "emblem_local_path", "TEXT"); err != nil {
 		return err
 	}
+	// event_kind lets readers filter by category without scanning the
+	// free-form activity_description. New rows set it at insert time;
+	// existing rows get backfilled below.
+	addedKind, err := addColumnIfMissingReport(db, "character_changelog", "event_kind", "TEXT")
+	if err != nil {
+		return err
+	}
+	if _, err := db.Exec(`CREATE INDEX IF NOT EXISTS idx_changelog_kind_time_desc ON character_changelog (event_kind, change_time DESC);`); err != nil {
+		return fmt.Errorf("failed to create idx_changelog_kind_time_desc: %w", err)
+	}
+	if _, err := db.Exec(`CREATE INDEX IF NOT EXISTS idx_changelog_kind_char_time_desc ON character_changelog (event_kind, character_name, change_time DESC);`); err != nil {
+		return fmt.Errorf("failed to create idx_changelog_kind_char_time_desc: %w", err)
+	}
+	if addedKind {
+		if _, err := db.Exec(backfillChangelogKindSQL); err != nil {
+			return fmt.Errorf("failed to backfill character_changelog.event_kind: %w", err)
+		}
+	}
 	return nil
+}
+
+// backfillChangelogKindSQL classifies existing rows from their description.
+// The patterns mirror the formats produced by logCharacterActivity callers.
+const backfillChangelogKindSQL = `
+UPDATE character_changelog SET event_kind = CASE
+	WHEN activity_description LIKE 'Dropped item: %' THEN 'drop'
+	WHEN activity_description LIKE 'Joined guild %' THEN 'guild_join'
+	WHEN activity_description LIKE 'Left guild %' THEN 'guild_leave'
+	WHEN activity_description LIKE 'Moved from guild %' THEN 'guild_move'
+	WHEN activity_description LIKE 'Leveled up to Base Level%' THEN 'level_base'
+	WHEN activity_description LIKE 'Leveled up to Job Level%' THEN 'level_job'
+	WHEN activity_description LIKE 'Gained %experience%' THEN 'exp_gain'
+	WHEN activity_description LIKE 'Lost %experience%' THEN 'exp_loss'
+	WHEN activity_description LIKE 'Zeny increased by%' THEN 'zeny_up'
+	WHEN activity_description LIKE 'Zeny decreased by%' THEN 'zeny_down'
+	WHEN activity_description LIKE 'Changed class from%' THEN 'class_change'
+	WHEN activity_description LIKE 'New character %' THEN 'new_char'
+	ELSE 'other'
+END
+WHERE event_kind IS NULL;`
+
+// addColumnIfMissingReport is like addColumnIfMissing but returns whether
+// the column had to be added — callers use this to trigger one-time
+// backfills only on first migration.
+func addColumnIfMissingReport(db *sql.DB, table, column, columnDef string) (bool, error) {
+	exists, err := columnExists(db, table, column)
+	if err != nil {
+		return false, err
+	}
+	if exists {
+		return false, nil
+	}
+	if _, err := db.Exec(fmt.Sprintf("ALTER TABLE %s ADD COLUMN %s %s;", table, column, columnDef)); err != nil {
+		return false, fmt.Errorf("failed to add '%s' column to '%s' table: %w", column, table, err)
+	}
+	return true, nil
 }
 
 // Open opens the SQLite database at filepath, configures the pool for
