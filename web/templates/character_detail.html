@@ -4,7 +4,7 @@
         
         <div class="flex flex-col sm:flex-row justify-between sm:items-center gap-2 mb-4 border-b border-gray-200 dark:border-gray-700 pb-3">
             <div class="flex items-center gap-4">
-                <img src="{{getClassImageURL .Data.Character.Class}}" alt="{{.Data.Character.Class}}" class="w-10 h-10 bg-white dark:bg-gray-700 rounded-md shadow p-1" style="image-rendering: pixelated;">
+                <img src="{{getClassImageURL .Data.Character.Class}}" alt="{{.Data.Character.Class}}" class="w-10 h-10 bg-white dark:bg-gray-700 rounded-md shadow p-1" style="image-rendering: pixelated;" loading="lazy" decoding="async">
                 <div>
                     <h1 class="text-3xl font-bold text-gray-800 dark:text-gray-100">{{.Data.Character.Name}}</h1>
                     <div class="text-lg text-gray-600 dark:text-gray-300">{{.Data.Character.Class}}</div>
@@ -50,7 +50,7 @@
                     {{if .Data.Guild}}
                         <div class="flex items-center gap-3 mb-3">
                             {{if .Data.Guild.EmblemURL}}
-                            <img src="{{.Data.Guild.EmblemURL}}" alt="{{.Data.Guild.Name}} Emblem" class="w-10 h-10 bg-gray-100 dark:bg-gray-700 rounded shadow">
+                            <img src="{{.Data.Guild.EmblemURL}}" alt="{{.Data.Guild.Name}} Emblem" class="w-10 h-10 bg-gray-100 dark:bg-gray-700 rounded shadow" loading="lazy" decoding="async">
                             {{end}}
                             <div>
                                 <a href="/guild?name={{.Data.Guild.Name | urlquery}}" class="text-lg font-semibold text-blue-600 dark:text-blue-400 hover:underline">{{.Data.Guild.Name}}</a>
@@ -93,7 +93,7 @@
                             {{$killCount := getKillCount $.Data.MvpKills.Kills .MobID}}
                             {{if gt $killCount 0}}
                             <div class="flex items-center gap-2 p-2 bg-gray-50 dark:bg-gray-700 rounded-md">
-                                <img src="https://projetoyufa.com/_next/image?url=%2Fimages%2Fmvp%2F{{.MobID}}.png&w=1920&q=75" alt="{{.MobName}}" class="w-8 h-8">
+                                <img src="https://projetoyufa.com/_next/image?url=%2Fimages%2Fmvp%2F{{.MobID}}.png&w=1920&q=75" alt="{{.MobName}}" class="w-8 h-8" loading="lazy" decoding="async">
                                 <div>
                                     <div class="font-semibold text-gray-700 dark:text-gray-200">{{.MobName}}</div>
                                     <div class="text-sm text-gray-500 dark:text-gray-400">{{$killCount}} {{$.Page.T.kills}}</div>
@@ -137,7 +137,7 @@
                         <form action="/character" method="GET" class="flex items-center gap-2">
                             <input type="hidden" name="name" value="{{.Data.Character.Name}}">
                             <input type="text" name="changelog_query" value="{{.Data.ChangelogSearchQuery}}" placeholder="{{.Page.T.search}}..." class="block w-full sm:w-auto text-sm rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white shadow-sm focus:border-indigo-300 focus:ring focus:ring-indigo-200 focus:ring-opacity-50 py-1.5 px-2">
-                            <button type="submit" class="bg-blue-500 hover:bg-blue-700 text-white font-bold py-1.5 px-3 rounded-md text-sm" title="{{.Page.T.search}}">
+                            <button type="submit" class="btn btn-primary" style="padding:0.375rem 0.75rem" title="{{.Page.T.search}}" aria-label="{{.Page.T.search}}">
                                 <svg class="w-5 h-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                   <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
                                 </svg>

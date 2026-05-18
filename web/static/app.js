@@ -55,6 +55,11 @@ document.addEventListener('alpine:init', () => {
 function formatPrices(root) {
     (root || document).querySelectorAll('[data-price]').forEach(elem => {
         if (elem.dataset.formatted === '1') return;
+        // Server-rendered fallback already present — don't clobber it.
+        if (elem.textContent && elem.textContent.trim() !== '') {
+            elem.dataset.formatted = '1';
+            return;
+        }
         const price = parseInt(elem.dataset.price, 10);
         if (!isNaN(price)) {
             elem.textContent = `${price.toLocaleString()}z`;
@@ -114,9 +119,26 @@ function renderLastUpdated(root) {
     lastUpdatedTimer = setInterval(tick, 30000);
 }
 
+function annotateSortableHeaders(root) {
+    (root || document).querySelectorAll('th > a[href*="sort_by="]').forEach(a => {
+        const th = a.parentElement;
+        if (!th || th.tagName !== 'TH') return;
+        const arrow = a.querySelector('span');
+        let sort = 'none';
+        if (arrow) {
+            const txt = (arrow.textContent || '').trim();
+            if (txt === '▲') sort = 'ascending';
+            else if (txt === '▼') sort = 'descending';
+        }
+        th.setAttribute('aria-sort', sort);
+        if (!th.hasAttribute('scope')) th.setAttribute('scope', 'col');
+    });
+}
+
 function applyPagePolish(root) {
     formatPrices(root);
     renderLastUpdated(root);
+    annotateSortableHeaders(root);
 }
 
 applyPagePolish(document);

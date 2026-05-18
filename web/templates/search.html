@@ -9,7 +9,7 @@
         <div class="bg-white dark:bg-gray-800 p-3 rounded-lg shadow mb-6">
             <form action="/search" method="GET" class="flex items-center gap-3">
                 <input type="text" name="q" value="{{.Data.SearchQuery}}" placeholder="{{.Page.T.search_placeholder}}" class="flex-grow mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white dark:placeholder-gray-400 shadow-sm focus:border-indigo-300 focus:ring focus:ring-indigo-200 focus:ring-opacity-50 text-sm">
-                <button type="submit" class="w-full sm:w-auto bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-md">{{.Page.T.search}}</button>
+                <button type="submit" class="btn btn-primary w-full sm:w-auto">{{.Page.T.search}}</button>
             </form>
         </div>
 
@@ -86,7 +86,7 @@
                     <ul class="divide-y divide-gray-200 dark:divide-gray-700">
                         {{range .Data.MarketResults}}
                         <li class="p-4 hover:bg-gray-50 dark:hover:bg-gray-700 flex items-center space-x-3">
-                            <img src="https://static.divine-pride.net/images/items/item/{{.ItemID}}.png" alt="" class="w-8 h-8 flex-shrink-0" style="image-rendering: pixelated;">
+                            <img src="https://static.divine-pride.net/images/items/item/{{.ItemID}}.png" alt="" class="w-8 h-8 flex-shrink-0" style="image-rendering: pixelated;" loading="lazy" decoding="async">
                             <div class="flex-1 min-w-0">
                                 {{if and (eq $.Page.Lang "pt") .NamePT.Valid}}
                                     <a href="/item?name={{.Name | urlquery}}" class="font-semibold text-blue-600 dark:text-blue-400 hover:underline truncate block">{{.NamePT.String}}</a>

@@ -1,10 +1,12 @@
 <nav class="navbar-glass border-b border-gray-200 dark:border-gray-700 sticky top-0 z-20 font-sans"
-     x-data="{ mobileOpen: false, settingsOpen: false }"
-     @keydown.escape.window="settingsOpen=false">
+     x-data="{ mobileOpen: false, settingsOpen: false, settingsTrigger: null,
+               openSettings(e) { this.settingsTrigger = e && e.currentTarget; this.settingsOpen = true; this.$nextTick(() => { const p = document.querySelector('.ymt-modal__panel'); if (p) { const f = p.querySelector('a, button, [tabindex]:not([tabindex=\'-1\'])'); if (f) f.focus(); } }); },
+               closeSettings() { this.settingsOpen = false; this.$nextTick(() => { if (this.settingsTrigger) this.settingsTrigger.focus(); }); } }"
+     @keydown.escape.window="settingsOpen && closeSettings()">
     <div class="container mx-auto px-4">
         <div class="flex justify-between items-center py-2">
             <div class="flex items-center space-x-4">
-                <a href="/about" class="text-sm font-semibold tracking-tight text-gray-800 dark:text-gray-100 hover:text-blue-600 dark:hover:text-blue-400">ymt</a>
+                <a href="/" class="text-sm font-semibold tracking-tight text-gray-800 dark:text-gray-100 hover:text-blue-600 dark:hover:text-blue-400" aria-label="Yufa Market Tracker - Home">ymt</a>
             </div>
 
             {{ $isRankingPage := (or (eq .Data.PageTitle "Characters") (eq .Data.PageTitle "Guilds") (eq .Data.PageTitle "MVP Kills") (eq .Data.PageTitle "WoE Rankings")) }}
@@ -12,10 +14,11 @@
 
             <div class="hidden md:flex items-center space-x-1">
 
-                <form action="/search" method="GET" class="relative" id="nav-search-form">
-                    <input type="text" name="q" placeholder="{{.Page.T.nav_search_placeholder}}" value="{{if eq .Data.PageTitle "Global Search"}}{{.Data.SearchQuery}}{{end}}" class="block w-full text-sm rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white dark:placeholder-gray-400 shadow-sm focus:border-indigo-300 focus:ring focus:ring-indigo-200 focus:ring-opacity-50 pl-3 pr-8 py-1.5" style="width: 160px;">
-                    <button type="submit" class="absolute inset-y-0 right-0 flex items-center pr-2 text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300" title="{{.Page.T.search}}">
-                        <svg class="w-5 h-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <form action="/search" method="GET" class="relative" id="nav-search-form" role="search">
+                    <label for="nav-search-q" class="sr-only">{{.Page.T.nav_search_placeholder}}</label>
+                    <input id="nav-search-q" type="text" name="q" placeholder="{{.Page.T.nav_search_placeholder}}" value="{{if eq .Data.PageTitle "Global Search"}}{{.Data.SearchQuery}}{{end}}" class="block w-full text-sm rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white dark:placeholder-gray-400 shadow-sm focus:border-indigo-300 focus:ring focus:ring-indigo-200 focus:ring-opacity-50 pl-3 pr-8 py-1.5" style="width: 160px;">
+                    <button type="submit" class="absolute inset-y-0 right-0 flex items-center pr-2 text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300" title="{{.Page.T.search}}" aria-label="{{.Page.T.search}}">
+                        <svg class="w-5 h-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
                           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
                         </svg>
                     </button>
@@ -53,8 +56,8 @@
                     </div>
                 </div>
 
-                <button @click="settingsOpen=true" type="button" class="text-lg p-2 rounded-md flex items-center text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700" :title="'{{.Page.T.nav_settings}}'">
-                    <span>⚙️</span>
+                <button @click="openSettings($event)" type="button" class="text-lg p-2 rounded-md flex items-center text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700" :title="'{{.Page.T.nav_settings}}'" :aria-label="'{{.Page.T.nav_settings}}'">
+                    <span aria-hidden="true">⚙️</span>
                 </button>
 
             </div>
@@ -75,11 +78,12 @@
 
     <div x-show="mobileOpen" x-cloak class="md:hidden border-t border-gray-200 dark:border-gray-700 dark:bg-gray-800">
 
-        <form action="/search" method="GET" class="p-2 border-b border-gray-100 dark:border-gray-700">
+        <form action="/search" method="GET" class="p-2 border-b border-gray-100 dark:border-gray-700" role="search">
             <div class="relative">
-                <input type="text" name="q" placeholder="{{.Page.T.nav_search_placeholder}}" value="{{if eq .Data.PageTitle "Global Search"}}{{.Data.SearchQuery}}{{end}}" class="block w-full text-sm rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white dark:placeholder-gray-400 shadow-sm focus:border-indigo-300 focus:ring focus:ring-indigo-200 focus:ring-opacity-50 pl-3 pr-8 py-1.5">
-                <button type="submit" class="absolute inset-y-0 right-0 flex items-center pr-2 text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300" title="{{.Page.T.search}}">
-                    <svg class="w-5 h-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <label for="nav-search-q-mobile" class="sr-only">{{.Page.T.nav_search_placeholder}}</label>
+                <input id="nav-search-q-mobile" type="text" name="q" placeholder="{{.Page.T.nav_search_placeholder}}" value="{{if eq .Data.PageTitle "Global Search"}}{{.Data.SearchQuery}}{{end}}" class="block w-full text-sm rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white dark:placeholder-gray-400 shadow-sm focus:border-indigo-300 focus:ring focus:ring-indigo-200 focus:ring-opacity-50 pl-3 pr-8 py-1.5">
+                <button type="submit" class="absolute inset-y-0 right-0 flex items-center pr-2 text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300" title="{{.Page.T.search}}" aria-label="{{.Page.T.search}}">
+                    <svg class="w-5 h-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
                       <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
                     </svg>
                 </button>
@@ -118,10 +122,11 @@
             </div>
         </details>
 
-        <button type="button" @click="settingsOpen=true; mobileOpen=false"
+        <button type="button" @click="mobileOpen=false; openSettings($event)"
                 class="w-full text-left py-2 px-4 text-sm text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 border-t border-gray-100 dark:border-gray-700">
-            <span>⚙️ {{.Page.T.nav_settings}}</span>
+            <span><span aria-hidden="true">⚙️</span> {{.Page.T.nav_settings}}</span>
         </button>
+        <a href="/about" class="block py-2 px-4 text-sm text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700 border-t border-gray-100 dark:border-gray-700">{{.Page.T.about_title}}</a>
 
     </div>
 

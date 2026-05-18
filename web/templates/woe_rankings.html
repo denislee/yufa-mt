@@ -89,7 +89,7 @@
                 </div>
                 {{end}}
 
-                <button type="submit" class="w-full md:w-auto bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-md">{{.Page.T.search}}</button>
+                <button type="submit" class="btn btn-primary w-full md:w-auto">{{.Page.T.search}}</button>
             </form>
         </div>
 
@@ -121,7 +121,7 @@
                         <tr class="border-b border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700">
                             <td class="px-2 sm:px-3 py-2">
                                 <div class="flex items-center">
-                                    <img src="{{.Class | getClassImageURL}}" alt="{{.Class}}" class="w-6 h-6 mr-2" style="image-rendering: pixelated;">
+                                    <img src="{{.Class | getClassImageURL}}" alt="{{.Class}}" class="w-6 h-6 mr-2" style="image-rendering: pixelated;" loading="lazy" decoding="async">
                                     <a href="/character?name={{.Name | urlquery}}" class="font-semibold hover:underline">{{.Name}}</a>
                                 </div>
                             </td>
@@ -228,7 +228,7 @@
                                 {{range $class := $classes}}
                                 <tr class="border-b border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700">
                                     <td class="px-2 sm:px-3 py-2 pl-6"> <div class="flex items-center">
-                                            <img src="{{.Class | getClassImageURL}}" alt="{{.Class}}" class="w-6 h-6 mr-2" style="image-rendering: pixelated;">
+                                            <img src="{{.Class | getClassImageURL}}" alt="{{.Class}}" class="w-6 h-6 mr-2" style="image-rendering: pixelated;" loading="lazy" decoding="async">
                                             {{.Class}}
                                         </div>
                                     </td>

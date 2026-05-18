@@ -9,7 +9,7 @@
     <div class="container mx-auto px-4 py-6">
         <div class="flex flex-col sm:flex-row justify-between sm:items-center gap-2 mb-4 border-b border-gray-200 dark:border-gray-700 pb-3">
             <h1 class="text-2xl font-bold text-gray-800 dark:text-gray-100">{{.Page.T.online_player_history}}</h1> {{/* <-- MODIFIED */}}
-            <div id="last-updated" class="text-sm text-gray-500 dark:text-gray-400" data-timestamp="{{.Data.LastScrapeTime}}"></div> {{/* <-- MODIFIED */}}
+            <div id="last-updated" class="text-sm text-gray-500 dark:text-gray-400" data-timestamp="{{.Data.LastScrapeTime}}" title="Last full scrape time"></div> {{/* <-- MODIFIED */}}
         </div>
 
         <div class="flex flex-wrap items-stretch gap-4 mb-4">
@@ -101,47 +101,6 @@
             const labelColor = isDarkMode ? 'rgba(209, 213, 219, 1)' : 'rgba(107, 114, 128, 1)';
 
             // --- MODIFIED: Use translations for last-updated ---
-            const lastUpdateElement = document.getElementById('last-updated');
-            if (lastUpdateElement) {
-                const timestampStr = lastUpdateElement.dataset.timestamp;
-
-                if (!timestampStr || timestampStr === 'Never' || timestampStr === '') {
-                    lastUpdateElement.textContent = translations.updated_never;
-                    return;
-                }
-
-                const lastUpdateDate = new Date(timestampStr);
-                const formattedTimestamp = lastUpdateDate.toLocaleString([], {
-                    year: 'numeric', month: 'short', day: 'numeric',
-                    hour: '2-digit', minute: '2-digit'
-                });
-
-                const updateTimeAgo = () => {
-                    const now = new Date();
-                    const secondsPast = Math.floor((now.getTime() - lastUpdateDate.getTime()) / 1000);
-                    let timeAgoString;
-
-                    if (lang === 'pt') {
-                        if (secondsPast < 5) timeAgoString = 'agora mesmo';
-                        else if (secondsPast < 60) timeAgoString = `${secondsPast}s`;
-                        else if (secondsPast < 3600) timeAgoString = `${Math.floor(secondsPast / 60)}m`;
-                        else if (secondsPast < 86400) timeAgoString = `${Math.floor(secondsPast / 3600)}h`;
-                        else timeAgoString = `${Math.floor(secondsPast / 86400)}d`;
-                    } else {
-                        if (secondsPast < 5) timeAgoString = 'just now';
-                        else if (secondsPast < 60) timeAgoString = `${secondsPast}s ago`;
-                        else if (secondsPast < 3600) timeAgoString = `${Math.floor(secondsPast / 60)}m ago`;
-                        else if (secondsPast < 86400) timeAgoString = `${Math.floor(secondsPast / 3600)}h ago`;
-                        else timeAgoString = `${Math.floor(secondsPast / 86400)}d ago`;
-                    }
-
-                    const fullString = translations.updated_ago.replace('%s', timeAgoString);
-                    lastUpdateElement.innerHTML = `${fullString} <span class="text-gray-400 dark:text-gray-500 font-normal">(${formattedTimestamp})</span>`;
-                };
-
-                updateTimeAgo();
-                setInterval(updateTimeAgo, 30000);
-            }
 
             // ... (Chart filter logic is unchanged) ...
             const togglePlayers = document.getElementById('togglePlayers');

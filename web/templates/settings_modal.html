@@ -1,10 +1,19 @@
 <template x-teleport="body">
 <div x-show="settingsOpen" x-cloak
      class="ymt-modal"
-     role="dialog" aria-modal="true" aria-labelledby="settings-modal-title">
+     role="dialog" aria-modal="true" aria-labelledby="settings-modal-title"
+     @keydown.tab="
+        const p = $el.querySelector('.ymt-modal__panel');
+        if (!p) return;
+        const focusables = p.querySelectorAll('a[href], button:not([disabled]), [tabindex]:not([tabindex=\'-1\'])');
+        if (!focusables.length) return;
+        const first = focusables[0], last = focusables[focusables.length - 1];
+        if ($event.shiftKey && document.activeElement === first) { $event.preventDefault(); last.focus(); }
+        else if (!$event.shiftKey && document.activeElement === last) { $event.preventDefault(); first.focus(); }
+     ">
     <div x-show="settingsOpen" x-transition.opacity
          class="ymt-modal__backdrop"
-         @click="settingsOpen=false"></div>
+         @click="closeSettings()"></div>
 
     <div x-show="settingsOpen"
          x-transition:enter="transition ease-out duration-150"
@@ -17,12 +26,12 @@
 
         <div class="ymt-modal__header">
             <h2 id="settings-modal-title" class="ymt-modal__title">
-                <span>⚙️</span><span>{{.Page.T.nav_settings}}</span>
+                <span aria-hidden="true">⚙️</span><span>{{.Page.T.nav_settings}}</span>
             </h2>
-            <button type="button" @click="settingsOpen=false"
+            <button type="button" @click="closeSettings()"
                     class="ymt-modal__close"
                     :aria-label="'{{.Page.T.close}}'">
-                <svg class="w-4 h-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+                <svg class="w-4 h-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
             </button>
         </div>
 
@@ -95,6 +104,10 @@
                         <span class="ymt-opt__caption">{{.Page.T.font_size_xlarge}}</span>
                     </button>
                 </div>
+            </div>
+
+            <div class="ymt-modal__footer-links">
+                <a href="/about" @click="closeSettings()" class="ymt-modal__footer-link">{{.Page.T.about_title}}</a>
             </div>
 
         </div>

@@ -286,7 +286,7 @@
                             <div id="emblem-preview-container" class="mt-4" style="display: none;">
                                 <h4 class="text-sm font-medium text-gray-700 dark:text-gray-200">Current Emblem:</h4>
                                 <div class="flex items-center gap-4 mt-2">
-                                    <img id="emblem_preview_image" src="" alt="Emblem Preview" class="h-10 w-10 bg-gray-200 dark:bg-gray-600 rounded">
+                                    <img id="emblem_preview_image" src="" alt="Emblem Preview" class="h-10 w-10 bg-gray-200 dark:bg-gray-600 rounded" loading="lazy" decoding="async">
                                     <p id="current_emblem_url" class="text-sm text-gray-500 dark:text-gray-400 break-all"></p>
                                 </div>
                             </div>
@@ -601,7 +601,7 @@
                                         <tr>
                                             <td class="py-2 px-3 font-mono">{{.ID}}</td>
                                             <td class="py-2 px-3">
-                                                <img src="{{.ImageURL}}" alt="item" class="h-6 w-6 inline-block mr-2 bg-gray-100 dark:bg-gray-700 rounded-sm">
+                                                <img src="{{.ImageURL}}" alt="item" class="h-6 w-6 inline-block mr-2 bg-gray-100 dark:bg-gray-700 rounded-sm" loading="lazy" decoding="async">
                                                 {{.Name}}
                                             </td>
                                             <td class="py-2 px-3 text-center">
