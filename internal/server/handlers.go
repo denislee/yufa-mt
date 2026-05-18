@@ -230,7 +230,9 @@ type TemplateData struct {
 	Data interface{}  // Page-specific data (e.g., SummaryPageData)
 }
 
-// renderTemplate executes a pre-parsed template with a consistent data structure.
+// renderTemplate executes a pre-parsed template with a consistent data
+// structure. Renders the full layout (which composes title/head_extra/
+// shell/content blocks); page templates may define any subset.
 func renderTemplate(w http.ResponseWriter, r *http.Request, tmplFile string, data interface{}) {
 	tmpl, ok := templateCache[tmplFile]
 	if !ok {
@@ -239,22 +241,15 @@ func renderTemplate(w http.ResponseWriter, r *http.Request, tmplFile string, dat
 		return
 	}
 
-	// Create the base page context
 	lang := i18n.Lang(r)
 	pageCtx := BasePageData{
 		Lang:       lang,
 		T:          i18n.Translations(lang),
 		RequestURL: r.URL.RequestURI(),
 	}
+	fullData := TemplateData{Page: pageCtx, Data: data}
 
-	// Wrap all data in the TemplateData struct for type-safe passing
-	fullData := TemplateData{
-		Page: pageCtx,
-		Data: data,
-	}
-
-	// Execute with the new wrapped data
-	if err := tmpl.Execute(w, fullData); err != nil {
+	if err := tmpl.ExecuteTemplate(w, "layout.html", fullData); err != nil {
 		log.Printf("[E] [HTTP] Could not execute template '%s': %v", tmplFile, err)
 	}
 }
@@ -292,7 +287,35 @@ func getCombinedItemIDs(searchQuery string) ([]int, error) {
 	return idList, nil
 }
 
-func getItemTypeTabs() []ItemTypeTab {
+func getItemTypeTabs(showAll bool) []ItemTypeTab {
+	var availabilityClause string
+	if !showAll {
+		availabilityClause = "AND i.is_available = 1"
+	}
+	countQuery := fmt.Sprintf(`
+		SELECT db.type, COUNT(DISTINCT i.item_id)
+		FROM items i
+		JOIN internal_item_db db ON i.item_id = db.item_id
+		WHERE db.type IS NOT NULL AND db.type != ''
+		%s
+		GROUP BY db.type
+	`, availabilityClause)
+
+	rawCounts := make(map[string]int)
+	if cRows, err := srv.db.Query(countQuery); err != nil {
+		log.Printf("[W] [HTTP] Could not count items per type: %v", err)
+	} else {
+		for cRows.Next() {
+			var t string
+			var c int
+			if err := cRows.Scan(&t, &c); err != nil {
+				continue
+			}
+			rawCounts[t] = c
+		}
+		cRows.Close()
+	}
+
 	var itemTypes []ItemTypeTab
 	rows, err := srv.db.Query("SELECT DISTINCT type FROM internal_item_db WHERE type IS NOT NULL AND type != '' ORDER BY type ASC")
 	if err != nil {
@@ -301,6 +324,7 @@ func getItemTypeTabs() []ItemTypeTab {
 	}
 	defer rows.Close()
 
+	indexByFullName := make(map[string]int)
 	for rows.Next() {
 		var itemType string
 		if err := rows.Scan(&itemType); err != nil {
@@ -336,7 +360,14 @@ func getItemTypeTabs() []ItemTypeTab {
 		default:
 			mappedType = itemType // Fallback
 		}
-		itemTypes = append(itemTypes, mapItemTypeToTabData(mappedType))
+		if idx, ok := indexByFullName[mappedType]; ok {
+			itemTypes[idx].Count += rawCounts[itemType]
+		} else {
+			tab := mapItemTypeToTabData(mappedType)
+			tab.Count = rawCounts[itemType]
+			indexByFullName[mappedType] = len(itemTypes)
+			itemTypes = append(itemTypes, tab)
+		}
 	}
 	return itemTypes
 }
@@ -439,11 +470,16 @@ func mapItemTypeToTabData(typeName string) ItemTypeTab {
 func init() {
 	log.Println("[I] [HTTP] Parsing all application templates...")
 
-	// Base templates that are included in others
+	// Base templates that are included in others. layout.html owns the
+	// outer document; each page template defines a {{define "content"}}
+	// block (plus optional "title" / "head_extra") that layout.html
+	// renders inside its shell.
 	commonFiles := []string{
+		"layout.html",
 		"head.html",
 		"navbar.html",
 		"pagination.html",
+		"settings_modal.html",
 	}
 
 	// All unique page templates
@@ -472,14 +508,14 @@ func init() {
 	}
 
 	for _, tmplName := range templates {
-		// Create the list of files to parse: the page itself + all common files
+		// Parse layout + common partials + the page. Each page defines
+		// content/title/head_extra blocks that layout.html composes.
 		filesToParse := []string{"templates/" + tmplName}
 		for _, c := range commonFiles {
 			filesToParse = append(filesToParse, "templates/"+c)
 		}
 
-		// Parse all files, using the template name as the key
-		tmpl, err := template.New(tmplName).Funcs(templateFuncs).ParseFS(web.Templates, filesToParse...)
+		tmpl, err := template.New("layout.html").Funcs(templateFuncs).ParseFS(web.Templates, filesToParse...)
 		if err != nil {
 			log.Fatalf("[F] [HTTP] Could not parse template '%s': %v", tmplName, err)
 		}
@@ -623,6 +659,12 @@ func summaryHandler(w http.ResponseWriter, r *http.Request) {
 		log.Printf("[W] [HTTP] Could not query total visitors: %v", err)
 	}
 
+	itemTypeTabs := getItemTypeTabs(showAll)
+	var itemTypesTotal int
+	for _, t := range itemTypeTabs {
+		itemTypesTotal += t.Count
+	}
+
 	data := SummaryPageData{
 		Items:            items,
 		SearchQuery:      searchQuery,
@@ -630,7 +672,8 @@ func summaryHandler(w http.ResponseWriter, r *http.Request) {
 		Order:            order,
 		ShowAll:          showAll,
 		LastScrapeTime:   GetLastScrapeTime(),
-		ItemTypes:        getItemTypeTabs(),
+		ItemTypes:        itemTypeTabs,
+		ItemTypesTotal:   itemTypesTotal,
 		SelectedType:     selectedType,
 		TotalVisitors:    totalVisitors,
 		TotalUniqueItems: totalUniqueItems,
@@ -759,6 +802,12 @@ func fullListHandler(w http.ResponseWriter, r *http.Request) {
 		items = append(items, item)
 	}
 
+	itemTypeTabs := getItemTypeTabs(showAll)
+	var itemTypesTotal int
+	for _, t := range itemTypeTabs {
+		itemTypesTotal += t.Count
+	}
+
 	data := PageData{
 		Items:          items,
 		SearchQuery:    searchQuery,
@@ -771,7 +820,8 @@ func fullListHandler(w http.ResponseWriter, r *http.Request) {
 		VisibleColumns: visibleColumns,
 		AllColumns:     allCols,
 		ColumnParams:   template.URL(columnParams.Encode()),
-		ItemTypes:      getItemTypeTabs(),
+		ItemTypes:      itemTypeTabs,
+		ItemTypesTotal: itemTypesTotal,
 		SelectedType:   selectedType,
 		PageTitle:      "Full List",
 	}

@@ -356,7 +356,16 @@ var (
 			"top_richest_chars":   "Top Richest Characters",
 			"top_exp_chars":       "Top Characters by Exp",
 
-			"nav_toggle_theme": "Toggle Theme",
+			"nav_toggle_theme":  "Toggle Theme",
+			"nav_theme":         "Theme",
+			"nav_settings":      "Settings",
+			"nav_language":      "Language",
+			"nav_font_size":     "Font Size",
+			"font_size_small":   "Small",
+			"font_size_medium":  "Medium",
+			"font_size_large":   "Large",
+			"font_size_xlarge":  "Extra Large",
+			"close":             "Close",
 		},
 		"pt": {
 			"market_summary":         "Resumo do Mercado",
@@ -710,7 +719,16 @@ var (
 			"top_richest_chars":   "Top Personagens Ricos",
 			"top_exp_chars":       "Top Personagens por Exp",
 
-			"nav_toggle_theme": "Alternar Tema",
+			"nav_toggle_theme":  "Alternar Tema",
+			"nav_theme":         "Tema",
+			"nav_settings":      "Configurações",
+			"nav_language":      "Idioma",
+			"nav_font_size":     "Tamanho da Fonte",
+			"font_size_small":   "Pequeno",
+			"font_size_medium":  "Médio",
+			"font_size_large":   "Grande",
+			"font_size_xlarge":  "Extra Grande",
+			"close":             "Fechar",
 		},
 	}
 )

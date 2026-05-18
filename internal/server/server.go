@@ -209,7 +209,7 @@ func Run(cfg *config.Config) {
 	mux := registerRoutes()
 
 	// --- Server Start and Shutdown ---
-	server := &http.Server{Addr: cfg.HTTPAddr, Handler: mux}
+	server := &http.Server{Addr: cfg.HTTPAddr, Handler: middleware.Gzip(mux)}
 
 	// Goroutine to handle server shutdown when context is cancelled
 	go func() {

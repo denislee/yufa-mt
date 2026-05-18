@@ -1,14 +1,5 @@
-<!DOCTYPE html>
-<html lang="{{.Page.Lang}}">
-<head>
-    <title>{{.Data.PageTitle}} - Yufa Market Tracker</title>
-    {{template "head.html" .}}
-
-    </head>
-<body class="bg-gray-100 dark:bg-gray-900 text-gray-800 dark:text-gray-200 text-sm sm:text-base">
-
-    {{template "navbar.html" .}}
-
+{{define "title"}}{{.Data.PageTitle}} - Yufa Market Tracker{{end}}
+{{define "content"}}
     <div class="container mx-auto px-4 py-6">
         
         <div class="flex flex-col sm:flex-row justify-between sm:items-center gap-2 mb-4 border-b border-gray-200 dark:border-gray-700 pb-3">
@@ -199,5 +190,4 @@
         </div>
 
     </div>
-</body>
-</html>
+{{end}}

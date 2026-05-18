@@ -1,18 +1,11 @@
-<!DOCTYPE html>
-<html lang="{{.Page.Lang}}"> {{/* <-- MODIFIED */}}
-<head>
-    <title>{{.Page.T.online_player_history}} - Yufa Market Tracker</title>
-    {{template "head.html" .}} {{/* <-- MODIFIED */}}
-    
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+{{define "title"}}{{.Page.T.online_player_history}} - Yufa Market Tracker{{end}}
+{{define "head_extra"}}
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/date-fns@3/index.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-annotation@3.0.1/dist/chartjs-plugin-annotation.min.js"></script>
-    </head>
-<body class="bg-gray-100 dark:bg-gray-900 text-gray-800 dark:text-gray-200 text-sm sm:text-base">
-
-    {{template "navbar.html" .}}
-
+{{end}}
+{{define "content"}}
     <div class="container mx-auto px-4 py-6">
         <div class="flex flex-col sm:flex-row justify-between sm:items-center gap-2 mb-4 border-b border-gray-200 dark:border-gray-700 pb-3">
             <h1 class="text-2xl font-bold text-gray-800 dark:text-gray-100">{{.Page.T.online_player_history}}</h1> {{/* <-- MODIFIED */}}
@@ -275,5 +268,4 @@
             updateChartVisibility();
         });
     </script>
-</body>
-</html>
+{{end}}

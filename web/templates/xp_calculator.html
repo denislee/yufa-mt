@@ -1,14 +1,5 @@
-<!DOCTYPE html>
-<html lang="{{.Page.Lang}}"> {{/* <-- MODIFIED */}}
-<head>
-    <title>{{.Page.T.xp_calc_title}} - Yufa Market Tracker</title>
-    {{template "head.html" .}} {{/* <-- MODIFIED */}}
-
-    </head>
-<body class="bg-gray-100 dark:bg-gray-900 text-gray-800 dark:text-gray-200 text-sm sm:text-base">
-
-    {{template "navbar.html" .}}
-
+{{define "title"}}{{.Page.T.xp_calc_title}} - Yufa Market Tracker{{end}}
+{{define "content"}}
     <div class="container mx-auto px-4 py-6 max-w-3xl">
         <div class="flex flex-col sm:flex-row justify-between sm:items-center gap-2 mb-4 border-b border-gray-200 dark:border-gray-700 pb-3">
             <h1 class="text-2xl font-bold text-gray-800 dark:text-gray-100">{{.Page.T.xp_calc_title}}</h1> {{/* <-- MODIFIED */}}
@@ -116,5 +107,4 @@
             {{end}}
         });
     </script>
-</body>
-</html>
+{{end}}

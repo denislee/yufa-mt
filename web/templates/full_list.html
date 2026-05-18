@@ -1,14 +1,5 @@
-<!DOCTYPE html>
-<html lang="{{.Page.Lang}}"> {{/* <-- MODIFIED */}}
-<head>
-    <title>{{.Page.T.full_market_list}} - Yufa Market Tracker</title>
-    {{template "head.html" .}} {{/* <-- MODIFIED */}}
-
-    </head>
-<body class="bg-gray-100 dark:bg-gray-900 text-gray-800 dark:text-gray-200 text-sm sm:text-base">
-
-    {{template "navbar.html" .}}
-
+{{define "title"}}{{.Page.T.full_market_list}} - Yufa Market Tracker{{end}}
+{{define "content"}}
     <div class="container mx-auto px-4 py-6">
         <div class="flex flex-col sm:flex-row justify-between sm:items-center gap-2 mb-4 border-b border-gray-200 dark:border-gray-700 pb-3">
             <h1 class="text-2xl font-bold text-gray-800 dark:text-gray-100">{{.Page.T.full_market_list}}</h1> {{/* <-- MODIFIED */}}
@@ -58,12 +49,16 @@
             {{$storeName := .Data.StoreNameQuery}}
             {{$params := .Data.ColumnParams}}
             {{/* --- MODIFIED: Use "category_all" key --- */}}
-            <a href="/full-list?query={{$q}}&sort_by={{$sort}}&order={{$order}}{{if not $showAll}}&only_available=true{{end}}&store_name={{$storeName | urlquery}}&{{$params}}" class="px-3 py-1 text-sm font-medium flex items-center gap-2 -mb-0.5 border-b-2 {{if eq $currentType ""}}text-blue-600 border-blue-600 dark:text-blue-400 dark:border-blue-400{{else}}text-gray-500 dark:text-gray-400 border-transparent hover:text-gray-700 dark:hover:text-gray-200 hover:border-gray-300 dark:hover:border-gray-600{{end}}">{{.Page.T.category_all}}</a>
+            <a href="/full-list?query={{$q}}&sort_by={{$sort}}&order={{$order}}{{if not $showAll}}&only_available=true{{end}}&store_name={{$storeName | urlquery}}&{{$params}}" class="px-3 py-1 text-sm font-medium flex items-center gap-2 -mb-0.5 border-b-2 {{if eq $currentType ""}}text-blue-600 border-blue-600 dark:text-blue-400 dark:border-blue-400{{else}}text-gray-500 dark:text-gray-400 border-transparent hover:text-gray-700 dark:hover:text-gray-200 hover:border-gray-300 dark:hover:border-gray-600{{end}}">
+                {{.Page.T.category_all}}
+                <span class="text-xs text-gray-400 dark:text-gray-500">({{.Data.ItemTypesTotal}})</span>
+            </a>
             {{range .Data.ItemTypes}}
                 <a href="/full-list?query={{$q}}&sort_by={{$sort}}&order={{$order}}{{if not $showAll}}&only_available=true{{end}}&store_name={{$storeName | urlquery}}&{{$params}}&type={{.FullName | urlquery}}" class="px-3 py-1 text-sm font-medium flex items-center gap-2 -mb-0.5 border-b-2 {{if eq .FullName $currentType}}text-blue-600 border-blue-600 dark:text-blue-400 dark:border-blue-400{{else}}text-gray-500 dark:text-gray-400 border-transparent hover:text-gray-700 dark:hover:text-gray-200 hover:border-gray-300 dark:hover:border-gray-600{{end}}">
                     <img src="https://static.divine-pride.net/images/items/item/{{.IconItemID}}.png" alt="" class="" style="image-rendering: pixelated;">
                     {{/* --- MODIFIED: Use translation map --- */}}
                     {{index $.Page.T .ShortName}}
+                    <span class="text-xs text-gray-400 dark:text-gray-500">({{.Count}})</span>
                 </a>
             {{end}}
         </div>
@@ -215,5 +210,4 @@
             }
         });
     </script>
-</body>
-</html>
+{{end}}

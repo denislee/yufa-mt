@@ -1,0 +1,103 @@
+<template x-teleport="body">
+<div x-show="settingsOpen" x-cloak
+     class="ymt-modal"
+     role="dialog" aria-modal="true" aria-labelledby="settings-modal-title">
+    <div x-show="settingsOpen" x-transition.opacity
+         class="ymt-modal__backdrop"
+         @click="settingsOpen=false"></div>
+
+    <div x-show="settingsOpen"
+         x-transition:enter="transition ease-out duration-150"
+         x-transition:enter-start="opacity-0 scale-95"
+         x-transition:enter-end="opacity-100 scale-100"
+         x-transition:leave="transition ease-in duration-100"
+         x-transition:leave-start="opacity-100 scale-100"
+         x-transition:leave-end="opacity-0 scale-95"
+         class="ymt-modal__panel">
+
+        <div class="ymt-modal__header">
+            <h2 id="settings-modal-title" class="ymt-modal__title">
+                <span>⚙️</span><span>{{.Page.T.nav_settings}}</span>
+            </h2>
+            <button type="button" @click="settingsOpen=false"
+                    class="ymt-modal__close"
+                    :aria-label="'{{.Page.T.close}}'">
+                <svg class="w-4 h-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+            </button>
+        </div>
+
+        <div class="ymt-modal__body">
+
+            <div>
+                <div class="ymt-modal__section-label">{{.Page.T.nav_language}}</div>
+                <div class="ymt-modal__grid ymt-modal__grid--2">
+                    <a href="/set-lang?lang=en&redirect={{.Page.RequestURL}}"
+                       class="ymt-opt {{if eq .Page.Lang "en"}}is-active{{end}}">
+                        <span class="ymt-opt__main">
+                            <span>🇺🇸</span><span class="ymt-opt__label">English</span>
+                        </span>
+                    </a>
+                    <a href="/set-lang?lang=pt&redirect={{.Page.RequestURL}}"
+                       class="ymt-opt {{if eq .Page.Lang "pt"}}is-active{{end}}">
+                        <span class="ymt-opt__main">
+                            <span>🇧🇷</span><span class="ymt-opt__label">Português</span>
+                        </span>
+                    </a>
+                </div>
+            </div>
+
+            <div>
+                <div class="ymt-modal__section-label">{{.Page.T.nav_theme}}</div>
+                <div class="ymt-modal__grid ymt-modal__grid--2">
+                    <template x-for="t in $store.theme.themes" :key="t.id">
+                        <button type="button" @click="$store.theme.set(t.id)"
+                                class="ymt-opt"
+                                :class="{ 'is-active': $store.theme.current === t.id }">
+                            <span class="ymt-opt__main">
+                                <span class="theme-swatch" :style="'background:' + t.swatch"></span>
+                                <span class="ymt-opt__label" x-text="t.label"></span>
+                            </span>
+                            <svg x-show="$store.theme.current === t.id" class="ymt-opt__check" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/></svg>
+                        </button>
+                    </template>
+                </div>
+            </div>
+
+            <div>
+                <div class="ymt-modal__section-label">{{.Page.T.nav_font_size}}</div>
+                <div class="ymt-modal__grid ymt-modal__grid--4">
+                    <button type="button" @click="$store.fontSize.set('sm')"
+                            class="ymt-opt ymt-opt--font"
+                            :class="{ 'is-active': $store.fontSize.current === 'sm' }"
+                            :title="'{{.Page.T.font_size_small}}'">
+                        <span class="ymt-opt__glyph" style="font-size: 0.85rem">A</span>
+                        <span class="ymt-opt__caption">{{.Page.T.font_size_small}}</span>
+                    </button>
+                    <button type="button" @click="$store.fontSize.set('md')"
+                            class="ymt-opt ymt-opt--font"
+                            :class="{ 'is-active': $store.fontSize.current === 'md' }"
+                            :title="'{{.Page.T.font_size_medium}}'">
+                        <span class="ymt-opt__glyph" style="font-size: 1rem">A</span>
+                        <span class="ymt-opt__caption">{{.Page.T.font_size_medium}}</span>
+                    </button>
+                    <button type="button" @click="$store.fontSize.set('lg')"
+                            class="ymt-opt ymt-opt--font"
+                            :class="{ 'is-active': $store.fontSize.current === 'lg' }"
+                            :title="'{{.Page.T.font_size_large}}'">
+                        <span class="ymt-opt__glyph" style="font-size: 1.2rem">A</span>
+                        <span class="ymt-opt__caption">{{.Page.T.font_size_large}}</span>
+                    </button>
+                    <button type="button" @click="$store.fontSize.set('xl')"
+                            class="ymt-opt ymt-opt--font"
+                            :class="{ 'is-active': $store.fontSize.current === 'xl' }"
+                            :title="'{{.Page.T.font_size_xlarge}}'">
+                        <span class="ymt-opt__glyph" style="font-size: 1.45rem">A</span>
+                        <span class="ymt-opt__caption">{{.Page.T.font_size_xlarge}}</span>
+                    </button>
+                </div>
+            </div>
+
+        </div>
+    </div>
+</div>
+</template>

@@ -153,6 +153,7 @@ type ItemTypeTab struct {
 	FullName   string
 	ShortName  string
 	IconItemID int
+	Count      int
 }
 
 type PlayerCharacter struct {
@@ -203,6 +204,7 @@ type SummaryPageData struct {
 	ShowAll          bool
 	LastScrapeTime   string
 	ItemTypes        []ItemTypeTab
+	ItemTypesTotal   int
 	SelectedType     string
 	TotalVisitors    int
 	TotalUniqueItems int
@@ -222,6 +224,7 @@ type PageData struct {
 	AllColumns     []Column
 	ColumnParams   template.URL
 	ItemTypes      []ItemTypeTab
+	ItemTypesTotal int
 	SelectedType   string
 	PageTitle      string
 }

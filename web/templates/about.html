@@ -1,10 +1,6 @@
-<!DOCTYPE html>
-<html lang="{{.Page.Lang}}"> {{/* <-- MODIFIED */}}
-<head>
-    <title>{{.Page.T.about_title}} - Yufa Market Tracker</title>
-    {{template "head.html" .}} {{/* <-- MODIFIED */}}
-
-    <style>
+{{define "title"}}{{.Page.T.about_title}} - Yufa Market Tracker{{end}}
+{{define "head_extra"}}
+<style>
         .content-box p, .content-box ul {
             margin-bottom: 1.25rem;
         }
@@ -24,12 +20,8 @@
             border-bottom-color: #374151; /* gray-700 */
         }
     </style>
-</head>
-<body class="bg-gray-100 dark:bg-gray-900 text-gray-800 dark:text-gray-200 text-sm sm:text-base">
-
-    {{/* MODIFIED: Pass the entire context */}}
-    {{template "navbar.html" .}}
-
+{{end}}
+{{define "content"}}
     <div class="container mx-auto px-4 py-6">
         <div class="flex flex-col sm:flex-row justify-between sm:items-center gap-2 mb-4 border-b border-gray-200 dark:border-gray-700 pb-3">
             <h1 class="text-2xl font-bold text-gray-800 dark:text-gray-100">{{.Page.T.about_title}}</h1> {{/* <-- MODIFIED */}}
@@ -77,5 +69,4 @@
             }
         });
     </script>
-</body>
-</html>
+{{end}}

@@ -1,0 +1,21 @@
+<!DOCTYPE html>
+<html lang="{{.Page.Lang}}"
+      data-label-never="{{.Page.T.updated_never}}"
+      data-label-ago="{{.Page.T.updated_ago}}">
+<head>
+    <title>{{block "title" .}}Yufa Market Tracker{{end}}</title>
+    {{template "head.html" .}}
+    {{block "head_extra" .}}{{end}}
+</head>
+<body class="bg-gray-100 dark:bg-gray-900 text-gray-800 dark:text-gray-200 text-sm sm:text-base"
+      hx-boost="true"
+      hx-target="#shell"
+      hx-select="#shell"
+      hx-swap="innerHTML show:window:top"
+      hx-indicator="#nav-progress">
+    <div id="nav-progress" aria-hidden="true"></div>
+    <div id="shell">{{block "shell" .}}{{template "navbar.html" .}}<main id="main">{{block "content" .}}{{end}}</main>{{end}}</div>
+    <script src="/static/alpine.min.js" defer></script>
+    <script src="/static/app.js"></script>
+</body>
+</html>

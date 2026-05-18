@@ -1,21 +1,14 @@
-<!DOCTYPE html>
-<html lang="{{.Page.Lang}}">
-<head>
-    <title>{{.Page.T.mvp_kills_title}} - Yufa Market Tracker</title>
-    {{template "head.html" .}}
-
-    <style>
+{{define "title"}}{{.Page.T.mvp_kills_title}} - Yufa Market Tracker{{end}}
+{{define "head_extra"}}
+<style>
         .rotate-45-and--translate { transform: translateY(2px) translateX(4px) rotate(45deg); }
         th span {
             writing-mode: vertical-lr;
             white-space: nowrap;
         }
     </style>
-</head>
-<body class="bg-gray-100 dark:bg-gray-900 text-gray-800 dark:text-gray-200 text-sm sm:text-base">
-
-    {{template "navbar.html" .}}
-
+{{end}}
+{{define "content"}}
     <div class="container mx-auto px-4 py-6">
         <div class="flex flex-col sm:flex-row justify-between sm:items-center gap-2 mb-4 border-b border-gray-200 dark:border-gray-700 pb-3">
             <h1 class="text-2xl font-bold text-gray-800 dark:text-gray-100">{{.Page.T.mvp_kills_title}}</h1>
@@ -130,5 +123,4 @@
             }
         });
     </script>
-</body>
-</html>
+{{end}}
