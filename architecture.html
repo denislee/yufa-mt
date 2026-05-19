@@ -1,0 +1,1023 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Yufa-MT — Architecture</title>
+<style>
+  :root {
+    --bg: #0b1020;
+    --bg-2: #11182e;
+    --panel: #161d36;
+    --panel-2: #1c2545;
+    --line: #2b3866;
+    --ink: #e7ecff;
+    --ink-2: #aab4d6;
+    --muted: #7a85ad;
+    --accent: #7cc4ff;
+    --accent-2: #b794ff;
+    --good: #6ee7a8;
+    --warn: #f7c66c;
+    --bad: #ff8aa1;
+    --pkg: #2c4a8a;
+    --pkg-2: #355aab;
+    --tag-go: #00add8;
+    --tag-html: #ff7849;
+    --tag-sql: #f0a868;
+    --tag-cfg: #c084fc;
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; padding: 0; background: var(--bg);
+    color: var(--ink);
+    font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Inter, Roboto, sans-serif;
+    line-height: 1.5;
+  }
+  code, pre, .mono { font-family: ui-monospace, "JetBrains Mono", "Cascadia Code", Consolas, monospace; }
+
+  header.hero {
+    padding: 48px 32px 24px;
+    background:
+      radial-gradient(1200px 400px at 10% -20%, rgba(124,196,255,.18), transparent),
+      radial-gradient(900px 400px at 90% -10%, rgba(183,148,255,.18), transparent),
+      linear-gradient(180deg, #0b1020 0%, #0d1430 100%);
+    border-bottom: 1px solid var(--line);
+  }
+  header h1 {
+    font-size: 38px;
+    margin: 0 0 8px;
+    letter-spacing: -0.02em;
+  }
+  header .sub { color: var(--ink-2); max-width: 900px; }
+  header .meta { display:flex; gap: 8px; flex-wrap: wrap; margin-top: 14px; }
+  .chip {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 4px 10px; border-radius: 999px;
+    font-size: 12px; color: var(--ink);
+    background: var(--panel-2); border: 1px solid var(--line);
+  }
+  .chip.go    { color: #c8f3ff; border-color: #1e6c84; background: #0e2a36; }
+  .chip.html  { color: #ffd9c2; border-color: #6e3a25; background: #371d12; }
+  .chip.sql   { color: #ffe1bd; border-color: #6f4f23; background: #3a2913; }
+  .chip.cfg   { color: #ecd4ff; border-color: #5b3e80; background: #251a3d; }
+  .chip.good  { color: #c1f5d5; border-color: #2f6f4d; background: #112a1f; }
+
+  main { max-width: 1320px; margin: 0 auto; padding: 24px 24px 80px; }
+
+  section {
+    margin-top: 32px;
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    padding: 24px;
+  }
+  section h2 {
+    margin: 0 0 6px; font-size: 22px; letter-spacing: -0.01em;
+  }
+  section h2 .tag {
+    font-size: 11px; color: var(--muted); margin-left: 8px; font-weight: 500;
+    text-transform: uppercase; letter-spacing: 0.12em;
+  }
+  section .lede { color: var(--ink-2); margin: 0 0 18px; max-width: 980px; }
+
+  .grid { display: grid; gap: 14px; }
+  .grid.cols-2 { grid-template-columns: 1fr 1fr; }
+  .grid.cols-3 { grid-template-columns: 1fr 1fr 1fr; }
+  .grid.cols-4 { grid-template-columns: repeat(4, 1fr); }
+  @media (max-width: 1000px) {
+    .grid.cols-2, .grid.cols-3, .grid.cols-4 { grid-template-columns: 1fr; }
+  }
+
+  .card {
+    background: var(--panel-2);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    padding: 14px 16px;
+  }
+  .card h3 {
+    margin: 0 0 6px; font-size: 15px; letter-spacing: 0.01em;
+    display: flex; align-items: center; gap: 8px;
+  }
+  .card p { margin: 0; color: var(--ink-2); font-size: 13.5px; }
+  .card ul { margin: 8px 0 0; padding-left: 18px; color: var(--ink-2); font-size: 13px; }
+  .card li { margin: 2px 0; }
+  .card .path { color: var(--accent); font-size: 12px; }
+
+  .legend { display:flex; gap: 14px; flex-wrap: wrap; margin: 10px 0 18px; color: var(--ink-2); font-size: 13px; }
+  .legend .swatch {
+    display:inline-block; width: 12px; height: 12px;
+    border-radius: 3px; margin-right: 6px; vertical-align: -2px;
+    border: 1px solid var(--line);
+  }
+
+  /* Stack diagram */
+  .stack {
+    display: grid; gap: 8px;
+    grid-template-columns: 1fr;
+  }
+  .layer {
+    padding: 14px 18px;
+    border-radius: 10px;
+    border: 1px solid var(--line);
+    background: linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0));
+    display: flex; align-items: center; justify-content: space-between; gap: 16px;
+  }
+  .layer .title { font-weight: 600; }
+  .layer .sub { color: var(--ink-2); font-size: 13px; }
+  .layer.l1 { background: #1b2a55; }
+  .layer.l2 { background: #1a2649; }
+  .layer.l3 { background: #18223e; }
+  .layer.l4 { background: #161e34; }
+  .layer.l5 { background: #131a2c; }
+  .layer.l6 { background: #11172a; }
+
+  /* Tables */
+  table {
+    width: 100%; border-collapse: collapse;
+    font-size: 13.5px;
+  }
+  th, td {
+    padding: 9px 12px;
+    border-bottom: 1px solid var(--line);
+    vertical-align: top;
+    text-align: left;
+  }
+  th { color: var(--muted); font-weight: 600; font-size: 12px; text-transform: uppercase; letter-spacing: 0.08em; }
+  tbody tr:hover { background: rgba(124,196,255,0.04); }
+  td.k { color: var(--accent); white-space: nowrap; }
+  td.path { color: var(--accent-2); white-space: nowrap; font-family: ui-monospace, Consolas, monospace; font-size: 12.5px; }
+
+  /* SVG canvas */
+  .canvas-wrap { overflow-x: auto; padding: 8px 0 2px; }
+  svg.diagram { display: block; }
+  .node-rect { fill: var(--panel-2); stroke: var(--line); }
+  .node-pkg  { fill: #1d2a52; stroke: #38508e; }
+  .node-ext  { fill: #2a1d3a; stroke: #6b4b9c; }
+  .node-db   { fill: #2a2010; stroke: #8a6a26; }
+  .node-net  { fill: #102a26; stroke: #1f7a6b; }
+  .node-user { fill: #2a1226; stroke: #a04388; }
+  .node-text { fill: var(--ink); font-family: ui-sans-serif, system-ui, sans-serif; font-size: 13px; font-weight: 600; }
+  .node-sub  { fill: var(--ink-2); font-family: ui-sans-serif, system-ui, sans-serif; font-size: 11px; }
+  .edge { stroke: #4b5d99; stroke-width: 1.6; fill: none; }
+  .edge.heavy { stroke: #7cc4ff; stroke-width: 2.2; }
+  .edge.dashed { stroke-dasharray: 5 4; }
+  .edge-label { fill: var(--ink-2); font-size: 11px; font-family: ui-monospace, Consolas, monospace; }
+  .arrow { fill: #4b5d99; }
+  .arrow.heavy { fill: #7cc4ff; }
+
+  /* Routes table */
+  .routes { display: grid; grid-template-columns: repeat(2, 1fr); gap: 6px 18px; }
+  .route { display: flex; gap: 10px; align-items: baseline; font-size: 13px; }
+  .route .verb {
+    color: #c1f5d5; background: #112a1f; padding: 1px 6px; border-radius: 4px;
+    font-family: ui-monospace, Consolas, monospace; font-size: 11px; border: 1px solid #2f6f4d;
+  }
+  .route .verb.admin { color: #ffd29a; background: #36230a; border-color: #7a5320; }
+  .route .verb.api   { color: #c2dcff; background: #122244; border-color: #2f4c8a; }
+  .route .path { color: var(--accent); font-family: ui-monospace, Consolas, monospace; font-size: 12.5px; }
+  .route .desc { color: var(--ink-2); }
+
+  /* Pills for backend tags */
+  .pill { display: inline-flex; align-items: center; gap: 6px; padding: 2px 8px; border-radius: 999px; font-size: 11px; border: 1px solid var(--line); background: var(--panel-2); color: var(--ink-2); }
+
+  .footer-note { color: var(--muted); font-size: 12px; margin-top: 24px; }
+
+  details { margin-top: 6px; }
+  details > summary { cursor: pointer; color: var(--accent); font-size: 13px; }
+  details[open] > summary { color: var(--accent-2); }
+</style>
+</head>
+<body>
+
+<header class="hero">
+  <h1>Yufa-MT — System Architecture</h1>
+  <p class="sub">
+    Yufa-MT is a Go web app that tracks the <strong>Project Yufa</strong> Ragnarok Online server: market listings, online players, characters,
+    guilds, MVP kills, WoE rankings, in-game chat, plus a community trading post fed by a Discord bot and parsed by Google Gemini.
+    A single Go binary scrapes upstream pages on a schedule, sniffs game packets with libpcap, persists everything to SQLite (WAL + FTS5),
+    and renders <code>html/template</code> pages over plain <code>net/http</code>.
+  </p>
+  <div class="meta">
+    <span class="chip go">Go 1.24 · CGO · -tags fts5</span>
+    <span class="chip sql">SQLite (WAL, FTS5)</span>
+    <span class="chip html">html/template + HTMX + Alpine + Tailwind</span>
+    <span class="chip cfg">12-factor: .env / env vars</span>
+    <span class="chip good">Single binary · Debian-slim Docker</span>
+  </div>
+</header>
+
+<main>
+
+<!-- =============== HIGH-LEVEL DIAGRAM =============== -->
+<section>
+  <h2>1 · High-level system <span class="tag">processes, data flows, externals</span></h2>
+  <p class="lede">
+    One <code>cmd/server</code> process hosts everything: HTTP, scrapers, the Discord bot, libpcap chat capture, and the visitor logger.
+    All long-lived workers share a single <code>context.Context</code> cancelled on SIGINT/SIGTERM so shutdown drains in-flight work.
+  </p>
+
+  <div class="legend">
+    <span><span class="swatch" style="background:#1d2a52;border-color:#38508e"></span>Internal package</span>
+    <span><span class="swatch" style="background:#2a1d3a;border-color:#6b4b9c"></span>External service / API</span>
+    <span><span class="swatch" style="background:#2a2010;border-color:#8a6a26"></span>Persistent store</span>
+    <span><span class="swatch" style="background:#102a26;border-color:#1f7a6b"></span>Network capture</span>
+    <span><span class="swatch" style="background:#2a1226;border-color:#a04388"></span>Browser / user</span>
+  </div>
+
+  <div class="canvas-wrap">
+  <svg class="diagram" viewBox="0 0 1280 820" width="1280" height="820" xmlns="http://www.w3.org/2000/svg">
+    <defs>
+      <marker id="arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+        <path d="M0,0 L10,5 L0,10 z" class="arrow"/>
+      </marker>
+      <marker id="arrH" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="9" markerHeight="9" orient="auto-start-reverse">
+        <path d="M0,0 L10,5 L0,10 z" class="arrow heavy"/>
+      </marker>
+    </defs>
+
+    <!-- ============ Right-hand persistence column (tall, spans all lanes) ============ -->
+    <rect x="1080" y="80" width="180" height="600" rx="14" class="node-db"/>
+    <text x="1170" y="108" class="node-text" text-anchor="middle">SQLite</text>
+    <text x="1170" y="126" class="node-sub" text-anchor="middle">market_data.db</text>
+    <text x="1170" y="144" class="node-sub" text-anchor="middle">WAL · FTS5 · pool=10</text>
+    <text x="1170" y="162" class="node-sub" text-anchor="middle">~19 tables</text>
+    <text x="1170" y="180" class="node-sub" text-anchor="middle">dynamic MVP cols</text>
+    <text x="1170" y="198" class="node-sub" text-anchor="middle">idempotent migrations</text>
+    <line x1="1100" y1="218" x2="1240" y2="218" stroke="#5a4519" stroke-dasharray="3 3"/>
+    <text x="1170" y="240" class="node-sub" text-anchor="middle" font-style="italic">data sinks for every lane ↓</text>
+
+    <!-- Disk artifacts box at the bottom, inside the persistence column -->
+    <rect x="1100" y="600" width="140" height="70" rx="8" class="node-db"/>
+    <text x="1170" y="624" class="node-text" text-anchor="middle">Disk artifacts</text>
+    <text x="1170" y="640" class="node-sub" text-anchor="middle">item_db YAML (in)</text>
+    <text x="1170" y="656" class="node-sub" text-anchor="middle">emblems · pwd.txt (out)</text>
+
+    <!-- ============ LANE 1 — HTTP request path (y 60-200) ============ -->
+    <text x="20" y="50" class="node-sub">① HTTP request path</text>
+    <line x1="20" y1="58" x2="1060" y2="58" stroke="#1e2a4c" stroke-width="1"/>
+
+    <!-- Browser -->
+    <rect x="20" y="80" width="180" height="64" rx="10" class="node-user"/>
+    <text x="110" y="106" class="node-text" text-anchor="middle">Browser</text>
+    <text x="110" y="124" class="node-sub" text-anchor="middle">HTMX + Alpine + cookie</text>
+
+    <!-- Mux + Gzip -->
+    <rect x="250" y="80" width="220" height="64" rx="10" class="node-pkg"/>
+    <text x="360" y="106" class="node-text" text-anchor="middle">Gzip → http.ServeMux</text>
+    <text x="360" y="124" class="node-sub" text-anchor="middle">registerRoutes()</text>
+
+    <!-- per-route middleware (sits below mux, in the gap before lane 2 starts) -->
+    <rect x="250" y="160" width="100" height="34" rx="6" class="node-pkg"/>
+    <text x="300" y="181" class="node-text" text-anchor="middle">visitorTracker</text>
+    <rect x="370" y="160" width="100" height="34" rx="6" class="node-pkg"/>
+    <text x="420" y="181" class="node-text" text-anchor="middle">BasicAuth</text>
+
+    <!-- Handlers + templates -->
+    <rect x="520" y="80" width="240" height="64" rx="10" class="node-pkg"/>
+    <text x="640" y="106" class="node-text" text-anchor="middle">handlers</text>
+    <text x="640" y="124" class="node-sub" text-anchor="middle">internal/server · html/template</text>
+
+    <!-- visitor logger (below handlers) -->
+    <rect x="520" y="160" width="240" height="34" rx="6" class="node-pkg"/>
+    <text x="640" y="181" class="node-text" text-anchor="middle">internal/visitor · batch 100 / 10s</text>
+
+    <!-- web/embed (right of handlers but BELOW lane 1 line, used as response source) -->
+    <rect x="810" y="80" width="240" height="64" rx="10" class="node-pkg"/>
+    <text x="930" y="106" class="node-text" text-anchor="middle">web/ (embed.FS)</text>
+    <text x="930" y="124" class="node-sub" text-anchor="middle">templates · CSS · HTMX · Alpine</text>
+
+    <!-- Arrows: Lane 1 (all clean horizontals or short verticals) -->
+    <path class="edge heavy" d="M200,112 L250,112" marker-end="url(#arrH)"/>
+    <text class="edge-label" x="210" y="104">HTTP</text>
+
+    <path class="edge" d="M300,144 L300,160" marker-end="url(#arr)"/>
+    <path class="edge dashed" d="M420,144 L420,160" marker-end="url(#arr)"/>
+
+    <path class="edge heavy" d="M470,112 L520,112" marker-end="url(#arrH)"/>
+    <path class="edge" d="M760,112 L810,112" marker-end="url(#arr)"/>
+    <text class="edge-label" x="770" y="104">render</text>
+
+    <path class="edge" d="M640,144 L640,160" marker-end="url(#arr)"/>
+    <text class="edge-label" x="650" y="156">enqueue</text>
+
+    <!-- handlers → SQLite: vertical jog under web/embed, clean orthogonal -->
+    <path class="edge heavy" d="M760,128 L805,128 L805,210 L1080,210" marker-end="url(#arrH)"/>
+    <text class="edge-label" x="900" y="204">database/sql reads</text>
+
+    <!-- visitor → SQLite: short horizontal -->
+    <path class="edge" d="M760,177 L1080,260" marker-end="url(#arr)"/>
+    <text class="edge-label" x="850" y="220">batched insert tx</text>
+
+    <!-- ============ LANE 2 — Background scraping (y 240-380) ============ -->
+    <text x="20" y="232" class="node-sub">② Background scraping (ticker-driven goroutines)</text>
+    <line x1="20" y1="240" x2="1060" y2="240" stroke="#1e2a4c" stroke-width="1"/>
+
+    <!-- projectyufa upstream -->
+    <rect x="20" y="260" width="180" height="64" rx="10" class="node-ext"/>
+    <text x="110" y="286" class="node-text" text-anchor="middle">projectyufa.com</text>
+    <text x="110" y="304" class="node-sub" text-anchor="middle">Next.js HTML+JSON</text>
+
+    <!-- rms upstream -->
+    <rect x="20" y="340" width="180" height="44" rx="10" class="node-ext"/>
+    <text x="110" y="360" class="node-text" text-anchor="middle">RMS / rodatabase</text>
+    <text x="110" y="376" class="node-sub" text-anchor="middle">item lookups</text>
+
+    <!-- scraper_jobs -->
+    <rect x="250" y="260" width="220" height="64" rx="10" class="node-pkg"/>
+    <text x="360" y="286" class="node-text" text-anchor="middle">scraper_jobs (7 tickers)</text>
+    <text x="360" y="304" class="node-sub" text-anchor="middle">market · players · chars · …</text>
+
+    <!-- scraper logic -->
+    <rect x="520" y="260" width="240" height="64" rx="10" class="node-pkg"/>
+    <text x="640" y="286" class="node-text" text-anchor="middle">scraper.go (parsers)</text>
+    <text x="640" y="304" class="node-sub" text-anchor="middle">goquery + regex + mutexes</text>
+
+    <!-- internal/rms -->
+    <rect x="520" y="340" width="240" height="44" rx="10" class="node-pkg"/>
+    <text x="640" y="360" class="node-text" text-anchor="middle">internal/rms (cache+FTS5)</text>
+
+    <!-- Arrows Lane 2 -->
+    <path class="edge" d="M250,292 L200,292" marker-end="url(#arr)"/>
+    <text class="edge-label" x="206" y="284">fetch</text>
+
+    <path class="edge heavy" d="M470,292 L520,292" marker-end="url(#arrH)"/>
+
+    <!-- scraper → SQLite : direct horizontal -->
+    <path class="edge heavy" d="M760,292 L1080,330" marker-end="url(#arrH)"/>
+    <text class="edge-label" x="900" y="290">tx writes</text>
+
+    <!-- rms → upstream and → SQLite -->
+    <path class="edge" d="M520,362 L200,362" marker-end="url(#arr)"/>
+    <text class="edge-label" x="210" y="354">lookup</text>
+    <path class="edge" d="M760,362 L1080,370" marker-end="url(#arr)"/>
+
+    <!-- ============ LANE 3 — Discord / Gemini (y 420-560) ============ -->
+    <text x="20" y="412" class="node-sub">③ Discord ingestion → Gemini parse → trading-post handler</text>
+    <line x1="20" y1="420" x2="1060" y2="420" stroke="#1e2a4c" stroke-width="1"/>
+
+    <rect x="20" y="440" width="180" height="60" rx="10" class="node-ext"/>
+    <text x="110" y="466" class="node-text" text-anchor="middle">Discord Gateway</text>
+    <text x="110" y="484" class="node-sub" text-anchor="middle">discordgo websocket</text>
+
+    <rect x="20" y="516" width="180" height="44" rx="10" class="node-ext"/>
+    <text x="110" y="536" class="node-text" text-anchor="middle">Gemini API</text>
+    <text x="110" y="552" class="node-sub" text-anchor="middle">gemini-flash-latest</text>
+
+    <rect x="250" y="440" width="220" height="60" rx="10" class="node-pkg"/>
+    <text x="360" y="466" class="node-text" text-anchor="middle">internal/discord</text>
+    <text x="360" y="484" class="node-sub" text-anchor="middle">channel allow-list</text>
+
+    <rect x="520" y="440" width="240" height="60" rx="10" class="node-pkg"/>
+    <text x="640" y="466" class="node-text" text-anchor="middle">internal/gemini</text>
+    <text x="640" y="484" class="node-sub" text-anchor="middle">free-text → TradeResult JSON</text>
+
+    <rect x="520" y="516" width="240" height="44" rx="10" class="node-pkg"/>
+    <text x="640" y="536" class="node-text" text-anchor="middle">trading-post handler (server)</text>
+    <text x="640" y="552" class="node-sub" text-anchor="middle">post callback persists rows</text>
+
+    <!-- Discord ↔ pkg -->
+    <path class="edge" d="M250,470 L200,470" marker-end="url(#arr)"/>
+    <text class="edge-label" x="206" y="462">events</text>
+
+    <!-- discord pkg → gemini -->
+    <path class="edge heavy" d="M470,470 L520,470" marker-end="url(#arrH)"/>
+    <text class="edge-label" x="478" y="462">parse</text>
+
+    <!-- gemini → Gemini API (down then left, no crossing) -->
+    <path class="edge" d="M520,494 L250,494 L250,538 L200,538" marker-end="url(#arr)"/>
+    <text class="edge-label" x="320" y="488">REST</text>
+
+    <!-- discord pkg → post handler (down then right) -->
+    <path class="edge" d="M360,500 L360,536 L520,536" marker-end="url(#arr)"/>
+    <text class="edge-label" x="370" y="528">post callback</text>
+
+    <!-- post handler → SQLite -->
+    <path class="edge heavy" d="M760,536 L1080,460" marker-end="url(#arrH)"/>
+    <text class="edge-label" x="880" y="500">trading_posts / items</text>
+
+    <!-- ============ LANE 4 — Chat capture (y 600-680) ============ -->
+    <text x="20" y="592" class="node-sub">④ In-game chat packet capture</text>
+    <line x1="20" y1="600" x2="1060" y2="600" stroke="#1e2a4c" stroke-width="1"/>
+
+    <rect x="20" y="620" width="180" height="60" rx="10" class="node-net"/>
+    <text x="110" y="646" class="node-text" text-anchor="middle">RO TCP traffic</text>
+    <text x="110" y="664" class="node-sub" text-anchor="middle">device + BPF port</text>
+
+    <rect x="250" y="620" width="220" height="60" rx="10" class="node-pkg"/>
+    <text x="360" y="646" class="node-text" text-anchor="middle">scraper_chat</text>
+    <text x="360" y="664" class="node-sub" text-anchor="middle">gopacket / pcap · charmap</text>
+
+    <rect x="520" y="620" width="240" height="60" rx="10" class="node-pkg"/>
+    <text x="640" y="646" class="node-text" text-anchor="middle">chat de-dupe + tx insert</text>
+    <text x="640" y="664" class="node-sub" text-anchor="middle">chat · chat_activity_log</text>
+
+    <path class="edge" d="M250,650 L200,650" marker-end="url(#arr)"/>
+    <text class="edge-label" x="206" y="642">sniff</text>
+    <path class="edge heavy" d="M470,650 L520,650" marker-end="url(#arrH)"/>
+    <path class="edge heavy" d="M760,650 L1080,560" marker-end="url(#arrH)"/>
+    <text class="edge-label" x="880" y="612">batched writes</text>
+
+    <!-- ============ LANE 5 — Support packages (y 720-790) ============ -->
+    <text x="20" y="712" class="node-sub">⑤ Supporting internal packages (loaded at startup)</text>
+    <line x1="20" y1="720" x2="1060" y2="720" stroke="#1e2a4c" stroke-width="1"/>
+
+    <rect x="20"  y="740" width="120" height="38" rx="6" class="node-pkg"/>
+    <text x="80"  y="763" class="node-text" text-anchor="middle">config</text>
+    <rect x="150" y="740" width="120" height="38" rx="6" class="node-pkg"/>
+    <text x="210" y="763" class="node-text" text-anchor="middle">i18n (en/pt)</text>
+    <rect x="280" y="740" width="120" height="38" rx="6" class="node-pkg"/>
+    <text x="340" y="763" class="node-text" text-anchor="middle">storage</text>
+    <rect x="410" y="740" width="160" height="38" rx="6" class="node-pkg"/>
+    <text x="490" y="763" class="node-text" text-anchor="middle">itemdb (YAML loader)</text>
+    <rect x="580" y="740" width="120" height="38" rx="6" class="node-pkg"/>
+    <text x="640" y="763" class="node-text" text-anchor="middle">middleware</text>
+    <rect x="710" y="740" width="120" height="38" rx="6" class="node-pkg"/>
+    <text x="770" y="763" class="node-text" text-anchor="middle">xp (math)</text>
+    <rect x="840" y="740" width="200" height="38" rx="6" class="node-pkg"/>
+    <text x="940" y="763" class="node-text" text-anchor="middle">visitor (page-view logger)</text>
+
+    <!-- itemdb feeds Disk → SQLite on startup (single dashed arrow) -->
+    <path class="edge dashed" d="M490,740 L1100,640" marker-end="url(#arr)"/>
+    <text class="edge-label" x="700" y="700">YAML → upsert (startup)</text>
+  </svg>
+  </div>
+
+  <div class="card" style="margin-top:12px;">
+    <h3>Boot sequence (cmd/server/main.go → server.Run)</h3>
+    <ol style="margin:6px 0 0 18px; padding:0; color:var(--ink-2); font-size:13.5px; line-height:1.55;">
+      <li><code>godotenv.Load()</code> → <code>config.Load()</code> validates env, returns <code>*Config</code></li>
+      <li><code>storage.Open()</code> opens SQLite WAL, runs <code>createTables</code> + <code>createIndexes</code> + dynamic MVP table + idempotent migrations</li>
+      <li><code>populateItemDBOnStartup()</code> upserts <code>internal_item_db</code> from <code>data/seed/item_db_*.yml</code> (synchronous)</li>
+      <li><code>startBackgroundJobs()</code> launches 7 ticker workers + chat packet capture; <code>startDiscordBot()</code> and <code>startVisitorLogger()</code> begin</li>
+      <li><code>http.Server.ListenAndServe()</code>; SIGINT/SIGTERM → ctx cancel → <code>Shutdown(10s)</code> → <code>bgWg.Wait()</code> drains every goroutine</li>
+    </ol>
+  </div>
+</section>
+
+
+<!-- =============== PACKAGES =============== -->
+<section>
+  <h2>2 · Code layout <span class="tag">packages and what each one owns</span></h2>
+  <p class="lede">
+    Everything under <code>internal/</code> is module-private (Go's <code>internal/</code> rule), so the public surface is just <code>cmd/server</code>.
+    <code>internal/server</code> remains the fat package — handlers, scrapers, models — while <code>config/i18n/middleware/storage/visitor/itemdb/discord/gemini/rms/xp</code>
+    are small, focused, and (where they matter) unit-tested.
+  </p>
+
+  <div class="grid cols-3">
+    <div class="card">
+      <h3><span class="pill">cmd/server</span></h3>
+      <p>Thin entrypoint. Loads <code>.env</code>, calls <code>config.Load</code>, hands off to <code>server.Run</code>.</p>
+      <p class="path">cmd/server/main.go · ~25 LOC</p>
+    </div>
+    <div class="card">
+      <h3><span class="pill">internal/server</span></h3>
+      <p>The application core: HTTP handlers, all scrapers, background jobs, models, admin panel, chat capture glue, Gemini/RMS wiring.</p>
+      <ul>
+        <li><code>handlers.go</code> — ~4.6k LOC of page handlers</li>
+        <li><code>scraper.go</code> — ~2.5k LOC of upstream parsers</li>
+        <li><code>admin_handlers.go</code> + <code>admin_trading.go</code></li>
+        <li><code>scraper_chat.go</code> — libpcap reader + decoder</li>
+        <li><code>scraper_jobs.go</code> — ticker scheduling</li>
+        <li><code>models.go</code> · <code>server.go</code> · <code>db.go</code></li>
+      </ul>
+    </div>
+    <div class="card">
+      <h3><span class="pill">internal/storage</span></h3>
+      <p>Owns SQLite open, schema, indexes, idempotent migrations, dynamic per-MVP-mob columns. Knows nothing about gameplay — mob IDs are passed in.</p>
+      <p class="path">internal/storage/storage.go</p>
+    </div>
+
+    <div class="card">
+      <h3><span class="pill">internal/config</span></h3>
+      <p>Typed, validated runtime config. Once <code>Load()</code> returns, no other package touches <code>os.Getenv</code> directly.</p>
+      <p class="path">internal/config/config.go (+ test)</p>
+    </div>
+    <div class="card">
+      <h3><span class="pill">internal/i18n</span></h3>
+      <p>Two-language translation maps (en, pt). Language is selected via a cookie; <code>SetLangHandler</code> persists choice and redirects back.</p>
+      <p class="path">internal/i18n/i18n.go</p>
+    </div>
+    <div class="card">
+      <h3><span class="pill">internal/middleware</span></h3>
+      <p>BasicAuth (constant-time compare) for <code>/admin/*</code>; Gzip wrapper for the outer mux. Deps passed explicitly so tests skip globals.</p>
+      <p class="path">internal/middleware/{auth,gzip}.go</p>
+    </div>
+
+    <div class="card">
+      <h3><span class="pill">internal/visitor</span></h3>
+      <p>Buffered <code>PageView</code> channel (1000 slots). Flushes every 10s or at 100 entries; <code>visitors</code> upsert + <code>page_views</code> insert in one tx.</p>
+      <p class="path">internal/visitor/logger.go</p>
+    </div>
+    <div class="card">
+      <h3><span class="pill">internal/itemdb</span></h3>
+      <p>Parses YAML <code>item_db_*.yml</code> dumps into <code>internal_item_db</code>. Runs once at startup so handlers can join item metadata locally.</p>
+      <p class="path">internal/itemdb/itemdb.go (+ test)</p>
+    </div>
+    <div class="card">
+      <h3><span class="pill">internal/rms</span></h3>
+      <p>Lookup wrappers for ratemyserver.net / rodatabase.com. Persists to <code>rms_item_cache</code> with FTS5 triggers mirroring rows into <code>rms_item_cache_fts</code>.</p>
+      <p class="path">internal/rms/rms.go</p>
+    </div>
+
+    <div class="card">
+      <h3><span class="pill">internal/gemini</span></h3>
+      <p>Wraps Google's Generative AI SDK. Sends a strict prompt to <code>gemini-flash-latest</code>, parses structured JSON for buy/sell items.</p>
+      <p class="path">internal/gemini/gemini.go</p>
+    </div>
+    <div class="card">
+      <h3><span class="pill">internal/discord</span></h3>
+      <p>Discord bot session. Listens on configured channel IDs; each message is forwarded through injected <em>parse</em> + <em>post</em> callbacks (no import of <code>internal/server</code>).</p>
+      <p class="path">internal/discord/discord.go</p>
+    </div>
+    <div class="card">
+      <h3><span class="pill">internal/xp</span></h3>
+      <p>Pure-math: Base / Job XP tables and cumulative lookups for the in-app XP calculator. Fully unit-tested.</p>
+      <p class="path">internal/xp/xp.go (+ test)</p>
+    </div>
+  </div>
+
+  <h3 style="margin-top:22px;">web/ (frontend assets, embedded)</h3>
+  <div class="grid cols-2">
+    <div class="card">
+      <h3>web/templates/*.html</h3>
+      <p>27 page templates parsed once at package init, each paired with <code>navbar.html</code> + <code>pagination.html</code> + <code>head.html</code>. Dispatch goes through <code>renderTemplate(w, r, name, data)</code>.</p>
+      <ul>
+        <li>Public: index, full_list, history, players, characters, character_detail, guilds, guild_detail, mvp_kills, store_detail, chat, woe_rankings, trading_post, xp_calculator, search, activity, about</li>
+        <li>Stats: drop_stats, market_stats, character_stats</li>
+        <li>Admin: admin, admin_edit_post</li>
+        <li>Partials: navbar, pagination, head, layout, settings_modal</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h3>web/static/*</h3>
+      <p>Tailwind-compiled CSS plus the HTMX and Alpine.js runtimes — bundled at compile time via <code>embed.FS</code> and served behind <code>cacheStatic</code> with a 1-day <code>Cache-Control</code>.</p>
+      <ul>
+        <li><code>app.css</code> + <code>tailwind.css</code></li>
+        <li><code>htmx.min.js</code> for hx-* attributes on tables &amp; forms</li>
+        <li><code>alpine.min.js</code> for small client-side interactions</li>
+        <li><code>app.js</code> — site-specific glue</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+
+<!-- =============== REQUEST LIFECYCLE =============== -->
+<section>
+  <h2>3 · Request lifecycle <span class="tag">middleware order, render path</span></h2>
+  <p class="lede">
+    Public traffic flows through the outer <code>Gzip</code> wrap, then either the visitor tracker (public routes) or BasicAuth (admin routes), then the handler.
+    Handlers read SQLite, build a view-model, and dispatch to a cached template. Static files skip auth and gain a long cache header.
+  </p>
+
+  <div class="stack">
+    <div class="layer l1"><span class="title">① TCP / TLS termination</span><span class="sub">Whatever fronts the binary (reverse proxy or direct on :8080)</span></div>
+    <div class="layer l2"><span class="title">② <code>middleware.Gzip</code></span><span class="sub">Negotiates Accept-Encoding, skips Range; pools <code>*gzip.Writer</code></span></div>
+    <div class="layer l3"><span class="title">③ <code>http.ServeMux</code></span><span class="sub">Path-based: <code>/admin/*</code> → admin sub-router · <code>/static/*</code>, <code>/emblems/*</code> → file servers · else → public handler</span></div>
+    <div class="layer l4"><span class="title">④ Per-route middleware</span><span class="sub">Public: <code>visitorTracker</code> (logs page view to buffered channel). Admin: <code>middleware.BasicAuth(adminUser, adminPass)</code></span></div>
+    <div class="layer l5"><span class="title">⑤ Handler</span><span class="sub">Reads <code>database/sql</code>, calls <code>rms</code>/<code>itemdb</code>/<code>xp</code>/<code>i18n</code> as needed, builds the view-model struct</span></div>
+    <div class="layer l6"><span class="title">⑥ Render</span><span class="sub"><code>renderTemplate</code> picks the page template (parsed at init alongside <code>navbar</code> + <code>pagination</code>) and writes HTML to the response</span></div>
+  </div>
+</section>
+
+
+<!-- =============== ROUTES =============== -->
+<section>
+  <h2>4 · HTTP surface <span class="tag">routes wired in registerRoutes</span></h2>
+  <p class="lede">
+    All paths are registered explicitly in <code>internal/server/server.go</code>. Public routes are wrapped by <code>visitorTracker</code>; admin lives behind BasicAuth at <code>/admin/*</code>.
+  </p>
+
+  <h3>Public</h3>
+  <div class="routes">
+    <div class="route"><span class="verb">GET</span><span class="path">/</span><span class="desc">Market summary / dashboard</span></div>
+    <div class="route"><span class="verb">GET</span><span class="path">/full-list</span><span class="desc">All current listings</span></div>
+    <div class="route"><span class="verb">GET</span><span class="path">/item</span><span class="desc">Item history view</span></div>
+    <div class="route"><span class="verb">GET</span><span class="path">/activity</span><span class="desc">Recent character changelog</span></div>
+    <div class="route"><span class="verb">GET</span><span class="path">/players</span><span class="desc">Online player count over time</span></div>
+    <div class="route"><span class="verb">GET</span><span class="path">/characters</span><span class="desc">Character rankings</span></div>
+    <div class="route"><span class="verb">GET</span><span class="path">/character</span><span class="desc">Character detail</span></div>
+    <div class="route"><span class="verb">GET</span><span class="path">/character-changelog</span><span class="desc">Per-character changelog</span></div>
+    <div class="route"><span class="verb">GET</span><span class="path">/guilds</span><span class="desc">Guild ladder</span></div>
+    <div class="route"><span class="verb">GET</span><span class="path">/guild</span><span class="desc">Guild detail (emblem + members)</span></div>
+    <div class="route"><span class="verb">GET</span><span class="path">/mvp-kills</span><span class="desc">MVP kill leaderboard</span></div>
+    <div class="route"><span class="verb">GET</span><span class="path">/store</span><span class="desc">Store detail by seller</span></div>
+    <div class="route"><span class="verb">GET</span><span class="path">/discord</span><span class="desc">Trading post listing (Discord-fed)</span></div>
+    <div class="route"><span class="verb">GET</span><span class="path">/woe</span><span class="desc">WoE event rankings</span></div>
+    <div class="route"><span class="verb">GET</span><span class="path">/chat</span><span class="desc">In-game chat archive</span></div>
+    <div class="route"><span class="verb">GET</span><span class="path">/xp-calculator</span><span class="desc">XP-to-next-level math</span></div>
+    <div class="route"><span class="verb">GET</span><span class="path">/about</span><span class="desc">About page</span></div>
+    <div class="route"><span class="verb">GET</span><span class="path">/search</span><span class="desc">Global FTS5 search</span></div>
+    <div class="route"><span class="verb">GET</span><span class="path">/stats/drops</span><span class="desc">Drop statistics</span></div>
+    <div class="route"><span class="verb">GET</span><span class="path">/stats/market</span><span class="desc">Market statistics</span></div>
+    <div class="route"><span class="verb">GET</span><span class="path">/stats/characters</span><span class="desc">Character statistics</span></div>
+    <div class="route"><span class="verb">GET</span><span class="path">/set-lang</span><span class="desc">Toggle UI language cookie</span></div>
+    <div class="route"><span class="verb">GET</span><span class="path">/static/*</span><span class="desc">Embedded CSS/JS (24h cache)</span></div>
+    <div class="route"><span class="verb">GET</span><span class="path">/emblems/*</span><span class="desc">Guild emblem files on disk</span></div>
+  </div>
+
+  <h3 style="margin-top:18px;">Admin <span class="pill">BasicAuth</span></h3>
+  <div class="routes">
+    <div class="route"><span class="verb admin">ANY</span><span class="path">/admin/</span><span class="desc">Console root</span></div>
+    <div class="route"><span class="verb admin">POST</span><span class="path">/admin/parse-trade</span><span class="desc">Manual Gemini trade parse</span></div>
+    <div class="route"><span class="verb admin">POST</span><span class="path">/admin/views/delete-visitor</span><span class="desc">Wipe visitor's page views</span></div>
+    <div class="route"><span class="verb admin">POST</span><span class="path">/admin/guild/update-emblem</span><span class="desc">Refresh guild emblem</span></div>
+    <div class="route"><span class="verb admin">POST</span><span class="path">/admin/character/clear-last-active</span><span class="desc">Reset last_active</span></div>
+    <div class="route"><span class="verb admin">POST</span><span class="path">/admin/character/clear-mvp-kills</span><span class="desc">Reset MVP kill counters</span></div>
+    <div class="route"><span class="verb admin">POST</span><span class="path">/admin/backfill/drops</span><span class="desc">Backfill drop logs</span></div>
+    <div class="route"><span class="verb admin">ANY</span><span class="path">/admin/cache</span><span class="desc">RMS cache actions</span></div>
+    <div class="route"><span class="verb admin">POST</span><span class="path">/admin/cache/delete-entry</span><span class="desc">Drop one RMS cache row</span></div>
+    <div class="route"><span class="verb admin">POST</span><span class="path">/admin/cache/save-entry</span><span class="desc">Save one RMS cache row</span></div>
+    <div class="route"><span class="verb admin">POST</span><span class="path">/admin/trading-post/delete</span><span class="desc">Delete trading post</span></div>
+    <div class="route"><span class="verb admin">POST</span><span class="path">/admin/trading-post/edit</span><span class="desc">Edit trading post</span></div>
+    <div class="route"><span class="verb admin">POST</span><span class="path">/admin/trading-post/reparse</span><span class="desc">Re-run Gemini on saved msg</span></div>
+    <div class="route"><span class="verb admin">POST</span><span class="path">/admin/trading/clear-items</span><span class="desc">Truncate trading_post_items</span></div>
+    <div class="route"><span class="verb admin">POST</span><span class="path">/admin/trading/clear-posts</span><span class="desc">Truncate trading_posts</span></div>
+    <div class="route"><span class="verb admin">POST</span><span class="path">/admin/scrape/market</span><span class="desc">Trigger market scrape now</span></div>
+    <div class="route"><span class="verb admin">POST</span><span class="path">/admin/scrape/players</span><span class="desc">Trigger player count scrape</span></div>
+    <div class="route"><span class="verb admin">POST</span><span class="path">/admin/scrape/characters</span><span class="desc">Trigger character scrape</span></div>
+    <div class="route"><span class="verb admin">POST</span><span class="path">/admin/scrape/guilds</span><span class="desc">Trigger guild scrape</span></div>
+    <div class="route"><span class="verb admin">POST</span><span class="path">/admin/scrape/emblems</span><span class="desc">Process guild emblems</span></div>
+    <div class="route"><span class="verb admin">POST</span><span class="path">/admin/scrape/zeny</span><span class="desc">Trigger zeny scrape</span></div>
+    <div class="route"><span class="verb admin">POST</span><span class="path">/admin/scrape/mvp</span><span class="desc">Trigger MVP-kill scrape</span></div>
+    <div class="route"><span class="verb admin">POST</span><span class="path">/admin/scrape/pt-names</span><span class="desc">PT name populator</span></div>
+    <div class="route"><span class="verb admin">POST</span><span class="path">/admin/scrape/woe</span><span class="desc">Trigger WoE rankings scrape</span></div>
+    <div class="route"><span class="verb admin">POST</span><span class="path">/admin/chat/delete</span><span class="desc">Delete chat row</span></div>
+    <div class="route"><span class="verb admin">POST</span><span class="path">/admin/chat/edit</span><span class="desc">Edit chat row</span></div>
+    <div class="route"><span class="verb admin">POST</span><span class="path">/admin/cleanup/guild-history</span><span class="desc">Prune stale guild rows</span></div>
+  </div>
+</section>
+
+
+<!-- =============== JOBS =============== -->
+<section>
+  <h2>5 · Background jobs &amp; ingestion <span class="tag">tickers, packet capture, Discord</span></h2>
+  <p class="lede">
+    Each job is a goroutine spun up in <code>startBackgroundJobs</code> with its own <code>time.Ticker</code>. <code>runJobOnTicker</code> exits when the shared
+    context cancels, so SIGINT lets every job stop between iterations rather than mid-write.
+  </p>
+
+  <div class="canvas-wrap">
+  <svg class="diagram" viewBox="0 0 1280 240" width="1280" height="240" xmlns="http://www.w3.org/2000/svg">
+    <defs>
+      <marker id="arr2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+        <path d="M0,0 L10,5 L0,10 z" class="arrow"/>
+      </marker>
+      <marker id="arr2H" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="9" markerHeight="9" orient="auto-start-reverse">
+        <path d="M0,0 L10,5 L0,10 z" class="arrow heavy"/>
+      </marker>
+    </defs>
+
+    <text x="20" y="32" class="node-sub">Pattern applied to every scheduled job — <code>runJobOnTicker(ctx, Job{Func, Interval})</code></text>
+
+    <!-- ctx (single source) -->
+    <rect x="20" y="80" width="180" height="60" rx="10" class="node-rect"/>
+    <text x="110" y="106" class="node-text" text-anchor="middle">ctx</text>
+    <text x="110" y="124" class="node-sub" text-anchor="middle">cancel on SIGINT/SIGTERM</text>
+
+    <!-- ticker -->
+    <rect x="240" y="80" width="180" height="60" rx="10" class="node-pkg"/>
+    <text x="330" y="106" class="node-text" text-anchor="middle">time.Ticker</text>
+    <text x="330" y="124" class="node-sub" text-anchor="middle">per-job Interval</text>
+
+    <!-- scrape func -->
+    <rect x="460" y="80" width="200" height="60" rx="10" class="node-pkg"/>
+    <text x="560" y="106" class="node-text" text-anchor="middle">scrape func (Job.Func)</text>
+    <text x="560" y="124" class="node-sub" text-anchor="middle">per-domain mutex guards</text>
+
+    <!-- upstream -->
+    <rect x="700" y="80" width="200" height="60" rx="10" class="node-ext"/>
+    <text x="800" y="106" class="node-text" text-anchor="middle">upstream HTTP</text>
+    <text x="800" y="124" class="node-sub" text-anchor="middle">net/http + goquery</text>
+
+    <!-- parse -->
+    <rect x="940" y="80" width="160" height="60" rx="10" class="node-pkg"/>
+    <text x="1020" y="106" class="node-text" text-anchor="middle">parse + tx</text>
+    <text x="1020" y="124" class="node-sub" text-anchor="middle">regex on Next.js JSON</text>
+
+    <!-- SQLite sink -->
+    <rect x="1130" y="80" width="130" height="60" rx="10" class="node-db"/>
+    <text x="1195" y="106" class="node-text" text-anchor="middle">SQLite</text>
+    <text x="1195" y="124" class="node-sub" text-anchor="middle">WAL writer</text>
+
+    <!-- edges -->
+    <path class="edge" d="M200,110 L240,110" marker-end="url(#arr2)"/>
+    <text class="edge-label" x="206" y="102">select case</text>
+    <path class="edge heavy" d="M420,110 L460,110" marker-end="url(#arr2H)"/>
+    <text class="edge-label" x="426" y="102">tick</text>
+    <path class="edge" d="M660,110 L700,110" marker-end="url(#arr2)"/>
+    <text class="edge-label" x="666" y="102">GET</text>
+    <path class="edge" d="M900,110 L940,110" marker-end="url(#arr2)"/>
+    <text class="edge-label" x="906" y="102">body</text>
+    <path class="edge heavy" d="M1100,110 L1130,110" marker-end="url(#arr2H)"/>
+
+    <!-- ctx cancel side note -->
+    <path class="edge dashed" d="M110,140 L110,180 L560,180 L560,140" marker-end="url(#arr2)"/>
+    <text class="edge-label" x="280" y="200">ctx.Done() → goroutine returns between iterations (graceful shutdown)</text>
+  </svg>
+  </div>
+
+  <h3 style="margin-top:14px;">Job schedule</h3>
+  <table>
+    <thead><tr><th>Job</th><th>Func</th><th>Interval</th><th>Upstream / source</th><th>SQLite sink</th></tr></thead>
+    <tbody>
+      <tr><td class="k">Market</td><td class="path">scrapeData</td><td>3 m</td><td>projectyufa market pages</td><td><code>items</code>, <code>market_events</code></td></tr>
+      <tr><td class="k">Player Count</td><td class="path">scrapeAndStorePlayerCount</td><td>1 m</td><td>projectyufa home</td><td><code>player_history</code></td></tr>
+      <tr><td class="k">Player Character</td><td class="path">scrapePlayerCharacters</td><td>6 h</td><td>character ranking pages</td><td><code>characters</code>, <code>character_changelog</code></td></tr>
+      <tr><td class="k">Guild</td><td class="path">scrapeGuilds</td><td>1 h</td><td>guild listing</td><td><code>guilds</code></td></tr>
+      <tr><td class="k">Zeny</td><td class="path">scrapeZeny</td><td>6 h</td><td>per-character pages</td><td><code>characters.zeny</code></td></tr>
+      <tr><td class="k">MVP Kill</td><td class="path">scrapeMvpKills</td><td>5 m</td><td>per-character mvp_kills JSON</td><td><code>character_mvp_kills</code> (dynamic cols)</td></tr>
+      <tr><td class="k">WoE Rankings</td><td class="path">scrapeWoeCharacterRankings</td><td>12 h</td><td>WoE event pages</td><td><code>woe_seasons</code>, <code>woe_events</code>, <code>woe_event_rankings</code></td></tr>
+    </tbody>
+  </table>
+
+  <h3 style="margin-top:18px;">Long-lived workers that don't fit the ticker pattern</h3>
+  <div class="grid cols-3">
+    <div class="card">
+      <h3>Chat capture</h3>
+      <p><code>startChatPacketCapture</code> opens a single <code>pcap.Handle</code> and runs until <code>ctx</code> is cancelled. Streams TCP payloads → channel decoder → batched insert into <code>chat</code>.</p>
+    </div>
+    <div class="card">
+      <h3>Discord bot</h3>
+      <p><code>internal/discord.Start</code> opens a discordgo session and registers a <code>MessageCreate</code> handler. Each accepted message goes through injected <em>parse</em> (Gemini) and <em>post</em> (server) callbacks.</p>
+    </div>
+    <div class="card">
+      <h3>Visitor logger</h3>
+      <p><code>visitor.Logger.Run</code> drains a 1000-slot <code>PageView</code> channel, flushing every 10 s or at 100 rows. The middleware enqueues without blocking.</p>
+    </div>
+  </div>
+
+  <p class="footer-note" style="margin-top:14px;">
+    The upstream site is Next.js, so the data sits inside <code>__next_f.push</code> JSON chunks. Scrapers glue the chunk boundaries
+    back together, then run pre-compiled regexes (<code>charBaseLevelRegex</code>, <code>mvpKillsRegex</code>, …). Per-domain mutexes
+    (<code>marketMutex</code>, <code>characterMutex</code>, …) prevent overlapping runs against the same source.
+  </p>
+</section>
+
+
+<!-- =============== STORAGE =============== -->
+<section>
+  <h2>6 · Storage model <span class="tag">SQLite tables, indexes, FTS5</span></h2>
+  <p class="lede">
+    Single database (<code>data/runtime/market_data.db</code>) opened with WAL, a 5s busy timeout, and a 10-connection pool to allow parallel reads alongside one writer.
+    Schema and indexes are idempotent; new columns ship as migrations in <code>applyMigrations</code> (e.g. <code>characters.zeny</code>, <code>guilds.is_active</code>, <code>character_changelog.event_kind</code>).
+  </p>
+
+  <table>
+    <thead><tr><th>Domain</th><th>Tables</th><th>Notes</th></tr></thead>
+    <tbody>
+      <tr>
+        <td class="k">Market</td>
+        <td class="path">items, market_events, scrape_history</td>
+        <td>Indexes on <code>(name_of_the_item, is_available)</code>, <code>(item_id)</code>, <code>(is_available, seller_name)</code>, timestamp DESC.</td>
+      </tr>
+      <tr>
+        <td class="k">Item DB</td>
+        <td class="path">internal_item_db, rms_item_cache, rms_item_cache_fts</td>
+        <td>FTS5 virtual table mirrors <code>rms_item_cache</code> via triggers (<code>_ai</code>, <code>_ad</code>, <code>_au</code>). Indexed on <code>type</code>, <code>slots</code>, <code>LOWER(name)</code>, <code>LOWER(name_pt)</code>.</td>
+      </tr>
+      <tr>
+        <td class="k">Players</td>
+        <td class="path">player_history</td>
+        <td>Timestamp PK; <code>count</code> + <code>seller_count</code> per minute sample.</td>
+      </tr>
+      <tr>
+        <td class="k">Characters</td>
+        <td class="path">characters, character_changelog, v_character_changelog</td>
+        <td>FK to <code>guilds.name</code>. <code>event_kind</code> (drop / level_base / guild_join / …) backfilled on migration; indexed by <code>(event_kind, change_time DESC)</code>.</td>
+      </tr>
+      <tr>
+        <td class="k">Guilds</td>
+        <td class="path">guilds</td>
+        <td><code>is_active</code> for soft-archived guilds; <code>emblem_local_path</code> points at <code>data/runtime/emblems/</code>.</td>
+      </tr>
+      <tr>
+        <td class="k">MVP kills</td>
+        <td class="path">character_mvp_kills</td>
+        <td><strong>Dynamic schema</strong> — one <code>"mvp_&lt;mob_id&gt;" INTEGER</code> column per MVP ID passed to <code>storage.Open</code>. Storage knows nothing about the IDs.</td>
+      </tr>
+      <tr>
+        <td class="k">WoE</td>
+        <td class="path">woe_seasons, woe_events, woe_event_rankings</td>
+        <td>Composite PK <code>(event_id, character_name)</code>; cascade delete from season → events → rankings.</td>
+      </tr>
+      <tr>
+        <td class="k">Trading post</td>
+        <td class="path">trading_posts, trading_post_items</td>
+        <td>One Discord message can produce many items. <code>edit_token_hash</code> lets the original author edit without auth.</td>
+      </tr>
+      <tr>
+        <td class="k">Chat</td>
+        <td class="path">chat, chat_activity_log</td>
+        <td>Indexes on <code>(channel, timestamp DESC)</code> and <code>(timestamp DESC)</code>. <code>chat_activity_log</code> truncates to minute granularity.</td>
+      </tr>
+      <tr>
+        <td class="k">Visitors</td>
+        <td class="path">visitors, page_views</td>
+        <td>SHA-256 hash of <code>X-Forwarded-For</code>/<code>RemoteAddr</code> + User-Agent. Indexes on <code>page_path</code> and <code>(visitor_hash, view_timestamp DESC)</code>.</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <details>
+    <summary>Sample DDL excerpts</summary>
+<pre class="mono" style="background:#0e1530; padding:14px; border-radius:8px; overflow:auto; font-size:12.5px; color:#d9def5; margin-top:10px;">
+CREATE VIRTUAL TABLE IF NOT EXISTS rms_item_cache_fts USING fts5(
+    name, name_pt,
+    content='rms_item_cache', content_rowid='item_id'
+);
+
+CREATE TRIGGER IF NOT EXISTS rms_item_cache_au AFTER UPDATE ON rms_item_cache BEGIN
+    INSERT INTO rms_item_cache_fts(rms_item_cache_fts, rowid, name, name_pt)
+        VALUES ('delete', old.item_id, old.name, old.name_pt);
+    INSERT INTO rms_item_cache_fts(rowid, name, name_pt)
+        VALUES (new.item_id, new.name, new.name_pt);
+END;
+
+-- dynamic table built at startup from a list of MVP mob IDs
+CREATE TABLE IF NOT EXISTS character_mvp_kills (
+    "character_name" TEXT NOT NULL PRIMARY KEY,
+    "mvp_1086" INTEGER NOT NULL DEFAULT 0,
+    "mvp_1115" INTEGER NOT NULL DEFAULT 0,
+    -- … one per MVP …
+    FOREIGN KEY(character_name) REFERENCES characters(name)
+        ON DELETE CASCADE ON UPDATE CASCADE
+);
+</pre>
+  </details>
+</section>
+
+
+<!-- =============== CONFIG & DEPLOY =============== -->
+<section>
+  <h2>7 · Config, build &amp; deploy <span class="tag">env vars, Makefile, Docker</span></h2>
+  <div class="grid cols-2">
+    <div class="card">
+      <h3>Environment variables</h3>
+      <table>
+        <thead><tr><th>Var</th><th>Purpose</th></tr></thead>
+        <tbody>
+          <tr><td class="k">HTTP_ADDR</td><td>Bind address, default <code>:8080</code></td></tr>
+          <tr><td class="k">DB_PATH</td><td>SQLite path, default <code>./data/runtime/market_data.db</code></td></tr>
+          <tr><td class="k">ADMIN_USER / ADMIN_PASSWORD</td><td>BasicAuth creds. Empty pwd → random 16-char generated &amp; written to <code>data/pwd.txt</code> (mode 0600).</td></tr>
+          <tr><td class="k">REQUIRE_ADMIN_PASSWORD</td><td>If truthy, refuse to start without <code>ADMIN_PASSWORD</code> set (prevents accidental rotation in prod).</td></tr>
+          <tr><td class="k">GEMINI_API_KEY</td><td>Required to enable Gemini parsing — empty disables it.</td></tr>
+          <tr><td class="k">DISCORD_BOT_TOKEN</td><td>Empty disables the bot entirely.</td></tr>
+          <tr><td class="k">DISCORD_CHANNEL_IDS</td><td>Comma-separated allow-list of channel IDs.</td></tr>
+          <tr><td class="k">CHAT_CAPTURE_DEVICE</td><td>libpcap interface (e.g. <code>eth0</code>); empty disables capture.</td></tr>
+          <tr><td class="k">CHAT_CAPTURE_PORT</td><td>BPF port filter for game TCP traffic.</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="card">
+      <h3>Build &amp; run</h3>
+      <pre class="mono" style="background:#0e1530; padding:14px; border-radius:8px; overflow:auto; font-size:12.5px; color:#d9def5;">make build      # go build -tags fts5 ./cmd/server
+make run        # build, free :8080, open browser
+make test       # go test -tags fts5 ./...
+make vet
+make lint       # golangci-lint (.golangci.yml)
+make fmt | tidy | clean</pre>
+      <p style="margin-top:10px;">
+        <code>-tags fts5</code> is mandatory: SQLite's FTS5 module is conditionally compiled inside <code>mattn/go-sqlite3</code>. Without the tag, <code>rms_item_cache_fts</code> creation fails at boot.
+      </p>
+      <p>
+        Docker uses a multi-stage build with Debian-slim runtime: both <code>mattn/go-sqlite3</code> (CGO) and <code>gopacket/pcap</code> (libpcap) need shared libs, so distroless won't work. Mount <code>./data</code> to persist the DB and emblems across containers.
+      </p>
+    </div>
+  </div>
+</section>
+
+
+<!-- =============== DEPENDENCY DIRECTION =============== -->
+<section>
+  <h2>8 · Package dependency direction <span class="tag">who imports whom</span></h2>
+  <p class="lede">
+    The graph is intentionally one-way: leaf utilities never import the application core. <code>internal/discord</code> in particular accepts its
+    parse + post functions as parameters rather than importing <code>internal/server</code>, which keeps the bot independently testable.
+  </p>
+
+  <div class="canvas-wrap">
+  <svg class="diagram" viewBox="0 0 1280 320" width="1280" height="320" xmlns="http://www.w3.org/2000/svg">
+    <defs>
+      <marker id="arr3" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+        <path d="M0,0 L10,5 L0,10 z" class="arrow"/>
+      </marker>
+    </defs>
+
+    <!-- Top: cmd/server -->
+    <rect x="540" y="20" width="200" height="50" rx="10" class="node-pkg"/>
+    <text x="640" y="44" class="node-text" text-anchor="middle">cmd/server</text>
+    <text x="640" y="60" class="node-sub" text-anchor="middle">main()</text>
+
+    <path class="edge" d="M640,70 L640,100" marker-end="url(#arr3)"/>
+    <text class="edge-label" x="648" y="92">imports</text>
+
+    <!-- Middle: internal/server as a wide bus -->
+    <rect x="90" y="100" width="1100" height="56" rx="10" class="node-pkg"/>
+    <text x="640" y="126" class="node-text" text-anchor="middle">internal/server</text>
+    <text x="640" y="144" class="node-sub" text-anchor="middle">handlers · scrapers · admin · models · jobs</text>
+
+    <!-- Bottom row: 10 leaf packages — all reached by parallel vertical arrows -->
+    <!-- config -->
+    <rect x="90"  y="200" width="105" height="50" rx="8" class="node-pkg"/>
+    <text x="142" y="222" class="node-text" text-anchor="middle">config</text>
+    <text x="142" y="238" class="node-sub" text-anchor="middle">env load</text>
+    <path class="edge" d="M142,156 L142,200" marker-end="url(#arr3)"/>
+
+    <!-- i18n -->
+    <rect x="208" y="200" width="105" height="50" rx="8" class="node-pkg"/>
+    <text x="260" y="222" class="node-text" text-anchor="middle">i18n</text>
+    <text x="260" y="238" class="node-sub" text-anchor="middle">en/pt</text>
+    <path class="edge" d="M260,156 L260,200" marker-end="url(#arr3)"/>
+
+    <!-- middleware -->
+    <rect x="326" y="200" width="105" height="50" rx="8" class="node-pkg"/>
+    <text x="378" y="222" class="node-text" text-anchor="middle">middleware</text>
+    <text x="378" y="238" class="node-sub" text-anchor="middle">auth · gzip</text>
+    <path class="edge" d="M378,156 L378,200" marker-end="url(#arr3)"/>
+
+    <!-- storage -->
+    <rect x="444" y="200" width="105" height="50" rx="8" class="node-pkg"/>
+    <text x="496" y="222" class="node-text" text-anchor="middle">storage</text>
+    <text x="496" y="238" class="node-sub" text-anchor="middle">schema</text>
+    <path class="edge" d="M496,156 L496,200" marker-end="url(#arr3)"/>
+
+    <!-- itemdb -->
+    <rect x="562" y="200" width="105" height="50" rx="8" class="node-pkg"/>
+    <text x="614" y="222" class="node-text" text-anchor="middle">itemdb</text>
+    <text x="614" y="238" class="node-sub" text-anchor="middle">YAML load</text>
+    <path class="edge" d="M614,156 L614,200" marker-end="url(#arr3)"/>
+
+    <!-- rms -->
+    <rect x="680" y="200" width="105" height="50" rx="8" class="node-pkg"/>
+    <text x="732" y="222" class="node-text" text-anchor="middle">rms</text>
+    <text x="732" y="238" class="node-sub" text-anchor="middle">item lookup</text>
+    <path class="edge" d="M732,156 L732,200" marker-end="url(#arr3)"/>
+
+    <!-- visitor -->
+    <rect x="798" y="200" width="105" height="50" rx="8" class="node-pkg"/>
+    <text x="850" y="222" class="node-text" text-anchor="middle">visitor</text>
+    <text x="850" y="238" class="node-sub" text-anchor="middle">page-view</text>
+    <path class="edge" d="M850,156 L850,200" marker-end="url(#arr3)"/>
+
+    <!-- discord -->
+    <rect x="916" y="200" width="105" height="50" rx="8" class="node-pkg"/>
+    <text x="968" y="222" class="node-text" text-anchor="middle">discord</text>
+    <text x="968" y="238" class="node-sub" text-anchor="middle">bot</text>
+    <path class="edge" d="M968,156 L968,200" marker-end="url(#arr3)"/>
+
+    <!-- gemini -->
+    <rect x="1034" y="200" width="105" height="50" rx="8" class="node-pkg"/>
+    <text x="1086" y="222" class="node-text" text-anchor="middle">gemini</text>
+    <text x="1086" y="238" class="node-sub" text-anchor="middle">parse</text>
+    <path class="edge" d="M1086,156 L1086,200" marker-end="url(#arr3)"/>
+
+    <!-- xp -->
+    <rect x="1152" y="200" width="105" height="50" rx="8" class="node-pkg"/>
+    <text x="1204" y="222" class="node-text" text-anchor="middle">xp</text>
+    <text x="1204" y="238" class="node-sub" text-anchor="middle">math</text>
+    <path class="edge" d="M1204,156 L1204,200" marker-end="url(#arr3)"/>
+
+    <!-- discord → gemini (uses gemini types only, dashed) -->
+    <path class="edge dashed" d="M1021,275 L1086,275 L1086,254" marker-end="url(#arr3)"/>
+    <text class="edge-label" x="900" y="270">discord imports gemini types only — no server import</text>
+  </svg>
+  </div>
+
+  <p class="footer-note">
+    Solid arrows = static Go import. The single dashed arrow shows the one cross-leaf edge: <code>internal/discord</code> imports <code>gemini.TradeResult</code> for its callback signatures but does <em>not</em> import <code>internal/server</code>.
+    <code>internal/server</code> imports every leaf package; <code>cmd/server</code> imports only <code>config</code> + <code>server</code>. <code>web/</code> is embedded via <code>//go:embed</code> rather than imported as Go code.
+  </p>
+</section>
+
+
+<!-- =============== TESTING =============== -->
+<section>
+  <h2>9 · Testing &amp; observability <span class="tag">what's covered, what isn't</span></h2>
+  <div class="grid cols-3">
+    <div class="card">
+      <h3>Pure-math &amp; parsing</h3>
+      <p>Covered: <code>internal/xp</code>, <code>internal/config</code>, <code>internal/itemdb</code>. These have unit tests because they are I/O-free.</p>
+    </div>
+    <div class="card">
+      <h3>Server-side</h3>
+      <p>Limited: <code>internal/server/handlers_test.go</code> and <code>template_parse_test.go</code> verify template-parsing and a few handlers. Broader handler tests are gated on the Phase 10 repository-interface work in <code>RESTRUCTURE_PLAN.md</code>.</p>
+    </div>
+    <div class="card">
+      <h3>Logging</h3>
+      <p>Standard <code>log</code> only — prefixed tags (<code>[I] [Job] …</code>, <code>[E] [HTTP] …</code>) make grep-by-component easy. There is no metrics / tracing pipeline; observability is "stdout + the admin page".</p>
+    </div>
+  </div>
+</section>
+
+
+<p class="footer-note">
+  Generated from a read of <code>cmd/server/main.go</code>, <code>internal/server/server.go</code>, <code>scraper_jobs.go</code>, <code>scraper.go</code>, <code>scraper_chat.go</code>,
+  <code>internal/storage/storage.go</code>, <code>internal/visitor/logger.go</code>, <code>internal/discord/discord.go</code>, <code>internal/gemini/gemini.go</code>,
+  <code>internal/config/config.go</code>, <code>internal/middleware/*</code>, the templates index, and the project README.
+</p>
+
+</main>
+</body>
+</html>
