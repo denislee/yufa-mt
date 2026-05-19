@@ -45,7 +45,7 @@ GENERATED_FILES=data/pwd.txt
 # --- Targets ---
 
 # The .PHONY directive tells make that these targets are not files
-.PHONY: all build run kill-port open-browser clean tidy fmt lint test vet help
+.PHONY: all build run run-production kill-port open-browser clean tidy fmt lint test vet help
 
 # Default target: running 'make' will be the same as 'make all'
 all: build
@@ -90,9 +90,17 @@ open-browser:
 	) &
 
 # Build, free the port, launch the browser, and run the application
+# in local/dev mode. Scrapers are disabled so dev instances don't hit
+# upstream sources or require libpcap. Use `make run-production` to
+# run with scrapers enabled.
 run: build kill-port open-browser
-	@echo "Starting $(BINARY_NAME) on port $(PORT)..."
-	./$(BINARY_NAME)
+	@echo "Starting $(BINARY_NAME) on port $(PORT) (local mode, scrapers disabled)..."
+	DISABLE_SCRAPERS=1 ./$(BINARY_NAME)
+
+# Run in production mode: scrapers enabled, no browser auto-open.
+run-production: build kill-port
+	@echo "Starting $(BINARY_NAME) on port $(PORT) (production mode, scrapers enabled)..."
+	DISABLE_SCRAPERS=0 ./$(BINARY_NAME)
 
 # Clean the project: remove binary and other generated files
 clean:
@@ -129,7 +137,8 @@ help:
 	@echo ""
 	@echo "  all           (Default) Alias for build"
 	@echo "  build         Build the application binary (output: $(BINARY_NAME))"
-	@echo "  run           Build, free port $(PORT), launch browser, and run the app"
+	@echo "  run           Build, free port $(PORT), launch browser, and run the app (local mode, scrapers off)"
+	@echo "  run-production Build, free port $(PORT), and run the app (production mode, scrapers on)"
 	@echo "  kill-port     Kill any process listening on port $(PORT)"
 	@echo "  open-browser  Wait for port $(PORT), then open $(APP_URL) in default browser"
 	@echo "  clean         Remove the binary and generated files ($(GENERATED_FILES))"

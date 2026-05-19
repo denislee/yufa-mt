@@ -37,6 +37,11 @@ type Config struct {
 	// production so a forgotten env var doesn't silently roll a new
 	// random password on every boot.
 	RequireAdminPassword bool
+
+	// If true, skip starting all scrape jobs and the chat packet capture
+	// loop. Intended for local development (set by `make run`) so a dev
+	// instance doesn't hammer upstream sources or require libpcap.
+	DisableScrapers bool
 }
 
 // Load reads env vars, applies defaults, and validates the result. It
@@ -52,6 +57,7 @@ func Load() (*Config, error) {
 		ChatCaptureDevice:    os.Getenv("CHAT_CAPTURE_DEVICE"),
 		ChatCapturePort:      os.Getenv("CHAT_CAPTURE_PORT"),
 		RequireAdminPassword: boolEnv("REQUIRE_ADMIN_PASSWORD"),
+		DisableScrapers:      boolEnv("DISABLE_SCRAPERS"),
 	}
 
 	if ids := os.Getenv("DISCORD_CHANNEL_IDS"); ids != "" {

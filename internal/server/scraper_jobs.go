@@ -35,6 +35,10 @@ func runJobOnTicker(ctx context.Context, job Job) {
 }
 
 func startBackgroundJobs(ctx context.Context, wg *sync.WaitGroup) {
+	if appConfig != nil && appConfig.DisableScrapers {
+		log.Println("[I] [Job] DISABLE_SCRAPERS is set; skipping all scrape jobs and chat packet capture.")
+		return
+	}
 	// Define all scheduled jobs
 	jobs := []Job{
 		{Name: "Market", Func: scrapeData, Interval: 3 * time.Minute},
