@@ -50,6 +50,17 @@ document.addEventListener('alpine:init', () => {
             try { localStorage.fontSize = id; } catch (e) { /* private mode */ }
         },
     });
+
+    Alpine.store('tableFontSize', {
+        current: document.documentElement.dataset.tableFontSize || YMT_DEFAULT_FONT_SIZE,
+        sizes: YMT_FONT_SIZES,
+        set(id) {
+            if (!YMT_FONT_SIZES.includes(id)) return;
+            this.current = id;
+            document.documentElement.dataset.tableFontSize = id;
+            try { localStorage.tableFontSize = id; } catch (e) { /* private mode */ }
+        },
+    });
 });
 
 function formatPrices(root) {
@@ -152,13 +163,49 @@ document.addEventListener('htmx:beforeSwap', (e) => {
     } catch (err) { /* ignore */ }
 });
 
+// Wait for any external scripts injected into the swap target to finish
+// loading before firing the synthetic DOMContentLoaded that page init
+// scripts (e.g. chart pages) listen for. Without this wait, an inline
+// init script that uses Chart.js fires before chart.umd.min.js has
+// loaded on a partial swap and throws "Chart is not defined".
+function awaitSwappedScripts(target) {
+    const externals = target.querySelectorAll('script[src]');
+    if (!externals.length) return Promise.resolve();
+    const pending = [];
+    externals.forEach(s => {
+        if (s.dataset.ymtAwaited === '1') return;
+        s.dataset.ymtAwaited = '1';
+        pending.push(new Promise(resolve => {
+            let done = false;
+            const finish = () => { if (!done) { done = true; resolve(); } };
+            s.addEventListener('load', finish, { once: true });
+            s.addEventListener('error', finish, { once: true });
+            // Fallback: if the script was already cached and fired its
+            // load event before we attached the listener, this timer
+            // unblocks DOMContentLoaded. 1500ms is well over a cache hit.
+            setTimeout(finish, 1500);
+        }));
+    });
+    return Promise.all(pending);
+}
+
+// The synthetic DOMContentLoaded below is intentional. Chart pages
+// (history, players, chat, market_stats, …) wrap their canvas init in
+// `document.addEventListener('DOMContentLoaded', …)`, which only fires
+// once per real page load. On an htmx partial swap the new inline init
+// script needs the listener it just registered to fire; dispatching the
+// event manually after the swap (and after any new <script src> tags
+// have loaded — see awaitSwappedScripts) is what unblocks them. If you
+// change this, audit every chart template first.
 document.addEventListener('htmx:afterSwap', (e) => {
     const target = (e.detail && e.detail.target) || document;
     applyPagePolish(target);
     if (window.Alpine && typeof Alpine.initTree === 'function') {
         try { Alpine.initTree(target); } catch (err) { /* ignore */ }
     }
-    document.dispatchEvent(new Event('DOMContentLoaded'));
+    awaitSwappedScripts(target).then(() => {
+        document.dispatchEvent(new Event('DOMContentLoaded'));
+    });
 });
 
 document.addEventListener('htmx:sendError', (e) => {

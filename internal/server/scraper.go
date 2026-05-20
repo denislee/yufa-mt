@@ -2475,6 +2475,9 @@ func fetchAndUpdatePortugueseName(itemID int) (string, error) {
 		return "", fmt.Errorf("failed to update database for item %d: %w", itemID, err)
 	}
 
+	// Update the in-memory cache dynamically to prevent slow/rate-limited online fallback searches
+	updateItemInCache(int64(itemID), fetchedName)
+
 	log.Printf("[I] [PT-Name] Successfully updated item %d with Portuguese name: %s", itemID, fetchedName)
 	return fetchedName, nil
 }
@@ -2526,6 +2529,9 @@ func populateMissingPortugueseNames() {
 				log.Printf("[E] [Scraper/PT-Name] [%d/%d] Failed to update DB for item %d: %v", i+1, len(itemIDs), itemID, err)
 				failCount++
 			} else {
+				// Update the in-memory cache dynamically to prevent slow/rate-limited online fallback searches
+				updateItemInCache(int64(itemID), ptName)
+
 				log.Printf("[I] [Scraper/PT-Name] [%d/%d] Updated item %d with name: %s", i+1, len(itemIDs), itemID, ptName)
 				successCount++
 			}

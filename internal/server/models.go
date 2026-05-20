@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"html/template"
 	"time"
+
+	"github.com/denislee/yufa-mt/internal/httpx"
 )
 
 var (
@@ -236,7 +238,7 @@ type ActivityPageData struct {
 	SearchQuery string
 	SoldOnly    bool
 
-	Pagination PaginationData
+	Pagination httpx.PaginationData
 	PageTitle  string
 }
 
@@ -253,7 +255,7 @@ type HistoryPageData struct {
 	ItemDetails        *RMSItem
 	AllListings        []Item
 	LastScrapeTime     string
-	Pagination         PaginationData
+	Pagination         httpx.PaginationData
 	TotalListings      int
 	PageTitle          string
 	Filter             template.URL
@@ -299,7 +301,7 @@ type CharacterPageData struct {
 	AllColumns     []Column
 	Filter         template.URL
 
-	Pagination   PaginationData
+	Pagination   httpx.PaginationData
 	TotalPlayers int
 	TotalZeny    int64
 
@@ -315,7 +317,7 @@ type GuildPageData struct {
 	SearchQuery         string
 	SortBy              string
 	Order               string
-	Pagination          PaginationData
+	Pagination          httpx.PaginationData
 	TotalGuilds         int
 	PageTitle           string
 	Filter              template.URL
@@ -332,7 +334,7 @@ type GuildDetailPageData struct {
 	Order  string
 
 	ChangelogEntries    []CharacterChangelog
-	ChangelogPagination PaginationData
+	ChangelogPagination httpx.PaginationData
 	PageTitle           string
 	Filter              template.URL
 }
@@ -473,7 +475,7 @@ type CharacterDetailPageData struct {
 	ClassImageURL        string
 	ActivityHistory      []CharacterChangelog // This will hold the paginated/searched list
 	DropHistory          []CharacterChangelog // This will hold the full drop list
-	ChangelogPagination  PaginationData
+	ChangelogPagination  httpx.PaginationData
 	PageTitle            string
 	Filter               template.URL
 	ChangelogSearchQuery string
@@ -489,7 +491,7 @@ type CharacterChangelog struct {
 type CharacterChangelogPageData struct {
 	ChangelogEntries []CharacterChangelog
 	LastScrapeTime   string
-	Pagination       PaginationData
+	Pagination       httpx.PaginationData
 	PageTitle        string
 	Filter           template.URL
 }
@@ -681,7 +683,7 @@ type ChatMessage struct {
 type ChatPageData struct {
 	Messages          []ChatMessage
 	LastScrapeTime    string
-	Pagination        PaginationData
+	Pagination        httpx.PaginationData
 	PageTitle         string
 	AllChannels       []string     `json:"-"`
 	ActiveChannel     string       `json:"-"`

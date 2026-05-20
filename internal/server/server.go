@@ -6,21 +6,20 @@ package server
 
 import (
 	"context"
-	"log"
+	"log/slog"
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"sync"
 	"syscall"
 	"time"
 
-	"io/fs"
-
 	"github.com/denislee/yufa-mt/internal/config"
 	"github.com/denislee/yufa-mt/internal/i18n"
 	"github.com/denislee/yufa-mt/internal/middleware"
+	"github.com/denislee/yufa-mt/internal/storage"
 	"github.com/denislee/yufa-mt/internal/visitor"
-	"github.com/denislee/yufa-mt/web"
 )
 
 // appConfig holds the validated config loaded by cmd/server/main.go and
@@ -34,6 +33,7 @@ var appConfig *config.Config
 
 // registerRoutes sets up all the HTTP handlers for the application.
 func registerRoutes() *http.ServeMux {
+	initStaticAssetHashes()
 	mux := http.NewServeMux()
 
 	// --- Public Routes ---
@@ -62,12 +62,10 @@ func registerRoutes() *http.ServeMux {
 	mux.HandleFunc("/stats/characters", visitorTracker(characterStatsHandler))
 
 	// --- Static Assets ---
-	// Embedded under web/static; served at /static/ with long-cache headers.
-	staticFS, err := fs.Sub(web.Static, "static")
-	if err != nil {
-		log.Fatalf("[F] [HTTP] static fs: %v", err)
-	}
-	mux.Handle("/static/", http.StripPrefix("/static/", cacheStatic(http.FileServer(http.FS(staticFS)))))
+	// /static/* is served from in-memory pre-gzipped bytes (see
+	// serveStaticAsset). Bypasses http.FileServer and the global gzip
+	// middleware so the hot path is just a map lookup + Write.
+	mux.HandleFunc("/static/", serveStaticAsset)
 
 	// Processed guild emblems live on disk under data/runtime/emblems
 	// (written by processGuildEmblems after each guild scrape).
@@ -85,11 +83,19 @@ func registerRoutes() *http.ServeMux {
 	return mux
 }
 
-// cacheStatic adds long-lived cache headers to embedded static assets so
-// the CSS file is only fetched once per visitor.
+// cacheStatic adds cache headers to embedded static assets. When the
+// request URL carries a content-hash query string (?v=…) that matches
+// the known hash, we serve the response as immutable for one year so
+// repeat visitors never re-fetch. Bare requests (no hash) fall back to
+// a one-day cache. assetURL in assets.go appends the hash query string
+// for all template-rendered asset references.
 func cacheStatic(h http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Cache-Control", "public, max-age=86400")
+		if hasAssetHash(r.URL.Path, r.URL.RawQuery) {
+			w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
+		} else {
+			w.Header().Set("Cache-Control", "public, max-age=86400")
+		}
 		h.ServeHTTP(w, r)
 	})
 }
@@ -150,11 +156,16 @@ func Run(cfg *config.Config) {
 
 	dbh, err := initDB(cfg.DBPath)
 	if err != nil {
-		log.Fatalf("[F] [DB] Failed to initialize database: %v", err)
+		slog.Error("Failed to initialize database", "error", err)
+		os.Exit(1)
 	}
 	srv = &App{db: dbh, cfg: cfg}
 	visitorLogger = visitor.New(dbh)
-	defer srv.db.Close()
+	defer func() {
+		if err := storage.Close(srv.db); err != nil {
+			slog.Error("Failed to close database", "error", err)
+		}
+	}()
 
 	// Run this synchronously on startup before starting other services
 	populateItemDBOnStartup()
@@ -169,7 +180,7 @@ func Run(cfg *config.Config) {
 	// Goroutine to listen for OS signals
 	go func() {
 		<-sigChan
-		log.Println("[I] [Main] Shutdown signal received. Initiating graceful shutdown...")
+		slog.Info("Shutdown signal received. Initiating graceful shutdown...")
 		cancel() // Trigger context cancellation
 	}()
 
@@ -177,16 +188,15 @@ func Run(cfg *config.Config) {
 	adminUser = cfg.AdminUser
 	adminPass = cfg.AdminPassword
 	if adminPass == "" {
-		log.Println("[I] [Main] ADMIN_PASSWORD not set. Generating a new random password (will be printed once, below).")
+		slog.Info("ADMIN_PASSWORD not set. Generating a new random password (will be printed once, below).")
 		adminPass = generateRandomPassword(16)
 	} else {
-		log.Println("[I] [Main] Loaded admin password from ADMIN_PASSWORD environment variable.")
+		slog.Info("Loaded admin password from ADMIN_PASSWORD environment variable.")
 	}
 
-	log.Println("==================================================")
-	log.Printf("[I] [Main] Admin User: %s", adminUser)
-	log.Printf("[I] [Main] Admin Pass: %s", adminPass)
-	log.Println("==================================================")
+	slog.Info("==================================================")
+	slog.Info("Admin Credentials", "user", adminUser, "pass", adminPass)
+	slog.Info("==================================================")
 
 	// Start Background Services with the cancellable context. The WaitGroup
 	// lets Run block on a clean shutdown of every background goroutine
@@ -209,31 +219,45 @@ func Run(cfg *config.Config) {
 	mux := registerRoutes()
 
 	// --- Server Start and Shutdown ---
-	server := &http.Server{Addr: cfg.HTTPAddr, Handler: middleware.Gzip(mux)}
+	// Wrap dynamic routes in the per-request Gzip middleware, but route
+	// pre-encoded /static/* and binary /emblems/* around it: serveStaticAsset
+	// already writes a pre-gzipped body and emblems are PNG/JPG so re-gzipping
+	// is pure waste. Both paths still get cache headers from their handlers.
+	gzWrapped := middleware.EarlyHints(earlyHintLinks(), middleware.ServerTiming(middleware.Gzip(mux)))
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		p := r.URL.Path
+		if strings.HasPrefix(p, "/static/") || strings.HasPrefix(p, "/emblems/") {
+			mux.ServeHTTP(w, r)
+			return
+		}
+		gzWrapped.ServeHTTP(w, r)
+	})
+	server := &http.Server{Addr: cfg.HTTPAddr, Handler: handler}
 
 	// Goroutine to handle server shutdown when context is cancelled
 	go func() {
 		<-ctx.Done() // Wait for the cancel() signal
-		log.Println("[I] [HTTP] Shutting down web server...")
+		slog.Info("Shutting down web server...")
 
 		shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer shutdownCancel()
 
 		if err := server.Shutdown(shutdownCtx); err != nil {
-			log.Printf("[E] [HTTP] Web server graceful shutdown failed: %v", err)
+			slog.Error("Web server graceful shutdown failed", "error", err)
 		}
 	}()
 
 	// Start server and block
-	log.Printf("[I] [HTTP] Web server started on %s.", cfg.HTTPAddr)
+	slog.Info("Web server started", "addr", cfg.HTTPAddr)
 	if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-		log.Fatalf("[F] [HTTP] Web server failed to start: %v", err)
+		slog.Error("Web server failed to start", "error", err)
+		os.Exit(1)
 	}
 
 	// HTTP server has finished shutting down. Now wait for background
 	// services to drain so the visitor logger flushes its final batch.
-	log.Println("[I] [Main] Waiting for background services to drain...")
+	slog.Info("Waiting for background services to drain...")
 	bgWg.Wait()
 
-	log.Println("[I] [Main] All services shut down. Exiting.")
+	slog.Info("All services shut down. Exiting.")
 }

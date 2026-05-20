@@ -9,13 +9,18 @@
 </head>
 <body class="bg-gray-100 dark:bg-gray-900 text-gray-800 dark:text-gray-200 text-sm sm:text-base"
       hx-boost="true"
-      hx-target="#shell"
-      hx-select="#shell"
+      hx-target="#main"
       hx-swap="innerHTML show:window:top"
       hx-indicator="#nav-progress">
     <div id="nav-progress" aria-hidden="true"></div>
-    <div id="shell">{{block "shell" .}}{{template "navbar.html" .}}<main id="main">{{block "content" .}}{{end}}</main>{{end}}</div>
-    <script src="/static/alpine.min.js" defer></script>
-    <script src="/static/app.js"></script>
+    <div id="shell">{{template "navbar.html" .}}<main id="main">{{block "content" .}}{{end}}</main></div>
+    {{/* app.js must execute before alpine.min.js so its `alpine:init`
+         listener (which registers the theme/fontSize stores) is
+         attached before Alpine boots. Both are deferred, so document
+         order = execution order. If you reorder these, the settings
+         modal silently breaks: $store.theme/$store.fontSize are
+         undefined and clicks become no-ops. */}}
+    <script src="{{asset "/static/app.js"}}" defer></script>
+    <script src="{{asset "/static/alpine.min.js"}}" defer></script>
 </body>
 </html>

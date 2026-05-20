@@ -56,11 +56,54 @@ html[data-font-size="md"] { font-size: 15px; }
 html[data-font-size="lg"] { font-size: 17px; }
 html[data-font-size="xl"] { font-size: 19px; }
 
+/* Table-specific font scale. Applies to <table> content only and stacks on
+   top of the global scale above — `md` is the neutral 1rem (inherits the
+   global setting), the others scale tables up or down independently.
+   Targets thead/tbody/tr/th/td directly (not just <table>) so we beat the
+   Tailwind utilities (`text-xs`, `text-sm`) that templates apply to rows
+   and cells — those would otherwise win the cascade over inheritance from
+   the <table> element. */
+html[data-table-font-size="sm"] table,
+html[data-table-font-size="sm"] table thead,
+html[data-table-font-size="sm"] table tbody,
+html[data-table-font-size="sm"] table tfoot,
+html[data-table-font-size="sm"] table tr,
+html[data-table-font-size="sm"] table th,
+html[data-table-font-size="sm"] table td { font-size: 0.85rem; }
+
+html[data-table-font-size="md"] table,
+html[data-table-font-size="md"] table thead,
+html[data-table-font-size="md"] table tbody,
+html[data-table-font-size="md"] table tfoot,
+html[data-table-font-size="md"] table tr,
+html[data-table-font-size="md"] table th,
+html[data-table-font-size="md"] table td { font-size: 1rem; }
+
+html[data-table-font-size="lg"] table,
+html[data-table-font-size="lg"] table thead,
+html[data-table-font-size="lg"] table tbody,
+html[data-table-font-size="lg"] table tfoot,
+html[data-table-font-size="lg"] table tr,
+html[data-table-font-size="lg"] table th,
+html[data-table-font-size="lg"] table td { font-size: 1.15rem; }
+
+html[data-table-font-size="xl"] table,
+html[data-table-font-size="xl"] table thead,
+html[data-table-font-size="xl"] table tbody,
+html[data-table-font-size="xl"] table tfoot,
+html[data-table-font-size="xl"] table tr,
+html[data-table-font-size="xl"] table th,
+html[data-table-font-size="xl"] table td { font-size: 1.3rem; }
+
 body {
     font-family: var(--ymt-font-sans);
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
-    text-rendering: optimizeLegibility;
+    /* text-rendering left at default ("auto"). optimizeLegibility forces
+       kerning/ligature work on text the user may never scroll to, and
+       measurably hurts paint on long tables (full-list, characters,
+       drop_stats). The tabular-nums in font-feature-settings on table
+       cells is what actually matters for column alignment. */
     font-feature-settings: "kern", "liga", "tnum";
     line-height: 1.55;
 }
@@ -101,8 +144,12 @@ a, button, summary, [role="button"] {
         border-color 120ms ease, opacity 120ms ease;
 }
 
-/* ---------- Tables: rounded, hairline borders ---------- */
-table thead th {
+/* ---------- Tables: rounded, hairline borders ----------
+   Sticky headers used to be global, but on long tables (full-list,
+   characters, drop_stats) sticky positioning forces a compositor layer
+   for every header cell and hurts scroll performance. Opt in per table
+   by adding the `table-sticky` class. */
+table.table-sticky thead th {
     position: sticky;
     top: 0;
     background-clip: padding-box;

@@ -106,6 +106,40 @@
                 </div>
             </div>
 
+            <div>
+                <div class="ymt-modal__section-label">{{.Page.T.nav_table_font_size}}</div>
+                <div class="ymt-modal__grid ymt-modal__grid--4">
+                    <button type="button" @click="$store.tableFontSize.set('sm')"
+                            class="ymt-opt ymt-opt--font"
+                            :class="{ 'is-active': $store.tableFontSize.current === 'sm' }"
+                            :title="'{{.Page.T.font_size_small}}'">
+                        <span class="ymt-opt__glyph" style="font-size: 0.85rem">A</span>
+                        <span class="ymt-opt__caption">{{.Page.T.font_size_small}}</span>
+                    </button>
+                    <button type="button" @click="$store.tableFontSize.set('md')"
+                            class="ymt-opt ymt-opt--font"
+                            :class="{ 'is-active': $store.tableFontSize.current === 'md' }"
+                            :title="'{{.Page.T.font_size_medium}}'">
+                        <span class="ymt-opt__glyph" style="font-size: 1rem">A</span>
+                        <span class="ymt-opt__caption">{{.Page.T.font_size_medium}}</span>
+                    </button>
+                    <button type="button" @click="$store.tableFontSize.set('lg')"
+                            class="ymt-opt ymt-opt--font"
+                            :class="{ 'is-active': $store.tableFontSize.current === 'lg' }"
+                            :title="'{{.Page.T.font_size_large}}'">
+                        <span class="ymt-opt__glyph" style="font-size: 1.2rem">A</span>
+                        <span class="ymt-opt__caption">{{.Page.T.font_size_large}}</span>
+                    </button>
+                    <button type="button" @click="$store.tableFontSize.set('xl')"
+                            class="ymt-opt ymt-opt--font"
+                            :class="{ 'is-active': $store.tableFontSize.current === 'xl' }"
+                            :title="'{{.Page.T.font_size_xlarge}}'">
+                        <span class="ymt-opt__glyph" style="font-size: 1.45rem">A</span>
+                        <span class="ymt-opt__caption">{{.Page.T.font_size_xlarge}}</span>
+                    </button>
+                </div>
+            </div>
+
             <div class="ymt-modal__footer-links">
                 <a href="/about" @click="closeSettings()" class="ymt-modal__footer-link">{{.Page.T.about_title}}</a>
             </div>

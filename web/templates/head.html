@@ -1,22 +1,35 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <link rel="preconnect" href="https://static.divine-pride.net" crossorigin>
-<link rel="stylesheet" href="/static/tailwind.css">
-<link rel="stylesheet" href="/static/app.css">
-<script src="/static/htmx.min.js" defer></script>
+{{/* Preload critical CSS/JS so the browser begins fetching them before
+     it finishes parsing the rest of the <head>. This is the in-document
+     equivalent of the 103 Early Hints sent by middleware.EarlyHints —
+     reverse proxies that strip 103 will still see these. */}}
+<link rel="preload" href="{{asset "/static/tailwind.css"}}" as="style">
+<link rel="preload" href="{{asset "/static/app.css"}}" as="style">
+<link rel="preload" href="{{asset "/static/htmx.min.js"}}" as="script">
+<link rel="stylesheet" href="{{asset "/static/tailwind.css"}}">
+<link rel="stylesheet" href="{{asset "/static/app.css"}}">
+<script src="{{asset "/static/htmx.min.js"}}" defer></script>
 <script>
     (function () {
         var validThemes = ['light', 'dark', 'midnight', 'forest', 'rose', 'ocean', 'sunset', 'lavender', 'coffee', 'nord', 'dracula'];
         var validSizes = ['sm', 'md', 'lg', 'xl'];
-        var t, fs;
-        try { t = localStorage.theme; fs = localStorage.fontSize; } catch (e) {}
+        var t, fs, tfs;
+        try {
+            t = localStorage.theme;
+            fs = localStorage.fontSize;
+            tfs = localStorage.tableFontSize;
+        } catch (e) {}
         if (!t || validThemes.indexOf(t) === -1) {
             t = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
         }
         if (!fs || validSizes.indexOf(fs) === -1) fs = 'md';
+        if (!tfs || validSizes.indexOf(tfs) === -1) tfs = 'md';
         var html = document.documentElement;
         html.dataset.theme = t;
         html.dataset.fontSize = fs;
+        html.dataset.tableFontSize = tfs;
         if (t === 'light') {
             html.classList.remove('dark');
         } else {

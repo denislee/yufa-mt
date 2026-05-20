@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 )
 
@@ -77,6 +78,21 @@ func Load() (*Config, error) {
 	}
 	if cfg.DBPath == "" {
 		problems = append(problems, "DB_PATH is empty")
+	} else {
+		// Ensure parent directory exists or can be successfully created with write permissions
+		dir := filepath.Dir(cfg.DBPath)
+		if err := os.MkdirAll(dir, 0755); err != nil {
+			problems = append(problems, fmt.Sprintf("failed to create or access database parent directory %q: %v", dir, err))
+		} else {
+			// Double check directory is writeable by attempting to create/delete a temporary validation file inside it
+			tempFile, err := os.CreateTemp(dir, ".writetest-*")
+			if err != nil {
+				problems = append(problems, fmt.Sprintf("database directory %q is not writeable: %v", dir, err))
+			} else {
+				tempFile.Close()
+				os.Remove(tempFile.Name())
+			}
+		}
 	}
 
 	if len(problems) > 0 {

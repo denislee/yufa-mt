@@ -68,3 +68,15 @@ func TestLoadRequireAdminPasswordValidation(t *testing.T) {
 		t.Fatal("Load() with REQUIRE_ADMIN_PASSWORD=true and no ADMIN_PASSWORD should fail")
 	}
 }
+
+func TestLoadDBDirectoryValidation(t *testing.T) {
+	clearEnv(t)
+	// Under Linux, creating directories under '/' requires root.
+	// So this path is guaranteed to fail directory creation/writing.
+	t.Setenv("DB_PATH", "/nonexistent-yufa-mt-dir-9999/market.db")
+
+	_, err := Load()
+	if err == nil {
+		t.Fatal("Load() should fail when database parent directory is unwritable")
+	}
+}

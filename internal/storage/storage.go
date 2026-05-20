@@ -8,6 +8,7 @@ package storage
 import (
 	"database/sql"
 	"fmt"
+	"log/slog"
 	"strings"
 	"time"
 
@@ -400,36 +401,39 @@ func Open(filepath string, mvpMobIDs []string) (*sql.DB, error) {
 	return db, nil
 }
 
-// createTables executes all the CREATE TABLE and CREATE VIEW statements.
+// createTables executes all the CREATE TABLE and CREATE VIEW statements in a deterministic order.
 func createTables(db *sql.DB) error {
-	queries := map[string]string{
-		"items":                 createItemsTableSQL,
-		"market_events":         createEventsTableSQL,
-		"scrape_history":        createHistoryTableSQL,
-		"player_history":        createPlayerHistoryTableSQL,
-		"guilds":                createGuildsTableSQL,
-		"characters":            createCharactersTableSQL,
-		"character_changelog":   createChangelogTableSQL,
-		"v_character_changelog": createChangelogViewSQL,
-		"visitors":              createVisitorsTableSQL,
-		"page_views":            createPageViewsTableSQL,
-		"trading_posts":         createTradingPostsTableSQL,
-		"trading_post_items":    createTradingPostItemsTableSQL,
-		"internal_item_db":      createInternalItemDBTableSQL,
-		"woe_seasons":           createWoeSeasonsTableSQL,
-		"woe_events":            createWoeEventsTableSQL,
-		"woe_event_rankings":    createWoeEventRankingsTableSQL,
-		"chat":                  createChatTableSQL,
-		"chat_activity_log":     createChatActivityLogTableSQL,
-		// RMS FTS tables and triggers are not in the original map, adding them.
-		"rms_item_cache":     createRMSCacheTableSQL,
-		"rms_item_cache_fts": createRMSFTSSTableSQL,
-		"rms_triggers":       createTriggersSQL,
+	type tableQuery struct {
+		name  string
+		query string
+	}
+	queries := []tableQuery{
+		{"items", createItemsTableSQL},
+		{"market_events", createEventsTableSQL},
+		{"scrape_history", createHistoryTableSQL},
+		{"player_history", createPlayerHistoryTableSQL},
+		{"guilds", createGuildsTableSQL},
+		{"characters", createCharactersTableSQL},
+		{"character_changelog", createChangelogTableSQL},
+		{"v_character_changelog", createChangelogViewSQL},
+		{"visitors", createVisitorsTableSQL},
+		{"page_views", createPageViewsTableSQL},
+		{"trading_posts", createTradingPostsTableSQL},
+		{"trading_post_items", createTradingPostItemsTableSQL},
+		{"internal_item_db", createInternalItemDBTableSQL},
+		{"woe_seasons", createWoeSeasonsTableSQL},
+		{"woe_events", createWoeEventsTableSQL},
+		{"woe_event_rankings", createWoeEventRankingsTableSQL},
+		{"chat", createChatTableSQL},
+		{"chat_activity_log", createChatActivityLogTableSQL},
+		{"rms_item_cache", createRMSCacheTableSQL},
+		{"rms_item_cache_fts", createRMSFTSSTableSQL},
+		{"rms_triggers", createTriggersSQL},
 	}
 
-	for name, query := range queries {
-		if _, err := db.Exec(query); err != nil {
-			return fmt.Errorf("could not create table/view '%s': %w", name, err)
+	for _, t := range queries {
+		if _, err := db.Exec(t.query); err != nil {
+			return fmt.Errorf("could not create table/view/trigger '%s': %w", t.name, err)
 		}
 	}
 	return nil
@@ -509,4 +513,15 @@ func createDynamicTables(db *sql.DB, mvpMobIDs []string) error {
 	}
 
 	return nil
+}
+
+// Close runs PRAGMA optimize to update SQLite query planner statistics
+// prior to closing the connection. This is highly recommended for
+// production-grade database systems using SQLite.
+func Close(db *sql.DB) error {
+	slog.Info("Running SQLite query optimizer (PRAGMA optimize)...")
+	if _, err := db.Exec("PRAGMA optimize;"); err != nil {
+		slog.Warn("SQLite PRAGMA optimize failed", "error", err)
+	}
+	return db.Close()
 }

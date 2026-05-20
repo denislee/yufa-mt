@@ -2,7 +2,7 @@ package server
 
 import (
 	"context"
-	"log"
+	"log/slog"
 	"sync"
 	"time"
 )
@@ -20,15 +20,19 @@ func runJobOnTicker(ctx context.Context, job Job) {
 	ticker := time.NewTicker(job.Interval)
 	defer ticker.Stop()
 
-	log.Printf("[I] [Job] Starting initial run for %s job...", job.Name)
+	slog.Info("Starting initial background job run", "job", job.Name)
+	go func() {
+		// Run initial run immediately on startup in a separate goroutine so it doesn't block other tickers starting
+		job.Func()
+	}()
 
 	for {
 		select {
 		case <-ctx.Done():
-			log.Printf("[I] [Job] Stopping %s job due to shutdown.", job.Name)
+			slog.Info("Stopping background job due to shutdown", "job", job.Name)
 			return
 		case <-ticker.C:
-			log.Printf("[I] [Job] Starting scheduled %s scrape...", job.Name)
+			slog.Info("Starting scheduled background job scrape", "job", job.Name)
 			job.Func()
 		}
 	}
@@ -36,7 +40,7 @@ func runJobOnTicker(ctx context.Context, job Job) {
 
 func startBackgroundJobs(ctx context.Context, wg *sync.WaitGroup) {
 	if appConfig != nil && appConfig.DisableScrapers {
-		log.Println("[I] [Job] DISABLE_SCRAPERS is set; skipping all scrape jobs and chat packet capture.")
+		slog.Info("DISABLE_SCRAPERS is set; skipping all background scrape jobs and chat packet capture")
 		return
 	}
 	// Define all scheduled jobs

@@ -9,7 +9,6 @@ import (
 	"golang.org/x/crypto/bcrypt"
 	"html/template"
 	"log"
-	"math"
 	"net/http"
 	"net/url"
 	"regexp"
@@ -19,6 +18,7 @@ import (
 	"time"
 
 	"github.com/agnivade/levenshtein"
+	"github.com/denislee/yufa-mt/internal/httpx"
 	"github.com/denislee/yufa-mt/internal/i18n"
 	"github.com/denislee/yufa-mt/web"
 	"golang.org/x/sync/errgroup"
@@ -32,11 +32,12 @@ type BasePageData struct {
 
 // Add these package-level variables to handlers.go
 var (
-	itemCacheOnce sync.Once
+	itemCacheMu     sync.RWMutex
+	itemCacheLoaded bool
 	// Map for O(1) exact lookups: key format "lowercasename_slots" -> itemID
-	itemExactCache map[string]int64
+	itemExactCache  map[string]int64
 	// Slice for iteration/fuzzy searching
-	itemFuzzyCache []cachedItem
+	itemFuzzyCache  []cachedItem
 )
 
 type cachedItem struct {
@@ -65,6 +66,7 @@ var (
 		"hasPrefix":        strings.HasPrefix,
 		"trimPrefix":       strings.TrimPrefix,
 		"default":          defaultFunc,
+		"asset":            assetURL,
 	}
 
 	// classImages maps class names to their icon URLs.
@@ -129,67 +131,7 @@ var (
 
 const MvpKillCountOffset = 3
 
-type PaginationData struct {
-	CurrentPage  int
-	TotalPages   int
-	PrevPage     int
-	NextPage     int
-	HasPrevPage  bool
-	HasNextPage  bool
-	Offset       int
-	ItemsPerPage int
-}
-
-// newPaginationData creates a pagination object based on the request and total items.
-func newPaginationData(r *http.Request, totalItems int, itemsPerPage int) PaginationData {
-	pageStr := r.FormValue("page")
-	page, err := strconv.Atoi(pageStr)
-	if err != nil || page < 1 {
-		page = 1
-	}
-
-	pd := PaginationData{
-		ItemsPerPage: itemsPerPage,
-	}
-
-	if totalItems <= 0 {
-		pd.TotalPages = 1
-		pd.CurrentPage = 1
-	} else {
-		pd.TotalPages = int(math.Ceil(float64(totalItems) / float64(itemsPerPage)))
-		// Clamp page to be within valid bounds
-		if page > pd.TotalPages {
-			page = pd.TotalPages
-		}
-		pd.CurrentPage = page
-	}
-
-	pd.Offset = (pd.CurrentPage - 1) * itemsPerPage
-	pd.PrevPage = pd.CurrentPage - 1
-	pd.NextPage = pd.CurrentPage + 1
-	pd.HasPrevPage = pd.CurrentPage > 1
-	pd.HasNextPage = pd.CurrentPage < pd.TotalPages
-
-	return pd
-}
-
-func getSortClause(r *http.Request, allowedSorts map[string]string, defaultSortBy, defaultOrder string) (string, string, string) {
-	sortBy := r.FormValue("sort_by")
-	order := r.FormValue("order")
-
-	orderByColumn, ok := allowedSorts[sortBy]
-	if !ok {
-		sortBy = defaultSortBy
-		order = defaultOrder
-		orderByColumn = allowedSorts[sortBy]
-	}
-
-	if strings.ToUpper(order) != "ASC" && strings.ToUpper(order) != "DESC" {
-		order = defaultOrder
-	}
-
-	return fmt.Sprintf("ORDER BY %s %s", orderByColumn, order), sortBy, order
-}
+// Legacy pagination structures extracted to internal/httpx
 
 func buildItemSearchClause(searchQuery, tableAlias string) (string, []interface{}, error) {
 	if searchQuery == "" {
@@ -233,6 +175,11 @@ type TemplateData struct {
 // renderTemplate executes a pre-parsed template with a consistent data
 // structure. Renders the full layout (which composes title/head_extra/
 // shell/content blocks); page templates may define any subset.
+//
+// For htmx-boosted navigation (HX-Request: true) the response is reduced
+// to just the page-specific title + head_extra + content, which the body
+// htmx attrs swap into #main. The navbar and shell are not re-rendered,
+// shrinking the response by ~10x on a typical page.
 func renderTemplate(w http.ResponseWriter, r *http.Request, tmplFile string, data interface{}) {
 	tmpl, ok := templateCache[tmplFile]
 	if !ok {
@@ -248,6 +195,32 @@ func renderTemplate(w http.ResponseWriter, r *http.Request, tmplFile string, dat
 		RequestURL: r.URL.RequestURI(),
 	}
 	fullData := TemplateData{Page: pageCtx, Data: data}
+
+	if r.Header.Get("HX-Request") == "true" {
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		// Emit <title> first so the browser-side htmx:beforeSwap handler
+		// in app.js can parse it out and update document.title. Stray
+		// title inside #main is harmless (browsers don't render it).
+		if _, err := w.Write([]byte("<title>")); err != nil {
+			return
+		}
+		if err := tmpl.ExecuteTemplate(w, "title", fullData); err != nil {
+			log.Printf("[E] [HTTP] partial title '%s': %v", tmplFile, err)
+			return
+		}
+		if _, err := w.Write([]byte("</title>")); err != nil {
+			return
+		}
+		// head_extra is defined as a block in layout.html, so Lookup
+		// always succeeds (empty default when the page didn't override).
+		if err := tmpl.ExecuteTemplate(w, "head_extra", fullData); err != nil {
+			log.Printf("[E] [HTTP] partial head_extra '%s': %v", tmplFile, err)
+		}
+		if err := tmpl.ExecuteTemplate(w, "content", fullData); err != nil {
+			log.Printf("[E] [HTTP] partial content '%s': %v", tmplFile, err)
+		}
+		return
+	}
 
 	if err := tmpl.ExecuteTemplate(w, "layout.html", fullData); err != nil {
 		log.Printf("[E] [HTTP] Could not execute template '%s': %v", tmplFile, err)
@@ -267,6 +240,9 @@ func getCombinedItemIDs(searchQuery string) ([]int, error) {
 	if q == "" {
 		return nil, nil
 	}
+
+	itemCacheMu.RLock()
+	defer itemCacheMu.RUnlock()
 
 	idMap := make(map[int]struct{})
 	for _, item := range itemFuzzyCache {
@@ -619,7 +595,7 @@ func summaryHandler(w http.ResponseWriter, r *http.Request) {
 		"lowest_price":  "t.lowest_price",
 		"highest_price": "t.highest_price",
 	}
-	orderByClause, sortBy, order := getSortClause(r, allowedSorts, "highest_price", "DESC")
+	orderByClause, sortBy, order := httpx.GetSortClause(r, allowedSorts, "highest_price", "DESC")
 
 	selectQuery := fmt.Sprintf(`
 		SELECT
@@ -728,7 +704,7 @@ func fullListHandler(w http.ResponseWriter, r *http.Request) {
 		"retrieved": "i.date_and_time_retrieved", "store_name": "i.store_name", "map_name": "i.map_name",
 		"availability": "i.is_available",
 	}
-	orderByClause, sortBy, order := getSortClause(r, allowedSorts, "price", "DESC")
+	orderByClause, sortBy, order := httpx.GetSortClause(r, allowedSorts, "price", "DESC")
 
 	var whereConditions []string
 	var queryParams []interface{}
@@ -896,7 +872,7 @@ func activityHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// 2. Create pagination *after* getting the total
-	pagination := newPaginationData(r, totalEvents, eventsPerPage)
+	pagination := httpx.NewPaginationData(r, totalEvents, eventsPerPage)
 
 	// 3. Get paginated data
 	query := fmt.Sprintf(`
@@ -1117,7 +1093,7 @@ func itemHistoryHandler(w http.ResponseWriter, r *http.Request) {
 
 	// Step 7: Create pagination and fetch the current page of listings
 	const listingsPerPage = 50
-	pagination := newPaginationData(r, totalListings, listingsPerPage)
+	pagination := httpx.NewPaginationData(r, totalListings, listingsPerPage)
 	allListings, err := fetchAllListings(itemName, pagination) // This is the last query
 	if err != nil {
 		log.Printf("[E] [HTTP/History] Step 6b: %v", err)
@@ -1251,12 +1227,12 @@ func characterHandler(w http.ResponseWriter, r *http.Request) {
 	totalPlayers, totalZeny := getCharacterStats(whereClause, params)
 
 	// 5. Get pagination and sort order
-	pagination := newPaginationData(r, totalPlayers, playersPerPage)
+	pagination := httpx.NewPaginationData(r, totalPlayers, playersPerPage)
 	allowedSorts := map[string]string{
 		"rank": "rank", "name": "name", "base_level": "base_level", "job_level": "job_level", "experience": "experience",
 		"zeny": "zeny", "class": "class", "guild": "guild_name", "last_updated": "last_updated", "last_active": "last_active",
 	}
-	orderByClause, sortBy, order := getSortClause(r, allowedSorts, "rank", "ASC")
+	orderByClause, sortBy, order := httpx.GetSortClause(r, allowedSorts, "rank", "ASC")
 
 	// 6. Fetch the paginated character data
 	players, err := fetchCharacters(whereClause, params, orderByClause, pagination, guildMasters, specialPlayers)
@@ -1316,7 +1292,7 @@ func guildHandler(w http.ResponseWriter, r *http.Request) {
 		"rank": "rank", "name": "g.name", "level": "g.level", "master": "g.master",
 		"members": "member_count", "zeny": "total_zeny", "avg_level": "avg_base_level",
 	}
-	orderByClause, sortBy, order := getSortClause(r, allowedSorts, "level", "DESC")
+	orderByClause, sortBy, order := httpx.GetSortClause(r, allowedSorts, "level", "DESC")
 
 	// 3. Get Total Count *before* pagination
 	totalGuilds, err := queryCount(fmt.Sprintf("SELECT COUNT(*) FROM guilds g %s", whereClause), params...)
@@ -1326,7 +1302,7 @@ func guildHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// 4. Create Pagination
-	pagination := newPaginationData(r, totalGuilds, guildsPerPage)
+	pagination := httpx.NewPaginationData(r, totalGuilds, guildsPerPage)
 
 	// 5. Build Filter URL for template
 	filterValues := url.Values{}
@@ -1411,7 +1387,7 @@ func mvpKillsHandler(w http.ResponseWriter, r *http.Request) {
 	// Add a "total" sort option that sums all kill columns
 	allowedSorts["total"] = fmt.Sprintf("(%s)", strings.Join(sumParts, " + "))
 
-	orderByClause, sortBy, order := getSortClause(r, allowedSorts, "total", "DESC")
+	orderByClause, sortBy, order := httpx.GetSortClause(r, allowedSorts, "total", "DESC")
 
 	// 3. Fetch data
 	query := fmt.Sprintf("SELECT * FROM character_mvp_kills %s", orderByClause)
@@ -1517,7 +1493,7 @@ func characterDetailHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	pagination := newPaginationData(r, totalChangelogEntries, entriesPerPage)
+	pagination := httpx.NewPaginationData(r, totalChangelogEntries, entriesPerPage)
 
 	activityHistory, err := fetchCharacterChangelog(p.Name, changelogQuery, pagination)
 	if err != nil {
@@ -1578,7 +1554,7 @@ func characterChangelogHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// 2. Create pagination
-	pagination := newPaginationData(r, totalEntries, entriesPerPage)
+	pagination := httpx.NewPaginationData(r, totalEntries, entriesPerPage)
 
 	// 3. Fetch paginated data
 	query := `SELECT character_name, change_time, activity_description 
@@ -1645,7 +1621,7 @@ func guildDetailHandler(w http.ResponseWriter, r *http.Request) {
 		"rank": "rank", "name": "name", "base_level": "base_level", "job_level": "job_level",
 		"experience": "experience", "zeny": "zeny", "class": "class", "last_active": "last_active",
 	}
-	orderByClause, sortBy, order := getSortClause(r, allowedSorts, "base_level", "DESC")
+	orderByClause, sortBy, order := httpx.GetSortClause(r, allowedSorts, "base_level", "DESC")
 
 	members, classDistribution, err := fetchGuildMembersAndStats(g.Name, g.Master, orderByClause)
 	if err != nil {
@@ -1706,7 +1682,7 @@ func storeDetailHandler(w http.ResponseWriter, r *http.Request) {
 		"name": "name_of_the_item", "item_id": "item_id", "quantity": "quantity",
 		"price": "CAST(REPLACE(price, ',', '') AS INTEGER)",
 	}
-	orderByClause, sortBy, order := getSortClause(r, allowedSorts, "price", "DESC")
+	orderByClause, sortBy, order := httpx.GetSortClause(r, allowedSorts, "price", "DESC")
 
 	// 2. Find the store's "signature" (seller, map, coords)
 	var sellerName, mapName, mapCoords, mostRecentTimestampStr string
@@ -1873,7 +1849,7 @@ func tradingPostListHandler(w http.ResponseWriter, r *http.Request) {
 	} else {
 		allowedSorts["price"] = "CASE WHEN i.price_zeny = 0 THEN 9223372036854775807 ELSE i.price_zeny END"
 	}
-	orderByClause, sortBy, order := getSortClause(r, allowedSorts, "posted", "DESC")
+	orderByClause, sortBy, order := httpx.GetSortClause(r, allowedSorts, "posted", "DESC")
 
 	// 3. Build Filter URL
 	filterValues := url.Values{}
@@ -1936,42 +1912,78 @@ func tradingPostListHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 // ensureItemCache lazily loads the in-memory item cache from internal_item_db.
-// Safe to call concurrently; the underlying sync.Once guarantees a single load.
+// Safe to call concurrently; protected by a sync.RWMutex.
 func ensureItemCache() {
-	itemCacheOnce.Do(func() {
-		itemExactCache = make(map[string]int64)
-		// Pre-allocate estimate (Ragnarok has ~30k-50k items)
-		itemFuzzyCache = make([]cachedItem, 0, 40000)
+	itemCacheMu.RLock()
+	if itemCacheLoaded {
+		itemCacheMu.RUnlock()
+		return
+	}
+	itemCacheMu.RUnlock()
 
-		rows, err := srv.db.Query("SELECT item_id, name, COALESCE(name_pt, ''), COALESCE(slots, 0) FROM internal_item_db")
-		if err != nil {
-			log.Printf("[E] [ItemID] Failed to load item cache: %v", err)
-			return
+	itemCacheMu.Lock()
+	defer itemCacheMu.Unlock()
+	if itemCacheLoaded {
+		return
+	}
+
+	itemExactCache = make(map[string]int64)
+	// Pre-allocate estimate (Ragnarok has ~30k-50k items)
+	itemFuzzyCache = make([]cachedItem, 0, 40000)
+
+	rows, err := srv.db.Query("SELECT item_id, name, COALESCE(name_pt, ''), COALESCE(slots, 0) FROM internal_item_db")
+	if err != nil {
+		log.Printf("[E] [ItemID] Failed to load item cache: %v", err)
+		return
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var i cachedItem
+		if err := rows.Scan(&i.id, &i.name, &i.namePT, &i.slots); err != nil {
+			continue
 		}
-		defer rows.Close()
+		itemFuzzyCache = append(itemFuzzyCache, i)
 
-		for rows.Next() {
-			var i cachedItem
-			if err := rows.Scan(&i.id, &i.name, &i.namePT, &i.slots); err != nil {
-				continue
-			}
-			itemFuzzyCache = append(itemFuzzyCache, i)
-
-			keyEN := fmt.Sprintf("%s_%d", strings.ToLower(i.name), i.slots)
-			itemExactCache[keyEN] = i.id
-			if i.namePT != "" {
-				keyPT := fmt.Sprintf("%s_%d", strings.ToLower(i.namePT), i.slots)
-				itemExactCache[keyPT] = i.id
-			}
+		keyEN := fmt.Sprintf("%s_%d", strings.ToLower(i.name), i.slots)
+		itemExactCache[keyEN] = i.id
+		if i.namePT != "" {
+			keyPT := fmt.Sprintf("%s_%d", strings.ToLower(i.namePT), i.slots)
+			itemExactCache[keyPT] = i.id
 		}
-		log.Printf("[I] [ItemID] Loaded %d items into in-memory cache.", len(itemFuzzyCache))
-	})
+	}
+	itemCacheLoaded = true
+	log.Printf("[I] [ItemID] Loaded %d items into in-memory cache.", len(itemFuzzyCache))
+}
+
+// updateItemInCache dynamically updates or adds an item translation in the in-memory cache.
+func updateItemInCache(itemID int64, namePT string) {
+	itemCacheMu.Lock()
+	defer itemCacheMu.Unlock()
+	if !itemCacheLoaded {
+		return // Lazy load will fetch it from DB later
+	}
+
+	for i, item := range itemFuzzyCache {
+		if item.id == itemID {
+			itemFuzzyCache[i].namePT = namePT
+
+			// Register new PT exact key
+			keyPT := fmt.Sprintf("%s_%d", strings.ToLower(namePT), item.slots)
+			itemExactCache[keyPT] = itemID
+			log.Printf("[D] [ItemID] Dynamically updated cache for item %d with PT name '%s'", itemID, namePT)
+			break
+		}
+	}
 }
 
 // findItemIDInCache attempts to find an item ID using an in-memory cache of the local item DB.
-// This replaces the expensive SQL "LIKE %...%" query.
+// This replaces the expensive SQL "LIKE %...%" query. Safe for concurrent execution.
 func findItemIDInCache(cleanItemName string, slots int) (sql.NullInt64, bool) {
 	ensureItemCache()
+
+	itemCacheMu.RLock()
+	defer itemCacheMu.RUnlock()
 
 	lowerCleanItemName := strings.ToLower(cleanItemName)
 
@@ -2285,7 +2297,7 @@ func woeRankingsHandler(w http.ResponseWriter, r *http.Request) {
 			"deaths": "total_deaths", "kd": "kd_ratio", "damage": "total_damage",
 			"healing": "total_healing", "emperium": "total_emp_kills", "points": "total_points",
 		}
-		orderByClause, sortBy, order = getSortClause(r, allowedSorts, "kills", "DESC")
+		orderByClause, sortBy, order = httpx.GetSortClause(r, allowedSorts, "kills", "DESC")
 		filterValues.Set("sort_by", sortBy)
 		filterValues.Set("order", order)
 
@@ -2338,7 +2350,7 @@ func woeRankingsHandler(w http.ResponseWriter, r *http.Request) {
 			"deaths": "total_deaths", "kd": "kd_ratio", "damage": "total_damage",
 			"healing": "total_healing", "emperium": "total_emp_kills", "points": "total_points",
 		}
-		orderByClause, sortBy, order = getSortClause(r, allowedSorts, "guild", "ASC")
+		orderByClause, sortBy, order = httpx.GetSortClause(r, allowedSorts, "guild", "ASC")
 		if sortBy == "guild" {
 			orderByClause = fmt.Sprintf("ORDER BY guild_name %s, total_kills DESC", order)
 		}
@@ -2407,7 +2419,7 @@ func woeRankingsHandler(w http.ResponseWriter, r *http.Request) {
 			"emperium": "emperium_kill", "healing": "healing_done",
 			"score": "score", "points": "points",
 		}
-		orderByClause, sortBy, order = getSortClause(r, allowedSorts, "kills", "DESC")
+		orderByClause, sortBy, order = httpx.GetSortClause(r, allowedSorts, "kills", "DESC")
 		filterValues.Set("sort_by", sortBy)
 		filterValues.Set("order", order)
 
@@ -2624,7 +2636,7 @@ func chatHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// 5. Create pagination
-	data.Pagination = newPaginationData(r, totalMessages, messagesPerPage)
+	data.Pagination = httpx.NewPaginationData(r, totalMessages, messagesPerPage)
 
 	// 6. Fetch paginated messages
 	query := fmt.Sprintf(`
@@ -3305,7 +3317,7 @@ func countAllListings(itemName string) (int, error) {
 }
 
 // fetchAllListings retrieves a paginated list of all historical listings for an item.
-func fetchAllListings(itemName string, pagination PaginationData) ([]Item, error) {
+func fetchAllListings(itemName string, pagination httpx.PaginationData) ([]Item, error) {
 	query := `
 		SELECT i.id, i.name_of_the_item, local_db.name_pt, i.item_id, i.quantity, i.price, 
 		       i.store_name, i.seller_name, i.date_and_time_retrieved, i.map_name, 
@@ -3618,7 +3630,7 @@ func getCharacterStats(whereClause string, params []interface{}) (int, int64) {
 }
 
 // fetchCharacters retrieves the paginated list of characters from the database.
-func fetchCharacters(whereClause string, params []interface{}, orderByClause string, pagination PaginationData, guildMasters map[string]bool, specialPlayers map[string]bool) ([]PlayerCharacter, error) {
+func fetchCharacters(whereClause string, params []interface{}, orderByClause string, pagination httpx.PaginationData, guildMasters map[string]bool, specialPlayers map[string]bool) ([]PlayerCharacter, error) {
 	query := fmt.Sprintf(`SELECT rank, name, base_level, job_level, experience, class, guild_name, zeny, last_updated, last_active
 		FROM characters %s %s LIMIT ? OFFSET ?`, whereClause, orderByClause)
 
@@ -3740,7 +3752,7 @@ func fetchGuildMembersAndStats(guildName, guildMaster, orderByClause string) ([]
 // fetchGuildChangelog fetches the paginated activity log for a guild.
 // Uses the event_kind index to limit the scan to guild-related rows
 // (a tiny fraction of changelog), then filters on the guild name.
-func fetchGuildChangelog(guildName string, r *http.Request, entriesPerPage int) ([]CharacterChangelog, PaginationData, error) {
+func fetchGuildChangelog(guildName string, r *http.Request, entriesPerPage int) ([]CharacterChangelog, httpx.PaginationData, error) {
 	likePattern := "%" + guildName + "%"
 	guildKinds := []interface{}{changelogKindGuildJoin, changelogKindGuildLeave, changelogKindGuildMove}
 
@@ -3750,10 +3762,10 @@ func fetchGuildChangelog(guildName string, r *http.Request, entriesPerPage int) 
 		append(append([]interface{}{}, guildKinds...), likePattern)...,
 	).Scan(&totalChangelogEntries)
 	if err != nil {
-		return nil, PaginationData{}, fmt.Errorf("could not count guild changelog: %w", err)
+		return nil, httpx.PaginationData{}, fmt.Errorf("could not count guild changelog: %w", err)
 	}
 
-	pagination := newPaginationData(r, totalChangelogEntries, entriesPerPage)
+	pagination := httpx.NewPaginationData(r, totalChangelogEntries, entriesPerPage)
 
 	changelogQuery := `SELECT change_time, character_name, activity_description FROM character_changelog
         WHERE event_kind IN (?, ?, ?) AND activity_description LIKE ?
@@ -3865,7 +3877,7 @@ func getMvpHeaders() []MvpHeader {
 }
 
 // fetchCharacterChangelog retrieves the paginated general changelog for a character.
-func fetchCharacterChangelog(charName string, searchQuery string, pagination PaginationData) ([]CharacterChangelog, error) {
+func fetchCharacterChangelog(charName string, searchQuery string, pagination httpx.PaginationData) ([]CharacterChangelog, error) {
 	var whereConditions []string
 	var params []interface{}
 
@@ -4340,10 +4352,10 @@ func dropStatsHandler(w http.ResponseWriter, r *http.Request) {
 	// Manually get item sort params from query
 	itemSortBy := r.FormValue("isort")
 	itemOrder := r.FormValue("iorder")
-	// Use getSortClause to validate and set defaults
+	// Use httpx.GetSortClause to validate and set defaults
 	// Note: We pass a "fake" request object with the correct query params
 	itemSortReq, _ := http.NewRequest("GET", fmt.Sprintf("/?sort_by=%s&order=%s", itemSortBy, itemOrder), nil)
-	_, itemSortBy, itemOrder = getSortClause(itemSortReq, itemAllowedSorts, "count", "DESC")
+	_, itemSortBy, itemOrder = httpx.GetSortClause(itemSortReq, itemAllowedSorts, "count", "DESC")
 
 	// --- ADDED: Sorting logic for Player table ---
 	playerAllowedSorts := map[string]string{
@@ -4355,9 +4367,9 @@ func dropStatsHandler(w http.ResponseWriter, r *http.Request) {
 	// Manually get player sort params from query
 	playerSortBy := r.FormValue("psort")
 	playerOrder := r.FormValue("porder")
-	// Use getSortClause to validate and set defaults
+	// Use httpx.GetSortClause to validate and set defaults
 	playerSortReq, _ := http.NewRequest("GET", fmt.Sprintf("/?sort_by=%s&order=%s", playerSortBy, playerOrder), nil)
-	_, playerSortBy, playerOrder = getSortClause(playerSortReq, playerAllowedSorts, "count", "DESC")
+	_, playerSortBy, playerOrder = httpx.GetSortClause(playerSortReq, playerAllowedSorts, "count", "DESC")
 
 	// --- MODIFIED: Pass all sort params ---
 	stats, total, unique, playerStats, err := fetchDropStatistics(itemSortBy, itemOrder, playerSortBy, playerOrder)
