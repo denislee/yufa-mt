@@ -27,21 +27,12 @@
         
         <div class="space-y-4">
             {{range .Data.MarketEvents}}
-                {{/* --- MODIFICATION IS HERE --- */}}
-                <div class="shadow rounded-lg p-3 flex flex-col sm:flex-row items-start sm:items-center gap-3 text-xs
-                    {{if eq .EventType "SOLD"}}
-                        bg-blue-50 dark:bg-blue-950 dark:border dark:border-blue-900
-                    {{else if eq .EventType "ADDED"}}
-                        bg-green-50 dark:bg-green-950 dark:border dark:border-green-900
-                    {{else if eq .EventType "REMOVED" "REMOVED_SINGLE"}}
-                        bg-red-50 dark:bg-red-950 dark:border dark:border-red-900
-                    {{else if eq .EventType "NEW_LOW"}}
-                        bg-yellow-50 dark:bg-yellow-950 dark:border dark:border-yellow-800
-                    {{else}}
-                        bg-white dark:bg-gray-800
-                    {{end}}
-                ">
-                {{/* --- END MODIFICATION --- */}}
+                <div class="activity-card shadow rounded-lg p-3 flex flex-col sm:flex-row items-start sm:items-center gap-3 text-xs
+                    {{if eq .EventType "SOLD"}}activity-card--sold
+                    {{else if eq .EventType "ADDED"}}activity-card--added
+                    {{else if eq .EventType "REMOVED" "REMOVED_SINGLE"}}activity-card--removed
+                    {{else if eq .EventType "NEW_LOW"}}activity-card--new-low
+                    {{end}}">
                 <div class="flex-shrink-0">
                         <img src="https://static.divine-pride.net/images/items/item/{{.ItemID}}.png" alt="" class="w-8 h-8" style="image-rendering: pixelated;" loading="lazy" decoding="async">
                     </div>

@@ -22,6 +22,78 @@ html.dark .navbar-glass {
     html.dark .navbar-glass { background-color: rgb(31, 41, 55); }
 }
 
+/* ---------- Navbar links ----------
+   Server pre-renders `.is-active` on the matching link/dropdown using the
+   PageTitle. On htmx partial swaps the navbar isn't re-rendered, so app.js
+   recomputes the active key from window.location.pathname after each swap
+   and toggles `.is-active` here. Class-based (rather than inline Tailwind)
+   so JS only flips one class instead of juggling ~9 utilities. */
+.ymt-navlink {
+    color: rgb(75 85 99); /* gray-600 */
+    text-decoration: none;
+}
+html.dark .ymt-navlink { color: rgb(209 213 219); /* gray-300 */ }
+
+.ymt-navlink--top {
+    display: inline-flex;
+    align-items: center;
+    font-size: 0.875rem;
+    padding: 0.5rem 0.75rem;
+    border-radius: 0.375rem;
+    background-color: transparent;
+    border: none;
+    cursor: pointer;
+}
+.ymt-navlink--top:hover { background-color: rgb(243 244 246); /* gray-100 */ }
+html.dark .ymt-navlink--top:hover { background-color: rgb(55 65 81); /* gray-700 */ }
+/* Active-state accent. Default light: blue-600 on blue-50. Default dark:
+   blue-300 on blue-900. Named themes redefine --ymt-accent / --ymt-accent-bg
+   below so the highlight matches each palette (e.g. forest → emerald,
+   rose → rose, sunset → amber) instead of staying a fixed blue. */
+.ymt-navlink--top.is-active {
+    font-weight: 600;
+    color: var(--ymt-accent, rgb(37 99 235));
+    background-color: var(--ymt-accent-bg, rgb(239 246 255));
+}
+html.dark .ymt-navlink--top.is-active {
+    color: var(--ymt-accent, rgb(147 197 253));
+    background-color: var(--ymt-accent-bg, rgb(30 58 138));
+}
+
+.ymt-navlink--mobile {
+    display: block;
+    padding: 0.5rem 1rem;
+    font-size: 0.875rem;
+}
+.ymt-navlink--mobile:hover { background-color: rgb(249 250 251); /* gray-50 */ }
+html.dark .ymt-navlink--mobile:hover { background-color: rgb(55 65 81); /* gray-700 */ }
+.ymt-navlink--mobile.is-active {
+    font-weight: 600;
+    color: var(--ymt-accent, rgb(37 99 235));
+    background-color: var(--ymt-accent-bg, rgb(239 246 255));
+}
+html.dark .ymt-navlink--mobile.is-active {
+    color: var(--ymt-accent, rgb(147 197 253));
+    background-color: var(--ymt-accent-bg, rgb(30 58 138));
+}
+
+.ymt-navlink--summary {
+    list-style: none;
+    display: flex;
+    justify-content: space-between;
+    cursor: pointer;
+}
+.ymt-navlink--summary::-webkit-details-marker { display: none; }
+/* When a summary is the active section, drop the background tint so it
+   reads as a heading rather than a selected item (children still show
+   their own .is-active highlight). */
+.ymt-navlink--summary.is-active {
+    background-color: transparent;
+}
+html.dark .ymt-navlink--summary.is-active {
+    background-color: transparent;
+}
+
 /* htmx swap indicator: dim swap targets that are mid-request so the user
    sees they pressed something. Pages can opt in by adding
    hx-indicator="#main" or similar; this just styles whatever's flagged. */
@@ -244,6 +316,47 @@ html.dark th > a[href*="sort_by="] > span { color: rgb(209, 213, 219) !important
 tbody tr.is-inactive:hover { color: rgb(75, 85, 99); }       /* gray-600 */
 html.dark tbody tr.is-inactive:hover { color: rgb(209, 213, 219); }  /* gray-300 */
 
+/* ---------- Activity cards ----------
+   Event-type accent rendered as a left border on a near-neutral card so
+   the row blends with whatever theme background is showing through. Old
+   bg-blue-50 / dark:bg-blue-950 (etc.) were too saturated to sit calmly
+   on the non-default themes (forest, rose, ocean…). */
+.activity-card {
+    background-color: rgb(255 255 255);
+    border-left: 3px solid transparent;
+}
+html.dark .activity-card {
+    background-color: rgb(31 41 55); /* gray-800 */
+}
+.activity-card--sold {
+    border-left-color: rgb(96 165 250); /* blue-400 */
+    background-color: rgba(59, 130, 246, 0.04);
+}
+html.dark .activity-card--sold {
+    background-color: rgba(96, 165, 250, 0.07);
+}
+.activity-card--added {
+    border-left-color: rgb(74 222 128); /* green-400 */
+    background-color: rgba(34, 197, 94, 0.04);
+}
+html.dark .activity-card--added {
+    background-color: rgba(74, 222, 128, 0.07);
+}
+.activity-card--removed {
+    border-left-color: rgb(248 113 113); /* red-400 */
+    background-color: rgba(239, 68, 68, 0.04);
+}
+html.dark .activity-card--removed {
+    background-color: rgba(248, 113, 113, 0.07);
+}
+.activity-card--new-low {
+    border-left-color: rgb(250 204 21); /* yellow-400 */
+    background-color: rgba(234, 179, 8, 0.05);
+}
+html.dark .activity-card--new-low {
+    background-color: rgba(250, 204, 21, 0.07);
+}
+
 /* ---------- Filter chip ---------- */
 .filter-chip {
     display: inline-flex;
@@ -337,6 +450,8 @@ html[data-theme="midnight"] {
     --ymt-bg-700: #1e293b;
     --ymt-bg-600: #334155;
     --ymt-glass: rgba(2, 6, 23, 0.85);
+    --ymt-accent: #a5b4fc;                 /* indigo-300 */
+    --ymt-accent-bg: rgba(99, 102, 241, 0.18);
 }
 html[data-theme="forest"] {
     --ymt-bg-900: #0a1a14;
@@ -344,6 +459,8 @@ html[data-theme="forest"] {
     --ymt-bg-700: #1e3a31;
     --ymt-bg-600: #2b5043;
     --ymt-glass: rgba(10, 26, 20, 0.85);
+    --ymt-accent: #6ee7b7;                 /* emerald-300 */
+    --ymt-accent-bg: rgba(16, 185, 129, 0.18);
 }
 html[data-theme="rose"] {
     --ymt-bg-900: #1c0a14;
@@ -351,6 +468,8 @@ html[data-theme="rose"] {
     --ymt-bg-700: #3f1d2e;
     --ymt-bg-600: #5a2a42;
     --ymt-glass: rgba(28, 10, 20, 0.85);
+    --ymt-accent: #fda4af;                 /* rose-300 */
+    --ymt-accent-bg: rgba(244, 63, 94, 0.18);
 }
 html[data-theme="ocean"] {
     --ymt-bg-900: #032027;
@@ -358,6 +477,8 @@ html[data-theme="ocean"] {
     --ymt-bg-700: #084557;
     --ymt-bg-600: #0a5d75;
     --ymt-glass: rgba(3, 32, 39, 0.85);
+    --ymt-accent: #67e8f9;                 /* cyan-300 */
+    --ymt-accent-bg: rgba(6, 182, 212, 0.18);
 }
 html[data-theme="sunset"] {
     --ymt-bg-900: #1a0f0a;
@@ -365,6 +486,8 @@ html[data-theme="sunset"] {
     --ymt-bg-700: #3d281d;
     --ymt-bg-600: #553a2a;
     --ymt-glass: rgba(26, 15, 10, 0.85);
+    --ymt-accent: #fcd34d;                 /* amber-300 */
+    --ymt-accent-bg: rgba(245, 158, 11, 0.18);
 }
 html[data-theme="lavender"] {
     --ymt-bg-900: #14091f;
@@ -372,6 +495,8 @@ html[data-theme="lavender"] {
     --ymt-bg-700: #2e1d47;
     --ymt-bg-600: #422a64;
     --ymt-glass: rgba(20, 9, 31, 0.85);
+    --ymt-accent: #c4b5fd;                 /* violet-300 */
+    --ymt-accent-bg: rgba(139, 92, 246, 0.2);
 }
 html[data-theme="coffee"] {
     --ymt-bg-900: #1c1410;
@@ -379,6 +504,8 @@ html[data-theme="coffee"] {
     --ymt-bg-700: #3c2d22;
     --ymt-bg-600: #564134;
     --ymt-glass: rgba(28, 20, 16, 0.85);
+    --ymt-accent: #fdba74;                 /* orange-300 */
+    --ymt-accent-bg: rgba(249, 115, 22, 0.18);
 }
 html[data-theme="nord"] {
     --ymt-bg-900: #2e3440;
@@ -386,6 +513,8 @@ html[data-theme="nord"] {
     --ymt-bg-700: #434c5e;
     --ymt-bg-600: #4c566a;
     --ymt-glass: rgba(46, 52, 64, 0.85);
+    --ymt-accent: #88c0d0;                 /* nord frost */
+    --ymt-accent-bg: rgba(136, 192, 208, 0.2);
 }
 html[data-theme="dracula"] {
     --ymt-bg-900: #1e1f29;
@@ -393,6 +522,8 @@ html[data-theme="dracula"] {
     --ymt-bg-700: #383a59;
     --ymt-bg-600: #44475a;
     --ymt-glass: rgba(40, 42, 54, 0.85);
+    --ymt-accent: #ff79c6;                 /* dracula pink */
+    --ymt-accent-bg: rgba(255, 121, 198, 0.18);
 }
 
 /* Apply the palette to any theme that defines the vars above. Tailwind's

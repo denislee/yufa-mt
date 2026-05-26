@@ -24,14 +24,14 @@
                     </button>
                 </form>
 
-                <a href="/" class="text-sm px-3 py-2 rounded-md {{if eq .Data.PageTitle "Summary"}}font-semibold text-blue-600 bg-blue-50 dark:bg-blue-900 dark:text-blue-300{{else}}text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700{{end}}">{{.Page.T.nav_summary}}</a>
-                <a href="/full-list" class="text-sm px-3 py-2 rounded-md {{if eq .Data.PageTitle "Full List"}}font-semibold text-blue-600 bg-blue-50 dark:bg-blue-900 dark:text-blue-300{{else}}text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700{{end}}">{{.Page.T.nav_full_list}}</a>
-                <a href="/activity" class="text-sm px-3 py-2 rounded-md {{if eq .Data.PageTitle "Activity"}}font-semibold text-blue-600 bg-blue-50 dark:bg-blue-900 dark:text-blue-300{{else}}text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700{{end}}">{{.Page.T.nav_activity}}</a>
-                <a href="/discord" class="text-sm px-3 py-2 rounded-md {{if eq .Data.PageTitle "Discord"}}font-semibold text-blue-600 bg-blue-50 dark:bg-blue-900 dark:text-blue-300{{else}}text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700{{end}}">{{.Page.T.nav_discord}}</a>
-                <a href="/chat" class="text-sm px-3 py-2 rounded-md {{if eq .Data.PageTitle "Chat"}}font-semibold text-blue-600 bg-blue-50 dark:bg-blue-900 dark:text-blue-300{{else}}text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700{{end}}">{{.Page.T.nav_chat}}</a>
+                <a href="/" data-nav-key="summary" class="ymt-navlink ymt-navlink--top {{if eq .Data.PageTitle "Summary"}}is-active{{end}}">{{.Page.T.nav_summary}}</a>
+                <a href="/full-list" data-nav-key="full-list" class="ymt-navlink ymt-navlink--top {{if eq .Data.PageTitle "Full List"}}is-active{{end}}">{{.Page.T.nav_full_list}}</a>
+                <a href="/activity" data-nav-key="activity" class="ymt-navlink ymt-navlink--top {{if eq .Data.PageTitle "Activity"}}is-active{{end}}">{{.Page.T.nav_activity}}</a>
+                <a href="/discord" data-nav-key="discord" class="ymt-navlink ymt-navlink--top {{if eq .Data.PageTitle "Discord"}}is-active{{end}}">{{.Page.T.nav_discord}}</a>
+                <a href="/chat" data-nav-key="chat" class="ymt-navlink ymt-navlink--top {{if eq .Data.PageTitle "Chat"}}is-active{{end}}">{{.Page.T.nav_chat}}</a>
 
                 <div class="relative" x-data="{ open: false }" @click.outside="open=false">
-                    <button @click="open=!open" type="button" class="text-sm px-3 py-2 rounded-md flex items-center {{if $isStatsPage}}font-semibold text-blue-600 bg-blue-50 dark:bg-blue-900 dark:text-blue-300{{else}}text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700{{end}}">
+                    <button @click="open=!open" type="button" data-nav-key="statistics" class="ymt-navlink ymt-navlink--top ymt-navlink--menu {{if $isStatsPage}}is-active{{end}}">
                         <span>{{.Page.T.nav_statistics}}</span>
                         <svg class="w-4 h-4 ml-1" fill="currentColor" viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg"><path fill-rule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clip-rule="evenodd"></path></svg>
                     </button>
@@ -44,7 +44,7 @@
                 </div>
 
                 <div class="relative" x-data="{ open: false }" @click.outside="open=false">
-                    <button @click="open=!open" type="button" class="text-sm px-3 py-2 rounded-md flex items-center {{if $isRankingPage}}font-semibold text-blue-600 bg-blue-50 dark:bg-blue-900 dark:text-blue-300{{else}}text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700{{end}}">
+                    <button @click="open=!open" type="button" data-nav-key="rankings" class="ymt-navlink ymt-navlink--top ymt-navlink--menu {{if $isRankingPage}}is-active{{end}}">
                         <span>{{.Page.T.nav_rankings}}</span>
                         <svg class="w-4 h-4 ml-1" fill="currentColor" viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg"><path fill-rule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clip-rule="evenodd"></path></svg>
                     </button>
@@ -90,35 +90,35 @@
             </div>
         </form>
 
-        <a href="/" class="block py-2 px-4 text-sm {{if eq .Data.PageTitle "Summary"}}bg-blue-50 dark:bg-blue-900 text-blue-600 dark:text-blue-300 font-semibold{{else}}text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700{{end}}">{{.Page.T.nav_summary}}</a>
-        <a href="/full-list" class="block py-2 px-4 text-sm {{if eq .Data.PageTitle "Full List"}}bg-blue-50 dark:bg-blue-900 text-blue-600 dark:text-blue-300 font-semibold{{else}}text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700{{end}}">{{.Page.T.nav_full_list}}</a>
-        <a href="/activity" class="block py-2 px-4 text-sm {{if eq .Data.PageTitle "Activity"}}bg-blue-50 dark:bg-blue-900 text-blue-600 dark:text-blue-300 font-semibold{{else}}text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700{{end}}">{{.Page.T.nav_activity}}</a>
-        <a href="/discord" class="block py-2 px-4 text-sm {{if eq .Data.PageTitle "Discord"}}bg-blue-50 dark:bg-blue-900 text-blue-600 dark:text-blue-300 font-semibold{{else}}text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700{{end}}">{{.Page.T.nav_discord}}</a>
-        <a href="/chat" class="block py-2 px-4 text-sm {{if eq .Data.PageTitle "Chat"}}bg-blue-50 dark:bg-blue-900 text-blue-600 dark:text-blue-300 font-semibold{{else}}text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700{{end}}">{{.Page.T.nav_chat}}</a>
+        <a href="/" data-nav-key="summary" class="ymt-navlink ymt-navlink--mobile {{if eq .Data.PageTitle "Summary"}}is-active{{end}}">{{.Page.T.nav_summary}}</a>
+        <a href="/full-list" data-nav-key="full-list" class="ymt-navlink ymt-navlink--mobile {{if eq .Data.PageTitle "Full List"}}is-active{{end}}">{{.Page.T.nav_full_list}}</a>
+        <a href="/activity" data-nav-key="activity" class="ymt-navlink ymt-navlink--mobile {{if eq .Data.PageTitle "Activity"}}is-active{{end}}">{{.Page.T.nav_activity}}</a>
+        <a href="/discord" data-nav-key="discord" class="ymt-navlink ymt-navlink--mobile {{if eq .Data.PageTitle "Discord"}}is-active{{end}}">{{.Page.T.nav_discord}}</a>
+        <a href="/chat" data-nav-key="chat" class="ymt-navlink ymt-navlink--mobile {{if eq .Data.PageTitle "Chat"}}is-active{{end}}">{{.Page.T.nav_chat}}</a>
 
         <details class="group" {{if $isStatsPage}}open{{end}}>
-            <summary class="py-2 px-4 text-sm list-none flex justify-between cursor-pointer {{if $isStatsPage}}text-blue-600 dark:text-blue-300 font-semibold{{else}}text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700{{end}}">
+            <summary data-nav-key="statistics" class="ymt-navlink ymt-navlink--mobile ymt-navlink--summary {{if $isStatsPage}}is-active{{end}}">
                 <span>{{.Page.T.nav_statistics}}</span>
                  <svg class="w-4 h-4 transition-transform duration-200 group-open:rotate-90" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path></svg>
             </summary>
             <div class="pl-4">
-                <a href="/stats/drops" class="block py-2 px-4 text-sm {{if eq .Data.PageTitle "Drop Stats"}}bg-blue-50 dark:bg-blue-900 text-blue-600 dark:text-blue-300 font-semibold{{else}}text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700{{end}}">{{.Page.T.nav_drop_stats}}</a>
-                <a href="/stats/market" class="block py-2 px-4 text-sm {{if eq .Data.PageTitle "Market Stats"}}bg-blue-50 dark:bg-blue-900 text-blue-600 dark:text-blue-300 font-semibold{{else}}text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700{{end}}">{{.Page.T.nav_market_stats}}</a>
-                <a href="/stats/characters" class="block py-2 px-4 text-sm {{if eq .Data.PageTitle "Character Stats"}}bg-blue-50 dark:bg-blue-900 text-blue-600 dark:text-blue-300 font-semibold{{else}}text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700{{end}}">{{.Page.T.nav_character_stats}}</a>
-                <a href="/players" class="block py-2 px-4 text-sm {{if eq .Data.PageTitle "Player Count"}}bg-blue-50 dark:bg-blue-900 text-blue-600 dark:text-blue-300 font-semibold{{else}}text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700{{end}}">{{.Page.T.nav_player_count}}</a>
+                <a href="/stats/drops" class="ymt-navlink ymt-navlink--mobile {{if eq .Data.PageTitle "Drop Stats"}}is-active{{end}}">{{.Page.T.nav_drop_stats}}</a>
+                <a href="/stats/market" class="ymt-navlink ymt-navlink--mobile {{if eq .Data.PageTitle "Market Stats"}}is-active{{end}}">{{.Page.T.nav_market_stats}}</a>
+                <a href="/stats/characters" class="ymt-navlink ymt-navlink--mobile {{if eq .Data.PageTitle "Character Stats"}}is-active{{end}}">{{.Page.T.nav_character_stats}}</a>
+                <a href="/players" class="ymt-navlink ymt-navlink--mobile {{if eq .Data.PageTitle "Player Count"}}is-active{{end}}">{{.Page.T.nav_player_count}}</a>
             </div>
         </details>
 
         <details class="group" {{if $isRankingPage}}open{{end}}>
-            <summary class="py-2 px-4 text-sm list-none flex justify-between cursor-pointer {{if $isRankingPage}}text-blue-600 dark:text-blue-300 font-semibold{{else}}text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700{{end}}">
+            <summary data-nav-key="rankings" class="ymt-navlink ymt-navlink--mobile ymt-navlink--summary {{if $isRankingPage}}is-active{{end}}">
                 <span>{{.Page.T.nav_rankings}}</span>
                  <svg class="w-4 h-4 transition-transform duration-200 group-open:rotate-90" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path></svg>
             </summary>
             <div class="pl-4">
-                <a href="/characters" class="block py-2 px-4 text-sm {{if eq .Data.PageTitle "Characters"}}bg-blue-50 dark:bg-blue-900 text-blue-600 dark:text-blue-300 font-semibold{{else}}text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700{{end}}">{{.Page.T.nav_characters}}</a>
-                <a href="/guilds" class="block py-2 px-4 text-sm {{if eq .Data.PageTitle "Guilds"}}bg-blue-50 dark:bg-blue-900 text-blue-600 dark:text-blue-300 font-semibold{{else}}text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700{{end}}">{{.Page.T.nav_guilds}}</a>
-                <a href="/mvp-kills" class="block py-2 px-4 text-sm {{if eq .Data.PageTitle "MVP Kills"}}bg-blue-50 dark:bg-blue-900 text-blue-600 dark:text-blue-300 font-semibold{{else}}text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700{{end}}">{{.Page.T.nav_mvp_kills}}</a>
-                <a href="/woe" class="block py-2 px-4 text-sm {{if eq .Data.PageTitle "WoE Rankings"}}bg-blue-50 dark:bg-blue-900 text-blue-600 dark:text-blue-300 font-semibold{{else}}text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700{{end}}">{{.Page.T.nav_woe_rankings}}</a>
+                <a href="/characters" class="ymt-navlink ymt-navlink--mobile {{if eq .Data.PageTitle "Characters"}}is-active{{end}}">{{.Page.T.nav_characters}}</a>
+                <a href="/guilds" class="ymt-navlink ymt-navlink--mobile {{if eq .Data.PageTitle "Guilds"}}is-active{{end}}">{{.Page.T.nav_guilds}}</a>
+                <a href="/mvp-kills" class="ymt-navlink ymt-navlink--mobile {{if eq .Data.PageTitle "MVP Kills"}}is-active{{end}}">{{.Page.T.nav_mvp_kills}}</a>
+                <a href="/woe" class="ymt-navlink ymt-navlink--mobile {{if eq .Data.PageTitle "WoE Rankings"}}is-active{{end}}">{{.Page.T.nav_woe_rankings}}</a>
             </div>
         </details>
 

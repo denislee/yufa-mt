@@ -146,6 +146,31 @@ function annotateSortableHeaders(root) {
     });
 }
 
+// Navbar active state. htmx-boost only swaps #main, so the server-rendered
+// .is-active class on the navbar stays stuck on whatever page first loaded.
+// Recompute from window.location.pathname after each swap. The route table
+// must stay in sync with the PageTitle branches in templates/navbar.html.
+const NAV_ROUTES = [
+    [p => p === '/',                                                                                 'summary'],
+    [p => p === '/full-list',                                                                        'full-list'],
+    [p => p === '/activity',                                                                         'activity'],
+    [p => p === '/discord',                                                                          'discord'],
+    [p => p === '/chat',                                                                             'chat'],
+    [p => p === '/stats/drops' || p === '/stats/market' || p === '/stats/characters' || p === '/players', 'statistics'],
+    [p => p === '/characters' || p === '/guilds' || p === '/mvp-kills' || p === '/woe',              'rankings'],
+];
+
+function updateNavActive() {
+    const path = window.location.pathname;
+    let key = null;
+    for (const [match, k] of NAV_ROUTES) {
+        if (match(path)) { key = k; break; }
+    }
+    document.querySelectorAll('nav [data-nav-key]').forEach(el => {
+        el.classList.toggle('is-active', el.dataset.navKey === key);
+    });
+}
+
 function applyPagePolish(root) {
     formatPrices(root);
     renderLastUpdated(root);
@@ -153,6 +178,7 @@ function applyPagePolish(root) {
 }
 
 applyPagePolish(document);
+updateNavActive();
 
 document.addEventListener('htmx:beforeSwap', (e) => {
     const xhr = e.detail && e.detail.xhr;
@@ -200,6 +226,7 @@ function awaitSwappedScripts(target) {
 document.addEventListener('htmx:afterSwap', (e) => {
     const target = (e.detail && e.detail.target) || document;
     applyPagePolish(target);
+    updateNavActive();
     if (window.Alpine && typeof Alpine.initTree === 'function') {
         try { Alpine.initTree(target); } catch (err) { /* ignore */ }
     }
