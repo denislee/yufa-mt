@@ -1168,6 +1168,30 @@ func processZenyData(allZenyInfo map[string]int64) {
 	log.Printf("[I] [Scraper/Zeny] Database update complete. Updated activity for %d characters. %d characters were unchanged.", updatedCount, unchangedCount)
 }
 
+// resolveStreamedPlaceholders replays the React Suspense client-side swap that
+// the page's $RS("S:N","P:N") scripts perform: it moves the streamed content of
+// each hidden [id="S:N"] node into the matching <template id="P:N"> placeholder.
+// After this, the visible table holds every row with all of its cells inline,
+// matching what a browser renders. Returns the number of placeholders resolved.
+//
+// The page only ever emits matching-suffix pairs (P:4 <-> S:4), so we key off
+// the id suffix rather than parsing the script bodies.
+func resolveStreamedPlaceholders(doc *goquery.Document) int {
+	resolved := 0
+	doc.Find(`template[id^="P:"]`).Each(func(_ int, tmpl *goquery.Selection) {
+		id, _ := tmpl.Attr("id")
+		suffix := strings.TrimPrefix(id, "P:")
+		// Attribute selector (not #id) because the id contains a colon.
+		src := doc.Find(`[id="S:` + suffix + `"]`)
+		if src.Length() == 0 {
+			return
+		}
+		tmpl.ReplaceWithSelection(src.Contents())
+		resolved++
+	})
+	return resolved
+}
+
 // scrapeZeny is now only responsible for concurrent scraping.
 func scrapeZeny() {
 	log.Println("[I] [Scraper/Zeny] Starting Zeny ranking scrape...")
@@ -1209,12 +1233,17 @@ func scrapeZeny() {
 					break
 				}
 
-				// The Next.js page streams its rows: the first few land in the
-				// visible <table> while the rest are emitted as separate
-				// <table hidden> fragments awaiting client-side hydration. Both
-				// hold real data, so we must read all tables — restricting to the
-				// visible one would only ever capture a fraction of each page.
-				rows := doc.Find("table tbody tr")
+				// The Next.js page streams its rows via React Suspense: the first
+				// rows render inline in the visible <table>, but the tail rows (and
+				// the trailing cells of the boundary row) are emitted as detached
+				// <table hidden> fragments and stitched back in client-side by
+				// $RS("S:N","P:N") scripts. Replay that stitching so every row ends
+				// up in the visible table with all of its cells inline; otherwise
+				// the boundary row's zeny cell is just an empty <template> and is
+				// silently dropped.
+				resolveStreamedPlaceholders(doc)
+
+				rows := doc.Find("table:not([hidden]) tbody tr")
 				pageZeny := make(map[string]int64)
 				rows.Each(func(i int, s *goquery.Selection) {
 					cells := s.Find("td")
