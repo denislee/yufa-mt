@@ -61,6 +61,7 @@ var (
 		"formatAvgLevel":   formatAvgLevel,
 		"getClassImageURL": getClassImageURL,
 		"TmplHTML":         tmplHTML,
+		"renderTmpl":       renderTmpl,
 		"TmplURL":          tmplURL,
 		"dict":             dict,
 		"hasPrefix":        strings.HasPrefix,
@@ -4009,6 +4010,24 @@ func getClassImageURL(class string) string {
 // tmplHTML marks a string as safe HTML for the template.
 func tmplHTML(s string) template.HTML {
 	return template.HTML(s)
+}
+
+// renderTmpl executes a translation string that itself contains template
+// actions (e.g. "...found{{if .SearchQuery}} matching your search{{end}}.")
+// against the given page data, returning safe HTML. Without this, such a
+// string is emitted verbatim with the {{...}} actions showing literally.
+// Any parse/exec error falls back to the raw string so a malformed
+// translation can never break the page.
+func renderTmpl(s string, data interface{}) template.HTML {
+	t, err := template.New("i18n").Parse(s)
+	if err != nil {
+		return template.HTML(s)
+	}
+	var buf strings.Builder
+	if err := t.Execute(&buf, data); err != nil {
+		return template.HTML(s)
+	}
+	return template.HTML(buf.String())
 }
 
 // dict creates a map from a list of key-value pairs.

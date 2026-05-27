@@ -204,7 +204,7 @@
                 </table>
             </div> {{if not .Data.Items}}
             <div class="text-center py-10 px-4">
-                <p class="text-gray-500 dark:text-gray-400">{{.Page.T.no_trading_posts | TmplHTML}}</p>
+                <p class="text-gray-500 dark:text-gray-400">{{renderTmpl .Page.T.no_trading_posts .Data}}</p>
             </div>
             {{end}}
         </div>
