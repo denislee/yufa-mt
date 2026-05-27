@@ -1209,13 +1209,12 @@ func scrapeZeny() {
 					break
 				}
 
-				// The Next.js page is sometimes served mid-stream: only a few rows
-				// are fully rendered in the visible table while remaining cells are
-				// emitted as <table hidden> fragments awaiting client-side hydration.
-				// Treat that as a partial response and retry.
-				partialStream := doc.Find("table[hidden]").Length() > 0
-
-				rows := doc.Find("table:not([hidden]) tbody tr")
+				// The Next.js page streams its rows: the first few land in the
+				// visible <table> while the rest are emitted as separate
+				// <table hidden> fragments awaiting client-side hydration. Both
+				// hold real data, so we must read all tables — restricting to the
+				// visible one would only ever capture a fraction of each page.
+				rows := doc.Find("table tbody tr")
 				pageZeny := make(map[string]int64)
 				rows.Each(func(i int, s *goquery.Selection) {
 					cells := s.Find("td")
@@ -1256,10 +1255,12 @@ func scrapeZeny() {
 					continue
 				}
 
-				// On any non-last page we expect a full 10 rows. If we got fewer
-				// AND the streaming marker is present, the page was served partial.
-				if partialStream && pageIndex < lastPage && validRows < 10 {
-					log.Printf("[W] [Scraper/Zeny] Page %d served as partial stream (%d valid rows, hidden fragments present) on attempt %d/%d. Retrying...", pageIndex, validRows, attempt, maxParseRetries)
+				// Non-last pages should render 10 row elements. Fewer means the
+				// stream was genuinely truncated (whole rows missing), so retry.
+				// A present-but-unparseable cell value is not grounds to retry —
+				// it would discard the rows we did capture.
+				if pageIndex < lastPage && rows.Length() < 10 {
+					log.Printf("[W] [Scraper/Zeny] Page %d served truncated (%d row elements, %d valid) on attempt %d/%d. Retrying...", pageIndex, rows.Length(), validRows, attempt, maxParseRetries)
 					time.Sleep(parseRetryDelay)
 					continue
 				}
@@ -2171,13 +2172,12 @@ func scrapeWoeCharacterRankings() {
 					break
 				}
 
-				// The Next.js page is sometimes served mid-stream: only a few rows
-				// are fully rendered in the visible table while remaining cells are
-				// emitted as <table hidden> fragments awaiting client-side hydration.
-				// Treat that as a partial response and retry.
-				partialStream := doc.Find("table[hidden]").Length() > 0
-
-				rows := doc.Find("table:not([hidden]) tbody tr")
+				// The Next.js page streams its rows: the first few land in the
+				// visible <table> while the rest are emitted as separate
+				// <table hidden> fragments awaiting client-side hydration. Both
+				// hold real data, so we must read all tables — restricting to the
+				// visible one would only ever capture a fraction of each page.
+				rows := doc.Find("table tbody tr")
 				pageWoeChars := make(map[string]WoeCharacterRank)
 				var pageMatchedCount int
 				rows.Each(func(i int, s *goquery.Selection) {
@@ -2261,10 +2261,10 @@ func scrapeWoeCharacterRankings() {
 					continue
 				}
 
-				// On any non-last page we expect a full 10 rows. If we got fewer
-				// AND the streaming marker is present, the page was served partial.
-				if partialStream && pageIndex < lastPage && rows.Length() < 10 {
-					log.Printf("[W] [Scraper/WoE] Page %d served as partial stream (%d valid rows, hidden fragments present) on attempt %d/%d. Retrying...", pageIndex, validRows, attempt, maxParseRetries)
+				// Non-last pages should render 10 row elements. Fewer means the
+				// stream was genuinely truncated (whole rows missing), so retry.
+				if pageIndex < lastPage && rows.Length() < 10 {
+					log.Printf("[W] [Scraper/WoE] Page %d served truncated (%d row elements, %d valid) on attempt %d/%d. Retrying...", pageIndex, rows.Length(), validRows, attempt, maxParseRetries)
 					time.Sleep(parseRetryDelay)
 					continue
 				}
