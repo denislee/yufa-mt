@@ -45,7 +45,7 @@ GENERATED_FILES=data/pwd.txt
 # --- Targets ---
 
 # The .PHONY directive tells make that these targets are not files
-.PHONY: all build run run-production kill-port open-browser clean tidy fmt lint test vet help
+.PHONY: all build run dev run-production kill-port open-browser clean tidy fmt lint test vet help
 
 # Default target: running 'make' will be the same as 'make all'
 all: build
@@ -97,6 +97,13 @@ run: build kill-port open-browser
 	@echo "Starting $(BINARY_NAME) on port $(PORT) (local mode, scrapers disabled)..."
 	DISABLE_SCRAPERS=1 ./$(BINARY_NAME)
 
+# Run in dev mode: all scheduled background jobs (scrapers + chat capture)
+# are disabled via DISABLE_SCRAPERS so the dev instance never hits upstream
+# sources or requires libpcap. Alias of `run` with an explicit dev name.
+dev: build kill-port open-browser
+	@echo "Starting $(BINARY_NAME) on port $(PORT) (dev mode, all scheduler jobs disabled)..."
+	DISABLE_SCRAPERS=1 ./$(BINARY_NAME)
+
 # Run in production mode: scrapers enabled, no browser auto-open.
 run-production: build kill-port
 	@echo "Starting $(BINARY_NAME) on port $(PORT) (production mode, scrapers enabled)..."
@@ -138,6 +145,7 @@ help:
 	@echo "  all           (Default) Alias for build"
 	@echo "  build         Build the application binary (output: $(BINARY_NAME))"
 	@echo "  run           Build, free port $(PORT), launch browser, and run the app (local mode, scrapers off)"
+	@echo "  dev           Same as run: dev mode with all scheduled background jobs disabled"
 	@echo "  run-production Build, free port $(PORT), and run the app (production mode, scrapers on)"
 	@echo "  kill-port     Kill any process listening on port $(PORT)"
 	@echo "  open-browser  Wait for port $(PORT), then open $(APP_URL) in default browser"
