@@ -9,6 +9,7 @@ import (
 	"io"
 	"log"
 	"net"
+	"net/http"
 	"strings"
 	"time"
 	"unicode"
@@ -113,6 +114,35 @@ func logSystemStatusMessage(message string) {
 	} else {
 		log.Printf("[I] [Scraper/Status] %s", message)
 	}
+}
+
+// zoneHealthHandler reports how long ago the chat capture last saw a packet on
+// the zone port — the application-layer "is the client still in-game?" signal
+// the listener watchdog polls (scripts/listener/yufa-listener.sh). It catches
+// the case the watchdog's ss check misses: a socket that stays ESTABLISHED but
+// goes silent (a half-dead connection the kernel hasn't torn down). The capture
+// stamps lastChatPacketTime on EVERY zone packet (movement, sync, chat), not
+// just chat messages, so a steady in-game heartbeat keeps the age near zero and
+// only a real disconnect lets it grow.
+//
+// Plaintext key=value lines so the shell can parse it with no JSON tooling:
+//
+//	last=<unix seconds of the last zone packet; 0 if none seen this session>
+//	age=<seconds since that packet; -1 if none seen yet>
+//
+// age=-1 means "no zone packet captured since startup" (e.g. still logging in);
+// the watchdog treats that as unknown and defers to its socket check rather
+// than relaunching.
+func zoneHealthHandler(w http.ResponseWriter, _ *http.Request) {
+	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+	w.Header().Set("Cache-Control", "no-store")
+	last := lastChatPacketTime.Load()
+	if last == 0 {
+		fmt.Fprint(w, "last=0\nage=-1\n")
+		return
+	}
+	age := max(time.Now().Unix()-last, 0)
+	fmt.Fprintf(w, "last=%d\nage=%d\n", last, age)
 }
 
 // startChatPacketCapture is the new long-running service to replace processChatLogFile

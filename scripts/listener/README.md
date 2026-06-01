@@ -21,6 +21,15 @@ mistimed auto-login — while the `.exe` keeps running, the loop kills and
 relaunches it. With `AUTO_LOGIN=1` (+ the PIN proxy) that relogin is hands-free.
 Tune via `MONITOR_INTERVAL` / `DISCONNECT_GRACE` / `ZONE_PORT` in `config.env`.
 
+That socket check only sees TCP state, though — a connection that stays
+`ESTABLISHED` but goes silent (a half-dead link the server/Gepard abandoned)
+still reads as connected. A **zone-silence watchdog** (`ZONE_SILENCE_WATCHDOG=1`,
+default on) closes that gap: yufa-mt stamps every captured zone packet and serves
+the age at `/health/zone`, and the loop relaunches when nothing has arrived for
+`ZONE_SILENCE_GRACE` seconds (default 120). It only acts on a real numeric age,
+so an unreachable app or a not-yet-logged-in session never triggers a false
+relaunch. Tune via `ZONE_SILENCE_GRACE` / `ZONE_HEALTH_URL`.
+
 This is the mode in `~/.config/yufa-listener/config.env`. Start it inside your
 desktop session:
 

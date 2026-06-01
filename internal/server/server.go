@@ -61,6 +61,10 @@ func registerRoutes() *http.ServeMux {
 	mux.HandleFunc("/stats/market", visitorTracker(marketStatsHandler))
 	mux.HandleFunc("/stats/characters", visitorTracker(characterStatsHandler))
 
+	// Liveness endpoint for the listener watchdog: seconds since the last
+	// captured zone packet. Not a page view, so it skips visitorTracker.
+	mux.HandleFunc("/health/zone", zoneHealthHandler)
+
 	// --- Static Assets ---
 	// /static/* is served from in-memory pre-gzipped bytes (see
 	// serveStaticAsset). Bypasses http.FileServer and the global gzip

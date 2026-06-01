@@ -176,6 +176,23 @@ detect_from_lutris_yml || true
 : "${DISCONNECT_GRACE:=90}"
 : "${ZONE_PORT:=${CHAT_CAPTURE_PORT:-6121}}"  # zone/map server port (where in-game traffic flows)
 
+# The socket check above only sees TCP state: a connection that stays
+# ESTABLISHED but stops carrying traffic (a half-dead link the server/Gepard
+# quietly abandoned, or chat silently stalling) still reads as "connected". The
+# yufa-mt app captures zone packets and exposes the age of the last one it saw
+# at /health/zone; polling that closes the gap — if NO zone packet has arrived
+# for ZONE_SILENCE_GRACE seconds the link is effectively dead, so relaunch.
+# Every zone packet (movement/sync/chat) refreshes the age, so an in-game client
+# keeps it near zero; only a real stall lets it grow. Set ZONE_SILENCE_WATCHDOG=0
+# to disable, or blank ZONE_HEALTH_URL — either way the watchdog never acts on
+# an unreachable app or an "unknown" age (no packet captured yet this session).
+: "${ZONE_SILENCE_WATCHDOG:=1}"
+: "${ZONE_HEALTH_URL:=http://127.0.0.1:${YUFA_HTTP_PORT:-8080}/health/zone}"
+# Must exceed the longest normal gap between zone packets AND a fresh login's
+# map-load; the client's periodic sync keeps real gaps to seconds, so 120s only
+# fires on a genuine stall.
+: "${ZONE_SILENCE_GRACE:=120}"
+
 mkdir -p "$STATE_DIR"
 
 log() { printf '%s [listener] %s\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$*" | tee -a "$LOG_FILE" >&2; }
@@ -551,19 +568,42 @@ client_connected() {
   [ -n "$(ss -tnH state established "( dport = :$ZONE_PORT )" 2>/dev/null | head -1)" ]
 }
 
+# Echo the seconds since yufa-mt last captured a zone packet (from its
+# /health/zone endpoint), or NOTHING when the age is unknown — the endpoint is
+# disabled/unreachable, curl is absent, or the app reports age=-1 (no zone
+# packet captured yet this session, e.g. still logging in). Callers act only on
+# a numeric age, so an unreachable app or a fresh session never forces a
+# spurious relaunch; it just falls back to the socket check.
+zone_packet_age() {
+  [ "$ZONE_SILENCE_WATCHDOG" = 1 ] || return 0
+  [ -n "$ZONE_HEALTH_URL" ] || return 0
+  command -v curl >/dev/null 2>&1 || return 0
+  local body age
+  body="$(curl -fsS --max-time 3 "$ZONE_HEALTH_URL" 2>/dev/null)" || return 0
+  age="$(printf '%s\n' "$body" | sed -n 's/^age=//p' | head -1)"
+  case "$age" in
+    ''|*[!0-9]*) return 0 ;;   # empty, negative (leading -), or non-numeric => unknown
+  esac
+  printf '%s' "$age"
+}
+
 # monitor watches the running client and RETURNS (so the caller relaunches) when:
 #   - the client PROCESS exits, or
 #   - ZONE_WATCHDOG=1 and the client has had no zone connection (:$ZONE_PORT) for
 #     >= DISCONNECT_GRACE seconds — covering the case the process is alive but
 #     stranded on the login/char screen (kick, AFK timeout, or a mistimed
 #     auto-login), which the old process-only check missed and which silently
-#     stops chat.
+#     stops chat, or
+#   - ZONE_SILENCE_WATCHDOG=1 and yufa-mt reports no captured zone packet for
+#     >= ZONE_SILENCE_GRACE seconds — covering a connection that stays
+#     ESTABLISHED (so the socket check above still reads "connected") but has
+#     gone silent. This age comes from the app, so it is absolute across polls;
+#     the socket check accumulates its own elapsed counter instead.
 monitor() {
-  if [ "$ZONE_WATCHDOG" = 1 ]; then
-    log "Monitoring client: process + zone link (:$ZONE_PORT); relaunch after ${DISCONNECT_GRACE}s with no zone connection."
-  else
-    log "Monitoring client process liveness (zone watchdog off)."
-  fi
+  local mode="process liveness"
+  [ "$ZONE_WATCHDOG" = 1 ] && mode="$mode + zone link (:$ZONE_PORT, ${DISCONNECT_GRACE}s grace)"
+  [ "$ZONE_SILENCE_WATCHDOG" = 1 ] && mode="$mode + zone silence (${ZONE_SILENCE_GRACE}s grace)"
+  log "Monitoring client: $mode."
   local down=0
   while [ -n "$(game_pid)" ]; do
     if [ "$ZONE_WATCHDOG" = 1 ]; then
@@ -578,6 +618,12 @@ monitor() {
           return 0
         fi
       fi
+    fi
+    local age
+    age="$(zone_packet_age)"
+    if [ -n "$age" ] && [ "$age" -ge "$ZONE_SILENCE_GRACE" ]; then
+      log "No zone packet captured for ${age}s (>= ${ZONE_SILENCE_GRACE}s) — link silent, relaunching client."
+      return 0
     fi
     sleep "$MONITOR_INTERVAL"
   done
@@ -640,7 +686,8 @@ cmd_env() {
            WINDOW_PIN_XY LOGIN_ID_CLICK LOGIN_PW_CLICK LOGIN_BUTTON_CLICK \
            PIN_CLICK CHAR_SELECT_CLICK EXTRA_ENV YDOTOOL_SOCKET RTEST_FOCUS_DELAY \
            AUTO_LOGIN AUTO_LOGIN_PRE_ENTERS AUTO_LOGIN_DIALOG_WAIT \
-           ZONE_WATCHDOG MONITOR_INTERVAL DISCONNECT_GRACE ZONE_PORT; do
+           ZONE_WATCHDOG MONITOR_INTERVAL DISCONNECT_GRACE ZONE_PORT \
+           ZONE_SILENCE_WATCHDOG ZONE_HEALTH_URL ZONE_SILENCE_GRACE; do
     printf '%-22s = %s\n' "$v" "${!v}"
   done
   printf '%-22s = %s\n' "YUFA_USER" "${YUFA_USER:+<set>}"
