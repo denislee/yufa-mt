@@ -104,6 +104,100 @@ and `gopacket/pcap` (libpcap) need shared libraries; distroless won't
 work here. Mount `data/` so the SQLite DB persists across container
 restarts.
 
+## Deployment (live x230 listener box)
+
+The production instance runs on **x230** (`ssh dns@x230.taild6ffd8.ts.net`),
+repo at **`/home/dns/git/yufa-mt`** (not `~/tmp/yufa-mt`, which is a dev
+checkout). It does double duty: the web app **and** the in-game chat capture,
+which is why it lives next to a real RO client. The full chat-listener subsystem
+(client keep-alive, PIN proxy, Gepard/wire-protocol findings, watchdogs) is
+documented in [`scripts/listener/README.md`](scripts/listener/README.md); this
+section is just how to operate the service.
+
+### `yufa-mt.service`
+
+A **system** systemd unit (`/etc/systemd/system/yufa-mt.service`):
+
+- `User=root` / `Group=root`
+- `WorkingDirectory=/home/dns/git/yufa-mt`, `EnvironmentFile=/home/dns/git/yufa-mt/.env`
+- `Restart=always`, `RestartSec=3`
+- Logs to the **journal** (`journalctl -u yufa-mt`), not a file.
+
+The binary needs Linux capabilities **`cap_net_raw`** (libpcap chat capture) and
+**`cap_net_admin`** (the in-app PIN proxy's iptables `REDIRECT`). The service runs
+as root so it has them implicitly, but `setcap` is also applied for parity with
+anything that launches the binary non-root — **and `setcap` is wiped on every
+rebuild**, so it must be re-applied after each `go build` (see below).
+
+### Updating / restarting the service
+
+Always go through `systemctl` — **never `pkill`** (with `Restart=always`, systemd
+respawns the process and races your manual start, leaving a duplicate instance
+and corrupted iptables rules). The safe build-and-swap procedure:
+
+```sh
+ssh dns@x230.taild6ffd8.ts.net
+cd /home/dns/git/yufa-mt
+
+git pull                                                   # fetch latest main
+go build -tags fts5 -o yufa-mt.new ./cmd/server            # NOTE: ./cmd/server,
+                                                           # NOT `.` (root has no
+                                                           # Go files → build fails)
+sudo setcap cap_net_raw,cap_net_admin=eip yufa-mt.new      # caps are lost on rebuild
+sudo systemctl stop yufa-mt                                # graceful stop can take
+                                                           # up to ~90s (in-flight
+                                                           # scrapers; WAL is crash-safe)
+mv yufa-mt.new yufa-mt                                     # atomic swap (easy rollback)
+sudo systemctl start yufa-mt
+```
+
+A quicker in-place variant — `go build -tags fts5 -o yufa-mt ./cmd/server`,
+re-`setcap`, then `sudo systemctl restart yufa-mt` — also works (Go's build does
+an atomic rename, so replacing the running binary is safe), but the `.new` swap
+above keeps the old binary around for instant rollback.
+
+### Verifying a deploy
+
+```sh
+systemctl status yufa-mt --no-pager                        # active (running), new PID
+getcap /home/dns/git/yufa-mt/yufa-mt                       # cap_net_admin,cap_net_raw=eip
+curl -fsS http://127.0.0.1:8080/health/zone                # last=<unix>  age=<sec>
+journalctl -u yufa-mt --since "1 min ago" --no-pager \
+  | grep -iE "packet capture|PIN proxy listening|Web server started"
+```
+
+`age` is the seconds since the last captured zone packet; a low number means the
+client is in-game and chat is flowing. The startup log should show the chat
+capture on its NIC (`tcp port 6121`), `PIN proxy listening` on `127.0.0.1:7799`,
+and `Web server started`.
+
+### `/health/zone` monitoring endpoint
+
+`GET /health/zone` returns plaintext liveness for the chat capture, for the
+listener watchdog (and any external monitor) to poll:
+
+```
+last=<unix seconds of the last captured zone packet; 0 if none this session>
+age=<seconds since that packet; -1 if none captured yet>
+```
+
+`age=-1` means "no zone packet seen yet" (e.g. still logging in) — consumers
+treat that as unknown rather than as a stall.
+
+### The chat-listener loop is **not** a systemd unit
+
+`yufa-mt.service` is the only thing under `systemctl` here. The client keep-alive
+loop (`scripts/listener/yufa-listener.sh run`) is a **script** run on the
+desktop (Sway) session, and a running loop holds the old script in memory. So:
+
+- Rebuilding/restarting `yufa-mt` activates the **producer** side of a watchdog
+  change (e.g. the `/health/zone` endpoint) immediately.
+- A change to the watchdog logic in `yufa-listener.sh` itself only takes effect
+  after the **loop is restarted**. Do that from within the Sway session and
+  **never** with `pkill -f "yufa-listener.sh run"` over SSH — that pattern matches
+  your own remote shell's argv and kills the SSH session. Use an exact match
+  (`pkill -xf "bash ./yufa-listener.sh run"`) or target the pid.
+
 ## Architecture
 
 - **Request path:** `cmd/server` builds an `http.ServeMux` via

@@ -210,4 +210,7 @@ just need one genuine client connected.
 
 - Persistent `ss -tn | grep ESTAB` to the game server = in-game and connected.
 - New rows in yufa-mt's `chat` table, and the `🟢 Chat listener active` log line.
+- `curl -fsS http://127.0.0.1:8080/health/zone` → a low `age=` (seconds since the
+  last captured zone packet) means the link is live; this is the same signal the
+  zone-silence watchdog polls.
 - Logs: `~/.local/state/yufa-listener/listener.log`.
