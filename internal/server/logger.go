@@ -1,6 +1,7 @@
 package server
 
 import (
+	"io"
 	"log"
 	"log/slog"
 	"os"
@@ -27,12 +28,16 @@ func initLogger() {
 		level = slog.LevelError
 	}
 
+	// Tee log output to stderr and the in-memory ring buffer so the admin
+	// panel can show recent server output (see logbuffer.go).
+	out := io.MultiWriter(os.Stderr, logBuffer)
+
 	opts := &slog.HandlerOptions{Level: level}
 	var handler slog.Handler
 	if strings.EqualFold(os.Getenv("LOG_FORMAT"), "json") {
-		handler = slog.NewJSONHandler(os.Stderr, opts)
+		handler = slog.NewJSONHandler(out, opts)
 	} else {
-		handler = slog.NewTextHandler(os.Stderr, opts)
+		handler = slog.NewTextHandler(out, opts)
 	}
 	logger := slog.New(handler)
 	slog.SetDefault(logger)

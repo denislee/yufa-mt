@@ -76,6 +76,16 @@ type Config struct {
 	// PinProxyInject toggles PIN injection; false = pure transparent relay
 	// (for testing). Default true.
 	PinProxyInject bool
+
+	// SelfUpdateEnabled gates the admin "Self-Update" action
+	// (internal/server/selfupdate.go): git pull → rebuild → restart. Off by
+	// default so a dev instance can't be shut down by an accidental click;
+	// enable with SELF_UPDATE=1 on the live box, which runs under systemd
+	// (Restart=always) so the process respawns with the new binary.
+	SelfUpdateEnabled bool
+	// SelfUpdateBranch is the git branch the self-update pulls (default
+	// "main"). Read from SELF_UPDATE_BRANCH.
+	SelfUpdateBranch string
 }
 
 // Load reads env vars, applies defaults, and validates the result. It
@@ -100,6 +110,8 @@ func Load() (*Config, error) {
 		PinProxySelectSlot:   intEnv("PIN_PROXY_SELECT_SLOT", -1),
 		PinProxyServerIP:     os.Getenv("PIN_PROXY_SERVER_IP"),
 		PinProxyInject:       boolEnvDefault("PIN_PROXY_INJECT", true),
+		SelfUpdateEnabled:    boolEnv("SELF_UPDATE"),
+		SelfUpdateBranch:     envOr("SELF_UPDATE_BRANCH", "main"),
 	}
 
 	if ids := os.Getenv("DISCORD_CHANNEL_IDS"); ids != "" {

@@ -588,6 +588,11 @@ type AdminDashboardData struct {
 	ChatPrevPage      int
 	ChatNextPage      int
 	ChatTotalMessages int
+
+	// Server self-update state + whether the feature is enabled
+	// (SELF_UPDATE=1). See selfupdate.go.
+	SelfUpdateEnabled bool
+	UpdateStatus      UpdateStatusView
 }
 
 type AdminEditPostPageData struct {

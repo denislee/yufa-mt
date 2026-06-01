@@ -449,6 +449,11 @@ func getAdminDashboardData(r *http.Request) (AdminDashboardData, error) {
 	stats.LastCharacterScrape = lastChar
 	stats.LastGuildScrape = lastGuild
 
+	if appConfig != nil {
+		stats.SelfUpdateEnabled = appConfig.SelfUpdateEnabled
+	}
+	stats.UpdateStatus = updateStatus.Snapshot()
+
 	return stats, nil
 }
 

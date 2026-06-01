@@ -117,6 +117,10 @@ func registerAdminRoutes() *http.ServeMux {
 	adminRouter.HandleFunc("/character/clear-mvp-kills", adminClearMvpKillsHandler)
 	adminRouter.HandleFunc("/backfill/drops", adminBackfillDropLogsHandler)
 
+	// Server observability + maintenance
+	adminRouter.HandleFunc("/logs", adminLogsHandler)
+	adminRouter.HandleFunc("/update", adminSelfUpdateHandler)
+
 	// Admin RMS Cache Management
 	adminRouter.HandleFunc("/cache", adminCacheActionHandler)
 	adminRouter.HandleFunc("/cache/delete-entry", adminDeleteCacheEntryHandler)

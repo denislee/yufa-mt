@@ -105,6 +105,9 @@
                 <a href="#" class="tab-button border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 hover:border-gray-300 whitespace-nowrap py-3 px-1 border-b-2 font-medium text-sm" data-tab="chat">
                     Chat Logs
                 </a>
+                <a href="#" class="tab-button border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 hover:border-gray-300 whitespace-nowrap py-3 px-1 border-b-2 font-medium text-sm" data-tab="server">
+                    Server
+                </a>
             </nav>
         </div>
 
@@ -767,7 +770,83 @@
                 </div>
             </div>
 
-        </div> </div>
+        </div>
+
+            <div id="tab-server" class="tab-panel" style="display: none;">
+
+                <!-- Self-Update -->
+                <div class="bg-white dark:bg-gray-800 p-6 rounded-lg shadow mb-8">
+                    <h2 class="text-xl font-bold mb-2">Server Update</h2>
+                    <p class="text-sm text-gray-600 dark:text-gray-300 mb-4">
+                        Pulls the latest code, rebuilds the binary, and restarts the service.
+                        The process is supervised (systemd <code>Restart=always</code>), so it comes back up automatically on the new build.
+                        Watch the <strong>Server Logs</strong> panel below for live progress.
+                    </p>
+
+                    {{if .UpdateStatus.Running}}
+                    <div class="mb-4 flex items-center gap-3 bg-blue-50 dark:bg-blue-900/40 border border-blue-300 dark:border-blue-700 text-blue-800 dark:text-blue-200 px-4 py-3 rounded">
+                        <svg class="animate-spin h-5 w-5 text-blue-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.4 0 0 5.4 0 12h4z"></path></svg>
+                        <span>Update in progress — current stage: <strong>{{.UpdateStatus.Stage}}</strong> (started {{.UpdateStatus.Started}}). This page will reconnect after the restart.</span>
+                    </div>
+                    {{else if .UpdateStatus.Message}}
+                    <div class="mb-4 px-4 py-3 rounded border {{if .UpdateStatus.OK}}bg-green-50 dark:bg-green-900/40 border-green-300 dark:border-green-700 text-green-800 dark:text-green-200{{else}}bg-red-50 dark:bg-red-900/40 border-red-300 dark:border-red-700 text-red-800 dark:text-red-200{{end}}">
+                        <p class="font-semibold">Last update: {{if .UpdateStatus.OK}}succeeded{{else}}failed at stage "{{.UpdateStatus.Stage}}"{{end}}{{if .UpdateStatus.Finished}} ({{.UpdateStatus.Finished}}){{end}}</p>
+                        <pre class="mt-1 text-xs whitespace-pre-wrap font-mono">{{.UpdateStatus.Message}}</pre>
+                    </div>
+                    {{end}}
+
+                    {{if .SelfUpdateEnabled}}
+                    <form action="/admin/update" method="POST" onsubmit="return confirm('Pull latest code, rebuild, and restart the server now? The site will be briefly unavailable during the restart.');">
+                        <input type="hidden" name="tab" value="server">
+                        <button type="submit" {{if .UpdateStatus.Running}}disabled{{end}}
+                                class="bg-red-600 hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed text-white font-bold py-2 px-4 rounded">
+                            ⬆️ Pull, Rebuild &amp; Restart
+                        </button>
+                    </form>
+                    {{else}}
+                    <div class="bg-yellow-50 dark:bg-yellow-900/40 border border-yellow-300 dark:border-yellow-700 text-yellow-800 dark:text-yellow-200 px-4 py-3 rounded text-sm">
+                        Self-update is <strong>disabled</strong>. Set <code>SELF_UPDATE=1</code> in the environment (live box only — it requires a supervisor that respawns the process) and restart to enable this button.
+                    </div>
+                    {{end}}
+                </div>
+
+                <!-- Live Server Logs -->
+                <div class="bg-white dark:bg-gray-800 p-6 rounded-lg shadow mb-8"
+                     x-data="serverLogs()" x-init="init()">
+                    <div class="flex flex-wrap items-center justify-between gap-3 mb-3">
+                        <h2 class="text-xl font-bold">Server Logs (stdout)</h2>
+                        <div class="flex flex-wrap items-center gap-3 text-sm">
+                            <label class="flex items-center gap-1.5">
+                                <span class="text-gray-600 dark:text-gray-300">Lines</span>
+                                <select x-model.number="tail" @change="refresh()"
+                                        class="rounded border-gray-300 dark:border-gray-600 dark:bg-gray-700 py-1 px-2 text-sm">
+                                    <option value="200">200</option>
+                                    <option value="500">500</option>
+                                    <option value="1000">1000</option>
+                                    <option value="2000">2000</option>
+                                </select>
+                            </label>
+                            <label class="flex items-center gap-1.5 cursor-pointer">
+                                <input type="checkbox" x-model="auto" @change="toggleAuto()" class="rounded">
+                                <span class="text-gray-600 dark:text-gray-300">Auto-refresh (3s)</span>
+                            </label>
+                            <button type="button" @click="refresh()"
+                                    class="bg-blue-500 hover:bg-blue-700 text-white font-semibold py-1 px-3 rounded">Refresh</button>
+                        </div>
+                    </div>
+                    <div class="flex items-center justify-between mb-1 text-xs text-gray-500 dark:text-gray-400">
+                        <span x-text="status"></span>
+                        <label class="flex items-center gap-1.5 cursor-pointer">
+                            <input type="checkbox" x-model="follow" class="rounded">
+                            <span>Follow tail</span>
+                        </label>
+                    </div>
+                    <pre x-ref="logbox" class="bg-gray-900 text-gray-100 text-xs font-mono leading-relaxed rounded-md p-4 h-[28rem] overflow-auto whitespace-pre-wrap" x-text="logs"></pre>
+                </div>
+
+            </div>
+
+        </div>
 
     <div id="chat-edit-modal" class="fixed inset-0 bg-gray-600 bg-opacity-50 hidden overflow-y-auto h-full w-full z-50">
         <div class="relative top-20 mx-auto p-5 border w-96 shadow-lg rounded-md bg-white dark:bg-gray-800">
@@ -813,6 +892,48 @@
             document.getElementById('edit_chat_channel').value = btn.dataset.channel;
             document.getElementById('edit_chat_msg').value = btn.dataset.msg;
             document.getElementById('chat-edit-modal').classList.remove('hidden');
+        }
+
+        // Live server-log viewer (Server tab). Polls /admin/logs as plain text.
+        function serverLogs() {
+            return {
+                logs: 'Loading…',
+                tail: 500,
+                auto: true,
+                follow: true,
+                status: '',
+                timer: null,
+                init() {
+                    this.refresh();
+                    if (this.auto) this.startAuto();
+                },
+                async refresh() {
+                    try {
+                        const resp = await fetch('/admin/logs?tail=' + this.tail, { headers: { 'X-Requested-With': 'fetch' } });
+                        if (!resp.ok) throw new Error('HTTP ' + resp.status);
+                        this.logs = await resp.text();
+                        const now = new Date();
+                        this.status = 'Updated ' + now.toLocaleTimeString();
+                        this.$nextTick(() => { if (this.follow) this.scrollToBottom(); });
+                    } catch (err) {
+                        this.status = 'Error fetching logs: ' + err.message;
+                    }
+                },
+                scrollToBottom() {
+                    const box = this.$refs.logbox;
+                    if (box) box.scrollTop = box.scrollHeight;
+                },
+                startAuto() {
+                    this.stopAuto();
+                    this.timer = setInterval(() => this.refresh(), 3000);
+                },
+                stopAuto() {
+                    if (this.timer) { clearInterval(this.timer); this.timer = null; }
+                },
+                toggleAuto() {
+                    this.auto ? this.startAuto() : this.stopAuto();
+                },
+            };
         }
 
         document.addEventListener('DOMContentLoaded', function () {
