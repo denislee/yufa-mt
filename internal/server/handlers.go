@@ -124,7 +124,7 @@ var (
 	itemSanitizer    = regexp.MustCompile(`[^\p{L}0-9\s\[\]\+\-]+`)
 	reCardRemover    = regexp.MustCompile(`(?i)\s*\b(card|carta)\b\s*`)
 	reSlotRemover    = regexp.MustCompile(`\s*\[\d+\]\s*`)
-	dropMessageRegex = regexp.MustCompile(`'(.+)'\s+(got|stole)\s+(.+)`)
+	dropMessageRegex = regexp.MustCompile(`'(.+)'\s+(got|stole|conseguiu|roubou)\s+(.+)`)
 	reItemFromDrop   = regexp.MustCompile(`(?:(?:\d+\s*x\s*)?'(.+?)'|.+\'s\s+(.+?)|(.+?))\s*(?:\(chance:.*)?$`)
 	aliasSanitizer   = regexp.MustCompile(`[^a-zA-Z0-9_]`)
 	reRefineRemover  = regexp.MustCompile(`\s*\+\d+\s*`)
