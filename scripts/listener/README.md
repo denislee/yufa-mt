@@ -24,6 +24,41 @@ scripts/listener/yufa-listener.sh run
 or let it autostart at login — `~/.config/autostart/yufa-listener.desktop` is
 installed. Stop with Ctrl+C (foreground) or `yufa-listener.sh stop`.
 
+The **sniffer** (yufa-mt chat capture) is a separate keep-alive wrapper,
+`run-sniffer.sh`, also autostarted via `~/.config/autostart/yufa-sniffer.desktop`.
+It runs the binary in chat-only mode (`CHAT_CAPTURE_ONLY=1`) and logs to
+`~/.local/state/yufa-listener/sniffer.log`. The binary needs `CAP_NET_RAW`:
+
+```bash
+sudo setcap cap_net_raw,cap_net_admin=eip <repo>/yufa-mt
+```
+
+## Portability — running on another computer
+
+Almost everything **auto-detects**, so the scripts are not tied to this machine:
+
+| Auto-detected | From |
+|---|---|
+| `LUTRIS_GAME_ID` | `lutris -l -j`, matched to the RO game by slug |
+| `GAME_DIR` / `GAME_EXE` / `WINEPREFIX_DIR` | the Lutris game's `.yml` |
+| `GAME_PROC` | exe basename |
+| `PROTONPATH` | newest `GE-Proton*` in `compatibilitytools.d` |
+| `UMU_RUN` | lutris runtime path or `$PATH` |
+| `REAL_DISPLAY` | `$DISPLAY` (fallback `:0`) |
+| `CHAT_CAPTURE_DEVICE` | default-route NIC (in `run-sniffer.sh`) |
+| repo path | derived from the script's own location |
+
+What you still set **per machine** (none are guessable):
+
+1. `credentials.env` — `YUFA_PASS`, `YUFA_PIN` (and a one-time manual login as the
+   account so "Salvar Login" remembers it in that wine prefix).
+2. `sudo setcap …` on the `yufa-mt` binary (one command, for packet capture).
+3. `CHAT_CAPTURE_PORT` in `config.env` if the server's game port isn't `6121`
+   (find it in-game: `ss -tn | grep <exe>` → the foreign port).
+
+If detection guesses wrong, override any value in `config.env`
+(see `config.env.example`). Match a different RO client with `GAME_EXE_PATTERN`.
+
 ### `RUN_MODE=headless` — does NOT work for login (kept for record)
 
 Fully headless via Xvfb + openbox + umu-run (wined3d) reaches the login screen

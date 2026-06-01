@@ -22,30 +22,69 @@ set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-# --- Run mode ----------------------------------------------------------------
-# headless = Xvfb + openbox + auto-login (blocked: client ignores synthetic
-#            keyboard input, so this can't type the password). Kept for record.
-# real     = launch the client on the real X display via lutris and keep it
-#            alive; you log in once with your real keyboard (RO sessions last
-#            hours). This is the working mode.
-: "${RUN_MODE:=headless}"
-: "${REAL_DISPLAY:=:0}"                 # real X display used in real mode
-: "${LUTRIS_GAME_ID:=4}"                # `lutris -l -j` id (4 = ragnarok-online-1)
+# --- Paths & user config -----------------------------------------------------
+# Source user overrides FIRST so they win and we skip auto-detection for any
+# value you set explicitly. Nothing below is hardcoded to one machine.
+CONFIG_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/yufa-listener"
+STATE_DIR="${XDG_STATE_HOME:-$HOME/.local/state}/yufa-listener"
+LOG_FILE="$STATE_DIR/listener.log"
+XVFB_PID_FILE="$STATE_DIR/xvfb.pid"
+WM_PID_FILE="$STATE_DIR/wm.pid"
+[ -f "$CONFIG_DIR/config.env" ]      && . "$CONFIG_DIR/config.env"
+[ -f "$CONFIG_DIR/credentials.env" ] && . "$CONFIG_DIR/credentials.env"
 
-# --- Defaults (override in ~/.config/yufa-listener/config.env) ---------------
+# --- Auto-detection (only fills values not set in config.env) ----------------
+# Which Lutris game is the RO client (matched on the exe path in its .yml).
+: "${GAME_EXE_PATTERN:=Projeto_Yufa|[Rr]agexe|[Rr]agnarok}"
+_LUTRIS_GAMES_DIR="$HOME/.local/share/lutris/games"
+_LUTRIS_SLUG=""
+
+# Read GAME_EXE/WINEPREFIX_DIR/GAME_DIR + slug from the matching Lutris .yml.
+detect_from_lutris_yml() {
+  local f
+  f="$(grep -lE "exe:.*(${GAME_EXE_PATTERN})" "$_LUTRIS_GAMES_DIR"/*.yml 2>/dev/null | xargs -r ls -t 2>/dev/null | head -1)"
+  [ -z "$f" ] && return 1
+  _yval() { sed -n "s/^[[:space:]]*$1:[[:space:]]*//p" "$f" | head -1; }
+  [ -z "${GAME_EXE:-}" ]       && GAME_EXE="$(_yval exe)"
+  [ -z "${WINEPREFIX_DIR:-}" ] && WINEPREFIX_DIR="$(_yval prefix)"
+  [ -z "${GAME_DIR:-}" ]       && GAME_DIR="$(_yval working_dir)"
+  _LUTRIS_SLUG="$(basename "$f" .yml | sed 's/-[0-9]\{6,\}$//')"
+}
+detect_lutris_id() {  # map slug -> numeric id via `lutris -l -j`
+  command -v lutris >/dev/null 2>&1 && command -v python3 >/dev/null 2>&1 || return 0
+  lutris -l -j 2>/dev/null | python3 -c "import sys,json
+try: print(next((g['id'] for g in json.load(sys.stdin) if g.get('slug')=='$_LUTRIS_SLUG'),''))
+except Exception: pass" 2>/dev/null
+}
+detect_proton() { ls -d "$HOME/.local/share/Steam/compatibilitytools.d"/GE-Proton* 2>/dev/null | sort -V | tail -1; }
+detect_umu() { local p; for p in "$HOME/.local/share/lutris/runtime/umu/umu-run" "$(command -v umu-run 2>/dev/null)"; do [ -n "$p" ] && [ -x "$p" ] && { echo "$p"; return; }; done; }
+detect_nic() { ip route show default 2>/dev/null | awk '{for(i=1;i<=NF;i++) if($i=="dev"){print $(i+1);exit}}'; }
+
+detect_from_lutris_yml || true
+
+# --- Run mode ----------------------------------------------------------------
+# real     = launch the client on the real X display via lutris; you log in once
+#            with your real keyboard (the working mode).
+# headless = Xvfb + openbox + auto-login — does NOT work (client ignores
+#            synthetic keyboard input); kept for record.
+: "${RUN_MODE:=real}"
+: "${REAL_DISPLAY:=${DISPLAY:-:0}}"     # real X display used in real mode
+: "${LUTRIS_GAME_ID:=$(detect_lutris_id)}"
+
+# --- Client identity (auto-detected from Lutris; override in config.env) ------
+: "${GAME_DIR:=$HOME/Downloads/Projeto Yufa}"
+: "${GAME_EXE:=$GAME_DIR/Projeto_Yufa.exe}"
+: "${WINEPREFIX_DIR:=$GAME_DIR/wine_prefix_2}"
+: "${GAME_PROC:=$(basename "$GAME_EXE")}"   # process name tracked for liveness
+: "${WINDOW_NAME:=Gepard Shield}"           # xdotool window-name regex (headless)
+
+# --- Proton / umu-run (auto-detected) ----------------------------------------
+: "${UMU_RUN:=$(detect_umu)}"
+: "${PROTONPATH:=$(detect_proton)}"
+
+# --- Headless display ---------------------------------------------------------
 : "${DISPLAY_NUM:=:99}"                 # virtual display to create
 : "${SCREEN_GEOMETRY:=640x480x16}"      # Xvfb -screen 0 geometry (low = light)
-: "${GAME_PROC:=Projeto_Yufa.exe}"      # process name to track for liveness
-: "${WINDOW_NAME:=Gepard Shield}"       # xdotool --name regex for the client window
-: "${GAME_DIR:=/home/dns/Downloads/Projeto Yufa}"
-
-# Launch is done directly through umu-run (NOT lutris): lutris resets DISPLAY
-# to the real :0 and drops PROTON_USE_WINED3D, so the client never lands on the
-# headless display. umu-run honours the environment we set.
-: "${UMU_RUN:=$HOME/.local/share/lutris/runtime/umu/umu-run}"
-: "${PROTONPATH:=$HOME/.local/share/Steam/compatibilitytools.d/GE-Proton10-34}"
-: "${WINEPREFIX_DIR:=$GAME_DIR/wine_prefix_2}"
-: "${GAME_EXE:=$GAME_DIR/Projeto_Yufa.exe}"
 
 # A minimal window manager (openbox) runs on the display so the client window
 # gets *activated* — RO's text fields only accept keyboard input when the window
@@ -98,19 +137,6 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # headless: Xvfb's Intel Vulkan has no X11 presentable surface, so DXVK can't
 # create a window; wined3d (D3D9 -> OpenGL -> llvmpipe) renders fine.
 : "${EXTRA_ENV:=PROTON_USE_WINED3D=1}"
-
-# --- Paths -------------------------------------------------------------------
-CONFIG_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/yufa-listener"
-STATE_DIR="${XDG_STATE_HOME:-$HOME/.local/state}/yufa-listener"
-LOG_FILE="$STATE_DIR/listener.log"
-XVFB_PID_FILE="$STATE_DIR/xvfb.pid"
-WM_PID_FILE="$STATE_DIR/wm.pid"
-
-[ -f "$CONFIG_DIR/config.env" ]      && . "$CONFIG_DIR/config.env"
-[ -f "$CONFIG_DIR/credentials.env" ] && . "$CONFIG_DIR/credentials.env"
-
-# Resolve the PIN after credentials are sourced (YUFA_PIN lives there).
-PIN_CODE="${PIN_CODE:-${YUFA_PIN:-}}"
 
 mkdir -p "$STATE_DIR"
 
