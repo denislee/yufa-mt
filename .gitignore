@@ -43,3 +43,5 @@ pwd.txt
 all.txt
 
 yufa-mt
+# Compiled server binary (built from ./cmd/server)
+/server
