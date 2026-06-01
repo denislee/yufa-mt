@@ -59,15 +59,46 @@ What you still set **per machine** (none are guessable):
 If detection guesses wrong, override any value in `config.env`
 (see `config.env.example`). Match a different RO client with `GAME_EXE_PATTERN`.
 
-### `RUN_MODE=headless` — does NOT work for login (kept for record)
+### `RUN_MODE=headless` — still does NOT work for login, but the reason changed
 
-Fully headless via Xvfb + openbox + umu-run (wined3d) reaches the login screen
-and the rendering/launch pipeline all works — **but the client ignores synthetic
-keyboard input** (it reads the keyboard via DirectInput / real hardware only), so
-the password can't be typed. Mouse clicks work; keystrokes do not. `xdotool`
-(XTEST) and `ydotool` (uinput, can't reach Xvfb) both fail for keys, even with
-the window focused and activated by openbox. VNC wouldn't help either (it injects
-via XTEST). So unattended headless login is not achievable with this client.
+The rendering/launch pipeline works fully headless and reaches the login screen.
+Earlier this section claimed the blocker was synthetic keyboard input. That was
+only half right — and only true for XTEST/Xvfb. The real findings:
+
+**Keyboard input CAN be injected** — on the real Wayland (sway) seat, not Xvfb.
+`ydotool` writes to the kernel `uinput`/evdev layer, so its keystrokes look like
+real hardware to libinput → the compositor → Xwayland → the client, and the
+client accepts them. (`xdotool`/XTEST keystrokes are rejected; that's the
+limitation originally documented.) Verified end-to-end: launching the client on a
+runtime `swaymsg create_output` headless output and driving the whole login UI —
+server-select, password field, dialogs — entirely with `ydotool key`/`type`.
+Requires `ydotoold` running as root (`/dev/uinput` is root-only):
+`sudo ydotoold -p /tmp/.ydotool_socket -o 1000:1000`.
+
+**Mouse clicks do NOT register** via any method tried — `xdotool` (XTEST),
+`ydotool` (uinput `BTN_LEFT`), or `swaymsg seat - cursor press`. The client
+reads the mouse through DirectInput bound to the physical device and ignores the
+virtual one (it renders no cursor of its own). Login was still possible because
+every screen is keyboard-drivable: `Enter` confirms dialogs, the password field
+auto-focuses, and the saved account ("Salvar Login") pre-fills the ID — which is
+itself stored in the wine registry under
+`[Software\Wow6432Node\Gravity Soft\Ragnarok]` `"ID"=`, so a different remembered
+account can be swapped in there (the client rewrites its token blob each run).
+
+**The actual blocker is Gepard, at the connection handshake.** With a patched,
+up-to-date client (run `#Patch Projeto Yufa - ABRA POR AQUI.exe` first — an
+outdated client fails to connect at all) and correct credentials, the client
+*does* reach the login server (`ESTAB` to its `:7900`), but the connection is
+immediately dropped and it shows *"Não foi possível conectar-se ao servidor."*
+A manual login with the laptop's real keyboard connects fine, so Gepard accepts
+the genuine client and is rejecting only this automated/headless path — most
+likely because it detects the `ydotoold` virtual input device (anti-cheats flag
+input-automation tooling). That's a catch-22: the very tool that lets us type
+headlessly is what Gepard refuses. Killing `ydotoold` at submit time didn't help.
+
+So unattended headless login is still not achievable — not for lack of input
+injection (solved), but because Gepard Shield rejects the connection. Getting
+past that needs the private/paid bypasses this project deliberately avoids.
 
 ## Why a client at all (not a bot)
 
