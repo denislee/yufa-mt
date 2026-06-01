@@ -115,6 +115,14 @@ detect_from_lutris_yml || true
 : "${YDOTOOL_SOCKET:=/tmp/.ydotool_socket}"  # ydotoold socket (start it as root)
 : "${RTEST_FOCUS_DELAY:=6}"             # seconds to click/focus the login window first
 
+# --- Real-mode unattended login (ydotool) ------------------------------------
+# With the MITM proxy (scripts/listener/mitm) handling the PIN + char-select,
+# ydotool only needs to clear the startup dialogs and type the password. Off by
+# default (you log in by hand); set AUTO_LOGIN=1 for hands-free relogin.
+: "${AUTO_LOGIN:=0}"
+: "${AUTO_LOGIN_PRE_ENTERS:=2}"  # Enters to dismiss the Lua error + proxy selector before the password
+: "${AUTO_LOGIN_DIALOG_WAIT:=3}" # seconds between those Enters
+
 # The client shows a modal Lua popup on startup ("HatEFID nil") and may show
 # others after login. We dismiss any non-main/non-IME window this many times.
 : "${DISMISS_DIALOGS:=4}"
@@ -468,6 +476,35 @@ auto_login_ydotool() {
   report_connection
 }
 
+# Real-mode unattended login via ydotool. The MITM proxy enters the PIN and
+# selects the character, so here we only clear the startup dialogs and type the
+# password. ydotool injects at the kernel uinput layer, so the client must be the
+# focused window on the seat (it grabs focus on launch). Timings are speed-
+# dependent — calibrate with `shot` / the AUTO_LOGIN_* knobs if it stalls.
+auto_login_real() {
+  need ydotool
+  [ -n "${YUFA_PASS:-}" ] || die "YUFA_PASS not set (put it in $CONFIG_DIR/credentials.env)"
+  ydotoold_ready || die "ydotoold socket '$YDOTOOL_SOCKET' not found. Start it as root (uinput is root-only):
+    sudo ydotoold -p \"$YDOTOOL_SOCKET\" -o $(id -u):$(id -g)"
+
+  log "AUTO_LOGIN: settling ${SETTLE_AFTER_WINDOW}s for the client to reach the login screen"
+  sleep "$SETTLE_AFTER_WINDOW"
+
+  local i
+  for i in $(seq 1 "$AUTO_LOGIN_PRE_ENTERS"); do
+    log "AUTO_LOGIN: clearing startup dialog $i/$AUTO_LOGIN_PRE_ENTERS (Enter)"
+    ydo_enter; sleep "$AUTO_LOGIN_DIALOG_WAIT"
+  done
+
+  log "AUTO_LOGIN: typing password (Salvar Login pre-fills the ID; the password field auto-focuses)"
+  ydo type --key-delay "$KEY_DELAY_MS" "$YUFA_PASS"; ydo_enter
+  sleep "$WAIT_AFTER_LOGIN"
+
+  log "AUTO_LOGIN: confirming server select (Enter); PIN + char-select are handled by the MITM proxy"
+  ydo_enter
+  log "AUTO_LOGIN: sequence sent — the proxy will auto-enter the PIN and select the character."
+}
+
 # --- Monitor / cleanup -------------------------------------------------------
 cleanup() {
   log "Cleaning up..."
@@ -496,9 +533,13 @@ cmd_run() {
     # systemd env for the :0 session. Run it inside your graphical session.
     while true; do
       launch_client_lutris
-      log "Client up on $REAL_DISPLAY. Log in (password + PIN) with your keyboard; it stays connected."
+      if [ "$AUTO_LOGIN" = 1 ]; then
+        auto_login_real     # types the password; the MITM proxy does PIN + char-select
+      else
+        log "Client up on $REAL_DISPLAY. Log in (password) with your keyboard; the MITM proxy handles the PIN."
+      fi
       monitor
-      log "Client exited; relaunching in 10s (you'll need to log in again)."
+      log "Client exited; relaunching in 10s."
       sleep 10
     done
   fi
@@ -529,7 +570,8 @@ cmd_env() {
            WAIT_FOR_WINDOW SETTLE_AFTER_WINDOW WAIT_AFTER_LOGIN WAIT_BEFORE_PIN \
            WAIT_BEFORE_CHARSELECT WAIT_MAP_LOAD KEY_DELAY_MS DISMISS_DIALOGS \
            WINDOW_PIN_XY LOGIN_ID_CLICK LOGIN_PW_CLICK LOGIN_BUTTON_CLICK \
-           PIN_CLICK CHAR_SELECT_CLICK EXTRA_ENV YDOTOOL_SOCKET RTEST_FOCUS_DELAY; do
+           PIN_CLICK CHAR_SELECT_CLICK EXTRA_ENV YDOTOOL_SOCKET RTEST_FOCUS_DELAY \
+           AUTO_LOGIN AUTO_LOGIN_PRE_ENTERS AUTO_LOGIN_DIALOG_WAIT; do
     printf '%-22s = %s\n' "$v" "${!v}"
   done
   printf '%-22s = %s\n' "YUFA_USER" "${YUFA_USER:+<set>}"

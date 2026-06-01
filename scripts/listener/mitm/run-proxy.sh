@@ -21,13 +21,14 @@
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-CONFIG_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/yufa-listener"
-STATE_DIR="${XDG_STATE_HOME:-$HOME/.local/state}/yufa-listener"
-# When run via sudo, $HOME is root's; prefer the invoking user's config.
-if [ -n "${SUDO_USER:-}" ]; then
-  USER_HOME="$(getent passwd "$SUDO_USER" | cut -d: -f6)"
-  CONFIG_DIR="${USER_HOME}/.config/yufa-listener"
-  STATE_DIR="${USER_HOME}/.local/state/yufa-listener"
+# Config/state dirs: honor values pre-set in the environment (the systemd unit
+# sets CONFIG_DIR so a root service reads the right user's credentials, not
+# root's). Otherwise derive from the invoking user (under sudo $HOME is root's).
+if [ -z "${CONFIG_DIR:-}" ] || [ -z "${STATE_DIR:-}" ]; then
+  _base_home="$HOME"
+  [ -n "${SUDO_USER:-}" ] && _base_home="$(getent passwd "$SUDO_USER" | cut -d: -f6)"
+  : "${CONFIG_DIR:=${XDG_CONFIG_HOME:-$_base_home/.config}/yufa-listener}"
+  : "${STATE_DIR:=${XDG_STATE_HOME:-$_base_home/.local/state}/yufa-listener}"
 fi
 [ -f "$CONFIG_DIR/credentials.env" ] && . "$CONFIG_DIR/credentials.env"
 [ -f "$CONFIG_DIR/config.env" ] && . "$CONFIG_DIR/config.env"

@@ -46,19 +46,29 @@ Key properties:
   redirect deliberately skips root-owned traffic so the proxy's own upstream
   connection isn't redirected back into itself.
 
+## Status — verified live ✓
+
+Confirmed end-to-end against the real client and server: the proxy injected the
+PIN **and** the char-select, and the client advanced all the way into the zone
+(`:6121`, in-game) with **no clicks**. The slot digits were accepted by the live
+server, validating the shuffle against a real account (not just the captures).
+The Pico mouse is no longer needed.
+
 ## Use
 
 ```bash
-# PIN from env or ~/.config/yufa-listener/credentials.env (YUFA_PIN)
-sudo PIN=1122 scripts/listener/mitm/run-proxy.sh
+# PIN from env or ~/.config/yufa-listener/credentials.env (YUFA_PIN).
+# SELECT_SLOT=0 also auto-picks the first character after the PIN.
+sudo SELECT_SLOT=0 scripts/listener/mitm/run-proxy.sh
 ```
 
-Then launch / relogin the client (`yufa-listener.sh run`). When it reaches the
-PIN dialog, the proxy injects it automatically; you'll see a log line like:
+Then launch / relogin the client (`yufa-listener.sh run`), type the password, and
+reach the PIN screen — the proxy does the rest. Log lines:
 
 ```
-[1] AID = 2008669 (0x1ea65d)
-[1] PIN injected: seed=220 (0xdc) -> slots "4545" (0x08b8 b8085da61e0034353435)
+[1] AID = 2009572 (0x1ea9e4)
+[1] PIN injected: seed=60253 (0xeb5d) -> slots "3388" (0x08b8 b808e4a91e0033333838)
+[1] PIN accepted (state=0); char-select injected: slot 0 (0x0066 660000)
 ```
 
 `Ctrl+C` removes the iptables rules (always, via an EXIT trap).
@@ -67,33 +77,41 @@ PIN dialog, the proxy injects it automatically; you'll see a log line like:
 | Var | Default | Meaning |
 |---|---|---|
 | `PIN` / `YUFA_PIN` | — | your real PIN (required to inject) |
+| `SELECT_SLOT` | off | also inject `CH_SELECT_CHAR` for this slot after the PIN (`0` = first char) |
 | `CHAR_PORT` | `7121` | char-server port carrying `0x08b9`/`0x08b8` |
 | `PROXY_PORT` | `7799` | local port the redirect delivers to |
 | `SERVER_IP` | auto/any | narrow the redirect to one server IP (auto-detected from a live connection if possible) |
 | `INJECT` | `1` | `0` = pure transparent relay (debug/capture, no injection) |
 
+## Run as a persistent service (survives reboots)
+
+The proxy needs root (iptables), so it can't be a user autostart. Install it as a
+root systemd service instead:
+
+```bash
+sudo SELECT_SLOT=0 scripts/listener/mitm/install-service.sh   # build + enable + start
+sudo scripts/listener/mitm/install-service.sh uninstall       # remove
+journalctl -u yufa-mitm-proxy -f                              # logs
+```
+
+It builds the binary as your user, writes `/etc/systemd/system/yufa-mitm-proxy.service`
+(pointing at your `credentials.env`), and enables it. Use **either** the service
+**or** a manual `run-proxy.sh` — not both (they'd add duplicate iptables rules).
+
+## Full hands-free pipeline
+
+1. **Proxy** — the service above (or `run-proxy.sh`), always up.
+2. **Client login** — `AUTO_LOGIN=1 yufa-listener.sh run` types the password via
+   `ydotool` and clears the startup dialogs; the proxy handles PIN + char-select.
+   (Needs `ydotoold` running as root; calibrate `AUTO_LOGIN_*` timings on first run.)
+3. **Sniffer** — `run-sniffer.sh` captures cleartext chat on `:6121` into the DB.
+
 ## Test without the game
 
 ```bash
-go run proxy.go selftest      # 15 captured sessions reproduce their sent slots
+go run proxy.go selftest      # 15 captured sessions reproduce their sent slots + builders
 ```
-A loopback functional test (fake char server + client, fixed `UPSTREAM`) lives in
-the commit history of this work; set `UPSTREAM=ip:port` to run the proxy against
-any fixed target without iptables.
-
-## The one thing to confirm live
-
-This relies on the client closing the keypad when it receives an *unsolicited*
-`0x08b9 state=0` (it didn't itself send `0x08b8`). That's the expected behavior —
-the handler switches on the state field — but it hasn't been verified against
-this exact client build. First run: watch whether the client advances to
-char-select after the "PIN injected" log line.
-
-- **If it advances** → done; login is now fully unattended (keyboard via ydotool
-  + this proxy for the PIN). No Pico needed.
-- **If it doesn't** (ignores the OK because no local click happened) → fall back
-  to the [../pico-hid/](../pico-hid/) mouse, using `../pinpad/` to know which
-  slots to click. The proxy is still useful as `INJECT=0` for live capture.
+Set `UPSTREAM=ip:port` to run the proxy against any fixed target without iptables.
 
 ## Scope / honesty
 
