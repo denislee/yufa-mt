@@ -13,8 +13,11 @@ GAME_DIR="${GAME_DIR:-/home/dns/Downloads/Projeto Yufa}"
 
 echo "==> Checking dependencies"
 missing=()
-for c in Xvfb lutris import; do command -v "$c" >/dev/null 2>&1 || missing+=("$c"); done
+for c in Xvfb import; do command -v "$c" >/dev/null 2>&1 || missing+=("$c"); done
 command -v xdotool >/dev/null 2>&1 || missing+=("xdotool (sudo pacman -S xdotool)")
+UMU="${UMU_RUN:-$HOME/.local/share/lutris/runtime/umu/umu-run}"
+[ -x "$UMU" ] || missing+=("umu-run (expected at $UMU)")
+command -v lutris >/dev/null 2>&1 || echo "   note: lutris not found (only needed for the one-time saved-login step)"
 if [ "${#missing[@]}" -gt 0 ]; then
   printf '   MISSING: %s\n' "${missing[@]}"
   echo "   Install the missing packages, then re-run this script."

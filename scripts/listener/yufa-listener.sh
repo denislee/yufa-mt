@@ -23,28 +23,62 @@ set -uo pipefail
 # --- Defaults (override in ~/.config/yufa-listener/config.env) ---------------
 : "${DISPLAY_NUM:=:99}"                 # virtual display to create
 : "${SCREEN_GEOMETRY:=640x480x16}"      # Xvfb -screen 0 geometry (low = light)
-: "${LUTRIS_GAME_ID:=4}"                # `lutris -l -j` id (4 = ragnarok-online-1, wine_prefix_2)
 : "${GAME_PROC:=Projeto_Yufa.exe}"      # process name to track for liveness
-: "${WINDOW_NAME:=Ragnarok}"            # xdotool --name regex for the client window
+: "${WINDOW_NAME:=Gepard Shield}"       # xdotool --name regex for the client window
 : "${GAME_DIR:=/home/dns/Downloads/Projeto Yufa}"
+
+# Launch is done directly through umu-run (NOT lutris): lutris resets DISPLAY
+# to the real :0 and drops PROTON_USE_WINED3D, so the client never lands on the
+# headless display. umu-run honours the environment we set.
+: "${UMU_RUN:=$HOME/.local/share/lutris/runtime/umu/umu-run}"
+: "${PROTONPATH:=$HOME/.local/share/Steam/compatibilitytools.d/GE-Proton10-34}"
+: "${WINEPREFIX_DIR:=$GAME_DIR/wine_prefix_2}"
+: "${GAME_EXE:=$GAME_DIR/Projeto_Yufa.exe}"
 
 # Login timing knobs (seconds). Tune with the `login`/`shot` subcommands.
 : "${WAIT_FOR_WINDOW:=180}"             # max time to wait for the window to appear
-: "${SETTLE_AFTER_WINDOW:=45}"          # Gepard init + reach the login screen
-: "${WAIT_AFTER_LOGIN:=12}"             # login server -> server select
-: "${WAIT_BEFORE_CHARSELECT:=6}"        # server select -> character select
+: "${SETTLE_AFTER_WINDOW:=25}"          # initial Gepard init wait before polling
+: "${LOGIN_READY_TRIES:=40}"            # poll iterations (x2s) waiting for the login window
+: "${WAIT_AFTER_LOGIN:=10}"             # login -> PIN/char-select screen
+: "${WAIT_BEFORE_PIN:=4}"               # settle before typing the PIN
+: "${WAIT_BEFORE_CHARSELECT:=6}"        # PIN -> character select
 : "${WAIT_MAP_LOAD:=25}"                # character select -> in-game/map loaded
-: "${KEY_DELAY_MS:=60}"                 # per-keystroke delay while typing
+: "${KEY_DELAY_MS:=70}"                 # per-keystroke delay while typing
 
-# Optional mouse clicks (set "X,Y" to enable). Most classic clients focus the
-# ID field on launch and accept Enter on server/char select, so these are off
-# by default. Use the calibration screenshot to find coordinates if needed.
-: "${LOGIN_FIELD_CLICK:=}"              # e.g. 320,210  (click ID field before typing)
-: "${CHAR_SELECT_CLICK:=}"             # e.g. 110,180  (click the character slot)
+# The client shows a modal Lua popup on startup ("HatEFID nil") and may show
+# others after login. We dismiss any non-main/non-IME window this many times.
+: "${DISMISS_DIALOGS:=4}"
 
-# Extra environment passed to the Lutris launch (rendering fallbacks, etc.).
-# If the client fails to render under Xvfb, try: EXTRA_ENV="PROTON_USE_WINED3D=1"
-: "${EXTRA_ENV:=}"
+# OK button of the startup Lua popup (when window-centered at 640x480). Clicked
+# as a fallback if focusing the dialog window doesn't dismiss it.
+: "${DIALOG_OK_CLICK:=322,265}"
+
+# The window is pinned to 0,0 before we touch the form so absolute click coords
+# are deterministic (there is no window manager to place it). Coordinates below
+# are window-relative-from-0,0 at 640x480; re-tune with `shot` if you change
+# SCREEN_GEOMETRY. RO's custom UI ignores Tab/Ctrl+A, so we click each field and
+# clear it with BackSpace. Empty value -> skip that click.
+: "${WINDOW_PIN_XY:=0,0}"               # where to pin the client window (empty -> don't move)
+: "${LOGIN_ID_CLICK:=281,305}"          # ID / account field
+: "${LOGIN_PW_CLICK:=285,328}"          # password field
+: "${LOGIN_BUTTON_CLICK:=420,308}"      # the big Login button (empty -> press Return)
+: "${PIN_CLICK:=}"                     # PIN field, if it needs a focus click (optional)
+: "${CHAR_SELECT_CLICK:=}"             # character slot before Enter (optional)
+
+# Saved-login mode. The client's "Salvar Login" feature remembers the account
+# and locks the ID field, so blind typing into it is ignored. With this on we
+# DON'T touch the ID field — we rely on the remembered account and only fill the
+# password (+ PIN). Requires logging in once manually as the desired account in
+# this wine prefix with "Salvar Login" checked. Set to 0 to type the ID instead.
+: "${USE_SAVED_LOGIN:=1}"
+
+# Character-select PIN. Put the real value as YUFA_PIN in credentials.env.
+: "${PIN_CODE:=${YUFA_PIN:-}}"
+
+# Extra environment for the umu-run launch. PROTON_USE_WINED3D=1 is required
+# headless: Xvfb's Intel Vulkan has no X11 presentable surface, so DXVK can't
+# create a window; wined3d (D3D9 -> OpenGL -> llvmpipe) renders fine.
+: "${EXTRA_ENV:=PROTON_USE_WINED3D=1}"
 
 # --- Paths -------------------------------------------------------------------
 CONFIG_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/yufa-listener"
@@ -55,6 +89,9 @@ XVFB_PID_FILE="$STATE_DIR/xvfb.pid"
 [ -f "$CONFIG_DIR/config.env" ]      && . "$CONFIG_DIR/config.env"
 [ -f "$CONFIG_DIR/credentials.env" ] && . "$CONFIG_DIR/credentials.env"
 
+# Resolve the PIN after credentials are sourced (YUFA_PIN lives there).
+PIN_CODE="${PIN_CODE:-${YUFA_PIN:-}}"
+
 mkdir -p "$STATE_DIR"
 
 log() { printf '%s [listener] %s\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$*" | tee -a "$LOG_FILE" >&2; }
@@ -63,16 +100,19 @@ die() { log "FATAL: $*"; exit 1; }
 need() { command -v "$1" >/dev/null 2>&1 || die "missing dependency: $1 (see scripts/listener/README.md)"; }
 
 # --- Xvfb lifecycle ----------------------------------------------------------
-xvfb_running() {
-  local n="${DISPLAY_NUM#:}"
-  [ -e "/tmp/.X${n}-lock" ] && return 0
-  return 1
-}
+# Reuse only a display that actually answers; a bare lock file means a dead
+# server (reusing that is what cascaded the earlier failures).
+xvfb_responding() { DISPLAY="$DISPLAY_NUM" xdotool getdisplaygeometry >/dev/null 2>&1; }
 
 start_xvfb() {
-  if xvfb_running; then
-    log "Xvfb already present on $DISPLAY_NUM, reusing it."
+  if xvfb_responding; then
+    log "Xvfb already responding on $DISPLAY_NUM, reusing it."
     return 0
+  fi
+  local n="${DISPLAY_NUM#:}"
+  if [ -e "/tmp/.X${n}-lock" ]; then
+    log "Removing stale X lock for $DISPLAY_NUM (no live server)"
+    rm -f "/tmp/.X${n}-lock" "/tmp/.X11-unix/X${n}" 2>/dev/null
   fi
   need Xvfb
   log "Starting Xvfb on $DISPLAY_NUM ($SCREEN_GEOMETRY)"
@@ -101,13 +141,22 @@ stop_xvfb() {
 game_pid() { pgrep -f "$GAME_PROC" | head -1; }
 
 launch_client() {
-  need lutris
-  log "Launching client via Lutris (game id $LUTRIS_GAME_ID) on $DISPLAY_NUM"
-  # shellcheck disable=SC2086
-  env DISPLAY="$DISPLAY_NUM" $EXTRA_ENV \
-      lutris "lutris:rungameid/$LUTRIS_GAME_ID" >>"$LOG_FILE" 2>&1 &
-  LUTRIS_PID=$!
-  log "Lutris launcher pid $LUTRIS_PID; waiting up to ${WAIT_FOR_WINDOW}s for '$GAME_PROC'"
+  [ -x "$UMU_RUN" ] || die "umu-run not found/executable at $UMU_RUN"
+  [ -d "$PROTONPATH" ] || die "Proton not found at $PROTONPATH"
+  [ -f "$GAME_EXE" ] || die "game exe not found at $GAME_EXE"
+  log "Launching client via umu-run on $DISPLAY_NUM (wined3d)"
+  (
+    cd "$GAME_DIR" || exit 1
+    # shellcheck disable=SC2086
+    exec env DISPLAY="$DISPLAY_NUM" \
+        WINEPREFIX="$WINEPREFIX_DIR" \
+        GAMEID=0 STORE=none \
+        PROTONPATH="$PROTONPATH" \
+        $EXTRA_ENV \
+        "$UMU_RUN" "$GAME_EXE"
+  ) >>"$LOG_FILE" 2>&1 &
+  LAUNCH_PID=$!
+  log "umu launcher pid $LAUNCH_PID; waiting up to ${WAIT_FOR_WINDOW}s for '$GAME_PROC'"
   local i
   for i in $(seq 1 "$WAIT_FOR_WINDOW"); do
     [ -n "$(game_pid)" ] && { log "Client process up (pid $(game_pid))."; return 0; }
@@ -134,41 +183,122 @@ click_at() {  # "X,Y"
   sleep 0.4
 }
 
+# Pin the client window to a known position so click coords are deterministic
+# (no WM places it). windowactivate needs _NET_ACTIVE_WINDOW which Xvfb lacks,
+# so we use windowraise + windowfocus. Echoes the wid.
+pin_window() {
+  local wid; wid="$(find_window)"
+  [ -z "$wid" ] && return 0
+  if [ -n "$WINDOW_PIN_XY" ]; then
+    xdo windowmove "$wid" "${WINDOW_PIN_XY%,*}" "${WINDOW_PIN_XY#*,}" 2>/dev/null
+  fi
+  xdo windowraise "$wid" 2>/dev/null
+  xdo windowfocus "$wid" 2>/dev/null
+  echo "$wid"
+}
+
+# Modal popups are mapped, named windows that are neither the main client
+# window nor an IME/Input helper.
+dialog_wids() {
+  local w n
+  for w in $(xdo search --all --maxdepth 99 --name '.' 2>/dev/null); do
+    n="$(xdo getwindowname "$w" 2>/dev/null)"
+    case "$n" in ''|*Gepard*|*IME*|Input) continue ;; esac
+    echo "$w"
+  done
+}
+
+# Dismiss any popups present right now (focus + Return, plus an OK-coord click
+# fallback). Returns 0 if at least one popup was found.
+dismiss_dialogs_once() {
+  local any="" w
+  for w in $(dialog_wids); do
+    any=1
+    xdo windowraise "$w" 2>/dev/null; xdo windowfocus "$w" 2>/dev/null
+    xdo key --clearmodifiers Return; xdo key --clearmodifiers space
+  done
+  if [ -n "$any" ] && [ -n "$DIALOG_OK_CLICK" ]; then
+    xdo mousemove --sync "${DIALOG_OK_CLICK%,*}" "${DIALOG_OK_CLICK#*,}"; xdo click 1
+  fi
+  [ -n "$any" ]
+}
+
+# Poll until the main login window appears, clearing the startup popup(s) that
+# block it. The Gepard window only maps after the Lua popup is dismissed, so its
+# presence is our "login screen ready" signal. Echoes the wid (empty on timeout).
+wait_login_ready() {
+  local t wid
+  for t in $(seq 1 "$LOGIN_READY_TRIES"); do
+    wid="$(find_window)"
+    [ -n "$wid" ] && { echo "$wid"; return 0; }
+    dismiss_dialogs_once
+    sleep 2
+  done
+  echo ""
+}
+
+clear_field() {  # RO custom fields ignore Ctrl+A; clear with End + BackSpace
+  xdo key --clearmodifiers End
+  local i; for i in $(seq 1 28); do xdo key --clearmodifiers BackSpace; done
+}
+
+type_field() {  # "X,Y" "text" — click field, clear it, type
+  local xy="$1" text="$2"; [ -z "$xy" ] && return 0
+  xdo mousemove --sync "${xy%,*}" "${xy#*,}"; xdo click 1; sleep 0.3
+  clear_field
+  xdo type --clearmodifiers --delay "$KEY_DELAY_MS" "$text"; sleep 0.3
+}
+
 auto_login() {
   need xdotool
   [ -n "${YUFA_USER:-}" ] || die "YUFA_USER not set (put it in $CONFIG_DIR/credentials.env)"
   [ -n "${YUFA_PASS:-}" ] || die "YUFA_PASS not set (put it in $CONFIG_DIR/credentials.env)"
 
-  log "Waiting ${SETTLE_AFTER_WINDOW}s for Gepard init + login screen"
+  log "Initial settle ${SETTLE_AFTER_WINDOW}s, then polling for the login window"
   sleep "$SETTLE_AFTER_WINDOW"
 
-  local wid; wid="$(find_window)"
+  # Dismiss the startup Lua modal ("HatEFID nil") — which blocks and delays the
+  # main window — until the login window actually appears.
+  local wid; wid="$(wait_login_ready)"
   if [ -n "$wid" ]; then
-    log "Focusing client window $wid"
-    xdo windowactivate --sync "$wid" 2>/dev/null
-    xdo windowfocus "$wid" 2>/dev/null
-    # a click in the window guarantees Wine gives it input focus (no WM running)
-    xdo windowsize "$wid" >/dev/null 2>&1
-    local geo w h; geo="$(xdo getdisplaygeometry)"; w="${geo% *}"; h="${geo#* }"
-    xdo mousemove --sync $((w/2)) $((h/2)); xdo click 1; sleep 0.5
+    log "Login window ready ($wid)"
+    pin_window >/dev/null
   else
-    log "WARN: no window found by name; typing blind into the focused surface"
+    log "WARN: login window never appeared; acting on the focused surface"
   fi
 
-  click_at "$LOGIN_FIELD_CLICK"
+  if [ "$USE_SAVED_LOGIN" = 1 ]; then
+    log "Saved-login mode: using remembered account, entering password only"
+  else
+    log "Entering account id '$YUFA_USER'"
+    type_field "$LOGIN_ID_CLICK" "$YUFA_USER"
+  fi
+  type_field "$LOGIN_PW_CLICK" "$YUFA_PASS"
 
-  log "Entering credentials for user '$YUFA_USER'"
-  xdo type --clearmodifiers --delay "$KEY_DELAY_MS" "$YUFA_USER"
-  xdo key --clearmodifiers Tab
-  xdo type --clearmodifiers --delay "$KEY_DELAY_MS" "$YUFA_PASS"
-  xdo key --clearmodifiers Return
+  if [ -n "$LOGIN_BUTTON_CLICK" ]; then
+    log "Clicking Login ($LOGIN_BUTTON_CLICK)"
+    xdo mousemove --sync "${LOGIN_BUTTON_CLICK%,*}" "${LOGIN_BUTTON_CLICK#*,}"; xdo click 1
+  else
+    xdo key --clearmodifiers Return
+  fi
 
-  log "Login sent; waiting ${WAIT_AFTER_LOGIN}s for server select"
+  log "Login sent; waiting ${WAIT_AFTER_LOGIN}s for PIN/char-select"
   sleep "$WAIT_AFTER_LOGIN"
-  xdo key --clearmodifiers Return            # accept service/server
+  dismiss_dialogs_once       # clear any post-login info popup
+
+  # PIN entry (appears over character selection on this server).
+  if [ -n "$PIN_CODE" ]; then
+    sleep "$WAIT_BEFORE_PIN"
+    log "Entering character-select PIN"
+    pin_window >/dev/null
+    click_at "$PIN_CLICK"
+    xdo type --clearmodifiers --delay "$KEY_DELAY_MS" "$PIN_CODE"
+    xdo key --clearmodifiers Return
+  fi
 
   log "Waiting ${WAIT_BEFORE_CHARSELECT}s for character select"
   sleep "$WAIT_BEFORE_CHARSELECT"
+  pin_window >/dev/null
   click_at "$CHAR_SELECT_CLICK"
   xdo key --clearmodifiers Return            # enter selected character
 
@@ -184,7 +314,7 @@ cleanup() {
   # let Gepard/wine close the socket cleanly
   sleep 3
   pkill -9 -f "$GAME_PROC" 2>/dev/null
-  [ -n "${LUTRIS_PID:-}" ] && kill "$LUTRIS_PID" 2>/dev/null
+  [ -n "${LAUNCH_PID:-}" ] && kill "$LAUNCH_PID" 2>/dev/null
   stop_xvfb
 }
 
@@ -216,13 +346,17 @@ cmd_shot() {
 cmd_stop() { cleanup; }
 
 cmd_env() {
-  for v in DISPLAY_NUM SCREEN_GEOMETRY LUTRIS_GAME_ID GAME_PROC WINDOW_NAME GAME_DIR \
-           WAIT_FOR_WINDOW SETTLE_AFTER_WINDOW WAIT_AFTER_LOGIN WAIT_BEFORE_CHARSELECT \
-           WAIT_MAP_LOAD KEY_DELAY_MS LOGIN_FIELD_CLICK CHAR_SELECT_CLICK EXTRA_ENV; do
+  for v in DISPLAY_NUM SCREEN_GEOMETRY GAME_PROC WINDOW_NAME GAME_DIR \
+           UMU_RUN PROTONPATH WINEPREFIX_DIR GAME_EXE \
+           WAIT_FOR_WINDOW SETTLE_AFTER_WINDOW WAIT_AFTER_LOGIN WAIT_BEFORE_PIN \
+           WAIT_BEFORE_CHARSELECT WAIT_MAP_LOAD KEY_DELAY_MS DISMISS_DIALOGS \
+           WINDOW_PIN_XY LOGIN_ID_CLICK LOGIN_PW_CLICK LOGIN_BUTTON_CLICK \
+           PIN_CLICK CHAR_SELECT_CLICK EXTRA_ENV; do
     printf '%-22s = %s\n' "$v" "${!v}"
   done
   printf '%-22s = %s\n' "YUFA_USER" "${YUFA_USER:+<set>}"
   printf '%-22s = %s\n' "YUFA_PASS" "${YUFA_PASS:+<set>}"
+  printf '%-22s = %s\n' "PIN_CODE" "${PIN_CODE:+<set>}"
 }
 
 case "${1:-run}" in
