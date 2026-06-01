@@ -62,115 +62,113 @@ What you still set **per machine** (none are guessable):
 1. `credentials.env` — `YUFA_PASS`, `YUFA_PIN` (and a one-time manual login as the
    account so "Salvar Login" remembers it in that wine prefix).
 2. `sudo setcap …` on the `yufa-mt` binary (one command, for packet capture).
-3. `CHAT_CAPTURE_PORT` in `config.env` if the server's game port isn't `6121`
-   (find it in-game: `ss -tn | grep <exe>` → the foreign port).
+3. `CHAT_CAPTURE_PORT` in `config.env` — **on Projeto Yufa chat flows on the
+   zone/map port `6121`, which is already the default.** The server applies a
+   +1000 offset to the *standard* RO ports — login 6900→7900, char 6121→7121,
+   map/zone 5121→6121 — so chat is on `6121` and `7121` is the char server (see
+   "Wire protocol" below). Verify in-game with `ss -tn | grep <exe>` → the foreign port.
 
 If detection guesses wrong, override any value in `config.env`
 (see `config.env.example`). Match a different RO client with `GAME_EXE_PATTERN`.
 
-### `RUN_MODE=headless` — still does NOT work for login, but the reason changed
+### Automated login — SOLVED except the PIN keypad click (2026-06-01)
 
-The rendering/launch pipeline works fully headless and reaches the login screen.
-Earlier this section claimed the blocker was synthetic keyboard input. That was
-only half right — and only true for XTEST/Xvfb. The real findings:
+The earlier headless experiments left an open question — was the login blocker the
+**headless environment** or the **input automation**? Running `ydotool` on the
+**real GPU display** (the same environment as the working manual login) settled
+it. Result: **automated login works end-to-end, all the way to character select.**
 
-**Keyboard input CAN be injected** — on the real Wayland (sway) seat, not Xvfb.
-`ydotool` writes to the kernel `uinput`/evdev layer, so its keystrokes look like
-real hardware to libinput → the compositor → Xwayland → the client, and the
-client accepts them. (`xdotool`/XTEST keystrokes are rejected; that's the
-limitation originally documented.) Verified end-to-end: launching the client on a
-runtime `swaymsg create_output` headless output and driving the whole login UI —
-server-select, password field, dialogs — entirely with `ydotool key`/`type`.
-Requires `ydotoold` running as root (`/dev/uinput` is root-only):
-`sudo ydotoold -p /tmp/.ydotool_socket -o 1000:1000`.
+What works, driven entirely over SSH against the live Sway seat (`ydotoold` as
+root + `grim` screenshots as the feedback loop):
 
-**Mouse clicks do NOT register** via any method tried — `xdotool` (XTEST),
-`ydotool` (uinput `BTN_LEFT`), or `swaymsg seat - cursor press`. The client
-reads the mouse through DirectInput bound to the physical device and ignores the
-virtual one (it renders no cursor of its own). Login was still possible because
-every screen is keyboard-drivable: `Enter` confirms dialogs, the password field
-auto-focuses, and the saved account ("Salvar Login") pre-fills the ID — which is
-itself stored in the wine registry under
-`[Software\Wow6432Node\Gravity Soft\Ragnarok]` `"ID"=`, so a different remembered
-account can be swapped in there (the client rewrites its token blob each run).
+1. Launch via `lutris lutris:rungame/ragnarok-online` on the real output (force
+   the panel on if the lid's closed: `swaymsg output LVDS-1 enable; … power on`).
+2. `ydotool key 28:1 28:0` dismisses the recurring Lua error
+   (`[string "buf"]:2: attempt to index global 'HatEFID'`).
+3. Enter selects the proxy (`Proxy 1-Loki`).
+4. The ID is pre-filled (`yufayufa`, "Salvar Login") and the **password field is
+   auto-focused** — `ydotool type "$YUFA_PASS"` + Enter. **Account auth succeeds.**
+5. Enter selects the `Yufa` server → the **character-select screen renders.**
 
-**The blocker is at the connection handshake (cause not yet confirmed — see the
-`rtest` caveat below).** With a patched, up-to-date client (run `#Patch Projeto
-Yufa - ABRA POR AQUI.exe` first — an outdated client fails to connect at all) and
-correct credentials, the client *does* reach the login server (`ESTAB` to its
-`:7900`), but the connection is immediately dropped and it shows *"Não foi
-possível conectar-se ao servidor."*
-A manual login with the laptop's real keyboard connects fine, so the genuine
-client is accepted and only this automated/headless path is rejected. The
-original guess was that Gepard detects the `ydotoold` virtual input device — but
-that's now doubtful (see the caveat below): killing `ydotoold` at submit time
-didn't help, and a Wine-hosted anti-cheat can't see Linux `/dev/uinput` anyway.
-The headless environment itself is the more likely cause. `rtest` settles it.
+So the old "Gepard rejects the automated/headless client at the handshake"
+conclusion was **wrong** — that was the headless (Xvfb/wined3d) environment. On the
+real display the genuine client connects fine and Gepard is happy. **Keyboard
+automation is fully solved.**
 
-So unattended headless login is **not yet achieved** — and which factor blocks it
-(headless environment vs. input automation) is the open question `rtest` is
-designed to answer. If it turns out to be a genuine Gepard rejection of the
-client itself, getting past that needs the private/paid bypasses this project
-deliberately avoids.
+**The one remaining wall is the character-select PIN keypad — and it needs a mouse
+*click*.** It's a randomized anti-keylogger pad (`"Clique em uma sequência de 4
+números"`, e.g. `4 0 9 / 1 8 3 / 5 6 7 / 2 Reset`; our PIN is `1122`). Measured
+behaviour:
 
-> **Caveat — the experiment confounded two variables.** The known-good login was
-> *(real display + manual keyboard)*; the known-bad was *(headless + ydotool)*.
-> Those differ in **both** the environment (real GPU vs. Xvfb/wined3d) **and** the
-> input (hardware vs. automated), so we can't yet say which one Gepard rejects.
-> And note: Gepard is a Windows DLL **inside Wine** — it can't read Linux
-> `/dev/uinput`, and by the time input reaches the game Wine has already turned it
-> into ordinary Windows messages, so a uinput keyboard and a real one look
-> identical at the game layer. That makes "Gepard detected the virtual device"
-> doubtful (consistent with: killing `ydotoold` at submit didn't help) and points
-> at the **headless environment** as the more likely blocker. The `rtest` command
-> isolates it — see below.
+- Mouse **motion** via `ydotool` reaches the client — hovering a cell highlights
+  it and the hand cursor lands correctly. (This refutes the old blanket "mouse
+  never registers".)
+- Mouse **button clicks do NOT register.** Confirmed the click *is* emitted at the
+  kernel: reading the ydotoold evdev node `/dev/input/event15` shows
+  `EV_KEY code=272 (BTN_LEFT) val=1/0`. So the loss is **above the OS**, in the
+  Sway→Xwayland→Wine→Gepard delivery — almost certainly Gepard's mouse-button
+  validation (it accepts motion but rejects the injected/synthetic button). No
+  software inject (XTEST, uinput `BTN_LEFT`, held press) gets past it.
+- The keypad refuses **keyboard** digits too (`type "1122"`+Enter does nothing).
 
-### Isolating the blocker: real-display ydotool test (`rtest`)
+#### Why faking the PIN packet does NOT work (investigated 2026-06-01)
 
-Change one variable at a time: drive the login with `ydotool` on the **real**
-GPU-accelerated display — the same environment as the working manual login.
+Tempting, since most of the wire is cleartext — but a packet capture of the full
+login proves it's a dead end:
 
-```bash
-# 1. ydotoold needs root (/dev/uinput is root-only); -o makes the socket yours.
-sudo ydotoold -p /tmp/.ydotool_socket -o "$(id -u):$(id -g)" &
+- After the char list arrives, the char-server connection goes **silent except
+  `0x0187` (CZ_PING) every 12s.** The genuine client is parked at its *local* PIN
+  dialog, exchanging nothing. The goal requires *this genuine client* to be
+  in-game; only it processing a real click advances its UI (send `CH_SECOND_PASSWD`
+  / `CH_SELECT_CHAR` → map-server redirect → zone connect).
+- Forging server-bound packets can satisfy the *server* but cannot drive the
+  *client's* local state machine off the keypad — so the genuine client never
+  enters the world, and there's no in-game client to read chat from.
+- The only way to make "the client" advance without the real client is to *be* the
+  client (full protocol MITM that speaks login + char + zone). That's OpenKore —
+  exactly what Gepard blocks (and the login channel is encrypted anyway; see
+  below). It also abandons the "one genuine client" premise.
 
-# 2. Launch the client on the real display and bring it to the login screen.
-scripts/listener/yufa-listener.sh run        # leave running; ID is pre-filled
+So the click is unavoidable. The path forward is **genuine USB-HID hardware** that
+clicks the keypad with real button events Gepard can't distinguish from a physical
+mouse — read the shuffled keypad from a `grim` screenshot, map `1,1,2,2` to cell
+coordinates, click via the device. See [pico-hid/](pico-hid/).
 
-# 3. In another terminal: focus the client's login window, then run the test.
-#    (run with sudo to also see process names in the connection sample)
-scripts/listener/yufa-listener.sh rtest
-```
+### Wire protocol — what's cleartext vs. encrypted (verified by capture)
 
-`rtest` types the password (+ PIN) via ydotool, then samples `ss` for ~15s and
-prints a verdict guide:
+Captured with a raw `AF_PACKET` Python sniffer (the box has no tcpdump/tshark):
 
-- **Persistent `ESTAB` to the server** → login *worked* with automated input on the
-  real display ⇒ the blocker was the **headless environment**, not input
-  automation. A hardware HID device (the Pico) would **not** help; effort belongs
-  on the GPU/display side (real Xorg/seat, GPU passthrough) instead.
-- **`ESTAB` drops + the in-client "Não foi possível conectar-se" dialog** → input
-  automation is implicated even on the real seat. Only *then* is the
-  [Pico HID](pico-hid/) (genuine USB hardware) worth trying.
-
-Either outcome decides whether the Pico is worth building.
+- **Char server (`:7121`) is cleartext, standard RO** — clean opcodes
+  `0x0065` (CH_ENTER), `0x082d` (char-list accept), `0x09a1` (charlist req),
+  `0x0b72` (char-info page), `0x0187` (ping), AID in the clear, and two identical
+  pings (no per-packet cipher).
+- **Zone/map server (`:6121`) is also cleartext, and is where chat actually
+  flows** — channel joins and ongoing messages, confirmed in full-gameplay
+  captures. **This is why the sniffer works.** Capture on `CHAT_CAPTURE_PORT=6121`
+  (the default). An earlier note placed chat on `7121`; that came from a capture
+  stuck at the PIN that never opened the zone connection. See
+  [GEPARD-PROTOCOL-FINDINGS.md](GEPARD-PROTOCOL-FINDINGS.md).
+- **Login/account servers (`:6700`, `:7900`) are Gepard-encrypted** — high-entropy
+  payloads, garbage opcodes (`0x3488`/`0x9264`/`0x8200`), and the `CA_LOGIN`
+  (`0x0064`) username/password fields scrambled. (Account auth also touches
+  `*:443` — Gepard's own backend validation.)
+- Client config loads over **plain HTTP on `:8888`** (`POST /userconfig/load`).
 
 ## Why a client at all (not a bot)
 
 Projeto Yufa runs **Gepard Shield 3.0**, which blocks OpenKore/third-party
 clients and resists handshake replay / DLL emulation (only private/paid bypasses,
-which break daily and risk a ban). The sniffer works because chat is cleartext on
-the wire, so we just need one genuine client connected.
+which break daily and risk a ban). The sniffer works because **chat is cleartext on
+the wire** (confirmed — the zone server `:6121` speaks plain RO protocol), so we
+just need one genuine client connected.
 
 ## Requirements
 
 - `lutris` + GE-Proton (your existing setup) for real mode.
 - On a **Wayland desktop (e.g. Sway)**, **Xwayland** so the X11 client and
   `xdotool` have an X display to bind to (see the Wayland/Sway note above).
-- Headless-mode extras (Xvfb, `xdotool`, `openbox`, `import`, `umu-run`) are only
-  needed if you experiment with `RUN_MODE=headless`.
-- `ydotool` + `ydotoold` (and `ss` from iproute2) only for the `rtest`
-  real-display experiment described above.
+- `ydotool` + `ydotoold` (and `ss` from iproute2) for the automated keyboard
+  login; `grim` for the screenshot feedback loop.
 
 ## Minimum-resource notes
 
