@@ -230,6 +230,28 @@ table tbody tr {
     transition: background-color 100ms ease;
 }
 
+/* ---------- Mobile: scrollable data tables ----------
+   Dense data tables (summary, drops, rankings, detail pages) sit inside an
+   `.overflow-x-auto` wrapper around a `min-w-full` table. On a narrow phone
+   the browser would otherwise crush header words letter-by-letter to squeeze
+   the table into the viewport. Keep header cells on one line so the wrapper
+   scrolls horizontally instead of squashing, add momentum scrolling, and
+   tighten cell padding on small screens so more columns fit before scrolling. */
+.overflow-x-auto {
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior-x: contain;
+}
+.overflow-x-auto table thead th {
+    white-space: nowrap;
+}
+@media (max-width: 640px) {
+    .overflow-x-auto table th,
+    .overflow-x-auto table td {
+        padding-left: 0.5rem;
+        padding-right: 0.5rem;
+    }
+}
+
 /* ---------- Cards/panels: softer shadow ----------
    No !important here so individual cards can opt into a heavier shadow
    when needed (e.g. floating overlays). Specificity is enough to beat
