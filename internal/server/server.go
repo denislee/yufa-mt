@@ -119,6 +119,7 @@ func registerAdminRoutes() *http.ServeMux {
 
 	// Server observability + maintenance
 	adminRouter.HandleFunc("/logs", adminLogsHandler)
+	adminRouter.HandleFunc("/stats", adminSystemStatsHandler)
 	adminRouter.HandleFunc("/update", adminSelfUpdateHandler)
 
 	// Admin RMS Cache Management

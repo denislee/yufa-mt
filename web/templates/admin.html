@@ -3,6 +3,130 @@
 <head>
     <title>Admin Dashboard - Yufa Market Tracker</title>
     {{template "head.html" .}}
+    <style>
+        /* ===== Admin design system (self-contained; light + .dark only,
+                matching how the rest of the admin page distinguishes themes) ===== */
+        .adm-card {
+            background: #ffffff;
+            border: 1px solid #e5e7eb;
+            border-radius: 0.75rem;
+            box-shadow: 0 1px 2px 0 rgba(0, 0, 0, .05);
+            padding: 1.5rem;
+        }
+        .dark .adm-card { background: #1f2937; border-color: #374151; }
+
+        .adm-card-title {
+            font-size: 1.05rem;
+            font-weight: 600;
+            color: #111827;
+            display: flex;
+            align-items: center;
+            gap: .5rem;
+        }
+        .dark .adm-card-title { color: #f3f4f6; }
+
+        .adm-desc { font-size: .875rem; color: #4b5563; }
+        .dark .adm-desc { color: #d1d5db; }
+
+        .adm-section-head {
+            font-size: .7rem;
+            font-weight: 700;
+            letter-spacing: .08em;
+            text-transform: uppercase;
+            color: #6b7280;
+        }
+        .dark .adm-section-head { color: #9ca3af; }
+
+        .adm-divider { border: 0; border-top: 1px solid #e5e7eb; margin: 1rem 0; }
+        .dark .adm-divider { border-color: #374151; }
+
+        /* Buttons — semantic intent, consistent sizing */
+        .adm-btn {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: .4rem;
+            font-weight: 600;
+            font-size: .875rem;
+            line-height: 1.15;
+            padding: .55rem 1rem;
+            border-radius: .5rem;
+            border: 1px solid transparent;
+            color: #fff;
+            cursor: pointer;
+            transition: background-color .12s ease, box-shadow .12s ease, opacity .12s ease;
+            white-space: nowrap;
+        }
+        .adm-btn:focus-visible { outline: none; box-shadow: 0 0 0 3px rgba(37, 99, 235, .45); }
+        .adm-btn:disabled { opacity: .5; cursor: not-allowed; }
+        .adm-btn-sm { padding: .3rem .6rem; font-size: .75rem; border-radius: .375rem; }
+        .adm-btn-block { width: 100%; }
+
+        .adm-btn-primary { background: #2563eb; }
+        .adm-btn-primary:hover:not(:disabled) { background: #1d4ed8; }
+        .adm-btn-success { background: #059669; }
+        .adm-btn-success:hover:not(:disabled) { background: #047857; }
+        .adm-btn-warning { background: #d97706; }
+        .adm-btn-warning:hover:not(:disabled) { background: #b45309; }
+        .adm-btn-danger  { background: #dc2626; }
+        .adm-btn-danger:hover:not(:disabled)  { background: #b91c1c; }
+        .adm-btn-neutral { background: #475569; }
+        .adm-btn-neutral:hover:not(:disabled) { background: #334155; }
+
+        /* Danger zone card accent */
+        .adm-card-danger { border-color: #fca5a5; }
+        .dark .adm-card-danger { border-color: #7f1d1d; }
+        .adm-card-danger .adm-card-title { color: #b91c1c; }
+        .dark .adm-card-danger .adm-card-title { color: #fca5a5; }
+
+        /* Field group label */
+        .adm-label {
+            display: block;
+            font-size: .875rem;
+            font-weight: 500;
+            color: #374151;
+            margin-bottom: .25rem;
+        }
+        .dark .adm-label { color: #e5e7eb; }
+
+        /* ===== Machine stats tab ===== */
+        .adm-bar { width: 100%; height: .55rem; background: #e5e7eb; border-radius: 9999px; overflow: hidden; }
+        .dark .adm-bar { background: #374151; }
+        .adm-bar-fill { height: 100%; border-radius: 9999px; transition: width .4s ease, background-color .4s ease; }
+
+        .adm-spark { width: 100%; height: 3rem; display: block; }
+        .adm-spark polyline {
+            fill: none;
+            stroke: #2563eb;
+            stroke-width: 2;
+            vector-effect: non-scaling-stroke;
+            stroke-linejoin: round;
+            stroke-linecap: round;
+        }
+        .adm-spark.is-mem polyline { stroke: #7c3aed; }
+        .adm-spark.is-temp polyline { stroke: #dc2626; }
+
+        .adm-metric-label { font-size: .7rem; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: #6b7280; }
+        .dark .adm-metric-label { color: #9ca3af; }
+        .adm-metric-value { font-size: 1.75rem; font-weight: 700; line-height: 1.1; color: #111827; font-variant-numeric: tabular-nums; }
+        .dark .adm-metric-value { color: #f9fafb; }
+        .adm-metric-sub { font-size: .75rem; color: #6b7280; }
+        .dark .adm-metric-sub { color: #9ca3af; }
+
+        .adm-kv { display: flex; justify-content: space-between; gap: 1rem; padding: .4rem 0; border-bottom: 1px solid #f3f4f6; font-size: .875rem; }
+        .dark .adm-kv { border-color: #374151; }
+        .adm-kv:last-child { border-bottom: 0; }
+        .adm-kv dt { color: #6b7280; }
+        .dark .adm-kv dt { color: #9ca3af; }
+        .adm-kv dd { font-weight: 600; color: #111827; font-variant-numeric: tabular-nums; }
+        .dark .adm-kv dd { color: #f3f4f6; }
+
+        .adm-core-row { display: grid; grid-template-columns: 3.2rem 1fr 2.6rem; align-items: center; gap: .5rem; font-size: .75rem; }
+        .adm-core-row .adm-core-label { color: #6b7280; font-variant-numeric: tabular-nums; }
+        .dark .adm-core-row .adm-core-label { color: #9ca3af; }
+        .adm-core-row .adm-core-pct { text-align: right; font-variant-numeric: tabular-nums; color: #374151; }
+        .dark .adm-core-row .adm-core-pct { color: #d1d5db; }
+    </style>
 </head>
 <body class="bg-gray-100 dark:bg-gray-900 text-gray-800 dark:text-gray-200 text-sm sm:text-base">
 
@@ -79,7 +203,7 @@
         </template>
     </nav>
 
-    <div class="container mx-auto px-4 py-6">
+    <div class="w-full px-4 sm:px-6 lg:px-8 py-6">
         <h1 class="text-3xl font-bold text-gray-800 dark:text-gray-100 mb-6">Admin Dashboard</h1>
 
         {{if .Message}}
@@ -108,6 +232,9 @@
                 <a href="#" class="tab-button border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 hover:border-gray-300 whitespace-nowrap py-3 px-1 border-b-2 font-medium text-sm" data-tab="server">
                     Server
                 </a>
+                <a href="#" class="tab-button border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 hover:border-gray-300 whitespace-nowrap py-3 px-1 border-b-2 font-medium text-sm" data-tab="machine">
+                    Machine
+                </a>
             </nav>
         </div>
 
@@ -115,19 +242,19 @@
 
             <div id="tab-overview" class="tab-panel">
                 <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-                    <div class="bg-white dark:bg-gray-800 p-6 rounded-lg shadow">
+                    <div class="adm-card">
                         <h3 class="text-gray-500 dark:text-gray-400 text-sm font-medium uppercase">Market Items</h3>
                         <p class="text-3xl font-bold">{{.TotalItems}} <span class="text-lg font-normal">Total</span></p>
                         <p class="text-xl font-semibold">{{.AvailableItems}} <span class="text-base font-normal">Available</span></p>
                         <p class="text-xl font-semibold">{{.UniqueItems}} <span class="text-base font-normal">Unique</span></p>
                     </div>
-                    <div class="bg-white dark:bg-gray-800 p-6 rounded-lg shadow">
+                    <div class="adm-card">
                         <h3 class="text-gray-500 dark:text-gray-400 text-sm font-medium uppercase">Player & Guilds</h3>
                         <p class="text-3xl font-bold">{{.TotalCharacters}} <span class="text-lg font-normal">Characters</span></p>
                         <p class="text-xl font-semibold">{{.TotalGuilds}} <span class="text-base font-normal">Guilds</span></p>
                         <p class="text-xl font-semibold">{{.ChangelogEntries}} <span class="text-base font-normal">Changelog Events</span></p>
                     </div>
-                    <div class="bg-white dark:bg-gray-800 p-6 rounded-lg shadow">
+                    <div class="adm-card">
                         <h3 class="text-gray-500 dark:text-gray-400 text-sm font-medium uppercase">Site Traffic & System</h3>
                         <p class="text-3xl font-bold">{{.TotalVisitors}} <span class="text-lg font-normal">Total Visitors</span></p>
                         <p class="text-xl font-semibold">{{.VisitorsToday}} <span class="text-base font-normal">Visitors Today</span></p>
@@ -137,7 +264,7 @@
                         <p class="text-sm"><strong>Player Samples:</strong> {{.PlayerHistoryEntries}}</p>
                         <p class="text-sm"><strong>Market Events:</strong> {{.MarketEvents}}</p>
                     </div>
-                    <div class="bg-white dark:bg-gray-800 p-6 rounded-lg shadow">
+                    <div class="adm-card">
                         <h3 class="text-gray-500 dark:text-gray-400 text-sm font-medium uppercase">Last Scrape Times</h3>
                         <p class="text-sm"><strong>Market:</strong> {{.LastMarketScrape}}</p>
                         <p class="text-sm"><strong>Player Count:</strong> {{.LastPlayerCountScrape}}</p>
@@ -147,8 +274,8 @@
                 </div>
 
                 <div class="grid grid-cols-1 xl:grid-cols-2 gap-8">
-                    <div class="bg-white dark:bg-gray-800 p-6 rounded-lg shadow mb-8">
-                        <h2 class="text-xl font-bold mb-4">Page View Summary (Top 25)</h2>
+                    <div class="adm-card mb-8">
+                        <h2 class="adm-card-title mb-4">Page View Summary (Top 25)</h2>
                         <div class="overflow-x-auto max-h-96 overflow-y-auto">
                             <table class="min-w-full text-sm table-fixed">
                                 <thead>
@@ -173,8 +300,8 @@
                         </div>
                     </div>
                     
-                    <div id="paginated-pageviews" data-paginated class="bg-white dark:bg-gray-800 p-6 rounded-lg shadow">
-                        <h2 class="text-xl font-bold mb-4">Recent Page Views</h2>
+                    <div id="paginated-pageviews" data-paginated class="adm-card">
+                        <h2 class="adm-card-title mb-4">Recent Page Views</h2>
                         <div class="overflow-x-auto">
                             <table class="min-w-full text-sm table-fixed">
                                 <thead>
@@ -194,7 +321,7 @@
                                         <td class="py-2 pr-2">
                                             <form action="/admin/views/delete-visitor" method="POST" onsubmit="return confirm('Are you sure you want to remove ALL records for this visitor? This cannot be undone.');">
                                                 <input type="hidden" name="visitor_hash" value="{{.VisitorHash}}">
-                                                <button type="submit" class="text-xs bg-red-500 hover:bg-red-700 text-white font-bold py-1 px-2 rounded">
+                                                <button type="submit" class="adm-btn adm-btn-sm adm-btn-danger">
                                                     Remove
                                                 </button>
                                             </form>
@@ -251,91 +378,117 @@
             </div>
 
             <div id="tab-manage" class="tab-panel" style="display: none;">
-                <div class="grid grid-cols-1 xl:grid-cols-2 gap-8">
-                    <div>
-                        <div class="bg-white dark:bg-gray-800 p-6 rounded-lg shadow mb-8">
-                            <h2 class="text-xl font-bold mb-4">Manual Scrapers</h2>
-                            <div class="grid grid-cols-2 md:grid-cols-3 gap-4">
-                                <form action="/admin/scrape/market" method="POST"><button type="submit" class="w-full bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded">Market Scrape</button></form>
-                                <form action="/admin/scrape/players" method="POST"><button type="submit" class="w-full bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded">Player Count</button></form>
-                                <form action="/admin/scrape/characters" method="POST"><button type="submit" class="w-full bg-green-500 hover:bg-green-700 text-white font-bold py-2 px-4 rounded">Character Scrape</button></form>
-                                <form action="/admin/scrape/guilds" method="POST"><button type="submit" class="w-full bg-green-500 hover:bg-green-700 text-white font-bold py-2 px-4 rounded">Guild Scrape</button></form>
-                                <form action="/admin/scrape/zeny" method="POST"><button type="submit" class="w-full bg-green-500 hover:bg-green-700 text-white font-bold py-2 px-4 rounded">Zeny Scrape</button></form>
-                                <form action="/admin/scrape/mvp" method="POST"><button type="submit" class="w-full bg-green-500 hover:bg-green-700 text-white font-bold py-2 px-4 rounded">MVP Scrape</button></form>
-                                <form action="/admin/scrape/woe" method="POST"><button type="submit" class="w-full bg-purple-500 hover:bg-purple-700 text-white font-bold py-2 px-4 rounded">WoE Scrape</button></form>
-                                <form action="/admin/scrape/pt-names" method="POST"><button type="submit" class="w-full bg-indigo-500 hover:bg-indigo-700 text-white font-bold py-2 px-4 rounded">PT Name Populator</button></form>
-                                <form action="/admin/scrape/emblems" method="POST"><button type="submit" class="w-full bg-pink-500 hover:bg-pink-700 text-white font-bold py-2 px-4 rounded">Process Emblems</button></form>
-                            </div>
-                        </div>
+                <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start">
 
-                        <div class="bg-white dark:bg-gray-800 p-6 rounded-lg shadow mb-8">
-                            <h2 class="text-xl font-bold mb-4">Guild Emblem Management</h2>
-                            <form action="/admin/guild/update-emblem" method="POST" class="flex flex-col md:flex-row items-end gap-4">
-                                <div class="flex-grow w-full">
-                                    <label for="guild_select" class="block text-sm font-medium text-gray-700 dark:text-gray-200">Guild Name</label>
-                                    <select name="guild_name" id="guild_select" required class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm">
-                                        <option value="">-- Select a Guild --</option>
-                                        {{range .AllGuilds}}
-                                        <option value="{{.Name}}" data-emblem="{{.EmblemURL}}">{{.Name}}</option>
-                                        {{end}}
-                                    </select>
-                                </div>
-                                <div class="flex-grow w-full">
-                                    <label for="emblem_url" class="block text-sm font-medium text-gray-700 dark:text-gray-200">New Emblem URL</label>
-                                    <input type="url" name="emblem_url" id="emblem_url" required placeholder="https://..." class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm">
-                                </div>
-                                <button type="submit" class="w-full md:w-auto bg-purple-500 hover:bg-purple-700 text-white font-bold py-2 px-4 rounded">Update Emblem</button>
-                            </form>
-                            <div id="emblem-preview-container" class="mt-4" style="display: none;">
-                                <h4 class="text-sm font-medium text-gray-700 dark:text-gray-200">Current Emblem:</h4>
-                                <div class="flex items-center gap-4 mt-2">
-                                    <img id="emblem_preview_image" src="" alt="Emblem Preview" class="h-10 w-10 bg-gray-200 dark:bg-gray-600 rounded" loading="lazy" decoding="async">
-                                    <p id="current_emblem_url" class="text-sm text-gray-500 dark:text-gray-400 break-all"></p>
+                    <!-- Manual Scrapers -->
+                    <div class="adm-card lg:col-span-2">
+                        <div class="mb-4">
+                            <h2 class="adm-card-title">Manual Scrapers</h2>
+                            <p class="adm-desc mt-1">Trigger a data collection job on demand. Each runs in the background.</p>
+                        </div>
+                        <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+                            <div>
+                                <p class="adm-section-head mb-2">Market &amp; Economy</p>
+                                <div class="grid grid-cols-1 gap-2">
+                                    <form action="/admin/scrape/market" method="POST"><button type="submit" class="adm-btn adm-btn-block adm-btn-primary">Market</button></form>
+                                    <form action="/admin/scrape/zeny" method="POST"><button type="submit" class="adm-btn adm-btn-block adm-btn-primary">Zeny</button></form>
                                 </div>
                             </div>
-                        </div>
-
-                        <div class="bg-white dark:bg-gray-800 p-6 rounded-lg shadow mb-8">
-                            <h2 class="text-xl font-bold mb-4">Character Data Management</h2>
-                            <p class="text-sm text-gray-600 dark:text-gray-300 mb-4">This action will reset the "Last Active" time for ALL characters. This is useful for clearing activity data before a server event or maintenance.</p>
-                            <form action="/admin/character/clear-last-active" method="POST" onsubmit="return confirm('DANGER: Are you sure you want to reset all character last active times? This cannot be undone.');">
-                                <button type="submit" class="bg-orange-500 hover:bg-orange-700 text-white font-bold py-2 px-4 rounded">Reset All Last Active Times</button>
-                            </form>
-                            <hr class="my-4 border-gray-200 dark:border-gray-700">
-                            <p class="text-sm text-gray-600 dark:text-gray-300 mb-4">This action will delete ALL MVP kill records from the database. This is useful if the server's rankings have been reset or are bugged.</p>
-                            <form action="/admin/character/clear-mvp-kills" method="POST" onsubmit="return confirm('DANGER: Are you sure you want to delete all MVP kill data? This cannot be undone.');">
-                                <button type="submit" class="bg-red-600 hover:bg-red-800 text-white font-bold py-2 px-4 rounded">Clear All MVP Kills</button>
-                            </form>
-                        </div>
-                        
-                        <div class="bg-white dark:bg-gray-800 p-6 rounded-lg shadow mb-8">
-                            <h2 class="text-xl font-bold mb-4">Data Backfill & Cleanup</h2>
-                            
-                            <p class="text-sm text-gray-600 dark:text-gray-300 mb-4">This will scan the entire chat log, parse all item drop messages, and insert them into the character changelog. This is idempotent (safe to run multiple times).</p>
-                            <form action="/admin/backfill/drops" method="POST" onsubmit="return confirm('This may take a moment. Are you sure you want to backfill all drop logs into the changelog?');">
-                                <button type="submit" class="bg-teal-500 hover:bg-teal-700 text-white font-bold py-2 px-4 rounded mb-6">Backfill Drop Logs to Changelog</button>
-                            </form>
-
-                            <hr class="border-gray-200 dark:border-gray-700 mb-4">
-                            <h3 class="text-lg font-semibold mb-2">Fix Guild Inconsistencies</h3>
-                            <p class="text-sm text-gray-600 dark:text-gray-300 mb-4">
-                                This will detect and remove impossible consecutive guild history entries (e.g., "Joined Guild A" followed immediately by another "Joined Guild A" without leaving).
-                            </p>
-                            <form action="/admin/cleanup/guild-history" method="POST" onsubmit="return confirm('Are you sure you want to remove duplicate guild history entries? This cannot be undone.');">
-                                <button type="submit" class="bg-indigo-500 hover:bg-indigo-700 text-white font-bold py-2 px-4 rounded">
-                                    Cleanup Guild History Duplicates
-                                </button>
-                            </form>
+                            <div>
+                                <p class="adm-section-head mb-2">Players &amp; Characters</p>
+                                <div class="grid grid-cols-1 gap-2">
+                                    <form action="/admin/scrape/players" method="POST"><button type="submit" class="adm-btn adm-btn-block adm-btn-primary">Player Count</button></form>
+                                    <form action="/admin/scrape/characters" method="POST"><button type="submit" class="adm-btn adm-btn-block adm-btn-primary">Characters</button></form>
+                                    <form action="/admin/scrape/mvp" method="POST"><button type="submit" class="adm-btn adm-btn-block adm-btn-primary">MVP</button></form>
+                                </div>
+                            </div>
+                            <div>
+                                <p class="adm-section-head mb-2">Guilds &amp; Events</p>
+                                <div class="grid grid-cols-1 gap-2">
+                                    <form action="/admin/scrape/guilds" method="POST"><button type="submit" class="adm-btn adm-btn-block adm-btn-primary">Guilds</button></form>
+                                    <form action="/admin/scrape/woe" method="POST"><button type="submit" class="adm-btn adm-btn-block adm-btn-primary">WoE</button></form>
+                                    <form action="/admin/scrape/emblems" method="POST"><button type="submit" class="adm-btn adm-btn-block adm-btn-primary">Process Emblems</button></form>
+                                    <form action="/admin/scrape/pt-names" method="POST"><button type="submit" class="adm-btn adm-btn-block adm-btn-primary">PT Name Populator</button></form>
+                                </div>
+                            </div>
                         </div>
                     </div>
+
+                    <!-- Guild Emblem Management -->
+                    <div class="adm-card">
+                        <h2 class="adm-card-title mb-4">Guild Emblem Management</h2>
+                        <form action="/admin/guild/update-emblem" method="POST" class="space-y-4">
+                            <div>
+                                <label for="guild_select" class="adm-label">Guild Name</label>
+                                <select name="guild_name" id="guild_select" required class="block w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm">
+                                    <option value="">-- Select a Guild --</option>
+                                    {{range .AllGuilds}}
+                                    <option value="{{.Name}}" data-emblem="{{.EmblemURL}}">{{.Name}}</option>
+                                    {{end}}
+                                </select>
+                            </div>
+                            <div>
+                                <label for="emblem_url" class="adm-label">New Emblem URL</label>
+                                <input type="url" name="emblem_url" id="emblem_url" required placeholder="https://..." class="block w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm">
+                            </div>
+                            <button type="submit" class="adm-btn adm-btn-primary">Update Emblem</button>
+                        </form>
+                        <div id="emblem-preview-container" class="mt-4" style="display: none;">
+                            <h4 class="adm-label">Current Emblem:</h4>
+                            <div class="flex items-center gap-4 mt-2">
+                                <img id="emblem_preview_image" src="" alt="Emblem Preview" class="h-10 w-10 bg-gray-200 dark:bg-gray-600 rounded" loading="lazy" decoding="async">
+                                <p id="current_emblem_url" class="text-sm text-gray-500 dark:text-gray-400 break-all"></p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Data Backfill & Cleanup -->
+                    <div class="adm-card">
+                        <h2 class="adm-card-title mb-4">Data Backfill &amp; Cleanup</h2>
+
+                        <p class="adm-desc mb-3">Scan the entire chat log, parse all item-drop messages, and insert them into the character changelog. Idempotent — safe to run repeatedly.</p>
+                        <form action="/admin/backfill/drops" method="POST" onsubmit="return confirm('This may take a moment. Are you sure you want to backfill all drop logs into the changelog?');">
+                            <button type="submit" class="adm-btn adm-btn-primary">Backfill Drop Logs to Changelog</button>
+                        </form>
+
+                        <hr class="adm-divider">
+                        <p class="adm-section-head mb-1">Fix Guild Inconsistencies</p>
+                        <p class="adm-desc mb-3">
+                            Detect and remove impossible consecutive guild-history entries (e.g. "Joined Guild A" immediately followed by another "Joined Guild A" without leaving).
+                        </p>
+                        <form action="/admin/cleanup/guild-history" method="POST" onsubmit="return confirm('Are you sure you want to remove duplicate guild history entries? This cannot be undone.');">
+                            <button type="submit" class="adm-btn adm-btn-warning">Cleanup Guild History Duplicates</button>
+                        </form>
+                    </div>
+
+                    <!-- Character Data Management (DANGER) -->
+                    <div class="adm-card adm-card-danger lg:col-span-2">
+                        <h2 class="adm-card-title mb-1">⚠️ Character Data Management</h2>
+                        <p class="adm-desc mb-4">Destructive actions. These cannot be undone.</p>
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                            <div>
+                                <p class="adm-desc mb-3">Reset the "Last Active" time for ALL characters. Useful for clearing activity data before a server event or maintenance.</p>
+                                <form action="/admin/character/clear-last-active" method="POST" onsubmit="return confirm('DANGER: Are you sure you want to reset all character last active times? This cannot be undone.');">
+                                    <button type="submit" class="adm-btn adm-btn-danger">Reset All Last Active Times</button>
+                                </form>
+                            </div>
+                            <div>
+                                <p class="adm-desc mb-3">Delete ALL MVP kill records from the database. Useful if the server's rankings were reset or are bugged.</p>
+                                <form action="/admin/character/clear-mvp-kills" method="POST" onsubmit="return confirm('DANGER: Are you sure you want to delete all MVP kill data? This cannot be undone.');">
+                                    <button type="submit" class="adm-btn adm-btn-danger">Clear All MVP Kills</button>
+                                </form>
+                            </div>
+                        </div>
+                    </div>
+
                 </div>
             </div>
 
             <div id="tab-trading" class="tab-panel" style="display: none;">
                 <div class="grid grid-cols-1 xl:grid-cols-2 gap-8">
                     <div>
-                        <div class="bg-white dark:bg-gray-800 p-6 rounded-lg shadow mt-8">
-                            <h2 class="text-xl font-bold mb-4">Trade Message Parser (AI)</h2>
+                        <div class="adm-card mt-8">
+                            <h2 class="adm-card-title mb-4">Trade Message Parser (AI)</h2>
                             <p class="text-sm text-gray-600 dark:text-gray-300 mb-4">Paste a trade message (e.g., from a Discord channel or in-game chat) to extract items and prices using Gemini AI.</p>
                             <form action="/admin/parse-trade" method="POST">
                                 <input type="hidden" name="tab" value="trading">
@@ -343,7 +496,7 @@
                                     <label for="trade_message" class="block text-sm font-medium text-gray-700 dark:text-gray-200">Trade Message</label>
                                     <textarea name="message" id="trade_message" rows="6" required class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm">{{.OriginalTradeMessage}}</textarea>
                                 </div>
-                                <button type="submit" class="bg-teal-500 hover:bg-teal-700 text-white font-bold py-2 px-4 rounded">Parse Message</button>
+                                <button type="submit" class="adm-btn adm-btn-primary">Parse Message</button>
                             </form>
 
                             {{if .TradeParseError}}
@@ -390,8 +543,8 @@
                             {{end}}
                         </div>
 
-                        <div id="paginated-trading" data-paginated class="bg-white dark:bg-gray-800 p-6 rounded-lg shadow mt-8">
-                            <h2 class="text-xl font-bold mb-4">Trading Post Management</h2>
+                        <div id="paginated-trading" data-paginated class="adm-card mt-8">
+                            <h2 class="adm-card-title mb-4">Trading Post Management</h2>
                             <div class="overflow-x-auto">
                                 <table class="min-w-full text-sm">
                                     <thead>
@@ -433,20 +586,20 @@
                                             </td>
                                             <td class="py-3 pr-3 align-top">
                                                 <div class="flex items-center space-x-2">
-                                                    <a href="/admin/trading-post/edit?id={{.ID}}" class="text-xs bg-blue-500 hover:bg-blue-700 text-white font-bold py-1 px-2 rounded">
+                                                    <a href="/admin/trading-post/edit?id={{.ID}}" class="adm-btn adm-btn-sm adm-btn-primary">
                                                         Edit
                                                     </a>
                                                     <form action="/admin/trading-post/reparse" method="POST" onsubmit="return confirm('Are you sure you want to re-parse this post with the AI? This will replace all its items.');">
                                                         <input type="hidden" name="tab" value="trading">
                                                         <input type="hidden" name="post_id" value="{{.ID}}">
-                                                        <button type="submit" class="text-xs bg-yellow-500 hover:bg-yellow-700 text-white font-bold py-1 px-2 rounded">
+                                                        <button type="submit" class="adm-btn adm-btn-sm adm-btn-warning">
                                                             Re-parse
                                                         </button>
                                                     </form>
                                                     <form action="/admin/trading-post/delete" method="POST" onsubmit="return confirm('Are you sure you want to delete this post? This cannot be undone.');">
                                                         <input type="hidden" name="tab" value="trading">
                                                         <input type="hidden" name="post_id" value="{{.ID}}">
-                                                        <button type="submit" class="text-xs bg-red-500 hover:bg-red-700 text-white font-bold py-1 px-2 rounded">
+                                                        <button type="submit" class="adm-btn adm-btn-sm adm-btn-danger">
                                                             Delete
                                                         </button>
                                                     </form>
@@ -504,17 +657,17 @@
                     </div>
                     
                     <div>
-                        <div class="bg-white dark:bg-gray-800 p-6 rounded-lg shadow mb-8 mt-8 xl:mt-0">
-                            <h2 class="text-xl font-bold mb-4 text-red-700">Trading Post Data Management (DANGER)</h2>
-                            <p class="text-sm text-gray-600 dark:text-gray-300 mb-4">These actions permanently drop tables from the database. They will be recreated on application restart, but all data will be lost.</p>
+                        <div class="adm-card adm-card-danger mb-8 mt-8 xl:mt-0">
+                            <h2 class="adm-card-title mb-1">⚠️ Trading Post Data Management</h2>
+                            <p class="adm-desc mb-4">These actions permanently drop tables from the database. They will be recreated on application restart, but all data will be lost.</p>
                             <div class="space-y-4">
                                 <form action="/admin/trading/clear-items" method="POST" onsubmit="return confirm('DANGER: Are you sure you want to completely DROP the `trading_post_items` table? The table will be gone until the application is restarted.');">
                                     <input type="hidden" name="tab" value="trading">
-                                    <button type="submit" class="w-full bg-orange-500 hover:bg-orange-700 text-white font-bold py-2 px-4 rounded">Drop Trading Post Items Table</button>
+                                    <button type="submit" class="adm-btn adm-btn-block adm-btn-warning">Drop Trading Post Items Table</button>
                                 </form>
                                 <form action="/admin/trading/clear-posts" method="POST" onsubmit="return confirm('DANGER: Are you sure you want to completely DROP both the `trading_posts` and `trading_post_items` tables? This is a complete wipe and the tables will be gone until the application is restarted.');">
                                     <input type="hidden" name="tab" value="trading">
-                                    <button type="submit" class="w-full bg-red-600 hover:bg-red-800 text-white font-bold py-2 px-4 rounded">Drop All Trading Post Tables</button>
+                                    <button type="submit" class="adm-btn adm-btn-block adm-btn-danger">Drop All Trading Post Tables</button>
                                 </form>
                             </div>
                         </div>
@@ -525,8 +678,8 @@
             <div id="tab-cache" class="tab-panel" style="display: none;">
                 <div class="grid grid-cols-1 xl:grid-cols-2 gap-8">
                     <div>
-                        <div class="bg-white dark:bg-gray-800 p-6 rounded-lg shadow mt-8">
-                            <h2 class="text-xl font-bold mb-4">Search & Delete RMS Cache Entries</h2>
+                        <div class="adm-card mt-8">
+                            <h2 class="adm-card-title mb-4">Search & Delete RMS Cache Entries</h2>
                             <form action="/admin" method="GET" class="flex flex-col md:flex-row items-end gap-4 mb-4">
                                 <input type="hidden" name="tab" value="cache">
                                 <div class="flex-grow w-full">
@@ -534,7 +687,7 @@
                                     <input type="search" name="rms_query" id="rms_query" value="{{.RMSCacheSearchQuery}}"
                                            class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm">
                                 </div>
-                                <button type="submit" class="w-full md:w-auto bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded">Search</button>
+                                <button type="submit" class="adm-btn adm-btn-primary">Search</button>
                             </form>
 
                             {{if .RMSCacheSearchResults}}
@@ -564,7 +717,7 @@
                                         </tbody>
                                     </table>
                                 </div>
-                                <button type="submit" class="mt-4 bg-red-600 hover:bg-red-800 text-white font-bold py-2 px-4 rounded">Delete Selected Entries</button>
+                                <button type="submit" class="mt-4 adm-btn adm-btn-danger">Delete Selected Entries</button>
                             </form>
                             {{else}}
                                 {{if .RMSCacheSearchQuery}}
@@ -575,8 +728,8 @@
                             {{end}}
                         </div>
 
-                        <div class="bg-white dark:bg-gray-800 p-6 rounded-lg shadow mt-8">
-                            <h2 class="text-xl font-bold mb-4">Live RMS Item Search & Cache</h2>
+                        <div class="adm-card mt-8">
+                            <h2 class="adm-card-title mb-4">Live RMS Item Search & Cache</h2>
                             <p class="text-sm text-gray-600 dark:text-gray-300 mb-4">Search RateMyServer.net for an item and manually add it to the local cache. This is useful for new items not yet seen in the market.</p>
                             <form action="/admin" method="GET" class="flex flex-col md:flex-row items-end gap-4 mb-4">
                                 <input type="hidden" name="tab" value="cache">
@@ -586,7 +739,7 @@
                                            class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
                                            placeholder="e.g., Jellopy, Knife [4], Poring Card">
                                 </div>
-                                <button type="submit" class="w-full md:w-auto bg-indigo-500 hover:bg-indigo-700 text-white font-bold py-2 px-4 rounded">Search RMS</button>
+                                <button type="submit" class="adm-btn adm-btn-primary">Search RMS</button>
                             </form>
 
                             {{if .RMSLiveSearchResults}}
@@ -613,7 +766,7 @@
                                                     <input type="hidden" name="item_id" value="{{.ID}}">
                                                     <input type="hidden" name="item_name" value="{{.Name}}">
                                                     <input type="hidden" name="rms_live_search" value="{{$.RMSLiveSearchQuery}}">
-                                                    <button type="submit" class="text-xs bg-green-500 hover:bg-green-700 text-white font-bold py-1 px-2 rounded">
+                                                    <button type="submit" class="adm-btn adm-btn-sm adm-btn-success">
                                                         Save
                                                     </button>
                                                 </form>
@@ -633,24 +786,24 @@
                         </div>
                     </div>
                     <div>
-                        <div class="bg-white dark:bg-gray-800 p-6 rounded-lg shadow mt-8">
-                            <h2 class="text-xl font-bold mb-4">Item Cache Management (RMS)</h2>
+                        <div class="adm-card mt-8">
+                            <h2 class="adm-card-title mb-4">Item Cache Management (RMS)</h2>
                             <p class="text-sm text-gray-600 dark:text-gray-300 mb-4">The table will be recreated on application restart, but all data will be lost until then.</p>
                             <div class="flex flex-wrap items-start gap-4">
                                 <form action="/admin/cache" method="POST">
                                     <input type="hidden" name="tab" value="cache">
                                     <input type="hidden" name="action" value="repopulate">
-                                    <button type="submit" class="bg-indigo-500 hover:bg-indigo-700 text-white font-bold py-2 px-4 rounded">Repopulate Missing Items</button>
+                                    <button type="submit" class="adm-btn adm-btn-primary">Repopulate Missing Items</button>
                                 </form>
                                 <form action="/admin/cache" method="POST" onsubmit="return confirm('Are you sure you want to DELETE all cached item data? This keeps the table structure.');">
                                     <input type="hidden" name="tab" value="cache">
                                     <input type="hidden" name="action" value="clear">
-                                    <button type="submit" class="bg-orange-500 hover:bg-orange-700 text-white font-bold py-2 px-4 rounded">Clear All Cached Data</button>
+                                    <button type="submit" class="adm-btn adm-btn-warning">Clear All Cached Data</button>
                                 </form>
                                 <form action="/admin/cache" method="POST" onsubmit="return confirm('DANGER: Are you sure you want to completely DROP the `rms_item_cache` table? The table will be gone until the application is restarted.');">
                                     <input type="hidden" name="tab" value="cache">
                                     <input type="hidden" name="action" value="drop">
-                                    <button type="submit" class="bg-red-700 hover:bg-red-900 text-white font-bold py-2 px-4 rounded">Drop Cache Table</button>
+                                    <button type="submit" class="adm-btn adm-btn-danger">Drop Cache Table</button>
                                 </form>
                             </div>
                         </div>
@@ -659,9 +812,9 @@
             </div>
 
             <div id="tab-chat" class="tab-panel" style="display: none;">
-                <div id="paginated-chat" data-paginated class="bg-white dark:bg-gray-800 p-6 rounded-lg shadow mb-8">
+                <div id="paginated-chat" data-paginated class="adm-card mb-8">
                     <div class="flex justify-between items-center mb-4">
-                        <h2 class="text-xl font-bold">Chat Management</h2>
+                        <h2 class="adm-card-title">Chat Management</h2>
                         <span class="text-sm text-gray-500 dark:text-gray-400">Total Messages: {{.ChatTotalMessages}}</span>
                     </div>
 
@@ -673,7 +826,7 @@
                             <input type="text" name="chat_query" id="chat_query" value="{{.ChatSearchQuery}}" placeholder="Search..."
                                    class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm">
                         </div>
-                        <button type="submit" class="w-full md:w-auto bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded">
+                        <button type="submit" class="adm-btn adm-btn-primary">
                             Search
                         </button>
                         {{if .ChatSearchQuery}}
@@ -716,14 +869,14 @@
                                                 data-channel="{{.Channel}}"
                                                 data-msg="{{.Message}}"
                                                 onclick="openChatEditModal(this)"
-                                                class="text-xs bg-blue-500 hover:bg-blue-700 text-white font-bold py-1 px-2 rounded">
+                                                class="adm-btn adm-btn-sm adm-btn-primary">
                                                 Edit
                                             </button>
 
                                             <form action="/admin/chat/delete" method="POST" onsubmit="return confirm('Delete this message?');">
                                                 <input type="hidden" name="tab" value="chat">
                                                 <input type="hidden" name="id" value="{{.ID}}">
-                                                <button type="submit" class="text-xs bg-red-500 hover:bg-red-700 text-white font-bold py-1 px-2 rounded">
+                                                <button type="submit" class="adm-btn adm-btn-sm adm-btn-danger">
                                                     Del
                                                 </button>
                                             </form>
@@ -775,8 +928,8 @@
             <div id="tab-server" class="tab-panel" style="display: none;">
 
                 <!-- Self-Update -->
-                <div class="bg-white dark:bg-gray-800 p-6 rounded-lg shadow mb-8">
-                    <h2 class="text-xl font-bold mb-2">Server Update</h2>
+                <div class="adm-card mb-8">
+                    <h2 class="adm-card-title mb-2">Server Update</h2>
                     <p class="text-sm text-gray-600 dark:text-gray-300 mb-4">
                         Pulls the latest code, rebuilds the binary, and restarts the service.
                         The process is supervised (systemd <code>Restart=always</code>), so it comes back up automatically on the new build.
@@ -799,7 +952,7 @@
                     <form action="/admin/update" method="POST" onsubmit="return confirm('Pull latest code, rebuild, and restart the server now? The site will be briefly unavailable during the restart.');">
                         <input type="hidden" name="tab" value="server">
                         <button type="submit" {{if .UpdateStatus.Running}}disabled{{end}}
-                                class="bg-red-600 hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed text-white font-bold py-2 px-4 rounded">
+                                class="adm-btn adm-btn-danger">
                             ⬆️ Pull, Rebuild &amp; Restart
                         </button>
                     </form>
@@ -811,10 +964,10 @@
                 </div>
 
                 <!-- Live Server Logs -->
-                <div class="bg-white dark:bg-gray-800 p-6 rounded-lg shadow mb-8"
+                <div class="adm-card mb-8"
                      x-data="serverLogs()" x-init="init()">
                     <div class="flex flex-wrap items-center justify-between gap-3 mb-3">
-                        <h2 class="text-xl font-bold">Server Logs (stdout)</h2>
+                        <h2 class="adm-card-title">Server Logs (stdout)</h2>
                         <div class="flex flex-wrap items-center gap-3 text-sm">
                             <label class="flex items-center gap-1.5">
                                 <span class="text-gray-600 dark:text-gray-300">Lines</span>
@@ -831,7 +984,7 @@
                                 <span class="text-gray-600 dark:text-gray-300">Auto-refresh (3s)</span>
                             </label>
                             <button type="button" @click="refresh()"
-                                    class="bg-blue-500 hover:bg-blue-700 text-white font-semibold py-1 px-3 rounded">Refresh</button>
+                                    class="adm-btn adm-btn-sm adm-btn-primary">Refresh</button>
                         </div>
                     </div>
                     <div class="flex items-center justify-between mb-1 text-xs text-gray-500 dark:text-gray-400">
@@ -842,6 +995,117 @@
                         </label>
                     </div>
                     <pre x-ref="logbox" class="bg-gray-900 text-gray-100 text-xs font-mono leading-relaxed rounded-md p-4 h-[28rem] overflow-auto whitespace-pre-wrap" x-text="logs"></pre>
+                </div>
+
+            </div>
+
+            <div id="tab-machine" class="tab-panel" style="display: none;"
+                 x-data="machineStats()" x-init="init()" @machine-show.window="tick()">
+
+                <div class="flex flex-wrap items-center justify-between gap-3 mb-4">
+                    <div>
+                        <h2 class="adm-card-title">Machine Stats</h2>
+                        <p class="adm-desc mt-1">Live host metrics for the machine running this server. Polls every 3s while this tab is open.</p>
+                    </div>
+                    <span class="text-xs text-gray-500 dark:text-gray-400" x-text="status"></span>
+                </div>
+
+                <template x-if="error">
+                    <div class="adm-card mb-6 text-sm text-red-700 dark:text-red-300" x-text="'Could not load stats: ' + error"></div>
+                </template>
+
+                <template x-if="!s && !error">
+                    <div class="adm-card mb-6 text-sm text-gray-500 dark:text-gray-400">Collecting metrics…</div>
+                </template>
+
+                <div x-show="s" style="display:none">
+                    <!-- Gauges -->
+                    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-6">
+                        <!-- CPU -->
+                        <div class="adm-card">
+                            <p class="adm-metric-label mb-1">CPU</p>
+                            <p class="adm-metric-value mb-1"><span x-text="(s?.cpu_percent ?? 0).toFixed(1)"></span><span class="text-base font-normal">%</span></p>
+                            <p class="adm-metric-sub mb-2" x-text="s?.num_cpu + ' cores · load ' + (s?.load_avg?.[0] ?? 0).toFixed(2)"></p>
+                            <div class="adm-bar mb-2"><div class="adm-bar-fill" :style="'width:' + (s?.cpu_percent ?? 0) + '%;background:' + barColor(s?.cpu_percent ?? 0)"></div></div>
+                            <svg class="adm-spark" viewBox="0 0 100 100" preserveAspectRatio="none"><polyline :points="spark('cpu', 100)"></polyline></svg>
+                        </div>
+                        <!-- Memory -->
+                        <div class="adm-card">
+                            <p class="adm-metric-label mb-1">Memory</p>
+                            <p class="adm-metric-value mb-1"><span x-text="(s?.mem_percent ?? 0).toFixed(1)"></span><span class="text-base font-normal">%</span></p>
+                            <p class="adm-metric-sub mb-2" x-text="fmtBytes(s?.mem_used) + ' / ' + fmtBytes(s?.mem_total)"></p>
+                            <div class="adm-bar mb-2"><div class="adm-bar-fill" :style="'width:' + (s?.mem_percent ?? 0) + '%;background:' + barColor(s?.mem_percent ?? 0)"></div></div>
+                            <svg class="adm-spark is-mem" viewBox="0 0 100 100" preserveAspectRatio="none"><polyline :points="spark('mem', 100)"></polyline></svg>
+                        </div>
+                        <!-- Disk -->
+                        <div class="adm-card">
+                            <p class="adm-metric-label mb-1">Disk (/)</p>
+                            <p class="adm-metric-value mb-1"><span x-text="(s?.disk_percent ?? 0).toFixed(1)"></span><span class="text-base font-normal">%</span></p>
+                            <p class="adm-metric-sub mb-2" x-text="fmtBytes(s?.disk_used) + ' / ' + fmtBytes(s?.disk_total)"></p>
+                            <div class="adm-bar mb-2"><div class="adm-bar-fill" :style="'width:' + (s?.disk_percent ?? 0) + '%;background:' + barColor(s?.disk_percent ?? 0)"></div></div>
+                            <p class="adm-metric-sub" x-text="fmtBytes((s?.disk_total ?? 0) - (s?.disk_used ?? 0)) + ' free'"></p>
+                        </div>
+                        <!-- Temperature -->
+                        <div class="adm-card">
+                            <p class="adm-metric-label mb-1">Temperature</p>
+                            <template x-if="s?.has_temp">
+                                <div>
+                                    <p class="adm-metric-value mb-1"><span x-text="(s?.temp_c ?? 0).toFixed(1)"></span><span class="text-base font-normal">°C</span></p>
+                                    <p class="adm-metric-sub mb-2">Hottest thermal zone</p>
+                                    <div class="adm-bar mb-2"><div class="adm-bar-fill" :style="'width:' + Math.min(100, (s?.temp_c ?? 0)) + '%;background:' + barColor((s?.temp_c ?? 0) >= 80 ? 95 : (s?.temp_c ?? 0))"></div></div>
+                                    <svg class="adm-spark is-temp" viewBox="0 0 100 100" preserveAspectRatio="none"><polyline :points="spark('temp', 100)"></polyline></svg>
+                                </div>
+                            </template>
+                            <template x-if="!s?.has_temp">
+                                <p class="adm-metric-sub mt-2">No thermal sensor exposed on this host.</p>
+                            </template>
+                        </div>
+                    </div>
+
+                    <!-- Detail cards -->
+                    <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 items-start">
+                        <!-- Host -->
+                        <div class="adm-card">
+                            <h3 class="adm-card-title mb-3">Host</h3>
+                            <dl>
+                                <div class="adm-kv"><dt>Hostname</dt><dd x-text="s?.hostname || '–'"></dd></div>
+                                <div class="adm-kv"><dt>Kernel</dt><dd x-text="s?.kernel || '–'"></dd></div>
+                                <div class="adm-kv"><dt>Host uptime</dt><dd x-text="s?.uptime || '–'"></dd></div>
+                                <div class="adm-kv"><dt>App uptime</dt><dd x-text="s?.app_uptime || '–'"></dd></div>
+                                <div class="adm-kv"><dt>Processes</dt><dd x-text="s?.procs ?? '–'"></dd></div>
+                                <div class="adm-kv"><dt>Load (1/5/15m)</dt><dd x-text="(s?.load_avg || [0,0,0]).map(n => n.toFixed(2)).join(' / ')"></dd></div>
+                            </dl>
+                        </div>
+
+                        <!-- Process -->
+                        <div class="adm-card">
+                            <h3 class="adm-card-title mb-3">This Process</h3>
+                            <dl>
+                                <div class="adm-kv"><dt>CPU cores</dt><dd x-text="s?.num_cpu ?? '–'"></dd></div>
+                                <div class="adm-kv"><dt>Goroutines</dt><dd x-text="s?.goroutines ?? '–'"></dd></div>
+                                <div class="adm-kv"><dt>Resident memory</dt><dd x-text="fmtBytes(s?.app_rss)"></dd></div>
+                                <div class="adm-kv"><dt>Go heap in use</dt><dd x-text="fmtBytes(s?.go_heap)"></dd></div>
+                                <div class="adm-kv"><dt>Swap</dt><dd x-text="(s?.swap_total ? fmtBytes(s?.swap_used) + ' / ' + fmtBytes(s?.swap_total) : 'none')"></dd></div>
+                            </dl>
+                        </div>
+
+                        <!-- Per-core CPU -->
+                        <div class="adm-card">
+                            <h3 class="adm-card-title mb-3">Per-Core CPU</h3>
+                            <div class="space-y-2">
+                                <template x-for="(c, i) in (s?.per_cpu || [])" :key="i">
+                                    <div class="adm-core-row">
+                                        <span class="adm-core-label" x-text="'core ' + i"></span>
+                                        <span class="adm-bar"><span class="adm-bar-fill" :style="'width:' + c + '%;background:' + barColor(c)"></span></span>
+                                        <span class="adm-core-pct" x-text="c.toFixed(0) + '%'"></span>
+                                    </div>
+                                </template>
+                                <template x-if="!(s?.per_cpu || []).length">
+                                    <p class="adm-metric-sub">Per-core data unavailable.</p>
+                                </template>
+                            </div>
+                        </div>
+                    </div>
                 </div>
 
             </div>
@@ -872,10 +1136,10 @@
                     </div>
 
                     <div class="flex items-center justify-end gap-2">
-                        <button type="button" onclick="document.getElementById('chat-edit-modal').classList.add('hidden')" class="bg-gray-500 hover:bg-gray-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline">
+                        <button type="button" onclick="document.getElementById('chat-edit-modal').classList.add('hidden')" class="adm-btn adm-btn-neutral">
                             Cancel
                         </button>
-                        <button type="submit" class="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline">
+                        <button type="submit" class="adm-btn adm-btn-success">
                             Save
                         </button>
                     </div>
@@ -936,6 +1200,74 @@
             };
         }
 
+        // Live machine stats (Machine tab). Polls /admin/stats for JSON and
+        // keeps a short rolling history per metric to draw sparklines. To avoid
+        // background load, it only fetches while the Machine tab is visible.
+        function machineStats() {
+            return {
+                s: null,
+                error: '',
+                status: 'connecting…',
+                timer: null,
+                maxPoints: 40,
+                hist: { cpu: [], mem: [], temp: [] },
+                init() {
+                    this.tick();
+                    this.timer = setInterval(() => this.tick(), 3000);
+                },
+                visible() {
+                    const p = document.getElementById('tab-machine');
+                    return p && p.style.display !== 'none';
+                },
+                async tick() {
+                    if (!this.visible()) return;
+                    try {
+                        const resp = await fetch('/admin/stats', { headers: { 'X-Requested-With': 'fetch' } });
+                        if (!resp.ok) throw new Error('HTTP ' + resp.status);
+                        const data = await resp.json();
+                        this.s = data;
+                        this.error = '';
+                        this.push('cpu', data.cpu_percent);
+                        this.push('mem', data.mem_percent);
+                        if (data.has_temp) this.push('temp', data.temp_c);
+                        this.status = 'Updated ' + new Date(data.timestamp).toLocaleTimeString();
+                    } catch (err) {
+                        this.error = err.message;
+                        this.status = 'Error';
+                    }
+                },
+                push(key, val) {
+                    const a = this.hist[key];
+                    a.push(val);
+                    if (a.length > this.maxPoints) a.shift();
+                },
+                // Build a "x,y x,y …" polyline for a 0..100 viewBox, scaling
+                // values against max (so temp uses 100°C full-scale, % uses 100%).
+                spark(key, max) {
+                    const a = this.hist[key];
+                    if (a.length < 2) return '';
+                    const n = a.length;
+                    return a.map((v, i) => {
+                        const x = (i / (n - 1)) * 100;
+                        const y = 100 - Math.max(0, Math.min(1, v / max)) * 100;
+                        return x.toFixed(1) + ',' + y.toFixed(1);
+                    }).join(' ');
+                },
+                fmtBytes(b) {
+                    if (b === null || b === undefined) return '–';
+                    const units = ['B', 'KB', 'MB', 'GB', 'TB'];
+                    let i = 0, n = b;
+                    while (n >= 1024 && i < units.length - 1) { n /= 1024; i++; }
+                    return n.toFixed(i === 0 || n >= 100 ? 0 : 1) + ' ' + units[i];
+                },
+                barColor(p) {
+                    if (p >= 90) return '#dc2626';
+                    if (p >= 70) return '#d97706';
+                    return '#059669';
+                },
+            };
+        }
+
         document.addEventListener('DOMContentLoaded', function () {
             // --- Guild Emblem Preview Script ---
             const guildSelect = document.getElementById('guild_select');
@@ -992,10 +1324,37 @@
                 tabPanels.forEach(panel => {
                     panel.style.display = (panel.id === 'tab-' + targetTab) ? 'block' : 'none';
                 });
+
+                // The Machine tab only polls while visible; nudge it to fetch
+                // immediately on activation instead of waiting for the next tick.
+                if (targetTab === 'machine') {
+                    window.dispatchEvent(new CustomEvent('machine-show'));
+                }
+            }
+
+            // The chat panel is only rendered server-side when ?tab=chat is present, so
+            // a client-side tab switch shows an empty panel. Lazily fetch it on first view.
+            // If the page already loaded with ?tab=chat, the content is present already.
+            let chatLoaded = new URLSearchParams(window.location.search).get('tab') === 'chat';
+            async function ensureChatLoaded() {
+                if (chatLoaded) return;
+                const url = new URL(window.location.href);
+                url.searchParams.set('tab', 'chat');
+                const container = document.getElementById('paginated-chat');
+                if (container) container.setAttribute('aria-busy', 'true');
+                try {
+                    await fetchAndSwapPaginated(url.toString(), 'paginated-chat');
+                    chatLoaded = true;
+                } catch (err) {
+                    console.error('Chat load failed', err);
+                } finally {
+                    if (container) container.removeAttribute('aria-busy');
+                }
             }
 
             function navigateToTab(targetTab, { push = true } = {}) {
                 switchTab(targetTab);
+                if (targetTab === 'chat') ensureChatLoaded();
                 const url = new URL(window.location.href);
                 url.searchParams.set('tab', targetTab);
                 if (push) {
