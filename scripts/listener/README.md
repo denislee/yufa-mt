@@ -21,6 +21,15 @@ desktop session:
 scripts/listener/yufa-listener.sh run
 ```
 
+> **Wayland/Sway:** the client and `xdotool` are X11-only — they cannot talk to
+> a native Wayland compositor. On a Sway (or any Wayland) desktop, **Xwayland
+> must be running** and `REAL_DISPLAY` must point at its X display (typically
+> `:0` or `:1`, i.e. the value of `$DISPLAY` inside the session). The default
+> `REAL_DISPLAY=${DISPLAY:-:0}` resolves to this automatically when the script
+> runs inside the Sway session; if it's empty or wrong, set `REAL_DISPLAY`
+> explicitly in `config.env`. Check with `echo $DISPLAY` (must be non-empty) and
+> `xdotool getdisplaygeometry` (must succeed) from within the session.
+
 or let it autostart at login — `~/.config/autostart/yufa-listener.desktop` is
 installed. Stop with Ctrl+C (foreground) or `yufa-listener.sh stop`.
 
@@ -85,20 +94,66 @@ itself stored in the wine registry under
 `[Software\Wow6432Node\Gravity Soft\Ragnarok]` `"ID"=`, so a different remembered
 account can be swapped in there (the client rewrites its token blob each run).
 
-**The actual blocker is Gepard, at the connection handshake.** With a patched,
-up-to-date client (run `#Patch Projeto Yufa - ABRA POR AQUI.exe` first — an
-outdated client fails to connect at all) and correct credentials, the client
-*does* reach the login server (`ESTAB` to its `:7900`), but the connection is
-immediately dropped and it shows *"Não foi possível conectar-se ao servidor."*
-A manual login with the laptop's real keyboard connects fine, so Gepard accepts
-the genuine client and is rejecting only this automated/headless path — most
-likely because it detects the `ydotoold` virtual input device (anti-cheats flag
-input-automation tooling). That's a catch-22: the very tool that lets us type
-headlessly is what Gepard refuses. Killing `ydotoold` at submit time didn't help.
+**The blocker is at the connection handshake (cause not yet confirmed — see the
+`rtest` caveat below).** With a patched, up-to-date client (run `#Patch Projeto
+Yufa - ABRA POR AQUI.exe` first — an outdated client fails to connect at all) and
+correct credentials, the client *does* reach the login server (`ESTAB` to its
+`:7900`), but the connection is immediately dropped and it shows *"Não foi
+possível conectar-se ao servidor."*
+A manual login with the laptop's real keyboard connects fine, so the genuine
+client is accepted and only this automated/headless path is rejected. The
+original guess was that Gepard detects the `ydotoold` virtual input device — but
+that's now doubtful (see the caveat below): killing `ydotoold` at submit time
+didn't help, and a Wine-hosted anti-cheat can't see Linux `/dev/uinput` anyway.
+The headless environment itself is the more likely cause. `rtest` settles it.
 
-So unattended headless login is still not achievable — not for lack of input
-injection (solved), but because Gepard Shield rejects the connection. Getting
-past that needs the private/paid bypasses this project deliberately avoids.
+So unattended headless login is **not yet achieved** — and which factor blocks it
+(headless environment vs. input automation) is the open question `rtest` is
+designed to answer. If it turns out to be a genuine Gepard rejection of the
+client itself, getting past that needs the private/paid bypasses this project
+deliberately avoids.
+
+> **Caveat — the experiment confounded two variables.** The known-good login was
+> *(real display + manual keyboard)*; the known-bad was *(headless + ydotool)*.
+> Those differ in **both** the environment (real GPU vs. Xvfb/wined3d) **and** the
+> input (hardware vs. automated), so we can't yet say which one Gepard rejects.
+> And note: Gepard is a Windows DLL **inside Wine** — it can't read Linux
+> `/dev/uinput`, and by the time input reaches the game Wine has already turned it
+> into ordinary Windows messages, so a uinput keyboard and a real one look
+> identical at the game layer. That makes "Gepard detected the virtual device"
+> doubtful (consistent with: killing `ydotoold` at submit didn't help) and points
+> at the **headless environment** as the more likely blocker. The `rtest` command
+> isolates it — see below.
+
+### Isolating the blocker: real-display ydotool test (`rtest`)
+
+Change one variable at a time: drive the login with `ydotool` on the **real**
+GPU-accelerated display — the same environment as the working manual login.
+
+```bash
+# 1. ydotoold needs root (/dev/uinput is root-only); -o makes the socket yours.
+sudo ydotoold -p /tmp/.ydotool_socket -o "$(id -u):$(id -g)" &
+
+# 2. Launch the client on the real display and bring it to the login screen.
+scripts/listener/yufa-listener.sh run        # leave running; ID is pre-filled
+
+# 3. In another terminal: focus the client's login window, then run the test.
+#    (run with sudo to also see process names in the connection sample)
+scripts/listener/yufa-listener.sh rtest
+```
+
+`rtest` types the password (+ PIN) via ydotool, then samples `ss` for ~15s and
+prints a verdict guide:
+
+- **Persistent `ESTAB` to the server** → login *worked* with automated input on the
+  real display ⇒ the blocker was the **headless environment**, not input
+  automation. A hardware HID device (the Pico) would **not** help; effort belongs
+  on the GPU/display side (real Xorg/seat, GPU passthrough) instead.
+- **`ESTAB` drops + the in-client "Não foi possível conectar-se" dialog** → input
+  automation is implicated even on the real seat. Only *then* is the
+  [Pico HID](pico-hid/) (genuine USB hardware) worth trying.
+
+Either outcome decides whether the Pico is worth building.
 
 ## Why a client at all (not a bot)
 
@@ -110,8 +165,12 @@ the wire, so we just need one genuine client connected.
 ## Requirements
 
 - `lutris` + GE-Proton (your existing setup) for real mode.
+- On a **Wayland desktop (e.g. Sway)**, **Xwayland** so the X11 client and
+  `xdotool` have an X display to bind to (see the Wayland/Sway note above).
 - Headless-mode extras (Xvfb, `xdotool`, `openbox`, `import`, `umu-run`) are only
   needed if you experiment with `RUN_MODE=headless`.
+- `ydotool` + `ydotoold` (and `ss` from iproute2) only for the `rtest`
+  real-display experiment described above.
 
 ## Minimum-resource notes
 

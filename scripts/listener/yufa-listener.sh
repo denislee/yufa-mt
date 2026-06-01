@@ -9,6 +9,10 @@
 #   run     (default) start Xvfb, launch the client, auto-login, then monitor
 #   login   run only the auto-login key sequence against the running display
 #           (use this to re-calibrate timings without restarting the client)
+#   rtest   isolating experiment: drive the login via ydotool (real hardware-
+#           level input) against the REAL display, then report the connection
+#           state. Launch the client first with `run`; bring it to the login
+#           screen. See "Isolating the blocker" in README.md.
 #   shot    grab a PNG screenshot of the headless display (for calibration)
 #   stop    kill the client and the Xvfb we started
 #   env     print the resolved configuration and exit
@@ -102,6 +106,14 @@ detect_from_lutris_yml || true
 : "${WAIT_BEFORE_CHARSELECT:=6}"        # PIN -> character select
 : "${WAIT_MAP_LOAD:=25}"                # character select -> in-game/map loaded
 : "${KEY_DELAY_MS:=70}"                 # per-keystroke delay while typing
+
+# --- Real-display ydotool test (rtest) ---------------------------------------
+# ydotool injects at the kernel uinput layer, so libinput -> compositor -> Wine
+# treat it as genuine hardware (unlike xdotool/XTEST). The `rtest` command uses
+# it against the REAL display to isolate one variable vs. the known-good manual
+# login: same GPU-accelerated environment, only the input is automated.
+: "${YDOTOOL_SOCKET:=/tmp/.ydotool_socket}"  # ydotoold socket (start it as root)
+: "${RTEST_FOCUS_DELAY:=6}"             # seconds to click/focus the login window first
 
 # The client shows a modal Lua popup on startup ("HatEFID nil") and may show
 # others after login. We dismiss any non-main/non-IME window this many times.
@@ -391,6 +403,71 @@ auto_login() {
   log "Auto-login sequence complete."
 }
 
+# --- Real-display ydotool test ------------------------------------------------
+# Goal: disambiguate the headless findings. The known-good login was (real
+# display + manual keyboard); the known-bad was (headless + ydotool) — two
+# variables at once. This drives ydotool on the REAL display so only the input
+# differs. ydotool reaches the game through kernel uinput -> libinput ->
+# compositor -> Wine, indistinguishable from a USB keyboard at the game layer.
+ydo() { YDOTOOL_SOCKET="$YDOTOOL_SOCKET" ydotool "$@"; }
+ydo_enter() { ydo key 28:1 28:0; }              # KEY_ENTER press + release
+ydotoold_ready() { [ -S "$YDOTOOL_SOCKET" ]; }
+
+# Sample the client's TCP state so the test has an objective verdict instead of
+# eyeballing the window: a persistent ESTAB to the server = logged in; an ESTAB
+# that drops within seconds (with the in-client "Não foi possível conectar-se"
+# dialog) = the Gepard rejection.
+report_connection() {
+  command -v ss >/dev/null 2>&1 || { log "ss not available; judge from the client window."; return 0; }
+  log "Sampling game connections for ~15s (run as root to see process names):"
+  local i lines
+  for i in $(seq 1 5); do
+    lines="$(ss -tnp 2>/dev/null | grep ESTAB | grep -iE "wine|${GAME_PROC%.*}|ragexe|projeto|:${CHAT_CAPTURE_PORT:-6121}|:6900|:7900" || true)"
+    if [ -n "$lines" ]; then
+      log "  [$i] ESTAB:"; printf '%s\n' "$lines" | sed 's/^/        /' | tee -a "$LOG_FILE" >&2
+    else
+      log "  [$i] no game ESTAB right now"
+    fi
+    sleep 3
+  done
+  log "Verdict guide:"
+  log "  persistent ESTAB across samples  => login WORKED -> the headless env was the blocker, not input."
+  log "  ESTAB vanishes + connect error   => input automation is implicated even on the real seat."
+}
+
+auto_login_ydotool() {
+  need ydotool
+  [ -n "${YUFA_PASS:-}" ] || die "YUFA_PASS not set (put it in $CONFIG_DIR/credentials.env)"
+  ydotoold_ready || die "ydotoold socket '$YDOTOOL_SOCKET' not found. Start it as root (uinput is root-only):
+    sudo ydotoold -p \"$YDOTOOL_SOCKET\" -o $(id -u):$(id -g)"
+  [ -n "$(game_pid)" ] || log "WARN: client process '$GAME_PROC' not detected — launch it first (yufa-listener.sh run) and bring it to the login screen."
+
+  log "REAL-DISPLAY ydotool test on ${REAL_DISPLAY}. Click the client's login window NOW to focus it."
+  log "(ydotool types into whatever is focused on the seat; it can't target a window.)"
+  local s
+  for s in $(seq "$RTEST_FOCUS_DELAY" -1 1); do log "  typing in ${s}s..."; sleep 1; done
+
+  # Saved-login flow only: "Salvar Login" pre-fills the ID and the password field
+  # auto-focuses, so we type the password blind — ydotool has no working mouse to
+  # click fields (documented mouse limitation), and that's exactly the manual flow.
+  log "Typing password (saved-login: ID pre-filled, password field focused)"
+  ydo type --key-delay "$KEY_DELAY_MS" "$YUFA_PASS"
+  ydo_enter
+
+  log "Login sent; waiting ${WAIT_AFTER_LOGIN}s for PIN/char-select"
+  sleep "$WAIT_AFTER_LOGIN"
+
+  if [ -n "$PIN_CODE" ]; then
+    sleep "$WAIT_BEFORE_PIN"
+    log "Typing character-select PIN"
+    ydo type --key-delay "$KEY_DELAY_MS" "$PIN_CODE"
+    ydo_enter
+  fi
+
+  log "ydotool login sequence sent."
+  report_connection
+}
+
 # --- Monitor / cleanup -------------------------------------------------------
 cleanup() {
   log "Cleaning up..."
@@ -436,6 +513,8 @@ cmd_run() {
 
 cmd_login() { auto_login; }
 
+cmd_rtest() { auto_login_ydotool; }
+
 cmd_shot() {
   need import
   local out="${1:-$STATE_DIR/screen-$(date +%H%M%S).png}"
@@ -450,7 +529,7 @@ cmd_env() {
            WAIT_FOR_WINDOW SETTLE_AFTER_WINDOW WAIT_AFTER_LOGIN WAIT_BEFORE_PIN \
            WAIT_BEFORE_CHARSELECT WAIT_MAP_LOAD KEY_DELAY_MS DISMISS_DIALOGS \
            WINDOW_PIN_XY LOGIN_ID_CLICK LOGIN_PW_CLICK LOGIN_BUTTON_CLICK \
-           PIN_CLICK CHAR_SELECT_CLICK EXTRA_ENV; do
+           PIN_CLICK CHAR_SELECT_CLICK EXTRA_ENV YDOTOOL_SOCKET RTEST_FOCUS_DELAY; do
     printf '%-22s = %s\n' "$v" "${!v}"
   done
   printf '%-22s = %s\n' "YUFA_USER" "${YUFA_USER:+<set>}"
@@ -461,8 +540,9 @@ cmd_env() {
 case "${1:-run}" in
   run)   cmd_run ;;
   login) cmd_login ;;
+  rtest) cmd_rtest ;;
   shot)  shift; cmd_shot "${1:-}" ;;
   stop)  cmd_stop ;;
   env)   cmd_env ;;
-  *) echo "usage: $0 {run|login|shot [file]|stop|env}" >&2; exit 2 ;;
+  *) echo "usage: $0 {run|login|rtest|shot [file]|stop|env}" >&2; exit 2 ;;
 esac
