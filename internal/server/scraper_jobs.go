@@ -39,28 +39,37 @@ func runJobOnTicker(ctx context.Context, job Job) {
 }
 
 func startBackgroundJobs(ctx context.Context, wg *sync.WaitGroup) {
-	if appConfig != nil && appConfig.DisableScrapers {
+	chatOnly := appConfig != nil && appConfig.ChatCaptureOnly
+
+	// DISABLE_SCRAPERS turns off everything, including chat capture — unless
+	// CHAT_CAPTURE_ONLY is also set, in which case chat capture still runs.
+	if appConfig != nil && appConfig.DisableScrapers && !chatOnly {
 		slog.Info("DISABLE_SCRAPERS is set; skipping all background scrape jobs and chat packet capture")
 		return
 	}
-	// Define all scheduled jobs
-	jobs := []Job{
-		{Name: "Market", Func: scrapeData, Interval: 3 * time.Minute},
-		{Name: "Player Count", Func: scrapeAndStorePlayerCount, Interval: 1 * time.Minute},
-		{Name: "Player Character", Func: scrapePlayerCharacters, Interval: 6 * time.Hour},
-		{Name: "Guild", Func: scrapeGuilds, Interval: 1 * time.Hour},
-		{Name: "Zeny", Func: scrapeZeny, Interval: 6 * time.Hour},
-		{Name: "MVP Kill", Func: scrapeMvpKills, Interval: 5 * time.Minute},
-		// {Name: "PT-Name-Populator", Func: populateMissingPortugueseNames, Interval: 6 * time.Hour},
-		{Name: "WoE-Char-Rankings", Func: scrapeWoeCharacterRankings, Interval: 12 * time.Hour},
-	}
 
-	for _, job := range jobs {
-		wg.Add(1)
-		go func(j Job) {
-			defer wg.Done()
-			runJobOnTicker(ctx, j)
-		}(job)
+	if chatOnly {
+		slog.Info("CHAT_CAPTURE_ONLY is set; running chat packet capture only, all scrape jobs disabled")
+	} else {
+		// Define all scheduled jobs
+		jobs := []Job{
+			{Name: "Market", Func: scrapeData, Interval: 3 * time.Minute},
+			{Name: "Player Count", Func: scrapeAndStorePlayerCount, Interval: 1 * time.Minute},
+			{Name: "Player Character", Func: scrapePlayerCharacters, Interval: 6 * time.Hour},
+			{Name: "Guild", Func: scrapeGuilds, Interval: 1 * time.Hour},
+			{Name: "Zeny", Func: scrapeZeny, Interval: 6 * time.Hour},
+			{Name: "MVP Kill", Func: scrapeMvpKills, Interval: 5 * time.Minute},
+			// {Name: "PT-Name-Populator", Func: populateMissingPortugueseNames, Interval: 6 * time.Hour},
+			{Name: "WoE-Char-Rankings", Func: scrapeWoeCharacterRankings, Interval: 12 * time.Hour},
+		}
+
+		for _, job := range jobs {
+			wg.Add(1)
+			go func(j Job) {
+				defer wg.Done()
+				runJobOnTicker(ctx, j)
+			}(job)
+		}
 	}
 
 	wg.Add(1)

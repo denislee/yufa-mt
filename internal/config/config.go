@@ -43,6 +43,12 @@ type Config struct {
 	// loop. Intended for local development (set by `make run`) so a dev
 	// instance doesn't hammer upstream sources or require libpcap.
 	DisableScrapers bool
+
+	// If true, run ONLY the chat packet capture loop and skip every market/
+	// player/guild scrape job. Lets a machine dedicated to chat logging avoid
+	// hammering upstream sources. Takes precedence over DisableScrapers for
+	// the chat-capture loop (chat capture runs even if DisableScrapers is set).
+	ChatCaptureOnly bool
 }
 
 // Load reads env vars, applies defaults, and validates the result. It
@@ -59,6 +65,7 @@ func Load() (*Config, error) {
 		ChatCapturePort:      os.Getenv("CHAT_CAPTURE_PORT"),
 		RequireAdminPassword: boolEnv("REQUIRE_ADMIN_PASSWORD"),
 		DisableScrapers:      boolEnv("DISABLE_SCRAPERS"),
+		ChatCaptureOnly:      boolEnv("CHAT_CAPTURE_ONLY"),
 	}
 
 	if ids := os.Getenv("DISCORD_CHANNEL_IDS"); ids != "" {
