@@ -38,6 +38,8 @@ var (
 	itemExactCache  map[string]int64
 	// Slice for iteration/fuzzy searching
 	itemFuzzyCache  []cachedItem
+	// Map for O(1) reverse lookups: itemID -> item (used to decode chat item links)
+	itemByIDCache   map[int64]cachedItem
 )
 
 type cachedItem struct {
@@ -55,6 +57,7 @@ var (
 		"cleanCardName":    cleanCardName,
 		"toggleOrder":      toggleOrder,
 		"parseDropMessage": parseDropMessage,
+		"renderChatMessage": renderChatMessage,
 		"formatZeny":       formatZeny,
 		"formatRMT":        formatRMT,
 		"getKillCount":     getKillCount,
@@ -1933,6 +1936,7 @@ func ensureItemCache() {
 	}
 
 	itemExactCache = make(map[string]int64)
+	itemByIDCache = make(map[int64]cachedItem, 40000)
 	// Pre-allocate estimate (Ragnarok has ~30k-50k items)
 	itemFuzzyCache = make([]cachedItem, 0, 40000)
 
@@ -1949,6 +1953,7 @@ func ensureItemCache() {
 			continue
 		}
 		itemFuzzyCache = append(itemFuzzyCache, i)
+		itemByIDCache[i.id] = i
 
 		keyEN := fmt.Sprintf("%s_%d", strings.ToLower(i.name), i.slots)
 		itemExactCache[keyEN] = i.id
