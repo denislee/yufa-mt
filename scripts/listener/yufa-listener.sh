@@ -20,6 +20,18 @@
 #
 set -uo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+# --- Run mode ----------------------------------------------------------------
+# headless = Xvfb + openbox + auto-login (blocked: client ignores synthetic
+#            keyboard input, so this can't type the password). Kept for record.
+# real     = launch the client on the real X display via lutris and keep it
+#            alive; you log in once with your real keyboard (RO sessions last
+#            hours). This is the working mode.
+: "${RUN_MODE:=headless}"
+: "${REAL_DISPLAY:=:0}"                 # real X display used in real mode
+: "${LUTRIS_GAME_ID:=4}"                # `lutris -l -j` id (4 = ragnarok-online-1)
+
 # --- Defaults (override in ~/.config/yufa-listener/config.env) ---------------
 : "${DISPLAY_NUM:=:99}"                 # virtual display to create
 : "${SCREEN_GEOMETRY:=640x480x16}"      # Xvfb -screen 0 geometry (low = light)
@@ -34,6 +46,13 @@ set -uo pipefail
 : "${PROTONPATH:=$HOME/.local/share/Steam/compatibilitytools.d/GE-Proton10-34}"
 : "${WINEPREFIX_DIR:=$GAME_DIR/wine_prefix_2}"
 : "${GAME_EXE:=$GAME_DIR/Projeto_Yufa.exe}"
+
+# A minimal window manager (openbox) runs on the display so the client window
+# gets *activated* — RO's text fields only accept keyboard input when the window
+# is active, which is impossible without a WM. The rc keeps windows undecorated
+# so click coordinates stay valid.
+: "${USE_WM:=1}"
+: "${WM_RC:=$SCRIPT_DIR/openbox-rc.xml}"
 
 # Login timing knobs (seconds). Tune with the `login`/`shot` subcommands.
 : "${WAIT_FOR_WINDOW:=180}"             # max time to wait for the window to appear
@@ -85,6 +104,7 @@ CONFIG_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/yufa-listener"
 STATE_DIR="${XDG_STATE_HOME:-$HOME/.local/state}/yufa-listener"
 LOG_FILE="$STATE_DIR/listener.log"
 XVFB_PID_FILE="$STATE_DIR/xvfb.pid"
+WM_PID_FILE="$STATE_DIR/wm.pid"
 
 [ -f "$CONFIG_DIR/config.env" ]      && . "$CONFIG_DIR/config.env"
 [ -f "$CONFIG_DIR/credentials.env" ] && . "$CONFIG_DIR/credentials.env"
@@ -137,6 +157,27 @@ stop_xvfb() {
   fi
 }
 
+# --- Window manager (openbox) ------------------------------------------------
+start_wm() {
+  [ "$USE_WM" = 1 ] || { log "WM disabled (USE_WM=0)"; return 0; }
+  command -v openbox >/dev/null 2>&1 || die "openbox not installed (sudo pacman -S openbox), or set USE_WM=0"
+  local cfgflag=""
+  [ -f "$WM_RC" ] && cfgflag="--config-file $WM_RC"
+  log "Starting openbox on $DISPLAY_NUM"
+  # shellcheck disable=SC2086
+  DISPLAY="$DISPLAY_NUM" openbox $cfgflag >>"$LOG_FILE" 2>&1 &
+  echo $! >"$WM_PID_FILE"
+  sleep 1.5
+}
+
+stop_wm() {
+  if [ -f "$WM_PID_FILE" ]; then
+    local pid; pid="$(cat "$WM_PID_FILE" 2>/dev/null)"
+    [ -n "${pid:-}" ] && kill "$pid" 2>/dev/null
+    rm -f "$WM_PID_FILE"
+  fi
+}
+
 # --- Client lifecycle --------------------------------------------------------
 game_pid() { pgrep -f "$GAME_PROC" | head -1; }
 
@@ -165,6 +206,22 @@ launch_client() {
   die "client process '$GAME_PROC' never appeared (check $LOG_FILE)"
 }
 
+# Real-display launch: use lutris (the user's normal, GPU-accelerated setup) on
+# the real X server. No auto-login — the user types the password by hand.
+launch_client_lutris() {
+  need lutris
+  log "Launching client via lutris (game id $LUTRIS_GAME_ID) on $REAL_DISPLAY"
+  DISPLAY="$REAL_DISPLAY" lutris "lutris:rungameid/$LUTRIS_GAME_ID" >>"$LOG_FILE" 2>&1 &
+  LAUNCH_PID=$!
+  log "lutris pid $LAUNCH_PID; waiting up to ${WAIT_FOR_WINDOW}s for '$GAME_PROC'"
+  local i
+  for i in $(seq 1 "$WAIT_FOR_WINDOW"); do
+    [ -n "$(game_pid)" ] && { log "Client process up (pid $(game_pid))."; return 0; }
+    sleep 1
+  done
+  die "client process '$GAME_PROC' never appeared (check $LOG_FILE)"
+}
+
 # Find the client's window id on the headless display.
 find_window() {
   local wid
@@ -183,9 +240,9 @@ click_at() {  # "X,Y"
   sleep 0.4
 }
 
-# Pin the client window to a known position so click coords are deterministic
-# (no WM places it). windowactivate needs _NET_ACTIVE_WINDOW which Xvfb lacks,
-# so we use windowraise + windowfocus. Echoes the wid.
+# Pin the client window to a known position so click coords are deterministic,
+# and *activate* it (openbox provides _NET_ACTIVE_WINDOW) so its text fields
+# accept keyboard input. Echoes the wid.
 pin_window() {
   local wid; wid="$(find_window)"
   [ -z "$wid" ] && return 0
@@ -193,6 +250,7 @@ pin_window() {
     xdo windowmove "$wid" "${WINDOW_PIN_XY%,*}" "${WINDOW_PIN_XY#*,}" 2>/dev/null
   fi
   xdo windowraise "$wid" 2>/dev/null
+  xdo windowactivate --sync "$wid" 2>/dev/null
   xdo windowfocus "$wid" 2>/dev/null
   echo "$wid"
 }
@@ -315,6 +373,7 @@ cleanup() {
   sleep 3
   pkill -9 -f "$GAME_PROC" 2>/dev/null
   [ -n "${LAUNCH_PID:-}" ] && kill "$LAUNCH_PID" 2>/dev/null
+  stop_wm
   stop_xvfb
 }
 
@@ -327,7 +386,21 @@ monitor() {
 cmd_run() {
   trap 'cleanup; exit 0' INT TERM
   trap 'cleanup' EXIT
+  if [ "$RUN_MODE" = real ]; then
+    [ -n "${XAUTHORITY:-}" ] || export XAUTHORITY="$HOME/.Xauthority"
+    log "Real-display mode on $REAL_DISPLAY — launch + keep-alive; log in manually with your keyboard."
+    # Self-restarting loop so it survives client crashes without depending on
+    # systemd env for the :0 session. Run it inside your graphical session.
+    while true; do
+      launch_client_lutris
+      log "Client up on $REAL_DISPLAY. Log in (password + PIN) with your keyboard; it stays connected."
+      monitor
+      log "Client exited; relaunching in 10s (you'll need to log in again)."
+      sleep 10
+    done
+  fi
   start_xvfb
+  start_wm
   launch_client
   auto_login
   monitor
@@ -346,7 +419,7 @@ cmd_shot() {
 cmd_stop() { cleanup; }
 
 cmd_env() {
-  for v in DISPLAY_NUM SCREEN_GEOMETRY GAME_PROC WINDOW_NAME GAME_DIR \
+  for v in RUN_MODE REAL_DISPLAY LUTRIS_GAME_ID DISPLAY_NUM SCREEN_GEOMETRY GAME_PROC WINDOW_NAME GAME_DIR \
            UMU_RUN PROTONPATH WINEPREFIX_DIR GAME_EXE \
            WAIT_FOR_WINDOW SETTLE_AFTER_WINDOW WAIT_AFTER_LOGIN WAIT_BEFORE_PIN \
            WAIT_BEFORE_CHARSELECT WAIT_MAP_LOAD KEY_DELAY_MS DISMISS_DIALOGS \

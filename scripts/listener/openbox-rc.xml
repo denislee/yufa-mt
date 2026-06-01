@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Minimal openbox config for the headless listener.
+     Goal: provide window *activation* (so RO's text fields accept keyboard
+     input) while keeping windows undecorated and focused, so the calibrated
+     click coordinates stay valid (no title bar offset). -->
+<openbox_config xmlns="http://openbox.org/3.4/rc">
+  <focus>
+    <focusNew>yes</focusNew>
+    <followMouse>no</followMouse>
+    <raiseOnFocus>yes</raiseOnFocus>
+  </focus>
+  <placement>
+    <policy>UnderMouse</policy>
+  </placement>
+  <theme>
+    <keepBorder>no</keepBorder>
+  </theme>
+  <applications>
+    <application class="*">
+      <decor>no</decor>
+      <maximized>no</maximized>
+      <focus>yes</focus>
+    </application>
+  </applications>
+</openbox_config>

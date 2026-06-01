@@ -15,6 +15,7 @@ echo "==> Checking dependencies"
 missing=()
 for c in Xvfb import; do command -v "$c" >/dev/null 2>&1 || missing+=("$c"); done
 command -v xdotool >/dev/null 2>&1 || missing+=("xdotool (sudo pacman -S xdotool)")
+command -v openbox >/dev/null 2>&1 || missing+=("openbox (sudo pacman -S openbox) — activates the window so login fields accept keys")
 UMU="${UMU_RUN:-$HOME/.local/share/lutris/runtime/umu/umu-run}"
 [ -x "$UMU" ] || missing+=("umu-run (expected at $UMU)")
 command -v lutris >/dev/null 2>&1 || echo "   note: lutris not found (only needed for the one-time saved-login step)"
