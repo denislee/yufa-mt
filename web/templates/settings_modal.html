@@ -41,12 +41,14 @@
                 <div class="ymt-modal__section-label">{{.Page.T.nav_language}}</div>
                 <div class="ymt-modal__grid ymt-modal__grid--2">
                     <a href="/set-lang?lang=en&redirect={{.Page.RequestURL}}"
+                       hx-boost="false"
                        class="ymt-opt {{if eq .Page.Lang "en"}}is-active{{end}}">
                         <span class="ymt-opt__main">
                             <span>🇺🇸</span><span class="ymt-opt__label">English</span>
                         </span>
                     </a>
                     <a href="/set-lang?lang=pt&redirect={{.Page.RequestURL}}"
+                       hx-boost="false"
                        class="ymt-opt {{if eq .Page.Lang "pt"}}is-active{{end}}">
                         <span class="ymt-opt__main">
                             <span>🇧🇷</span><span class="ymt-opt__label">Português</span>
