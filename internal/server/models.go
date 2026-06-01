@@ -172,6 +172,11 @@ type PlayerCharacter struct {
 	IsActive      bool
 	IsGuildLeader bool
 	IsSpecial     bool
+	// NotRanked is set when the character has no row in the rankings
+	// `characters` table (e.g. an unranked player who only appears in the
+	// chat log). The detail page is still rendered from whatever chat/
+	// changelog/drop history exists, with the ranking-only stats hidden.
+	NotRanked bool
 }
 
 type Guild struct {

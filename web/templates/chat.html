@@ -1,9 +1,14 @@
 {{define "title"}}{{.Page.T.public_chat_log}} - Yufa Market Tracker{{end}}
-{{define "head_extra"}}
-<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3.0.0/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
-{{end}}
 {{define "content"}}
+    {{/* These must live inside #main (the content block), NOT head_extra:
+         hx-boost only swaps #main and drops the response <head>, so head_extra
+         scripts never load on boosted navigation. Keeping them here lets
+         app.js's awaitSwappedScripts() wait for Chart.js + the date adapter
+         before re-firing the chart init, on both full loads and boosted swaps.
+         Without this the init runs before Chart is defined and the activity
+         graph fails with "Could not load activity graph." */}}
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3.0.0/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
     <div class="container mx-auto px-4 py-6">
         <div class="flex flex-col sm:flex-row justify-between sm:items-center gap-2 mb-4 border-b border-gray-200 dark:border-gray-700 pb-3">
             <h1 class="text-2xl font-bold text-gray-800 dark:text-gray-100">{{.Page.T.public_chat_log}}</h1>

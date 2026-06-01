@@ -1457,16 +1457,20 @@ func characterDetailHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// 1. Fetch core character data (unchanged)
+	// 1. Fetch core character data.
 	p, err := fetchCharacterData(charName)
 	if err != nil {
 		if err == sql.ErrNoRows {
-			http.Error(w, "Character not found", http.StatusNotFound)
+			// The name isn't in the rankings table — but it may still have
+			// chat/changelog/drop history (e.g. an unranked player linked from
+			// the chat log). Render a degraded page from the name alone rather
+			// than dead-ending on a 404.
+			p = PlayerCharacter{Name: charName, NotRanked: true}
 		} else {
 			log.Printf("[E] [HTTP/Char] %v", err)
 			http.Error(w, "Database query for character failed", http.StatusInternalServerError)
+			return
 		}
-		return
 	}
 
 	// 2. Fetch associated guild data (unchanged)
