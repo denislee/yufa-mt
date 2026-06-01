@@ -7,6 +7,9 @@
 #
 # Subcommands:
 #   run     (default) start Xvfb, launch the client, auto-login, then monitor
+#           (process liveness + a zone-connection watchdog that relaunches +
+#           re-logs-in if the client loses its in-game connection; see
+#           ZONE_WATCHDOG / DISCONNECT_GRACE)
 #   login   run only the auto-login key sequence against the running display
 #           (use this to re-calibrate timings without restarting the client)
 #   rtest   isolating experiment: drive the login via ydotool (real hardware-
@@ -157,6 +160,21 @@ detect_from_lutris_yml || true
 # headless: Xvfb's Intel Vulkan has no X11 presentable surface, so DXVK can't
 # create a window; wined3d (D3D9 -> OpenGL -> llvmpipe) renders fine.
 : "${EXTRA_ENV:=PROTON_USE_WINED3D=1}"
+
+# --- Liveness / reconnect watchdog -------------------------------------------
+# monitor() relaunches the client when its PROCESS dies. With the zone watchdog
+# on it ALSO relaunches when the client loses its connection to the zone server
+# for too long — i.e. it was kicked back to the login/char screen (or a
+# relogin's auto-login mistimed) while the .exe kept running, which silently
+# stops chat and the bare process-liveness check never notices. A live
+# ESTABLISHED TCP connection to ZONE_PORT means "in-game".
+: "${ZONE_WATCHDOG:=1}"                  # 0 = old behaviour (process-liveness only)
+: "${MONITOR_INTERVAL:=15}"              # seconds between liveness/connection polls
+# Max seconds with NO zone connection before forcing a relaunch. Must exceed a
+# normal login -> map-load (a fresh login isn't "in zone" until the map loads),
+# so the watchdog doesn't kill a login that's still in progress.
+: "${DISCONNECT_GRACE:=90}"
+: "${ZONE_PORT:=${CHAT_CAPTURE_PORT:-6121}}"  # zone/map server port (where in-game traffic flows)
 
 mkdir -p "$STATE_DIR"
 
@@ -506,20 +524,63 @@ auto_login_real() {
 }
 
 # --- Monitor / cleanup -------------------------------------------------------
+# Kill the running game client (shared by cleanup and the watchdog relaunch).
+kill_client() {
+  pkill -f "$GAME_PROC" 2>/dev/null
+  # let Gepard/wine close the socket cleanly before escalating to SIGKILL
+  local i
+  for i in $(seq 1 5); do [ -n "$(game_pid)" ] && sleep 1 || break; done
+  pkill -9 -f "$GAME_PROC" 2>/dev/null
+  sleep 2
+}
+
 cleanup() {
   log "Cleaning up..."
-  pkill -f "$GAME_PROC" 2>/dev/null
-  # let Gepard/wine close the socket cleanly
-  sleep 3
-  pkill -9 -f "$GAME_PROC" 2>/dev/null
+  kill_client
   [ -n "${LAUNCH_PID:-}" ] && kill "$LAUNCH_PID" 2>/dev/null
   stop_wm
   stop_xvfb
 }
 
+# True if the client has a live ESTABLISHED TCP connection to the zone server
+# (i.e. it is in-game). Runs as this same user, so no root needed to see the
+# game's sockets. Fails safe to "connected" if ss is unavailable, so a missing
+# tool can never cause spurious relaunches.
+client_connected() {
+  command -v ss >/dev/null 2>&1 || return 0
+  [ -n "$(ss -tnH state established "( dport = :$ZONE_PORT )" 2>/dev/null | head -1)" ]
+}
+
+# monitor watches the running client and RETURNS (so the caller relaunches) when:
+#   - the client PROCESS exits, or
+#   - ZONE_WATCHDOG=1 and the client has had no zone connection (:$ZONE_PORT) for
+#     >= DISCONNECT_GRACE seconds — covering the case the process is alive but
+#     stranded on the login/char screen (kick, AFK timeout, or a mistimed
+#     auto-login), which the old process-only check missed and which silently
+#     stops chat.
 monitor() {
-  log "Monitoring client liveness; will exit (and let systemd restart) if it dies."
-  while [ -n "$(game_pid)" ]; do sleep 15; done
+  if [ "$ZONE_WATCHDOG" = 1 ]; then
+    log "Monitoring client: process + zone link (:$ZONE_PORT); relaunch after ${DISCONNECT_GRACE}s with no zone connection."
+  else
+    log "Monitoring client process liveness (zone watchdog off)."
+  fi
+  local down=0
+  while [ -n "$(game_pid)" ]; do
+    if [ "$ZONE_WATCHDOG" = 1 ]; then
+      if client_connected; then
+        [ "$down" -gt 0 ] && log "Zone connection restored."
+        down=0
+      else
+        [ "$down" -eq 0 ] && log "Zone connection lost; tolerating up to ${DISCONNECT_GRACE}s before relaunch."
+        down=$((down + MONITOR_INTERVAL))
+        if [ "$down" -ge "$DISCONNECT_GRACE" ]; then
+          log "Still no zone connection after ${down}s — relaunching client."
+          return 0
+        fi
+      fi
+    fi
+    sleep "$MONITOR_INTERVAL"
+  done
   log "Client process exited."
 }
 
@@ -539,7 +600,14 @@ cmd_run() {
         log "Client up on $REAL_DISPLAY. Log in (password) with your keyboard; the MITM proxy handles the PIN."
       fi
       monitor
-      log "Client exited; relaunching in 10s."
+      # monitor returns on process death OR (watchdog) a sustained disconnect.
+      # In the disconnect case the .exe is still alive — kill it so the next
+      # launch starts clean instead of stacking a second client.
+      if [ -n "$(game_pid)" ]; then
+        log "Client disconnected but still running; stopping it before relaunch."
+        kill_client
+      fi
+      log "Relaunching in 10s."
       sleep 10
     done
   fi
@@ -571,7 +639,8 @@ cmd_env() {
            WAIT_BEFORE_CHARSELECT WAIT_MAP_LOAD KEY_DELAY_MS DISMISS_DIALOGS \
            WINDOW_PIN_XY LOGIN_ID_CLICK LOGIN_PW_CLICK LOGIN_BUTTON_CLICK \
            PIN_CLICK CHAR_SELECT_CLICK EXTRA_ENV YDOTOOL_SOCKET RTEST_FOCUS_DELAY \
-           AUTO_LOGIN AUTO_LOGIN_PRE_ENTERS AUTO_LOGIN_DIALOG_WAIT; do
+           AUTO_LOGIN AUTO_LOGIN_PRE_ENTERS AUTO_LOGIN_DIALOG_WAIT \
+           ZONE_WATCHDOG MONITOR_INTERVAL DISCONNECT_GRACE ZONE_PORT; do
     printf '%-22s = %s\n' "$v" "${!v}"
   done
   printf '%-22s = %s\n' "YUFA_USER" "${YUFA_USER:+<set>}"

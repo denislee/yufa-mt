@@ -14,6 +14,13 @@ alive in a self-restarting loop. **You log in once by hand** (password + PIN
 `1122`) with your real keyboard; RO sessions last hours, so it's infrequent. On
 crash it relaunches and you log in again.
 
+A **zone-connection watchdog** (`ZONE_WATCHDOG=1`, default on) covers the case a
+bare process check misses: if the client loses its in-game connection for
+`DISCONNECT_GRACE` seconds (default 90) — kicked back to login, AFK timeout, or a
+mistimed auto-login — while the `.exe` keeps running, the loop kills and
+relaunches it. With `AUTO_LOGIN=1` (+ the PIN proxy) that relogin is hands-free.
+Tune via `MONITOR_INTERVAL` / `DISCONNECT_GRACE` / `ZONE_PORT` in `config.env`.
+
 This is the mode in `~/.config/yufa-listener/config.env`. Start it inside your
 desktop session:
 
