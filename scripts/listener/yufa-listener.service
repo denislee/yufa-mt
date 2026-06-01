@@ -1,0 +1,34 @@
+# systemd *user* service for the headless Projeto Yufa chat listener.
+# Install:
+#   cp yufa-listener.service ~/.config/systemd/user/
+#   systemctl --user daemon-reload
+#   systemctl --user enable --now yufa-listener.service
+#   # so it keeps running after you log out of the graphical session:
+#   loginctl enable-linger "$USER"
+#
+# Logs:    journalctl --user -u yufa-listener -f
+# Restart: systemctl --user restart yufa-listener
+
+[Unit]
+Description=Projeto Yufa headless chat listener (Xvfb + GE-Proton + auto-login)
+After=graphical-session.target
+StartLimitIntervalSec=300
+StartLimitBurst=5
+
+[Service]
+Type=simple
+ExecStart=%h/tmp/yufa-mt/scripts/listener/yufa-listener.sh run
+ExecStop=%h/tmp/yufa-mt/scripts/listener/yufa-listener.sh stop
+Restart=always
+RestartSec=30
+
+# --- Resource caps (the "minimum resources" goal) ---
+# With ROExt AutoFreeCPU=1 and a 640x480 window the AFK client should sit well
+# under this. Lower CPUQuota if your box can spare even less.
+Nice=10
+CPUWeight=20
+CPUQuota=40%
+IOWeight=20
+
+[Install]
+WantedBy=default.target
