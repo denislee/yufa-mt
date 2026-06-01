@@ -1,16 +1,26 @@
-# Pico HID login typer (prototype)
+# Pico HID for the PIN keypad (the real job)
 
-A Raspberry Pi Pico (RP2040) acting as a **genuine USB HID keyboard** that types
-the Projeto Yufa login on demand. Goal: anti-detection. The headless findings in
-[../README.md](../README.md) point at Gepard Shield rejecting the connection most
-likely because it detects `ydotoold`'s virtual `uinput` device. A Pico isn't
-spoofing a keyboard — it *is* one, enumerated over USB — so keystrokes are
-indistinguishable from real hardware at the libinput/Xwayland/client layer.
+A Raspberry Pi Pico (RP2040) acting as a **genuine USB HID device** — enumerated
+over USB, so its events are indistinguishable from real hardware at the
+libinput/Xwayland/Wine/Gepard layer.
 
-> **This is a prototype / hypothesis test.** The ydotoold-detection theory is the
-> README's "most likely," not confirmed. If Gepard rejects on some *other* signal
-> (the virtual mouse, the headless display, a network heuristic), real HID input
-> alone won't get you in. Try it and see whether the handshake survives.
+> **Premise corrected (2026-06-01).** This started as a *keyboard* typer on the
+> theory that Gepard rejects the login handshake because it detects `ydotoold`'s
+> virtual device. **That theory is disproven** — see [../README.md](../README.md).
+> Driving the login with `ydotool` on the real display works end-to-end: account
+> auth and character-select all succeed, and the handshake is fine. **Keyboard
+> automation is already solved by ydotool, so the keyboard typer below is
+> redundant.**
+>
+> The **only** step that needs genuine hardware is the **mouse click on the
+> character-select PIN keypad.** Synthetic clicks (ydotool uinput `BTN_LEFT`) are
+> emitted at the kernel but rejected above the OS — Gepard accepts mouse *motion*
+> but not the injected *button*. A real USB-HID **mouse** click should pass where
+> the synthetic one fails (this is the open hypothesis to test). So the useful
+> firmware here is an **absolute-positioned USB mouse**, not a keyboard:
+> the host reads the shuffled keypad from a `grim` screenshot, maps `1,1,2,2` to
+> cell coordinates, and tells the Pico to move+click each. The keyboard sketch
+> below remains only as a reference/fallback.
 
 ## Files
 
@@ -73,8 +83,10 @@ for debugging: `pico-type.sh '{DELAY 200}hello{ENTER}'`.
   non-US-layout symbols may mistype — adjust or pick an ASCII-simple password.
 - A password containing `{` or `}` collides with the macro syntax; `pico-type.sh`
   warns. (A future version could add escaping.)
-- **Mouse is still unsolved** — see ../README.md. This only helps because every
-  login screen is keyboard-navigable. Any screen needing a real click is still blocked.
+- **This keyboard sketch does NOT solve login** — ydotool already drives the
+  keyboard. The unsolved step is the **PIN keypad click**, which needs an
+  absolute-positioned USB **mouse** firmware (not yet written here). See
+  ../README.md "Automated login" for the full picture.
 - Don't open the serial port at **1200 baud** — that reboots the RP2040 into
   bootloader/flash mode. `pico-type.sh` uses 115200.
 - For extra realism the firmware randomizes hold (18–55 ms) and gaps (45–160 ms);
