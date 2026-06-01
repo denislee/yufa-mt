@@ -46,39 +46,27 @@ YUFA_PIN=1122 sudo ./watch-seed.sh              # live: prints click slots per s
 > hex (`dc000000`) to `solve --seed` / stdin and it parses correctly; only pass
 > `0x…` if you already byte-swapped.
 
-## What's still needed to fully automate (and why it's now small)
+## How the answer gets entered: the MITM proxy
 
-The shuffle gives **slot index → which digit**. Two physical pieces remain:
+The shuffle gives **slot index → which digit**; the only thing left is delivering
+those slot digits to the server without a click. That is exactly what
+[../mitm/](../mitm/) does — a transparent local proxy that, on the cleartext
+`0x08b9` PIN prompt, runs this same shuffle math on the seed and writes the
+`0x08b8` answer to the server itself, then relays the server's OK so the genuine
+client closes its own keypad and proceeds to char-select → map → zone.
 
-1. **Slot → screen pixel (one-time calibration).** The 10 buttons sit at fixed
-   screen positions; only their labels reshuffle. Calibrate once: launch the
-   client, let `watch-seed.sh` print the seed + `tab`, screenshot the keypad
-   (`grim`/`import`), and record the pixel center of each slot `0..9`. Confirm
-   the model by checking the button at slot `i` actually shows `tab[i]` — if it
-   does (expected), `solve` output indexes straight into your pixel table. This
-   is the only step the captures can't give us (the keypad art is inside the
-   Gepard-encrypted GRF, not loose Lua).
-
-2. **Clicks the client accepts.** Synthetic clicks (ydotool `BTN_LEFT`, XTEST,
-   `swaymsg cursor press`) are rejected — the client reads the mouse via
-   DirectInput on the physical device. A genuine USB-HID **mouse** (the
-   [../pico-hid/](../pico-hid/) RP2040) should pass where synthetic clicks fail.
-   This remains the open hardware hypothesis, unchanged by this work.
-
-### End-to-end loop (the design)
 ```
-char-server 0x08b9 ──watch-seed.sh──▶ seed ──pinpad solve──▶ slots e.g. "5 5 2 2"
-                                                                    │
-                          calibrated slot→pixel table ◀────────────┘
-                                       │
-                          Pico HID mouse: move+click each pixel, then OK
+char-server 0x08b9 (seed) ──▶ mitm proxy ──pinpad shuffle──▶ inject 0x08b8 (slots)
+                                   │
+                  relay 0x08b9 state=0 (OK) ──▶ client dismisses keypad, enters world
 ```
 
-`pico-hid/`'s README originally assumed a screenshot+OCR to read the shuffled
-keypad each time. **That's no longer needed** — the seed makes the layout
-deterministic, so the host just needs the static pixel table plus a Pico mouse
-firmware (move-to-absolute + left-click), which is the remaining firmware to
-write.
+No screenshot, no pixel calibration, no hardware mouse: because the server's
+acceptance (`0x08b9 state=0`) is what dismisses the client's keypad, feeding it
+that packet drives the client off the dialog without any pointer event. Synthetic
+clicks (ydotool `BTN_LEFT`, XTEST, `swaymsg cursor press`) never worked — the
+client reads the mouse via DirectInput on the physical device — which is why the
+packet-injection route is the one that landed.
 
 ## Scope / honesty
 

@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 )
 
@@ -49,6 +50,32 @@ type Config struct {
 	// hammering upstream sources. Takes precedence over DisableScrapers for
 	// the chat-capture loop (chat capture runs even if DisableScrapers is set).
 	ChatCaptureOnly bool
+
+	// In-process character-select PIN proxy (internal/server/pinproxy.go).
+	// When PinProxyEnabled, the app installs an iptables REDIRECT of the
+	// char-server port to a local listener that auto-injects the PIN, so the
+	// game client clears the randomized keypad with no mouse click and no
+	// Gepard bypass. Linux-only; needs CAP_NET_ADMIN (granted by the
+	// documented setcap on the binary). Replaces the old standalone
+	// yufa-mitm-proxy root service.
+	PinProxyEnabled bool
+	// PinProxyPIN is the real character-select PIN (read from YUFA_PIN, or
+	// PIN). Required when injection is on.
+	PinProxyPIN string
+	// PinProxyCharPort is the char-server TCP port carrying the cleartext PIN
+	// packets (the REDIRECT match). Default 7121.
+	PinProxyCharPort string
+	// PinProxyListenPort is the local port the REDIRECT delivers to and the
+	// in-process proxy listens on. Default 7799.
+	PinProxyListenPort string
+	// PinProxySelectSlot, when >= 0, also auto-selects that character slot
+	// after the PIN is accepted. <0 (unset) = don't auto-select.
+	PinProxySelectSlot int
+	// PinProxyServerIP, when set, narrows the REDIRECT rule to one server IP.
+	PinProxyServerIP string
+	// PinProxyInject toggles PIN injection; false = pure transparent relay
+	// (for testing). Default true.
+	PinProxyInject bool
 }
 
 // Load reads env vars, applies defaults, and validates the result. It
@@ -66,6 +93,13 @@ func Load() (*Config, error) {
 		RequireAdminPassword: boolEnv("REQUIRE_ADMIN_PASSWORD"),
 		DisableScrapers:      boolEnv("DISABLE_SCRAPERS"),
 		ChatCaptureOnly:      boolEnv("CHAT_CAPTURE_ONLY"),
+		PinProxyEnabled:      boolEnv("PIN_PROXY"),
+		PinProxyPIN:          envOr("YUFA_PIN", os.Getenv("PIN")),
+		PinProxyCharPort:     envOr("PIN_PROXY_CHAR_PORT", "7121"),
+		PinProxyListenPort:   envOr("PIN_PROXY_LISTEN_PORT", "7799"),
+		PinProxySelectSlot:   intEnv("PIN_PROXY_SELECT_SLOT", -1),
+		PinProxyServerIP:     os.Getenv("PIN_PROXY_SERVER_IP"),
+		PinProxyInject:       boolEnvDefault("PIN_PROXY_INJECT", true),
 	}
 
 	if ids := os.Getenv("DISCORD_CHANNEL_IDS"); ids != "" {
@@ -102,6 +136,10 @@ func Load() (*Config, error) {
 		}
 	}
 
+	// Note: PIN_PROXY enabled without a PIN is NOT a fatal config error — the
+	// proxy is auxiliary to chat capture, so the server just logs and skips it
+	// at startup (see startPinProxy) rather than refusing to boot.
+
 	if len(problems) > 0 {
 		return nil, fmt.Errorf("invalid configuration: %s", strings.Join(problems, "; "))
 	}
@@ -118,6 +156,28 @@ func envOr(key, fallback string) string {
 func boolEnv(key string) bool {
 	v := strings.ToLower(strings.TrimSpace(os.Getenv(key)))
 	return v == "1" || v == "true" || v == "yes"
+}
+
+// boolEnvDefault is boolEnv but returns def when the key is unset/empty.
+func boolEnvDefault(key string, def bool) bool {
+	v := strings.ToLower(strings.TrimSpace(os.Getenv(key)))
+	if v == "" {
+		return def
+	}
+	return v == "1" || v == "true" || v == "yes"
+}
+
+// intEnv parses key as an int, returning def when unset or unparseable.
+func intEnv(key string, def int) int {
+	v := strings.TrimSpace(os.Getenv(key))
+	if v == "" {
+		return def
+	}
+	n, err := strconv.Atoi(v)
+	if err != nil {
+		return def
+	}
+	return n
 }
 
 // ErrAdminPasswordMissing is returned by Load when REQUIRE_ADMIN_PASSWORD

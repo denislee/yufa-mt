@@ -1,10 +1,19 @@
 # yufa-mitm — auto-enter the PIN with a crafted packet (no click, no Gepard bypass)
 
+> **Now built into the app.** This proxy runs **in-process inside `yufa-mt`**
+> (see `internal/server/pinproxy.go`), started automatically by `run-sniffer.sh`
+> when a PIN is configured (`PIN_PROXY=1`). So the proxy is already up by the
+> time the listener logs the client in — no separate service to start. The files
+> here remain the reference implementation and a **standalone test harness**
+> (`run-proxy.sh`, `proxy.go selftest`); the old root systemd service
+> (`install-service.sh`) is **retired** (see below). The protocol explanation in
+> this doc applies verbatim to the in-app version.
+
 A transparent local TCP proxy that removes the **last manual step** of keeping a
 genuine client connected for the chat sniffer: the randomized character-select
-PIN keypad. Instead of clicking the keypad (which needs real hardware input — see
-[../pinpad/](../pinpad/) and [../pico-hid/](../pico-hid/)), the proxy injects the
-PIN packet for the client.
+PIN keypad. Instead of clicking the keypad (which the client only accepts from
+real hardware input — see [../pinpad/](../pinpad/)), the proxy injects the PIN
+packet for the client.
 
 ## Why this works (and raw injection doesn't)
 
@@ -41,10 +50,14 @@ Key properties:
 
 ## Requirements
 
-- Linux with `iptables` (nat table) and Go (to build the proxy once).
-- The game client running as a **normal user** (the usual lutris/wine case) — the
-  redirect deliberately skips root-owned traffic so the proxy's own upstream
-  connection isn't redirected back into itself.
+- Linux with `iptables` (nat table).
+- **Privilege to edit iptables.** The standalone `run-proxy.sh` runs as **root**
+  and skips its own (root-owned) upstream traffic via `-m owner --uid-owner 0`.
+  The **in-app** version instead runs as your normal user with `cap_net_admin`
+  (the documented `setcap` on the `yufa-mt` binary) and skips its own upstream
+  traffic by tagging it with an **fwmark** (`SO_MARK`) and `RETURN`-ing on
+  `-m mark` — because in-process it shares your uid with the game client, so the
+  uid trick can't tell them apart. Same effect, no redirect loop, no root.
 
 ## Status — verified live ✓
 
@@ -52,7 +65,7 @@ Confirmed end-to-end against the real client and server: the proxy injected the
 PIN **and** the char-select, and the client advanced all the way into the zone
 (`:6121`, in-game) with **no clicks**. The slot digits were accepted by the live
 server, validating the shuffle against a real account (not just the captures).
-The Pico mouse is no longer needed.
+No hardware mouse needed.
 
 ## Use
 
@@ -83,28 +96,46 @@ reach the PIN screen — the proxy does the rest. Log lines:
 | `SERVER_IP` | auto/any | narrow the redirect to one server IP (auto-detected from a live connection if possible) |
 | `INJECT` | `1` | `0` = pure transparent relay (debug/capture, no injection) |
 
-## Run as a persistent service (survives reboots)
+## Run it persistently — use the in-app proxy
 
-The proxy needs root (iptables), so it can't be a user autostart. Install it as a
-root systemd service instead:
+The proxy is part of `yufa-mt`, so it's persistent for free: whatever keeps the
+sniffer running (the `~/.config/autostart/yufa-sniffer.desktop` entry / your
+service) brings the proxy up with it. To enable it:
 
 ```bash
-sudo SELECT_SLOT=0 scripts/listener/mitm/install-service.sh   # build + enable + start
-sudo scripts/listener/mitm/install-service.sh uninstall       # remove
-journalctl -u yufa-mitm-proxy -f                              # logs
+# 1. PIN in credentials.env
+echo 'YUFA_PIN="1122"' >> ~/.config/yufa-listener/credentials.env
+
+# 2. grant the binary iptables + capture capabilities (one time, after each rebuild)
+sudo setcap cap_net_raw,cap_net_admin=eip <repo>/yufa-mt
+
+# 3. run-sniffer.sh launches yufa-mt with PIN_PROXY=1 automatically.
+scripts/listener/run-sniffer.sh
 ```
 
-It builds the binary as your user, writes `/etc/systemd/system/yufa-mitm-proxy.service`
-(pointing at your `credentials.env`), and enables it. Use **either** the service
-**or** a manual `run-proxy.sh` — not both (they'd add duplicate iptables rules).
+Tune it via `config.env` (read by `run-sniffer.sh`): `PIN_PROXY` (`0` to disable),
+`PIN_PROXY_SELECT_SLOT` (default `0`; empty = PIN only, no char-select),
+`PIN_PROXY_CHAR_PORT`, `PIN_PROXY_LISTEN_PORT`, `PIN_PROXY_SERVER_IP`,
+`PIN_PROXY_INJECT`. Logs go to yufa-mt's own log (`sniffer.log`).
+
+The old **root systemd service is retired** — `install-service.sh` now only
+removes a leftover unit:
+
+```bash
+sudo scripts/listener/mitm/install-service.sh uninstall   # remove an old unit
+```
+
+Don't run the in-app proxy and a standalone `run-proxy.sh` at the same time —
+they collide on the same iptables REDIRECT and the `127.0.0.1:7799` listener.
 
 ## Full hands-free pipeline
 
-1. **Proxy** — the service above (or `run-proxy.sh`), always up.
+1. **Sniffer + proxy** — `run-sniffer.sh` starts `yufa-mt`, which captures
+   cleartext chat on `:6121` **and** runs the in-app PIN proxy (`PIN_PROXY=1`),
+   installing the char-port REDIRECT on startup.
 2. **Client login** — `AUTO_LOGIN=1 yufa-listener.sh run` types the password via
    `ydotool` and clears the startup dialogs; the proxy handles PIN + char-select.
    (Needs `ydotoold` running as root; calibrate `AUTO_LOGIN_*` timings on first run.)
-3. **Sniffer** — `run-sniffer.sh` captures cleartext chat on `:6121` into the DB.
 
 ## Test without the game
 

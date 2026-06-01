@@ -2,6 +2,12 @@
 #
 # run-proxy.sh — set up the transparent redirect and run the MITM PIN proxy.
 #
+# NOTE: for production the proxy now runs IN-PROCESS inside the yufa-mt app
+# (internal/server/pinproxy.go), enabled by run-sniffer.sh with PIN_PROXY=1.
+# This standalone script is kept for manual/standalone testing of the proxy
+# (e.g. iterating on proxy.go) WITHOUT the app. Don't run both at once — they
+# collide on the same iptables REDIRECT and the 127.0.0.1:7799 listener.
+#
 # Redirects the client's char-server connection (port 7121) to a local proxy
 # (proxy.go) that auto-injects the character-select PIN, so login needs no mouse
 # click on the randomized keypad. Login (7900) and zone (6121) are untouched, so

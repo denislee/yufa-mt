@@ -134,8 +134,9 @@ strictly worse than today's passive sniffer.
 
 The real lever for "headless / no manual login" is **not** reimplementing Gepard
 — it's automating the existing client past the **randomized PIN keypad** (the one
-remaining manual step). The PIN travels as a cleartext `0x08b8` packet, but it's
-emitted from *inside* the Gepard-wrapped client, so it can't be injected
-externally; the keypad needs a real pointer event. That points back at the
-`pico-hid/` hardware-mouse prototype (genuine USB HID clicks), which is the
-sanctioned way forward documented in the README.
+remaining manual step). The PIN travels as a cleartext `0x08b8` packet emitted
+from *inside* the Gepard-wrapped client, so it can't be forged onto the wire
+directly. The working solution is a transparent local proxy that terminates the
+char connection and injects the `0x08b8` answer (computed from the cleartext seed)
+itself, then relays the server's OK so the client dismisses its own keypad — no
+click, no Gepard bypass. See `mitm/` (and `pinpad/` for the seed→slots math).

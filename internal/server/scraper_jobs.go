@@ -39,6 +39,19 @@ func runJobOnTicker(ctx context.Context, job Job) {
 }
 
 func startBackgroundJobs(ctx context.Context, wg *sync.WaitGroup) {
+	// The in-process character-select PIN proxy runs independently of the
+	// scrape/capture flags: it installs an iptables REDIRECT and injects the
+	// PIN so the game client clears the keypad with no click. Start it first so
+	// it's up before the listener logs the client in. (No-op unless PIN_PROXY=1
+	// and, off Linux, a logged stub.)
+	if appConfig != nil && appConfig.PinProxyEnabled {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			startPinProxy(ctx)
+		}()
+	}
+
 	chatOnly := appConfig != nil && appConfig.ChatCaptureOnly
 
 	// DISABLE_SCRAPERS turns off everything, including chat capture — unless

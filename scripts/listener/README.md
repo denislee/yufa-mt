@@ -36,11 +36,17 @@ installed. Stop with Ctrl+C (foreground) or `yufa-listener.sh stop`.
 The **sniffer** (yufa-mt chat capture) is a separate keep-alive wrapper,
 `run-sniffer.sh`, also autostarted via `~/.config/autostart/yufa-sniffer.desktop`.
 It runs the binary in chat-only mode (`CHAT_CAPTURE_ONLY=1`) and logs to
-`~/.local/state/yufa-listener/sniffer.log`. The binary needs `CAP_NET_RAW`:
+`~/.local/state/yufa-listener/sniffer.log`. The binary needs `CAP_NET_RAW` (for
+packet capture) and `CAP_NET_ADMIN` (for the in-app PIN proxy's iptables rule):
 
 ```bash
 sudo setcap cap_net_raw,cap_net_admin=eip <repo>/yufa-mt
 ```
+
+The same binary also runs the **character-select PIN proxy in-process**:
+`run-sniffer.sh` sets `PIN_PROXY=1` automatically when `YUFA_PIN` is configured,
+so on startup yufa-mt installs an iptables REDIRECT of the char port and
+auto-enters the PIN — no mouse click, no separate service. See [mitm/](mitm/).
 
 ## Portability — running on another computer
 
@@ -60,8 +66,11 @@ Almost everything **auto-detects**, so the scripts are not tied to this machine:
 What you still set **per machine** (none are guessable):
 
 1. `credentials.env` — `YUFA_PASS`, `YUFA_PIN` (and a one-time manual login as the
-   account so "Salvar Login" remembers it in that wine prefix).
-2. `sudo setcap …` on the `yufa-mt` binary (one command, for packet capture).
+   account so "Salvar Login" remembers it in that wine prefix). Setting `YUFA_PIN`
+   auto-enables the in-app PIN proxy (`PIN_PROXY=1`); set `PIN_PROXY=0` in
+   `config.env` to opt out.
+2. `sudo setcap …` on the `yufa-mt` binary (one command — `cap_net_raw` for packet
+   capture, `cap_net_admin` for the PIN proxy's iptables rule).
 3. `CHAT_CAPTURE_PORT` in `config.env` — **on Projeto Yufa chat flows on the
    zone/map port `6121`, which is already the default.** The server applies a
    +1000 offset to the *standard* RO ports — login 6900→7900, char 6121→7121,
@@ -129,10 +138,14 @@ login proves it's a dead end:
   exactly what Gepard blocks (and the login channel is encrypted anyway; see
   below). It also abandons the "one genuine client" premise.
 
-So the click is unavoidable. The path forward is **genuine USB-HID hardware** that
-clicks the keypad with real button events Gepard can't distinguish from a physical
-mouse — read the shuffled keypad from a `grim` screenshot, map `1,1,2,2` to cell
-coordinates, click via the device. See [pico-hid/](pico-hid/).
+The resolution sidesteps the click entirely: a transparent local proxy terminates
+the char connection and, on the cleartext `0x08b9` PIN prompt, computes the slot
+digits from the seed and injects the `0x08b8` answer to the server itself — then
+relays the server's OK back so the genuine client closes its *own* keypad and
+proceeds. No click, no Gepard bypass. This proxy now runs **in-process inside
+`yufa-mt`** (`internal/server/pinproxy.go`), started by `run-sniffer.sh` with
+`PIN_PROXY=1` — so it's already up before the client logs in. See [mitm/](mitm/)
+(and [pinpad/](pinpad/) for the seed→slots math).
 
 ### Wire protocol — what's cleartext vs. encrypted (verified by capture)
 
