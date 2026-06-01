@@ -41,6 +41,7 @@ import (
 	"net"
 	"net/netip"
 	"os"
+	"strconv"
 	"strings"
 	"sync"
 
@@ -89,6 +90,13 @@ func solveSlots(seed uint32, pin string) (string, error) {
 
 // ---- session state ----------------------------------------------------------
 
+// Injection progress on the char connection.
+const (
+	stepWantPIN    = iota // waiting for 0x08b9 state=1 → inject 0x08b8 (PIN)
+	stepWantSelect        // waiting for 0x08b9 state=0 → inject 0x0066 (char select)
+	stepDone
+)
+
 type session struct {
 	id       int
 	client   net.Conn
@@ -98,9 +106,10 @@ type session struct {
 	charPort uint16
 	dstPort  uint16
 
-	aid     uint32
-	haveAID bool
-	pinDone bool
+	aid        uint32
+	haveAID    bool
+	step       int
+	selectSlot int // CH_SELECT_CHAR slot to inject after the PIN; <0 = don't
 }
 
 func (s *session) writeServer(b []byte) error {
@@ -123,32 +132,34 @@ func (s *session) captureAID(b []byte) {
 	}
 }
 
-// findPinRequest scans server→client bytes for a valid 0x08b9 state=1 record and
-// returns its seed. Validates the embedded AID against the session's to avoid
-// false positives from 0xb9 0x08 appearing inside other packet data.
-func (s *session) findPinRequest(buf []byte) (seed uint32, ok bool) {
+// findPin scans server→client bytes for a valid 0x08b9 record (b9 08 | seed |
+// AID | state) and returns its seed + state. Validates the embedded AID against
+// the session's to avoid false positives from 0xb9 0x08 inside other packet data.
+func (s *session) findPin(buf []byte) (seed uint32, state uint16, ok bool) {
 	for i := 0; i+12 <= len(buf); i++ {
 		if buf[i] != 0xb9 || buf[i+1] != 0x08 {
 			continue
 		}
 		rec := buf[i : i+12]
-		state := binary.LittleEndian.Uint16(rec[10:12])
-		if state != 1 {
-			continue
-		}
 		aid := binary.LittleEndian.Uint32(rec[6:10])
 		if s.haveAID && aid != s.aid {
 			continue
 		}
-		return binary.LittleEndian.Uint32(rec[2:6]), true
+		return binary.LittleEndian.Uint32(rec[2:6]), binary.LittleEndian.Uint16(rec[10:12]), true
 	}
-	return 0, false
+	return 0, 0, false
 }
 
+// CH_SECOND_PASSWD_ACK: b8 08 | AID(u32 LE) | <ascii slot digits>
 func buildPinAck(aid uint32, slots string) []byte {
 	out := []byte{0xb8, 0x08}
 	out = binary.LittleEndian.AppendUint32(out, aid)
 	return append(out, []byte(slots)...)
+}
+
+// CH_SELECT_CHAR: 66 00 | slot(u8)
+func buildCharSelect(slot int) []byte {
+	return []byte{0x66, 0x00, byte(slot)}
 }
 
 // clientToServer relays C→S and snoops CH_ENTER for the AID.
@@ -170,7 +181,9 @@ func (s *session) clientToServer() {
 	s.client.Close()
 }
 
-// serverToClient relays S→C and injects the PIN ack on the first 0x08b9 state=1.
+// serverToClient relays S→C and drives the injection state machine: inject the
+// PIN ack on 0x08b9 state=1, then (if selectSlot >= 0) the char-select on the
+// following 0x08b9 state=0.
 func (s *session) serverToClient(inject bool) {
 	buf := make([]byte, 32*1024)
 	var pend []byte // small rolling window to catch a record split across reads
@@ -180,11 +193,11 @@ func (s *session) serverToClient(inject bool) {
 			if _, werr := s.client.Write(buf[:n]); werr != nil {
 				break
 			}
-			if inject && !s.pinDone && s.dstPort == s.charPort {
+			if inject && s.step != stepDone && s.dstPort == s.charPort {
 				pend = append(pend, buf[:n]...)
-				if seed, ok := s.findPinRequest(pend); ok {
-					s.handlePin(seed)
-					pend = nil
+				if seed, state, ok := s.findPin(pend); ok {
+					s.advance(seed, state)
+					pend = nil // consume; look fresh for the next record
 				} else if len(pend) > 16 {
 					pend = pend[len(pend)-16:]
 				}
@@ -198,23 +211,52 @@ func (s *session) serverToClient(inject bool) {
 	s.client.Close()
 }
 
-func (s *session) handlePin(seed uint32) {
-	if !s.haveAID {
-		log.Printf("[%d] PIN request (seed=%d) but AID unknown yet; skipping injection", s.id, seed)
-		return
+// advance reacts to a 0x08b9 record according to the current step.
+func (s *session) advance(seed uint32, state uint16) {
+	switch s.step {
+	case stepWantPIN:
+		if state != 1 { // not the "enter PIN" prompt yet
+			return
+		}
+		if !s.haveAID {
+			log.Printf("[%d] PIN prompt (seed=%d) but AID unknown; skipping", s.id, seed)
+			return
+		}
+		slots, err := solveSlots(seed, s.pin)
+		if err != nil {
+			log.Printf("[%d] cannot solve PIN: %v", s.id, err)
+			s.step = stepDone
+			return
+		}
+		pkt := buildPinAck(s.aid, slots)
+		if werr := s.writeServer(pkt); werr != nil {
+			log.Printf("[%d] failed to inject 0x08b8: %v", s.id, werr)
+			s.step = stepDone
+			return
+		}
+		log.Printf("[%d] PIN injected: seed=%d (0x%x) -> slots %q (0x08b8 %x)", s.id, seed, seed, slots, pkt)
+		if s.selectSlot < 0 {
+			s.step = stepDone
+		} else {
+			s.step = stepWantSelect
+		}
+
+	case stepWantSelect:
+		switch state {
+		case 0: // PIN accepted → select the character
+			pkt := buildCharSelect(s.selectSlot)
+			if werr := s.writeServer(pkt); werr != nil {
+				log.Printf("[%d] failed to inject 0x0066: %v", s.id, werr)
+			} else {
+				log.Printf("[%d] PIN accepted (state=0); char-select injected: slot %d (0x0066 %x)", s.id, s.selectSlot, pkt)
+			}
+			s.step = stepDone
+		case 1: // still prompting — ignore (likely a retransmit)
+		default: // 8 = wrong, etc.
+			log.Printf("[%d] PIN NOT accepted (0x08b9 state=%d); not selecting char", s.id, state)
+			s.step = stepDone
+		}
 	}
-	slots, err := solveSlots(seed, s.pin)
-	if err != nil {
-		log.Printf("[%d] cannot solve PIN: %v", s.id, err)
-		return
-	}
-	pkt := buildPinAck(s.aid, slots)
-	if werr := s.writeServer(pkt); werr != nil {
-		log.Printf("[%d] failed to inject 0x08b8: %v", s.id, werr)
-		return
-	}
-	s.pinDone = true
-	log.Printf("[%d] PIN injected: seed=%d (0x%x) -> slots %q (0x08b8 %x)", s.id, seed, seed, slots, pkt)
 }
 
 // ---- transparent-proxy plumbing ---------------------------------------------
@@ -255,6 +297,12 @@ func main() {
 	inject := env("INJECT", "1") != "0"
 	charPort := uint16(atoiDefault(env("CHAR_PORT", "7121"), 7121))
 	upstream := os.Getenv("UPSTREAM") // optional fallback
+	selectSlot := -1                  // SELECT_SLOT unset/empty = don't auto-select a character
+	if v := os.Getenv("SELECT_SLOT"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil {
+			selectSlot = n
+		}
+	}
 
 	if inject && pin == "" {
 		log.Fatal("INJECT=1 but no PIN set (export PIN=<digits> or YUFA_PIN); use INJECT=0 for a pure relay")
@@ -264,9 +312,11 @@ func main() {
 	if err != nil {
 		log.Fatalf("listen %s: %v", listenAddr, err)
 	}
-	log.Printf("yufa-mitm listening on %s  inject=%v charPort=%d", listenAddr, inject, charPort)
+	log.Printf("yufa-mitm listening on %s  inject=%v charPort=%d selectSlot=%d", listenAddr, inject, charPort, selectSlot)
 	if !inject {
-		log.Printf("INJECT=0: pure transparent relay (no PIN injection)")
+		log.Printf("INJECT=0: pure transparent relay (no injection)")
+	} else if selectSlot < 0 {
+		log.Printf("PIN injection on; char-select injection off (set SELECT_SLOT=<n> to also pick a character)")
 	}
 
 	id := 0
@@ -277,11 +327,11 @@ func main() {
 			continue
 		}
 		id++
-		go handle(id, c.(*net.TCPConn), pin, charPort, upstream, inject)
+		go handle(id, c.(*net.TCPConn), pin, charPort, upstream, inject, selectSlot)
 	}
 }
 
-func handle(id int, client *net.TCPConn, pin string, charPort uint16, upstream string, inject bool) {
+func handle(id int, client *net.TCPConn, pin string, charPort uint16, upstream string, inject bool, selectSlot int) {
 	// UPSTREAM, when set, is a fixed dial target (simple mode + deterministic
 	// tests). Otherwise recover the pre-REDIRECT destination via SO_ORIGINAL_DST.
 	target := upstream
@@ -307,6 +357,7 @@ func handle(id int, client *net.TCPConn, pin string, charPort uint16, upstream s
 	s := &session{
 		id: id, client: client, server: server,
 		pin: pin, charPort: charPort, dstPort: dstPort,
+		step: stepWantPIN, selectSlot: selectSlot,
 	}
 	go s.clientToServer()
 	s.serverToClient(inject)
@@ -369,15 +420,19 @@ func selftest() int {
 			fail++
 		}
 	}
-	// spot-check the packet builder against the amigo_play 0x08b8.
+	// spot-check the packet builders against the amigo_play captures.
 	pkt := buildPinAck(0x001ea65d, "4545")
 	wantPkt := []byte{0xb8, 0x08, 0x5d, 0xa6, 0x1e, 0x00, '4', '5', '4', '5'}
 	if string(pkt) != string(wantPkt) {
 		fmt.Printf("FAIL buildPinAck = %x want %x\n", pkt, wantPkt)
 		fail++
 	}
+	if sel := buildCharSelect(0); string(sel) != string([]byte{0x66, 0x00, 0x00}) {
+		fmt.Printf("FAIL buildCharSelect(0) = %x want 660000\n", sel)
+		fail++
+	}
 	if fail == 0 {
-		fmt.Printf("PASS: 15/15 sessions reproduce sent slots for PIN %s; 0x08b8 builder matches capture.\n", want)
+		fmt.Printf("PASS: 15/15 sessions reproduce sent slots for PIN %s; 0x08b8/0x0066 builders match capture.\n", want)
 		return 0
 	}
 	fmt.Printf("FAILED: %d\n", fail)

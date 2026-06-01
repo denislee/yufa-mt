@@ -37,6 +37,7 @@ fi
 : "${SERVER_IP:=}"               # optional: narrow the redirect to one server IP
 : "${PIN:=${YUFA_PIN:-}}"        # your real PIN (enables injection)
 : "${INJECT:=1}"
+: "${SELECT_SLOT:=}"             # also auto-pick this character slot after the PIN (empty = don't)
 : "${BIN:=$STATE_DIR/yufa-mitm}"
 
 [ "$(id -u)" -eq 0 ] || { echo "must run as root (iptables): sudo $0" >&2; exit 1; }
@@ -67,7 +68,7 @@ fi
 
 DST_MATCH=()
 [ -n "$SERVER_IP" ] && DST_MATCH=(-d "$SERVER_IP")
-echo "char port=$CHAR_PORT  proxy=127.0.0.1:$PROXY_PORT  server_ip=${SERVER_IP:-<any>}  inject=$INJECT"
+echo "char port=$CHAR_PORT  proxy=127.0.0.1:$PROXY_PORT  server_ip=${SERVER_IP:-<any>}  inject=$INJECT  select_slot=${SELECT_SLOT:-<off>}"
 
 # --- iptables: exclude our own (root) traffic, then redirect the client's -----
 add_rules() {
@@ -91,6 +92,6 @@ add_rules
 echo "redirect installed. Launch/relogin the client now; the PIN will auto-enter."
 
 LISTEN_ADDR="127.0.0.1:$PROXY_PORT" CHAR_PORT="$CHAR_PORT" PIN="$PIN" INJECT="$INJECT" \
-  "$BIN" &
+  SELECT_SLOT="$SELECT_SLOT" "$BIN" &
 PROXY_PID=$!
 wait "$PROXY_PID"
