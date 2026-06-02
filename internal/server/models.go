@@ -234,6 +234,7 @@ type PageData struct {
 	ItemTypesTotal int
 	SelectedType   string
 	PageTitle      string
+	Pagination     httpx.PaginationData
 }
 
 type ActivityPageData struct {

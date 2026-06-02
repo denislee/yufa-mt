@@ -1624,7 +1624,7 @@ func cheapestListing(items []Item) Item {
 	var best Item
 	bestPrice := -1
 	for _, it := range items {
-		p, err := strconv.Atoi(strings.ReplaceAll(it.Price, ",", ""))
+		p, err := strconv.Atoi(strings.TrimSuffix(strings.ReplaceAll(it.Price, ",", ""), "z"))
 		if err != nil {
 			continue
 		}
@@ -1859,15 +1859,13 @@ func scrapeData() {
 		lastAvailableItems := dbAvailableItemsMap[itemName]
 
 		// Check for changes/sales logic
-		if !areItemSetsIdentical(currentScrapedItems, lastAvailableItems) {
-			for _, ev := range classifyListingChanges(currentScrapedItems, lastAvailableItems, activeSellers, dbStoreSizes) {
-				logChangeEvent(itemName, ev)
-			}
-		}
-
 		if areItemSetsIdentical(currentScrapedItems, lastAvailableItems) {
 			itemsUnchanged++
 			continue
+		}
+
+		for _, ev := range classifyListingChanges(currentScrapedItems, lastAvailableItems, activeSellers, dbStoreSizes) {
+			logChangeEvent(itemName, ev)
 		}
 
 		// Mark old items unavailable
@@ -1904,7 +1902,7 @@ func scrapeData() {
 			var lowestPriceListingInBatch Item
 			lowestPriceInBatch := -1
 			for _, item := range currentScrapedItems {
-				priceStr := strings.ReplaceAll(item.Price, ",", "")
+				priceStr := strings.TrimSuffix(strings.ReplaceAll(item.Price, ",", ""), "z")
 				currentPrice, convErr := strconv.Atoi(priceStr)
 				if convErr != nil {
 					continue

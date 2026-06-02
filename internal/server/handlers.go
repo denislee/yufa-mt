@@ -755,9 +755,26 @@ func fullListHandler(w http.ResponseWriter, r *http.Request) {
 		whereClause = "WHERE " + strings.Join(whereConditions, " AND ")
 	}
 
-	query := fmt.Sprintf(`%s %s %s;`, baseQuery, whereClause, orderByClause)
+	// Count total matching rows first, then paginate. Without a LIMIT this query
+	// materializes the entire (ever-growing) items table when "show all" is set.
+	const itemsPerPage = 100
+	countQuery := fmt.Sprintf(`
+		SELECT COUNT(*)
+		FROM items i
+		LEFT JOIN internal_item_db local_db ON i.item_id = local_db.item_id
+		%s`, whereClause)
+	totalItems, err := queryCount(countQuery, queryParams...)
+	if err != nil {
+		log.Printf("[E] [HTTP] Could not count items: %v", err)
+		http.Error(w, "Database query failed", http.StatusInternalServerError)
+		return
+	}
+	pagination := httpx.NewPaginationData(r, totalItems, itemsPerPage)
+
+	query := fmt.Sprintf(`%s %s %s LIMIT ? OFFSET ?;`, baseQuery, whereClause, orderByClause)
 	// --- End Query Building ---
 
+	queryParams = append(queryParams, itemsPerPage, pagination.Offset)
 	rows, err := srv.db.Query(query, queryParams...)
 	if err != nil {
 		log.Printf("[E] [HTTP] Database query error: %v", err)
@@ -806,6 +823,7 @@ func fullListHandler(w http.ResponseWriter, r *http.Request) {
 		ItemTypesTotal: itemTypesTotal,
 		SelectedType:   selectedType,
 		PageTitle:      "Full List",
+		Pagination:     pagination,
 	}
 	renderTemplate(w, r, "full_list.html", data)
 }

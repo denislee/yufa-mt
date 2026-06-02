@@ -411,7 +411,7 @@ func addColumnIfMissingReport(db *sql.DB, table, column, columnDef string) (bool
 // migrations in order. mvpMobIDs are mob IDs for the dynamic
 // character_mvp_kills table; pass an empty slice to skip kill tracking.
 func Open(filepath string, mvpMobIDs []string) (*sql.DB, error) {
-	db, err := sql.Open("sqlite3", filepath+"?_journal_mode=WAL&_busy_timeout=5000&_sync=NORMAL")
+	db, err := sql.Open("sqlite3", filepath+"?_journal_mode=WAL&_busy_timeout=5000&_sync=NORMAL&_foreign_keys=on")
 	if err != nil {
 		return nil, err
 	}

@@ -454,7 +454,7 @@ func getAdminDashboardData(r *http.Request) (AdminDashboardData, error) {
 
 	var (
 		g                                                                     errgroup.Group
-		statsR, guildsR, pageViewsR, tpR, rmsCacheR, rmsLiveR, visitsR, chatR AdminDashboardData
+		statsR, guildsR, pageViewsR, tpR, rmsCacheR, rmsLiveR, visitsCountsR, visitsByDayR, chatR AdminDashboardData
 	)
 
 	// Task 1: Main Stats (Critical)
@@ -507,14 +507,14 @@ func getAdminDashboardData(r *http.Request) (AdminDashboardData, error) {
 	}
 
 	g.Go(func() error {
-		if err := getDashboardPageVisitCounts(&visitsR); err != nil {
+		if err := getDashboardPageVisitCounts(&visitsCountsR); err != nil {
 			log.Printf("[W] [Admin] Could not load page visit counts: %v", err)
 		}
 		return nil
 	})
 
 	g.Go(func() error {
-		if err := getDashboardVisitsByDay(&visitsR); err != nil {
+		if err := getDashboardVisitsByDay(&visitsByDayR); err != nil {
 			log.Printf("[W] [Admin] Could not load daily visit trend: %v", err)
 		}
 		return nil
@@ -564,8 +564,8 @@ func getAdminDashboardData(r *http.Request) (AdminDashboardData, error) {
 	stats.RMSCacheSearchResults = rmsCacheR.RMSCacheSearchResults
 	stats.RMSLiveSearchQuery = rmsLiveR.RMSLiveSearchQuery
 	stats.RMSLiveSearchResults = rmsLiveR.RMSLiveSearchResults
-	stats.PageVisitCounts = visitsR.PageVisitCounts
-	stats.VisitsByDay = visitsR.VisitsByDay
+	stats.PageVisitCounts = visitsCountsR.PageVisitCounts
+	stats.VisitsByDay = visitsByDayR.VisitsByDay
 	stats.ChatSearchQuery = chatR.ChatSearchQuery
 	stats.ChatTotalMessages = chatR.ChatTotalMessages
 	stats.ChatTotalPages = chatR.ChatTotalPages
@@ -922,7 +922,11 @@ func adminDeleteVisitorViewsHandler(w http.ResponseWriter, r *http.Request) {
 	rowsAffected, _ := result.RowsAffected()
 	if rowsAffected > 0 {
 		msg = "Visitor records removed successfully."
-		log.Printf("[I] [Admin] Admin removed all data for visitor with hash starting with %s...", visitorHash[:12])
+		hashPrefix := visitorHash
+		if len(hashPrefix) > 12 {
+			hashPrefix = hashPrefix[:12]
+		}
+		log.Printf("[I] [Admin] Admin removed all data for visitor with hash starting with %s...", hashPrefix)
 	} else {
 		msg = "Visitor not found or already removed."
 	}

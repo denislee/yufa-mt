@@ -518,11 +518,7 @@ func backfillDropLogsToChangelog() (int64, error) {
 		if len(dropMatches) == 4 {
 			playerName = dropMatches[1]
 			itemMsgFragment = dropMatches[3]
-			// --- ADDED LOG ---
-			log.Printf("[D] [Backfill] Parsed message: Player='%s', Fragment='%s'", playerName, itemMsgFragment)
 		} else {
-			// --- ADDED LOG ---
-			log.Printf("[D] [Backfill] dropMessageRegex FAILED for msg: %s", msg)
 			failedRegex1++
 			continue // Not a valid drop message
 		}
@@ -541,20 +537,13 @@ func backfillDropLogsToChangelog() (int64, error) {
 		}
 		itemName = strings.TrimSpace(itemName)
 		if itemName == "" {
-			// --- ADDED LOG ---
-			log.Printf("[D] [Backfill] reItemFromDrop FAILED for fragment: %s", itemMsgFragment)
 			failedRegex2++
 			continue // Couldn't parse item name
 		}
 
-		// --- ADDED LOG ---
-		log.Printf("[D] [Backfill] Parsed item name: '%s'", itemName)
-
 		// Create the new activity description
 		activityDesc := fmt.Sprintf("Dropped item: %s", itemName)
 
-		// --- ADDED LOG ---
-		log.Printf("[D] [Backfill] Attempting to insert: CHAR='%s', TIME='%s', DESC='%s'", playerName, timestampStr, activityDesc)
 		_, err := stmt.Exec(playerName, timestampStr, activityDesc, changelogKindDrop)
 		if err != nil {
 			log.Printf("[W] [Backfill] FAILED to insert log for '%s' (time: %s, item: %s). Error: %v", playerName, timestampStr, itemName, err)
