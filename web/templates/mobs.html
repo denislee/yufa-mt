@@ -1,17 +1,9 @@
-{{define "title"}}Bestiary - Yufa Market Tracker{{end}}
+{{define "title"}}Monsters - Yufa Market Tracker{{end}}
 {{define "content"}}
     <div class="container mx-auto px-4 py-6">
         {{$isDiffs := eq .Data.Tab "diffs"}}
         <div class="flex flex-col sm:flex-row justify-between sm:items-center gap-2 mb-4 border-b border-gray-200 dark:border-gray-700 pb-3">
-            <h1 class="text-2xl font-bold text-gray-800 dark:text-gray-100">Bestiary</h1>
-            {{if not $isDiffs}}
-            <form action="/mobs" method="GET" class="flex items-center gap-2">
-                <input type="text" name="q" value="{{.Data.SearchQuery}}" placeholder="Search by name or id…"
-                       class="px-3 py-1.5 text-sm rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500 w-56">
-                <button type="submit" class="px-3 py-1.5 text-sm font-medium rounded-md bg-blue-600 text-white hover:bg-blue-700">Search</button>
-                {{if .Data.SearchQuery}}<a href="/mobs" class="text-sm text-gray-500 dark:text-gray-400 hover:underline">Clear</a>{{end}}
-            </form>
-            {{end}}
+            <h1 class="text-2xl font-bold text-gray-800 dark:text-gray-100">Monsters</h1>
         </div>
 
         <div class="flex items-center gap-1 mb-4 border-b border-gray-200 dark:border-gray-700 -mt-1">
@@ -69,8 +61,63 @@
             </div>
         </div>
         {{else}}
+        {{$d := .Data}}
+        <form action="/mobs" method="GET" class="bg-white dark:bg-gray-800 shadow rounded-lg p-4 mb-4">
+            <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+                <div class="col-span-2 sm:col-span-3 lg:col-span-2">
+                    <label for="mob-q" class="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Name / ID</label>
+                    <input id="mob-q" type="text" name="q" value="{{$d.SearchQuery}}" placeholder="e.g. Poring or 1002"
+                           class="w-full px-3 py-1.5 text-sm rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 text-gray-800 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500">
+                </div>
+                <div>
+                    <label for="mob-race" class="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Race</label>
+                    <select id="mob-race" name="race" class="w-full px-2 py-1.5 text-sm rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 text-gray-800 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500">
+                        <option value="">Any</option>
+                        {{range $d.RaceOptions}}<option value="{{.}}" {{if eq . $d.Race}}selected{{end}}>{{.}}</option>{{end}}
+                    </select>
+                </div>
+                <div>
+                    <label for="mob-element" class="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Element</label>
+                    <select id="mob-element" name="element" class="w-full px-2 py-1.5 text-sm rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 text-gray-800 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500">
+                        <option value="">Any</option>
+                        {{range $d.ElementOptions}}<option value="{{.}}" {{if eq . $d.Element}}selected{{end}}>{{.}}</option>{{end}}
+                    </select>
+                </div>
+                <div>
+                    <label for="mob-size" class="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Size</label>
+                    <select id="mob-size" name="size" class="w-full px-2 py-1.5 text-sm rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 text-gray-800 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500">
+                        <option value="">Any</option>
+                        {{range $d.SizeOptions}}<option value="{{.}}" {{if eq . $d.Size}}selected{{end}}>{{.}}</option>{{end}}
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Level</label>
+                    <div class="flex items-center gap-1">
+                        <input type="number" name="lvl_min" min="1" value="{{$d.LevelMin}}" placeholder="min" aria-label="Minimum level"
+                               class="w-full px-2 py-1.5 text-sm rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 text-gray-800 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500">
+                        <span class="text-gray-400">–</span>
+                        <input type="number" name="lvl_max" min="1" value="{{$d.LevelMax}}" placeholder="max" aria-label="Maximum level"
+                               class="w-full px-2 py-1.5 text-sm rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 text-gray-800 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500">
+                    </div>
+                </div>
+            </div>
+            <div class="flex flex-wrap items-center gap-3 mt-3">
+                <label class="inline-flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
+                    <input type="checkbox" name="mvp" value="1" {{if $d.MvpOnly}}checked{{end}}
+                           class="rounded border-gray-300 dark:border-gray-600 text-blue-600 focus:ring-blue-500">
+                    MVP only
+                </label>
+                <div class="flex items-center gap-2 ml-auto">
+                    <button type="submit" class="px-4 py-1.5 text-sm font-medium rounded-md bg-blue-600 text-white hover:bg-blue-700">Search</button>
+                    {{if or $d.SearchQuery $d.HasFilters}}<a href="/mobs" class="px-3 py-1.5 text-sm font-medium rounded-md text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700">Reset</a>{{end}}
+                </div>
+            </div>
+            <input type="hidden" name="sort_by" value="{{$d.SortBy}}">
+            <input type="hidden" name="order" value="{{$d.Order}}">
+        </form>
+
         <p class="text-sm text-gray-600 dark:text-gray-400 mb-3">
-            {{if .Data.SearchQuery}}{{.Data.TotalMobs}} match(es) for "{{.Data.SearchQuery}}"{{else}}{{.Data.TotalMobs}} monsters{{end}}
+            {{if or .Data.SearchQuery .Data.HasFilters}}{{.Data.TotalMobs}} match(es){{else}}{{.Data.TotalMobs}} monsters{{end}}
         </p>
 
         <div class="bg-white dark:bg-gray-800 shadow-lg rounded-lg overflow-hidden">

@@ -50,7 +50,7 @@ func TestMobsTemplateExecutes(t *testing.T) {
 		}},
 		Pagination: httpx.PaginationData{CurrentPage: 1, TotalPages: 3, NextPage: 2, HasNextPage: true},
 		Filter:     "&q=poring",
-		PageTitle:  "Bestiary",
+		PageTitle:  "Monsters",
 	})
 }
 
@@ -58,7 +58,7 @@ func TestMobsDiffsTabTemplateExecutes(t *testing.T) {
 	renderPageForTest(t, "mobs.html", MobsPageData{
 		Tab:       "diffs",
 		TotalMobs: 1,
-		PageTitle: "Bestiary",
+		PageTitle: "Monsters",
 		Diffs: []MobDiffEntry{{
 			ID: 1039, DisplayName: "Baphomet", IsMvp: true, DiffCount: 2, ScrapedAgo: "5 minutes ago",
 			DiffFields: []MobFieldDiff{
@@ -71,7 +71,7 @@ func TestMobsDiffsTabTemplateExecutes(t *testing.T) {
 
 func TestMobDetailTemplateExecutes(t *testing.T) {
 	renderPageForTest(t, "mob_detail.html", MobDetailPageData{
-		PageTitle: "Bestiary",
+		PageTitle: "Monsters",
 		Mob: MobDetail{
 			ID: 1039, DisplayName: "Baphomet", Name: "Baphomet", AegisName: "BAPHOMET",
 			Level: 81, HP: 668000, BaseExp: 107250, JobExp: 37895, MvpExp: 53625,

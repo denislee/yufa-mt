@@ -99,6 +99,39 @@ type MobsPageData struct {
 	PageTitle   string
 	Tab         string         // "" (all monsters) or "diffs" (the Differences tab)
 	Diffs       []MobDiffEntry // populated only on the Differences tab
+
+	// Advanced search (ratemyserver-style mob_db filters). The selected values
+	// echo the current request so the form keeps its state; the *Options slices
+	// drive the dropdowns.
+	Race           string // selected race filter ("" = any)
+	Element        string // selected element filter ("" = any)
+	Size           string // selected size filter ("" = any)
+	LevelMin       string // raw min-level input (kept as string so a blank stays blank)
+	LevelMax       string // raw max-level input
+	MvpOnly        bool   // restrict to MVP monsters
+	RaceOptions    []string
+	ElementOptions []string
+	SizeOptions    []string
+	HasFilters     bool // any advanced filter (beyond q) is active — controls the Reset link
+}
+
+// Allowed values for the advanced mob-search dropdowns, matching the distinct
+// race / element / size strings stored in internal_mob_db.
+var (
+	mobRaceOptions    = []string{"Angel", "Brute", "Demihuman", "Demon", "Dragon", "Fish", "Formless", "Insect", "Plant", "Undead"}
+	mobElementOptions = []string{"Dark", "Earth", "Fire", "Ghost", "Holy", "Neutral", "Poison", "Undead", "Water", "Wind"}
+	mobSizeOptions    = []string{"Small", "Medium", "Large"}
+)
+
+// validMobOption reports whether v is one of the allowed options, so a
+// hand-crafted query string can't inject arbitrary filter values.
+func validMobOption(v string, options []string) bool {
+	for _, o := range options {
+		if v == o {
+			return true
+		}
+	}
+	return false
 }
 
 // MobFieldDiff is one row of the baseline-vs-server comparison table.
@@ -185,27 +218,77 @@ func mobsListHandler(w http.ResponseWriter, r *http.Request) {
 			Tab:       "diffs",
 			Diffs:     diffs,
 			TotalMobs: len(diffs),
-			PageTitle: "Bestiary",
+			PageTitle: "Monsters",
 		})
 		return
 	}
 
 	q := strings.TrimSpace(r.FormValue("q"))
 
-	// Build the optional search WHERE clause. Matches name / pt name / aegis,
-	// plus an exact id match when the query is numeric.
-	where := ""
+	// Read the ratemyserver-style advanced filters. Dropdown values are
+	// validated against the known option sets so a crafted query string can't
+	// inject SQL-adjacent garbage; level inputs are kept verbatim for the form
+	// but only applied when they parse as integers.
+	raceFilter := r.FormValue("race")
+	if !validMobOption(raceFilter, mobRaceOptions) {
+		raceFilter = ""
+	}
+	elementFilter := r.FormValue("element")
+	if !validMobOption(elementFilter, mobElementOptions) {
+		elementFilter = ""
+	}
+	sizeFilter := r.FormValue("size")
+	if !validMobOption(sizeFilter, mobSizeOptions) {
+		sizeFilter = ""
+	}
+	lvlMinRaw := strings.TrimSpace(r.FormValue("lvl_min"))
+	lvlMaxRaw := strings.TrimSpace(r.FormValue("lvl_max"))
+	mvpOnly := r.FormValue("mvp") == "1"
+
+	// Build the WHERE clause. The free-text query is one OR group (name / pt
+	// name / aegis, plus an exact id match when numeric); every other filter is
+	// ANDed on top of it.
+	var conds []string
 	var args []any
 	if q != "" {
 		like := "%" + q + "%"
-		clauses := []string{"name LIKE ?", "name_pt LIKE ?", "aegis_name LIKE ?"}
+		nameClauses := []string{"name LIKE ?", "name_pt LIKE ?", "aegis_name LIKE ?"}
 		args = append(args, like, like, like)
 		if id, err := strconv.Atoi(q); err == nil {
-			clauses = append(clauses, "mob_id = ?")
+			nameClauses = append(nameClauses, "mob_id = ?")
 			args = append(args, id)
 		}
-		where = "WHERE " + strings.Join(clauses, " OR ")
+		conds = append(conds, "("+strings.Join(nameClauses, " OR ")+")")
 	}
+	if raceFilter != "" {
+		conds = append(conds, "race = ?")
+		args = append(args, raceFilter)
+	}
+	if elementFilter != "" {
+		conds = append(conds, "element = ?")
+		args = append(args, elementFilter)
+	}
+	if sizeFilter != "" {
+		conds = append(conds, "size = ?")
+		args = append(args, sizeFilter)
+	}
+	if n, err := strconv.Atoi(lvlMinRaw); err == nil {
+		conds = append(conds, "level >= ?")
+		args = append(args, n)
+	}
+	if n, err := strconv.Atoi(lvlMaxRaw); err == nil {
+		conds = append(conds, "level <= ?")
+		args = append(args, n)
+	}
+	if mvpOnly {
+		conds = append(conds, "is_mvp = 1")
+	}
+	where := ""
+	if len(conds) > 0 {
+		where = "WHERE " + strings.Join(conds, " AND ")
+	}
+	hasFilters := raceFilter != "" || elementFilter != "" || sizeFilter != "" ||
+		lvlMinRaw != "" || lvlMaxRaw != "" || mvpOnly
 
 	var total int
 	if err := srv.db.QueryRow("SELECT COUNT(*) FROM internal_mob_db "+where, args...).Scan(&total); err != nil {
@@ -259,10 +342,29 @@ func mobsListHandler(w http.ResponseWriter, r *http.Request) {
 		mobs = append(mobs, e)
 	}
 
-	// Preserve the search query and the active sort across pagination links.
+	// Preserve the search query, advanced filters and the active sort across
+	// pagination and per-column sort links.
 	filterValues := url.Values{}
 	if q != "" {
 		filterValues.Set("q", q)
+	}
+	if raceFilter != "" {
+		filterValues.Set("race", raceFilter)
+	}
+	if elementFilter != "" {
+		filterValues.Set("element", elementFilter)
+	}
+	if sizeFilter != "" {
+		filterValues.Set("size", sizeFilter)
+	}
+	if lvlMinRaw != "" {
+		filterValues.Set("lvl_min", lvlMinRaw)
+	}
+	if lvlMaxRaw != "" {
+		filterValues.Set("lvl_max", lvlMaxRaw)
+	}
+	if mvpOnly {
+		filterValues.Set("mvp", "1")
 	}
 	filterValues.Set("sort_by", sortBy)
 	filterValues.Set("order", order)
@@ -272,14 +374,24 @@ func mobsListHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	renderTemplate(w, r, "mobs.html", MobsPageData{
-		Mobs:        mobs,
-		SearchQuery: q,
-		TotalMobs:   total,
-		Pagination:  pg,
-		Filter:      filter,
-		SortBy:      sortBy,
-		Order:       order,
-		PageTitle:   "Bestiary",
+		Mobs:           mobs,
+		SearchQuery:    q,
+		TotalMobs:      total,
+		Pagination:     pg,
+		Filter:         filter,
+		SortBy:         sortBy,
+		Order:          order,
+		PageTitle:      "Monsters",
+		Race:           raceFilter,
+		Element:        elementFilter,
+		Size:           sizeFilter,
+		LevelMin:       lvlMinRaw,
+		LevelMax:       lvlMaxRaw,
+		MvpOnly:        mvpOnly,
+		RaceOptions:    mobRaceOptions,
+		ElementOptions: mobElementOptions,
+		SizeOptions:    mobSizeOptions,
+		HasFilters:     hasFilters,
 	})
 }
 
@@ -345,7 +457,7 @@ func mobDetailHandler(w http.ResponseWriter, r *http.Request) {
 	renderTemplate(w, r, "mob_detail.html", MobDetailPageData{
 		Mob:           m,
 		Comparison:    cmp,
-		PageTitle:     "Bestiary",
+		PageTitle:     "Monsters",
 		Spawns:        spawns,
 		SpawnsScraped: spawnsScraped,
 		SpawnsAgo:     spawnsAgo,

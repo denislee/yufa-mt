@@ -9,7 +9,7 @@
                 <a href="/" class="text-sm font-semibold tracking-tight text-gray-800 dark:text-gray-100 hover:text-blue-600 dark:hover:text-blue-400" aria-label="Yufa Market Tracker - Home">ymt</a>
             </div>
 
-            {{ $isRankingPage := (or (eq .Data.PageTitle "Characters") (eq .Data.PageTitle "Guilds") (eq .Data.PageTitle "MVP Kills") (eq .Data.PageTitle "WoE Rankings")) }}
+            {{ $isRankingPage := (or (eq .Data.PageTitle "Characters") (eq .Data.PageTitle "Guilds") (eq .Data.PageTitle "MVP Kills") (eq .Data.PageTitle "WoE Rankings") (eq .Data.PageTitle "Monsters")) }}
             {{ $isStatsPage := (or (eq .Data.PageTitle "Drop Stats") (eq .Data.PageTitle "Market Stats") (eq .Data.PageTitle "Character Stats") (eq .Data.PageTitle "Player Count")) }}
 
             <div class="hidden md:flex items-center space-x-1">
@@ -53,7 +53,7 @@
                         <a href="/characters" class="block px-4 py-2 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700">{{.Page.T.nav_characters}}</a>
                         <a href="/guilds" class="block px-4 py-2 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700">{{.Page.T.nav_guilds}}</a>
                         <a href="/mvp-kills" class="block px-4 py-2 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700">{{.Page.T.nav_mvp_kills}}</a>
-                        <a href="/mobs" class="block px-4 py-2 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700">Bestiary</a>
+                        <a href="/mobs" class="block px-4 py-2 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700">Monsters</a>
                         <a href="/woe" class="block px-4 py-2 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700">{{.Page.T.nav_woe_rankings}}</a>
                     </div>
                 </div>
@@ -121,7 +121,7 @@
                 <a href="/characters" class="ymt-navlink ymt-navlink--mobile {{if eq .Data.PageTitle "Characters"}}is-active{{end}}">{{.Page.T.nav_characters}}</a>
                 <a href="/guilds" class="ymt-navlink ymt-navlink--mobile {{if eq .Data.PageTitle "Guilds"}}is-active{{end}}">{{.Page.T.nav_guilds}}</a>
                 <a href="/mvp-kills" class="ymt-navlink ymt-navlink--mobile {{if eq .Data.PageTitle "MVP Kills"}}is-active{{end}}">{{.Page.T.nav_mvp_kills}}</a>
-                <a href="/mobs" class="ymt-navlink ymt-navlink--mobile {{if eq .Data.PageTitle "Bestiary"}}is-active{{end}}">Bestiary</a>
+                <a href="/mobs" class="ymt-navlink ymt-navlink--mobile {{if eq .Data.PageTitle "Monsters"}}is-active{{end}}">Monsters</a>
                 <a href="/woe" class="ymt-navlink ymt-navlink--mobile {{if eq .Data.PageTitle "WoE Rankings"}}is-active{{end}}">{{.Page.T.nav_woe_rankings}}</a>
             </div>
         </details>
