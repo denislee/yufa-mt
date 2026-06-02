@@ -282,9 +282,22 @@ func Run(cfg *config.Config) {
 	}
 
 	// HTTP server has finished shutting down. Now wait for background
-	// services to drain so the visitor logger flushes its final batch.
+	// services to drain so the visitor logger flushes its final batch — but
+	// only up to a deadline. A background job that ignores ctx (e.g. a slow
+	// scrape mid-run) must not wedge the process forever: the self-update path
+	// SIGTERMs the process and relies on systemd respawning it onto the new
+	// binary, so we MUST exit. Past the deadline we proceed and let process
+	// teardown reclaim any stragglers.
 	slog.Info("Waiting for background services to drain...")
-	bgWg.Wait()
-
-	slog.Info("All services shut down. Exiting.")
+	drained := make(chan struct{})
+	go func() {
+		bgWg.Wait()
+		close(drained)
+	}()
+	select {
+	case <-drained:
+		slog.Info("All services shut down. Exiting.")
+	case <-time.After(15 * time.Second):
+		slog.Warn("Background services did not drain within 15s; exiting anyway")
+	}
 }

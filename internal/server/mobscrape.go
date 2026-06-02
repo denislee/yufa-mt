@@ -83,7 +83,14 @@ func runMobInfoSweep() {
 		return
 	}
 
-	ctx, cancel := context.WithCancel(context.Background())
+	// Derive from the app shutdown context so a SIGTERM aborts an in-flight
+	// sweep instead of blocking bgWg.Wait() for up to the whole id range. The
+	// Stop button cancels this same context via mobScrape.cancel.
+	base := bgCtx
+	if base == nil {
+		base = context.Background()
+	}
+	ctx, cancel := context.WithCancel(base)
 
 	mobScrape.mu.Lock()
 	if mobScrape.running {

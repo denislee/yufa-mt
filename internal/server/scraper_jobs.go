@@ -6,7 +6,14 @@ import (
 	"sync"
 )
 
+// bgCtx is the application shutdown context, captured so background work that
+// the scheduler invokes via a plain func() (e.g. the @mobinfo sweep) can still
+// observe shutdown and abort promptly instead of blocking bgWg.Wait().
+var bgCtx context.Context
+
 func startBackgroundJobs(ctx context.Context, wg *sync.WaitGroup) {
+	bgCtx = ctx
+
 	// The in-process character-select PIN proxy runs independently of the
 	// scrape/capture flags: it installs an iptables REDIRECT and injects the
 	// PIN so the game client clears the keypad with no click. Start it first so
