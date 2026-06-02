@@ -146,12 +146,27 @@
 
             // --- Activity Chart ---
             const activityCanvas = document.getElementById('activityChart');
-            if (activityCanvas) {
+            // Render is deferred until Chart.js (+ the date adapter) is actually
+            // defined. The synthetic DOMContentLoaded dispatched after an hx-boost
+            // swap can fire on a 1500ms fallback timer *before* the CDN scripts
+            // finish loading (cold cache / slow network), so we can't assume
+            // `Chart` exists yet. Poll briefly instead of throwing immediately.
+            function renderActivityChart() {
+                if (!activityCanvas) return;
+                if (typeof Chart === 'undefined') return false; // not ready yet
                 try {
                     const activityData = JSON.parse(activityCanvas.dataset.activityJson || '[]');
                     if (activityData.length > 0) {
+                        // Each boosted navigation registers another DOMContentLoaded
+                        // listener (removing the old <script> node does not unregister
+                        // it), so this can run more than once against the same canvas.
+                        // Tear down any prior chart first to avoid Chart.js's
+                        // "Canvas is already in use" error.
+                        const existing = Chart.getChart(activityCanvas);
+                        if (existing) existing.destroy();
+
                         const ctx = activityCanvas.getContext('2d');
-                        
+
                         const points = activityData.map(d => ({
                             x: new Date(d.t),
                             y: d.v
@@ -230,9 +245,33 @@
                             }
                         });
                     }
+                    return true; // rendered (or no data — nothing more to do)
                 } catch (e) {
                     console.error("Failed to parse or render activity chart:", e);
-                    activityCanvas.parentElement.innerHTML = "<p class='text-center text-gray-500 dark:text-gray-400 text-sm'>Could not load activity graph.</p>";
+                    showActivityError();
+                    return true; // hard failure — stop retrying
+                }
+            }
+
+            function showActivityError() {
+                if (!activityCanvas || !activityCanvas.parentElement) return;
+                const msg = document.createElement('p');
+                msg.className = 'text-center text-gray-500 dark:text-gray-400 text-sm';
+                msg.textContent = 'Could not load activity graph.';
+                activityCanvas.parentElement.replaceChildren(msg);
+            }
+
+            if (activityCanvas) {
+                // Retry until Chart.js is loaded, up to ~10s, then give up.
+                if (renderActivityChart() === false) {
+                    let attempts = 0;
+                    const timer = setInterval(() => {
+                        attempts++;
+                        if (renderActivityChart() !== false || attempts >= 100) {
+                            clearInterval(timer);
+                            if (typeof Chart === 'undefined') showActivityError();
+                        }
+                    }, 100);
                 }
             }
         });
