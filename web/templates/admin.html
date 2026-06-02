@@ -105,6 +105,13 @@
         }
         .adm-spark.is-mem polyline { stroke: #7c3aed; }
         .adm-spark.is-temp polyline { stroke: #dc2626; }
+        .adm-spark.adm-spark-multi { height: 8rem; }
+        .adm-spark.adm-spark-multi polyline { stroke-width: 1.25; }
+
+        .adm-core-legend { display: flex; flex-wrap: wrap; gap: .25rem .9rem; margin-top: .6rem; }
+        .adm-core-legend .adm-core-leg { display: inline-flex; align-items: center; gap: .35rem; font-size: .7rem; font-variant-numeric: tabular-nums; color: #6b7280; }
+        .dark .adm-core-legend .adm-core-leg { color: #9ca3af; }
+        .adm-core-legend .adm-core-swatch { width: .7rem; height: .2rem; border-radius: 1px; flex: none; }
 
         .adm-metric-label { font-size: .7rem; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: #6b7280; }
         .dark .adm-metric-label { color: #9ca3af; }
@@ -1165,6 +1172,27 @@
                         </div>
                     </div>
 
+                    <!-- Per-core CPU trend (one line per core) -->
+                    <div class="adm-card mb-6">
+                        <h3 class="adm-card-title mb-3">Per-Core CPU Trend</h3>
+                        <svg class="adm-spark adm-spark-multi" viewBox="0 0 100 100" preserveAspectRatio="none">
+                            <template x-for="(c, i) in (s?.per_cpu || [])" :key="i">
+                                <polyline :points="sparkPer(i, 100)" :style="'stroke:' + coreColor(i)"></polyline>
+                            </template>
+                        </svg>
+                        <div class="adm-core-legend">
+                            <template x-for="(c, i) in (s?.per_cpu || [])" :key="i">
+                                <span class="adm-core-leg">
+                                    <span class="adm-core-swatch" :style="'background:' + coreColor(i)"></span>
+                                    <span x-text="'core ' + i + ' · ' + c.toFixed(0) + '%'"></span>
+                                </span>
+                            </template>
+                        </div>
+                        <template x-if="!(s?.per_cpu || []).length">
+                            <p class="adm-metric-sub mt-2">Per-core data unavailable.</p>
+                        </template>
+                    </div>
+
                     <!-- Detail cards -->
                     <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 items-start">
                         <!-- Host -->
@@ -1314,6 +1342,7 @@
                 timer: null,
                 maxPoints: 40,
                 hist: { cpu: [], mem: [], temp: [] },
+                histPer: [],
                 init() {
                     this.tick();
                     this.timer = setInterval(() => this.tick(), 3000);
@@ -1333,6 +1362,7 @@
                         this.push('cpu', data.cpu_percent);
                         this.push('mem', data.mem_percent);
                         if (data.has_temp) this.push('temp', data.temp_c);
+                        this.pushPer(data.per_cpu || []);
                         this.status = 'Updated ' + new Date(data.timestamp).toLocaleTimeString();
                     } catch (err) {
                         this.error = err.message;
@@ -1343,6 +1373,35 @@
                     const a = this.hist[key];
                     a.push(val);
                     if (a.length > this.maxPoints) a.shift();
+                },
+                // Keep a rolling history per core. histPer[i] is one core's series.
+                pushPer(arr) {
+                    if (this.histPer.length !== arr.length) {
+                        this.histPer = arr.map(() => []);
+                    }
+                    arr.forEach((v, i) => {
+                        const a = this.histPer[i];
+                        a.push(v);
+                        if (a.length > this.maxPoints) a.shift();
+                    });
+                },
+                // Polyline points for one core's history, scaled to the 0..max range.
+                sparkPer(i, max) {
+                    const a = this.histPer[i] || [];
+                    if (a.length < 2) return '';
+                    const n = a.length;
+                    return a.map((v, k) => {
+                        const x = (k / (n - 1)) * 100;
+                        const y = 100 - Math.max(0, Math.min(1, v / max)) * 100;
+                        return x.toFixed(1) + ',' + y.toFixed(1);
+                    }).join(' ');
+                },
+                // Stable, distinct color per core (cycles if there are many cores).
+                coreColor(i) {
+                    const pal = ['#2563eb', '#dc2626', '#059669', '#d97706', '#7c3aed',
+                                 '#0891b2', '#db2777', '#65a30d', '#ea580c', '#4f46e5',
+                                 '#0d9488', '#c026d3'];
+                    return pal[i % pal.length];
                 },
                 // Build a "x,y x,y …" polyline for a 0..100 viewBox, scaling
                 // values against max (so temp uses 100°C full-scale, % uses 100%).
