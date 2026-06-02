@@ -89,6 +89,8 @@ type Config struct {
 	// the @mobinfo reference-data scrape. Linux-only; needs CAP_NET_ADMIN (the
 	// same capability the PIN proxy uses). Independent of PinProxy (different
 	// port). Plaintext on this server, so injection is straightforward.
+	// Defaults ON (set ZONE_PROXY=0 to disable); startBackgroundJobs skips it
+	// in dev mode (DISABLE_SCRAPERS) so a dev box never installs iptables rules.
 	ZoneProxyEnabled bool
 	// ZoneProxyZonePort is the zone/map TCP port carrying in-game chat and
 	// atcommands (the REDIRECT match). Default 6121 (matches ChatCapturePort).
@@ -143,7 +145,7 @@ func Load() (*Config, error) {
 		PinProxySelectSlot:   intEnv("PIN_PROXY_SELECT_SLOT", -1),
 		PinProxyServerIP:     os.Getenv("PIN_PROXY_SERVER_IP"),
 		PinProxyInject:       boolEnvDefault("PIN_PROXY_INJECT", true),
-		ZoneProxyEnabled:     boolEnv("ZONE_PROXY"),
+		ZoneProxyEnabled:     boolEnvDefault("ZONE_PROXY", true),
 		ZoneProxyZonePort:    envOr("ZONE_PROXY_PORT", "6121"),
 		ZoneProxyListenPort:  envOr("ZONE_PROXY_LISTEN_PORT", "6799"),
 		ZoneProxyServerIP:    os.Getenv("ZONE_PROXY_SERVER_IP"),
