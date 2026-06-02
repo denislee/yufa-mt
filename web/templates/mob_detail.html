@@ -6,19 +6,27 @@
             <a href="/mobs" class="text-sm text-blue-600 dark:text-blue-400 hover:underline">&larr; Bestiary</a>
         </div>
 
-        <div class="flex items-center gap-3 mb-1 flex-wrap">
-            <h1 class="text-2xl font-bold text-gray-800 dark:text-gray-100">{{$m.DisplayName}}</h1>
-            {{if $m.IsMvp}}<span class="px-2 py-0.5 rounded text-xs font-bold bg-amber-100 text-amber-800">MVP</span>{{end}}
-            <span class="font-mono text-sm text-gray-500 dark:text-gray-400">#{{$m.ID}}</span>
+        <div class="flex items-start gap-4 mb-5">
+            <img src="https://static.divine-pride.net/images/mobs/png/{{$m.ID}}.png" alt="{{$m.DisplayName}}"
+                 class="flex-shrink-0 w-16 bg-gray-100 dark:bg-gray-800 rounded-lg p-1"
+                 style="image-rendering: pixelated;" loading="lazy" decoding="async"
+                 onerror="this.style.display='none'">
+            <div>
+                <div class="flex items-center gap-3 mb-1 flex-wrap">
+                    <h1 class="text-2xl font-bold text-gray-800 dark:text-gray-100">{{$m.DisplayName}}</h1>
+                    {{if $m.IsMvp}}<span class="px-2 py-0.5 rounded text-xs font-bold bg-amber-100 text-amber-800">MVP</span>{{end}}
+                    <span class="font-mono text-sm text-gray-500 dark:text-gray-400">#{{$m.ID}}</span>
+                </div>
+                <p class="text-sm text-gray-500 dark:text-gray-400">
+                    {{$m.AegisName}} &middot; Lv {{$m.Level}} &middot; {{$m.Race}} &middot; {{$m.Element}}{{if $m.ElementLvl}} (Lv{{$m.ElementLvl}}){{end}} &middot; {{$m.Size}}
+                </p>
+            </div>
         </div>
-        <p class="text-sm text-gray-500 dark:text-gray-400 mb-5">
-            {{$m.AegisName}} &middot; Lv {{$m.Level}} &middot; {{$m.Race}} &middot; {{$m.Element}}{{if $m.ElementLvl}} (Lv{{$m.ElementLvl}}){{end}} &middot; {{$m.Size}}
-        </p>
 
         <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
             <div class="bg-white dark:bg-gray-800 shadow rounded-lg p-4">
                 <h2 class="text-sm font-semibold text-gray-700 dark:text-gray-200 uppercase tracking-wider mb-3">Stats</h2>
-                <dl class="grid grid-cols-2 gap-x-6 gap-y-1 text-sm">
+                <dl class="grid grid-cols-2 gap-x-4 gap-y-1 text-sm">
                     <div class="flex justify-between"><dt class="text-gray-500 dark:text-gray-400">HP</dt><dd class="font-mono">{{$m.HP}}</dd></div>
                     <div class="flex justify-between"><dt class="text-gray-500 dark:text-gray-400">SP</dt><dd class="font-mono">{{$m.SP}}</dd></div>
                     <div class="flex justify-between"><dt class="text-gray-500 dark:text-gray-400">Base EXP</dt><dd class="font-mono">{{$m.BaseExp}}</dd></div>
