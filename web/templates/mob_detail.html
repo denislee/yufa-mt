@@ -58,6 +58,7 @@
 
         {{$c := .Data.Comparison}}
         <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start">
+        <div class="flex flex-col gap-6 min-w-0">
         {{if $c.HasServer}}
         <div class="bg-white dark:bg-gray-800 shadow rounded-lg overflow-hidden">
             <div class="px-4 pt-4 pb-2 flex items-center justify-between flex-wrap gap-2">
@@ -91,7 +92,9 @@
             Not yet scraped from the live server — showing baseline (YAML) values only. Run the <code>@mobinfo</code> scrape to capture this server's actual stats and reveal any differences.
         </div>
         {{end}}
+        </div>
 
+        <div class="flex flex-col gap-6 min-w-0">
         {{if $c.HasServer}}
         {{template "mob_drop_diff_table" (dict "Title" "Drops — Baseline (YAML) vs Live Server" "Diffs" $c.DropDiffs "DiffCount" $c.DropDiffCount)}}
         {{if or $m.MvpDrops $c.ServerMvpDrops}}
@@ -103,6 +106,7 @@
         {{template "mob_drop_table" (dict "Title" "MVP Rewards (baseline)" "Drops" $m.MvpDrops)}}
         {{end}}
         {{end}}
+        </div>
         </div>
     </div>
 {{end}}
