@@ -22,10 +22,10 @@
             tfs = localStorage.tableFontSize;
         } catch (e) {}
         if (!t || validThemes.indexOf(t) === -1) {
-            t = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+            t = 'nord';
         }
         if (!fs || validSizes.indexOf(fs) === -1) fs = 'md';
-        if (!tfs || validSizes.indexOf(tfs) === -1) tfs = 'md';
+        if (!tfs || validSizes.indexOf(tfs) === -1) tfs = 'sm';
         var html = document.documentElement;
         html.dataset.theme = t;
         html.dataset.fontSize = fs;
