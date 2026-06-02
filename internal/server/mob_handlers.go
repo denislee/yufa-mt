@@ -640,8 +640,14 @@ func parseMobDrops(raw, lang string) []MobDropView {
 				v.Name = "item #" + strconv.FormatInt(d.ItemID, 10)
 			}
 		case d.Item != "":
-			// YAML seed shape: Item is the aegis name, Rate is in 0.01% units.
-			v.Name = d.Item
+			// YAML seed shape: Item is the aegis name (e.g. "Yoyo_Tail"),
+			// Rate is in 0.01% units. Resolve the aegis name to a localized
+			// display name and link it; fall back to the raw aegis name.
+			if name, id, ok := itemByAegis(d.Item, lang); ok {
+				v.ItemID, v.Name, v.Known = id, name, true
+			} else {
+				v.Name = d.Item
+			}
 			if d.Rate != nil {
 				v.RatePct = float64(*d.Rate) / 100.0
 			}

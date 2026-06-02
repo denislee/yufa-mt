@@ -129,6 +129,23 @@ func itemNameByID(id int64, lang string) (string, bool) {
 	return it.namePT, it.namePT != ""
 }
 
+// itemByAegis resolves an aegis name (the rAthena-style "Yoyo_Tail" identifier
+// used in the YAML mob seed) to its item id and localized display name. Returns
+// ("", 0, false) when no item with that aegis name is known.
+func itemByAegis(aegis, lang string) (string, int64, bool) {
+	ensureItemCache()
+	itemCacheMu.RLock()
+	id, ok := itemByAegisCache[strings.ToLower(aegis)]
+	itemCacheMu.RUnlock()
+	if !ok {
+		return "", 0, false
+	}
+	if name, ok := itemNameByID(id, lang); ok {
+		return name, id, true
+	}
+	return "", 0, false
+}
+
 // renderItemLink turns one decoded blob into an HTML fragment. The linked item
 // name (when known) links to its market history page; the refine prefix and any
 // slotted cards are appended as plain text.

@@ -40,10 +40,14 @@ var (
 	itemFuzzyCache  []cachedItem
 	// Map for O(1) reverse lookups: itemID -> item (used to decode chat item links)
 	itemByIDCache   map[int64]cachedItem
+	// Map for O(1) lookups by aegis name: lowercase aegis_name -> itemID
+	// (used to link YAML-seeded mob drops, which carry aegis names).
+	itemByAegisCache map[string]int64
 )
 
 type cachedItem struct {
 	id          int64
+	aegisName   string
 	name        string
 	lowerName   string
 	namePT      string
@@ -2008,10 +2012,11 @@ func ensureItemCache() {
 
 	itemExactCache = make(map[string]int64)
 	itemByIDCache = make(map[int64]cachedItem, 40000)
+	itemByAegisCache = make(map[string]int64, 40000)
 	// Pre-allocate estimate (Ragnarok has ~30k-50k items)
 	itemFuzzyCache = make([]cachedItem, 0, 40000)
 
-	rows, err := srv.db.Query("SELECT item_id, name, COALESCE(name_pt, ''), COALESCE(slots, 0) FROM internal_item_db")
+	rows, err := srv.db.Query("SELECT item_id, COALESCE(aegis_name, ''), name, COALESCE(name_pt, ''), COALESCE(slots, 0) FROM internal_item_db")
 	if err != nil {
 		log.Printf("[E] [ItemID] Failed to load item cache: %v", err)
 		return
@@ -2020,7 +2025,7 @@ func ensureItemCache() {
 
 	for rows.Next() {
 		var i cachedItem
-		if err := rows.Scan(&i.id, &i.name, &i.namePT, &i.slots); err != nil {
+		if err := rows.Scan(&i.id, &i.aegisName, &i.name, &i.namePT, &i.slots); err != nil {
 			continue
 		}
 		i.lowerName = strings.ToLower(i.name)
@@ -2033,6 +2038,13 @@ func ensureItemCache() {
 		if i.namePT != "" {
 			keyPT := fmt.Sprintf("%s_%d", i.lowerNamePT, i.slots)
 			itemExactCache[keyPT] = i.id
+		}
+		if i.aegisName != "" {
+			lowerAegis := strings.ToLower(i.aegisName)
+			// First writer wins so the canonical item keeps the aegis key.
+			if _, dup := itemByAegisCache[lowerAegis]; !dup {
+				itemByAegisCache[lowerAegis] = i.id
+			}
 		}
 	}
 	itemCacheLoaded = true
