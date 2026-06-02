@@ -681,24 +681,16 @@ type ItemDropSource struct {
 	Live        bool    // rate came from the live-server scrape, not the YAML baseline
 }
 
-// fetchItemDropSources finds every mob that drops the given item, cross-referenced
-// from the YAML baseline (internal_mob_db, whose drop blobs key on the aegis name)
-// and the live-server scrape (mob_server_db, which keys on item id). A live rate
-// overrides the baseline rate for the same mob. Returns nil when nothing drops it.
+// fetchItemDropSources finds every mob that drops the given item according to the
+// live-server scrape (mob_server_db, which keys on item id). Baseline (YAML) mobs are
+// intentionally excluded — only mobs the server actually drops it from are listed.
+// Returns nil when nothing drops it.
 func fetchItemDropSources(itemID int, lang string) []ItemDropSource {
 	if itemID <= 0 {
 		return nil
 	}
 
-	// The baseline drop blobs reference items by aegis name, so resolve it first.
-	var aegis string
-	if err := srv.db.QueryRow(
-		`SELECT COALESCE(aegis_name,'') FROM internal_item_db WHERE item_id = ?`, itemID,
-	).Scan(&aegis); err != nil {
-		log.Printf("[D] [HTTP/History] drop-source: no aegis name for item %d: %v", itemID, err)
-	}
-
-	// Keyed by mob_id so a live scrape can override the baseline rate in place.
+	// Keyed by mob_id to coalesce a mob's normal and MVP drop sets.
 	byMob := map[int]*ItemDropSource{}
 
 	// scan walks one mob table, decoding the drops/mvp_drops blobs of every
@@ -746,27 +738,13 @@ func fetchItemDropSources(itemID int, lang string) []ItemDropSource {
 						}
 						byMob[mobID] = src
 					}
-					// Live data wins; otherwise fill in the baseline.
-					if live || !src.Live {
-						src.RatePct = pct
-						src.Live = live
-						src.MvpReward = set.mvpReward
-					}
+					src.RatePct = pct
+					src.Live = live
+					src.MvpReward = set.mvpReward
 					break // the item appears at most once per drop set
 				}
 			}
 		}
-	}
-
-	// Baseline (full mob coverage), matched by aegis name.
-	if aegis != "" {
-		like := "%\"Item\":\"" + aegis + "\"%"
-		scan(`SELECT mob_id, COALESCE(name,''), COALESCE(name_pt,''), COALESCE(is_mvp,0),
-		             COALESCE(drops,'[]'), COALESCE(mvp_drops,'[]')
-		      FROM internal_mob_db
-		      WHERE drops LIKE ? OR mvp_drops LIKE ?`,
-			[]any{like, like}, false,
-			func(d rawDrop) bool { return d.Item == aegis })
 	}
 
 	// Live server scrape (scraped mobs only), matched by item id. name_pt isn't
