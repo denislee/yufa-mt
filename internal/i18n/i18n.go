@@ -317,6 +317,7 @@ var (
 
 			"item_drop_history":    "Item Drop History",
 			"dropped_by":           "Dropped By",
+			"no_drop_sources":      "No monsters are known to drop this item.",
 			"no_item_drop_history": "No drops have been recorded for this item.",
 
 			// --- NEW: Market Stat Translations (en) ---
@@ -684,6 +685,7 @@ var (
 
 			"item_drop_history":    "Histórico de Drops do Item",
 			"dropped_by":           "Dropado por",
+			"no_drop_sources":      "Nenhum monstro conhecido dropa este item.",
 			"no_item_drop_history": "Nenhum drop foi registrado para este item.",
 
 			// --- NEW: Market Stat Translations (pt) ---

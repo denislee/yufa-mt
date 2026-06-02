@@ -1072,6 +1072,7 @@ func itemHistoryHandler(w http.ResponseWriter, r *http.Request) {
 	var finalPriceHistory []PricePointDetails
 	var overallLowest, overallHighest sql.NullInt64
 	var dropHistory []PlayerDropInfo
+	var dropSources []ItemDropSource
 	var totalListings int
 
 	// Variables for the optimized combined query
@@ -1130,6 +1131,13 @@ func itemHistoryHandler(w http.ResponseWriter, r *http.Request) {
 		return nil // Not critical
 	})
 
+	// Task 5c: Cross-reference which mobs drop this item (reverse of the bestiary).
+	g.Go(func() error {
+		dropSources = fetchItemDropSources(itemID, i18n.Lang(r))
+		log.Printf("[D] [HTTP/History] Step 5c: Found %d mob drop sources for this item.", len(dropSources))
+		return nil // Not critical
+	})
+
 	// Task 6: Get total listings count for pagination
 	g.Go(func() error {
 		var err error
@@ -1183,6 +1191,7 @@ func itemHistoryHandler(w http.ResponseWriter, r *http.Request) {
 		PageTitle:          itemName,
 		Filter:             template.URL("&name=" + url.QueryEscape(itemName)),
 		DropHistory:        dropHistory,
+		DropSources:        dropSources,
 	}
 
 	log.Printf("[D] [HTTP/History] Rendering template for '%s' with all data.", itemName)

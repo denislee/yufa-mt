@@ -267,6 +267,7 @@ type HistoryPageData struct {
 	PageTitle          string
 	Filter             template.URL
 	DropHistory        []PlayerDropInfo
+	DropSources        []ItemDropSource // mobs that drop this item (reverse cross-reference)
 }
 
 type PlayerCountPoint struct {

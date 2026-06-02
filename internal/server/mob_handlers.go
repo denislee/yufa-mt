@@ -493,6 +493,133 @@ type rawDrop struct {
 	Rate    *int64  `json:"Rate"`
 }
 
+// ItemDropSource is one monster known to drop a given item — the reverse of the
+// mob detail page's drop table, surfaced in the "Dropped By" section of the item
+// page by cross-referencing the mob DBs.
+type ItemDropSource struct {
+	MobID       int
+	DisplayName string
+	IsMvp       bool    // the mob itself is an MVP
+	MvpReward   bool    // dropped as an MVP reward rather than a normal drop
+	RatePct     float64 // best-known drop chance (live overrides baseline)
+	Live        bool    // rate came from the live-server scrape, not the YAML baseline
+}
+
+// fetchItemDropSources finds every mob that drops the given item, cross-referenced
+// from the YAML baseline (internal_mob_db, whose drop blobs key on the aegis name)
+// and the live-server scrape (mob_server_db, which keys on item id). A live rate
+// overrides the baseline rate for the same mob. Returns nil when nothing drops it.
+func fetchItemDropSources(itemID int, lang string) []ItemDropSource {
+	if itemID <= 0 {
+		return nil
+	}
+
+	// The baseline drop blobs reference items by aegis name, so resolve it first.
+	var aegis string
+	if err := srv.db.QueryRow(
+		`SELECT COALESCE(aegis_name,'') FROM internal_item_db WHERE item_id = ?`, itemID,
+	).Scan(&aegis); err != nil {
+		log.Printf("[D] [HTTP/History] drop-source: no aegis name for item %d: %v", itemID, err)
+	}
+
+	// Keyed by mob_id so a live scrape can override the baseline rate in place.
+	byMob := map[int]*ItemDropSource{}
+
+	// scan walks one mob table, decoding the drops/mvp_drops blobs of every
+	// prefilter-matched row and recording the mobs whose blobs actually contain
+	// the item (match guards against LIKE false positives).
+	scan := func(query string, args []any, live bool, match func(rawDrop) bool) {
+		rows, err := srv.db.Query(query, args...)
+		if err != nil {
+			log.Printf("[E] [HTTP/History] drop-source query: %v", err)
+			return
+		}
+		defer rows.Close()
+		for rows.Next() {
+			var (
+				mobID              int
+				name, namePT       string
+				isMvp              bool
+				dropsJSON, mvpJSON string
+			)
+			if err := rows.Scan(&mobID, &name, &namePT, &isMvp, &dropsJSON, &mvpJSON); err != nil {
+				continue
+			}
+			for _, set := range []struct {
+				raw       string
+				mvpReward bool
+			}{{dropsJSON, false}, {mvpJSON, true}} {
+				var drops []rawDrop
+				if json.Unmarshal([]byte(set.raw), &drops) != nil {
+					continue
+				}
+				for _, d := range drops {
+					if !match(d) {
+						continue
+					}
+					pct := d.RatePct
+					if d.Rate != nil { // YAML baseline shape: Rate is in 0.01% units
+						pct = float64(*d.Rate) / 100.0
+					}
+					src, ok := byMob[mobID]
+					if !ok {
+						src = &ItemDropSource{
+							MobID:       mobID,
+							DisplayName: mobDisplayName(name, namePT, lang),
+							IsMvp:       isMvp,
+						}
+						byMob[mobID] = src
+					}
+					// Live data wins; otherwise fill in the baseline.
+					if live || !src.Live {
+						src.RatePct = pct
+						src.Live = live
+						src.MvpReward = set.mvpReward
+					}
+					break // the item appears at most once per drop set
+				}
+			}
+		}
+	}
+
+	// Baseline (full mob coverage), matched by aegis name.
+	if aegis != "" {
+		like := "%\"Item\":\"" + aegis + "\"%"
+		scan(`SELECT mob_id, COALESCE(name,''), COALESCE(name_pt,''), COALESCE(is_mvp,0),
+		             COALESCE(drops,'[]'), COALESCE(mvp_drops,'[]')
+		      FROM internal_mob_db
+		      WHERE drops LIKE ? OR mvp_drops LIKE ?`,
+			[]any{like, like}, false,
+			func(d rawDrop) bool { return d.Item == aegis })
+	}
+
+	// Live server scrape (scraped mobs only), matched by item id. name_pt isn't
+	// stored in this table, so the English name doubles as the fallback.
+	likeID := "%\"item_id\":" + strconv.Itoa(itemID) + "%"
+	scan(`SELECT mob_id, COALESCE(name,''), COALESCE(name,''), COALESCE(is_mvp,0),
+	             COALESCE(drops,'[]'), COALESCE(mvp_drops,'[]')
+	      FROM mob_server_db
+	      WHERE drops LIKE ? OR mvp_drops LIKE ?`,
+		[]any{likeID, likeID}, true,
+		func(d rawDrop) bool { return d.ItemID == int64(itemID) })
+
+	if len(byMob) == 0 {
+		return nil
+	}
+	out := make([]ItemDropSource, 0, len(byMob))
+	for _, s := range byMob {
+		out = append(out, *s)
+	}
+	// Best chance first; stable tiebreak on mob id keeps the order deterministic.
+	sort.SliceStable(out, func(i, j int) bool {
+		if out[i].RatePct != out[j].RatePct {
+			return out[i].RatePct > out[j].RatePct
+		}
+		return out[i].MobID < out[j].MobID
+	})
+	return out
+}
+
 // parseMobDrops decodes a drops JSON blob into display rows, resolving item ids
 // to localized names (and linking them) where possible.
 func parseMobDrops(raw, lang string) []MobDropView {

@@ -8,6 +8,18 @@ import (
 	"github.com/denislee/yufa-mt/internal/i18n"
 )
 
+func TestHistoryTemplateExecutesWithDropSources(t *testing.T) {
+	renderPageForTest(t, "history.html", HistoryPageData{
+		ItemName:    "Oridecon",
+		ItemDetails: &RMSItem{ID: 984, Name: "Oridecon", Type: "Etc", Slots: 0},
+		PageTitle:   "Oridecon",
+		DropSources: []ItemDropSource{
+			{MobID: 1039, DisplayName: "Baphomet", IsMvp: true, MvpReward: true, RatePct: 50, Live: true},
+			{MobID: 1086, DisplayName: "Golden Thief Bug", RatePct: 12.5, Live: false},
+		},
+	})
+}
+
 // renders a page template through the layout exactly as renderTemplate does, so
 // bad field references / missing partials surface (parsing alone won't catch them).
 func renderPageForTest(t *testing.T, name string, data any) {

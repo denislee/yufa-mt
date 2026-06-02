@@ -99,6 +99,38 @@
                 </div>
                 {{end}}
                 
+                {{/* --- Dropped By: which monsters drop this item (mob cross-reference) --- */}}
+                <div class="bg-white dark:bg-gray-800 p-4 rounded-lg shadow">
+                    <h3 class="font-medium text-gray-700 dark:text-gray-200 mb-2 border-b dark:border-gray-700 pb-2">{{.Page.T.dropped_by}}</h3>
+                    <div class="overflow-x-auto max-h-64 overflow-y-auto">
+                        <table class="min-w-full text-sm">
+                            <tbody class="divide-y divide-gray-200 dark:divide-gray-700">
+                                {{range .Data.DropSources}}
+                                <tr class="hover:bg-gray-50 dark:hover:bg-gray-700">
+                                    <td class="py-1.5 px-1">
+                                        <a href="/mob?id={{.MobID}}" class="flex items-center gap-2 group">
+                                            <img src="https://static.divine-pride.net/images/mobs/png/{{.MobID}}.png" alt=""
+                                                 class="flex-shrink-0 w-7 h-7 object-contain" style="image-rendering: pixelated;"
+                                                 loading="lazy" decoding="async" onerror="this.style.display='none'">
+                                            <span class="font-semibold text-blue-600 dark:text-blue-400 group-hover:underline">{{.DisplayName}}</span>
+                                            {{if .IsMvp}}<span class="px-1 rounded text-[10px] font-bold bg-amber-100 text-amber-800">MVP</span>{{end}}
+                                            {{if .MvpReward}}<span class="px-1 rounded text-[10px] font-medium bg-purple-100 text-purple-800" title="MVP reward">reward</span>{{end}}
+                                        </a>
+                                    </td>
+                                    <td class="py-1.5 px-1 text-right font-mono whitespace-nowrap text-gray-700 dark:text-gray-300">
+                                        {{printf "%.2f%%" .RatePct}}{{if not .Live}}<span class="text-gray-400" title="baseline (YAML) rate — not yet scraped from the live server">*</span>{{end}}
+                                    </td>
+                                </tr>
+                                {{else}}
+                                <tr>
+                                    <td colspan="2" class="py-4 text-center text-gray-500 dark:text-gray-400">{{.Page.T.no_drop_sources}}</td>
+                                </tr>
+                                {{end}}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
                 {{/* --- NEW: Item Drop History --- */}}
                 <div class="bg-white dark:bg-gray-800 p-4 rounded-lg shadow">
                     <h3 class="font-medium text-gray-700 dark:text-gray-200 mb-2 border-b dark:border-gray-700 pb-2">{{.Page.T.item_drop_history}}</h3>
