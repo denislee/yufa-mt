@@ -82,7 +82,7 @@ func registerRoutes() *http.ServeMux {
 
 	// Apply the basicAuth middleware to the entire admin router
 	// Note the trailing slash on "/admin/" is important for sub-path matching
-	mux.Handle("/admin/", middleware.BasicAuth(adminUser, adminPass, http.StripPrefix("/admin", adminRouter)))
+	mux.Handle("/admin/", middleware.BasicAuth(adminUser, adminPass, setNoTrackCookie(http.StripPrefix("/admin", adminRouter))))
 
 	return mux
 }
@@ -213,6 +213,10 @@ func Run(cfg *config.Config) {
 	slog.Info("==================================================")
 	slog.Info("Admin Credentials", "user", adminUser, "pass", adminPass)
 	slog.Info("==================================================")
+
+	// Keep the operator's own browsing out of the visitor stats: admins get
+	// a no-track cookie on login, plus any IP in VISITOR_IGNORE_IPS is skipped.
+	initVisitorExclusion(adminPass, cfg.VisitorIgnoreIPs)
 
 	// Start Background Services with the cancellable context. The WaitGroup
 	// lets Run block on a clean shutdown of every background goroutine

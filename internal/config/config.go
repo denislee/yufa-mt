@@ -34,6 +34,11 @@ type Config struct {
 	ChatCaptureDevice string
 	ChatCapturePort   string
 
+	// Source IPs whose requests are excluded from the visitor/page-view
+	// stats (the operator's own browsing). Comma-separated VISITOR_IGNORE_IPS.
+	// Admins are also auto-excluded via a no-track cookie set on login.
+	VisitorIgnoreIPs []string
+
 	// If true, refuse to start without ADMIN_PASSWORD set explicitly.
 	// Set RequireAdminPassword=true (via REQUIRE_ADMIN_PASSWORD=1) in
 	// production so a forgotten env var doesn't silently roll a new
@@ -118,6 +123,14 @@ func Load() (*Config, error) {
 		for _, id := range strings.Split(ids, ",") {
 			if trimmed := strings.TrimSpace(id); trimmed != "" {
 				cfg.DiscordChannelIDs = append(cfg.DiscordChannelIDs, trimmed)
+			}
+		}
+	}
+
+	if ips := os.Getenv("VISITOR_IGNORE_IPS"); ips != "" {
+		for _, ip := range strings.Split(ips, ",") {
+			if trimmed := strings.TrimSpace(ip); trimmed != "" {
+				cfg.VisitorIgnoreIPs = append(cfg.VisitorIgnoreIPs, trimmed)
 			}
 		}
 	}

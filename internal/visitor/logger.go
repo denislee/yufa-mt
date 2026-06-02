@@ -34,8 +34,9 @@ type PageView struct {
 // background batch flusher. Construct one with New, install Track on
 // public routes, and start Run in a background goroutine.
 type Logger struct {
-	db *sql.DB
-	ch chan PageView
+	db   *sql.DB
+	ch   chan PageView
+	skip func(*http.Request) bool
 }
 
 // New returns a Logger backed by db with a 1000-slot channel. A full
@@ -44,10 +45,19 @@ func New(db *sql.DB) *Logger {
 	return &Logger{db: db, ch: make(chan PageView, 1000)}
 }
 
+// SetSkip installs an optional predicate. When it returns true for a
+// request, Track serves the request without recording a page view —
+// used to keep the operator's own browsing out of the visitor stats.
+func (l *Logger) SetSkip(fn func(*http.Request) bool) { l.skip = fn }
+
 // Track is the middleware that enqueues a PageView for each request and
 // then calls next.
 func (l *Logger) Track(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		if l.skip != nil && l.skip(r) {
+			next.ServeHTTP(w, r)
+			return
+		}
 		entry := PageView{
 			VisitorHash: hashVisitor(r),
 			PageURI:     r.URL.RequestURI(),
