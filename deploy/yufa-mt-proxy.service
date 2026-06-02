@@ -11,11 +11,14 @@ After=network.target
 User=dns
 Group=dns
 
-# Only CAP_NET_ADMIN is needed here: the proxies' iptables REDIRECT install and
-# the SO_MARK fwmark on their onward sockets. The relay itself is plain TCP.
-# (CAP_NET_RAW lives on the app unit, for libpcap chat capture.)
-AmbientCapabilities=CAP_NET_ADMIN
-CapabilityBoundingSet=CAP_NET_ADMIN
+# CAP_NET_ADMIN: modify the nat table (REDIRECT rules) + SO_MARK fwmark on the
+# proxies' onward sockets. CAP_NET_RAW: iptables-legacy (xtables-legacy-multi)
+# talks to netfilter over a RAW socket, whose creation requires CAP_NET_RAW —
+# so iptables fails with "Permission denied (you must be root)" if it's missing,
+# even with CAP_NET_ADMIN. Both are needed; this mirrors the original single
+# unit. (The app unit also carries CAP_NET_RAW, for libpcap chat capture.)
+AmbientCapabilities=CAP_NET_RAW CAP_NET_ADMIN
+CapabilityBoundingSet=CAP_NET_RAW CAP_NET_ADMIN
 
 WorkingDirectory=/home/dns/git/yufa-mt/
 EnvironmentFile=/home/dns/git/yufa-mt/.env

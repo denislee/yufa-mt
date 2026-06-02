@@ -141,8 +141,10 @@ design in [`docs/two-process-split-plan.md`](docs/two-process-split-plan.md)):
 
 - [`deploy/yufa-mt-proxy.service`](deploy/yufa-mt-proxy.service) — `--mode=proxy`. Owns
   the live connection: the PIN + zone proxies, their iptables `REDIRECT`, and the IPC
-  socket the app talks to. Caps: **`CAP_NET_ADMIN`** only. Owns `/run/yufa-mt`
-  (`RuntimeDirectoryPreserve=yes`). **Restarted rarely.**
+  socket the app talks to. Caps: **`CAP_NET_RAW CAP_NET_ADMIN`** (iptables-legacy talks to
+  netfilter over a raw socket, so `CAP_NET_RAW` is required *in addition to* `CAP_NET_ADMIN`
+  — without it iptables fails with "Permission denied (you must be root)"). Owns
+  `/run/yufa-mt` (`RuntimeDirectoryPreserve=yes`). **Restarted rarely.**
 - [`deploy/yufa-mt-app.service`](deploy/yufa-mt-app.service) — `--mode=app`. Everything
   else: web, scrapers, libpcap chat capture, Discord, scheduler. Caps: **`CAP_NET_RAW`**
   only (pcap). Chat injection (`@mobinfo`) and proxy-readiness go to the proxy over the
