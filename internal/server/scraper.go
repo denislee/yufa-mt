@@ -1493,20 +1493,150 @@ func formatMarketPrice(p int64) string {
 
 // in scraper.go
 
-// determineRemovalType encapsulates the logic for deciding if an item was sold or just removed.
-func determineRemovalType(listing Item, activeSellers map[string]bool, dbStoreSizes map[string]int) string {
-	// If the seller is still online, assume the item was sold.
-	if _, sellerIsActive := activeSellers[listing.SellerName]; sellerIsActive {
-		return "SOLD"
+// listingKey identifies a vending listing across scrapes by seller + item id only.
+// Price, quantity, store name and coordinates are deliberately excluded: an online
+// seller editing any of those must NOT be mistaken for a sale.
+type listingKey struct {
+	Seller string
+	ItemID int
+}
+
+// changeEvent is one classified change to a (seller, item) listing group, ready to be
+// written to market_events.
+type changeEvent struct {
+	EventType string // SOLD, REMOVED or REMOVED_SINGLE
+	ItemID    int
+	Price     string
+	Quantity  int // units sold (SOLD) or the lost listing's quantity (REMOVED*)
+	Remaining int // units still listed after a partial sale (0 for a full sale / removal)
+	Seller    string
+	StoreName string
+}
+
+// groupByListingKey buckets listings by (seller, item id).
+func groupByListingKey(items []Item) map[listingKey][]Item {
+	groups := make(map[listingKey][]Item)
+	for _, it := range items {
+		k := listingKey{Seller: it.SellerName, ItemID: it.ItemID}
+		groups[k] = append(groups[k], it)
 	}
-	// If the seller is offline, but this was the only item in their store,
-	// assume they just closed the store (REMOVED_SINGLE).
-	if dbStoreSizes[listing.SellerName] == 1 {
-		return "REMOVED_SINGLE"
+	return groups
+}
+
+// diffUnchanged drops slots that are byte-for-byte identical between the old and new
+// listing sets (an untouched slot was neither sold nor removed) and returns only the
+// listings that actually changed on each side.
+func diffUnchanged(oldList, newList []Item) (oldRem, newRem []Item) {
+	used := make([]bool, len(newList))
+	for _, o := range oldList {
+		oc := toComparable(o)
+		matched := false
+		for i, n := range newList {
+			if !used[i] && toComparable(n) == oc {
+				used[i] = true
+				matched = true
+				break
+			}
+		}
+		if !matched {
+			oldRem = append(oldRem, o)
+		}
 	}
-	// Otherwise, the seller is offline and had other items, so we assume
-	// they just removed this one item from their store before logging off.
-	return "REMOVED"
+	for i, n := range newList {
+		if !used[i] {
+			newRem = append(newRem, n)
+		}
+	}
+	return oldRem, newRem
+}
+
+// classifyListingChanges compares the current and last listings of a SINGLE item name
+// and returns the sale/removal events implied by the difference.
+//
+// Matching is per (seller, item id) group rather than on the full listing tuple, so a
+// seller who only reprices, restocks or relocates a listing is not reported as a sale.
+// A sale is inferred only when an online seller's total quantity for a group drops; the
+// quantity sold is the size of that drop (a partial sale keeps the listing alive with
+// the remaining units). An offline seller's lost listings are removals, not sales.
+func classifyListingChanges(currentItems, lastItems []Item, activeSellers map[string]bool, dbStoreSizes map[string]int) []changeEvent {
+	curGroups := groupByListingKey(currentItems)
+	lastGroups := groupByListingKey(lastItems)
+
+	var events []changeEvent
+	for key, oldList := range lastGroups {
+		oldRem, newRem := diffUnchanged(oldList, curGroups[key])
+		if len(oldRem) == 0 {
+			continue // nothing in this group changed
+		}
+
+		// Seller offline: the lost listings were withdrawn, not sold.
+		if _, online := activeSellers[key.Seller]; !online {
+			for _, it := range oldRem {
+				eventType := "REMOVED"
+				if dbStoreSizes[it.SellerName] == 1 {
+					eventType = "REMOVED_SINGLE"
+				}
+				events = append(events, changeEvent{
+					EventType: eventType,
+					ItemID:    it.ItemID,
+					Price:     it.Price,
+					Quantity:  it.Quantity,
+					Seller:    it.SellerName,
+					StoreName: it.StoreName,
+				})
+			}
+			continue
+		}
+
+		// Seller still vending: a net quantity drop is a sale. Anything else (reprice,
+		// restock or relocate) leaves the available quantity unchanged and is ignored.
+		soldQty := sumQuantity(oldRem) - sumQuantity(newRem)
+		if soldQty <= 0 {
+			continue
+		}
+		rep := cheapestListing(oldRem)
+		events = append(events, changeEvent{
+			EventType: "SOLD",
+			ItemID:    rep.ItemID,
+			Price:     rep.Price,
+			Quantity:  soldQty,
+			Remaining: sumQuantity(newRem),
+			Seller:    rep.SellerName,
+			StoreName: rep.StoreName,
+		})
+	}
+	return events
+}
+
+// sumQuantity totals the quantity across a set of listings.
+func sumQuantity(items []Item) int {
+	total := 0
+	for _, it := range items {
+		total += it.Quantity
+	}
+	return total
+}
+
+// cheapestListing returns the lowest-priced listing, used as the representative slot
+// for the units sold out of a group. Falls back to the first listing if no price
+// parses, and to the zero Item for an empty slice.
+func cheapestListing(items []Item) Item {
+	var best Item
+	bestPrice := -1
+	for _, it := range items {
+		p, err := strconv.Atoi(strings.ReplaceAll(it.Price, ",", ""))
+		if err != nil {
+			continue
+		}
+		if bestPrice == -1 || p < bestPrice {
+			bestPrice = p
+			best = it
+		}
+	}
+	if bestPrice == -1 && len(items) > 0 {
+		return items[0]
+	}
+	return best
 }
 
 // Helper function to execute bulk inserts for items
@@ -1704,33 +1834,34 @@ func scrapeData() {
 	// Optimization: Collection slice for Bulk Insert
 	var allNewItems []Item
 
+	// logChangeEvent persists one classified sale/removal to market_events. Partial
+	// sales also record how many units are still listed, so the activity feed can
+	// distinguish "10 sold, 90 left" from a full stack clearing out.
+	logChangeEvent := func(itemName string, ev changeEvent) {
+		detail := map[string]interface{}{
+			"price":      ev.Price,
+			"quantity":   ev.Quantity,
+			"seller":     ev.Seller,
+			"store_name": ev.StoreName,
+		}
+		if ev.EventType == "SOLD" && ev.Remaining > 0 {
+			detail["partial"] = true
+			detail["remaining"] = ev.Remaining
+		}
+		details, _ := json.Marshal(detail)
+		if _, err := stmtInsertEvent.Exec(retrievalTime, ev.EventType, itemName, ev.ItemID, string(details)); err != nil {
+			log.Printf("[E] [Scraper/Market] Failed to log %s event for %s: %v", ev.EventType, itemName, err)
+		}
+	}
+
 	// 3. Diff Logic
 	for itemName, currentScrapedItems := range scrapedItemsByName {
 		lastAvailableItems := dbAvailableItemsMap[itemName]
 
 		// Check for changes/sales logic
 		if !areItemSetsIdentical(currentScrapedItems, lastAvailableItems) {
-			currentSet := make(map[comparableItem]bool)
-			for _, item := range currentScrapedItems {
-				currentSet[toComparable(item)] = true
-			}
-
-			for _, lastItem := range lastAvailableItems {
-				if _, found := currentSet[toComparable(lastItem)]; !found {
-					eventType := determineRemovalType(lastItem, activeSellers, dbStoreSizes)
-
-					details, _ := json.Marshal(map[string]interface{}{
-						"price":      lastItem.Price,
-						"quantity":   lastItem.Quantity,
-						"seller":     lastItem.SellerName,
-						"store_name": lastItem.StoreName,
-					})
-
-					_, err := stmtInsertEvent.Exec(retrievalTime, eventType, lastItem.Name, lastItem.ItemID, string(details))
-					if err != nil {
-						log.Printf("[E] [Scraper/Market] Failed to log %s event: %v", eventType, err)
-					}
-				}
+			for _, ev := range classifyListingChanges(currentScrapedItems, lastAvailableItems, activeSellers, dbStoreSizes) {
+				logChangeEvent(itemName, ev)
 			}
 		}
 
@@ -1804,18 +1935,8 @@ func scrapeData() {
 	for name := range dbAvailableNames {
 		if _, foundInScrape := scrapedItemsByName[name]; !foundInScrape {
 			removedListings := dbAvailableItemsMap[name]
-			for _, listing := range removedListings {
-				eventType := determineRemovalType(listing, activeSellers, dbStoreSizes)
-
-				details, _ := json.Marshal(map[string]interface{}{
-					"price":      listing.Price,
-					"quantity":   listing.Quantity,
-					"seller":     listing.SellerName,
-					"store_name": listing.StoreName,
-				})
-				if _, err := stmtInsertEvent.Exec(retrievalTime, eventType, name, listing.ItemID, string(details)); err != nil {
-					log.Printf("[W] [Scraper/Market] Failed to log %s event for %s: %v", eventType, name, err)
-				}
+			for _, ev := range classifyListingChanges(nil, removedListings, activeSellers, dbStoreSizes) {
+				logChangeEvent(name, ev)
 			}
 
 			if _, err := stmtUpdateUnavailable.Exec(name); err != nil {

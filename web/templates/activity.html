@@ -51,8 +51,11 @@
                             {{else if eq .EventType "REMOVED" "REMOVED_SINGLE"}}
                                 <span class="text-gray-600 dark:text-gray-300">{{$.Page.T.no_longer_for_sale}}</span>
                             {{else if eq .EventType "SOLD"}}
-                                {{/* --- MODIFICATION IS HERE (text-green-500) --- */}}
-                                <span class="font-semibold text-green-700 dark:text-green-500">{{$.Page.T.was_sold}}.</span>
+                                {{if .Details.partial}}
+                                    <span class="font-semibold text-green-700 dark:text-green-500">{{$.Page.T.partially_sold}}</span>
+                                {{else}}
+                                    <span class="font-semibold text-green-700 dark:text-green-500">{{$.Page.T.was_sold}}</span>
+                                {{end}}
                             {{else if eq .EventType "NEW_LOW"}}
                                 {{/* --- MODIFICATION IS HERE (text-blue-500) --- */}}
                                 <span class="font-semibold text-blue-700 dark:text-blue-500">{{$.Page.T.new_historical_low}}!</span>
@@ -68,6 +71,10 @@
                             {{end}}
                             <span class="mx-2">·</span>
                             <span>{{.Details.quantity}}x</span>
+                            {{if .Details.partial}}
+                            <span class="mx-2">·</span>
+                            <span class="text-green-700 dark:text-green-500">{{.Details.remaining}} {{$.Page.T.left}}</span>
+                            {{end}}
                             <span class="mx-2">·</span>
                             <a href="/store?name={{.Details.store_name | urlquery}}&seller={{.Details.seller | urlquery}}" class="italic hover:underline" title="View Store">{{.Details.store_name}}</a> 
                             (<a href="/character?name={{.Details.seller | urlquery}}" class="italic hover:underline" title="View Character">{{.Details.seller}}</a>)
