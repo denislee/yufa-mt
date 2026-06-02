@@ -44,6 +44,27 @@ const (
 	CREATE TABLE IF NOT EXISTS scrape_history (
 		"timestamp" TEXT NOT NULL PRIMARY KEY
 	);`
+
+	// Scheduler config + run history. job_config persists per-job interval
+	// overrides and the enabled flag (absent rows fall back to code defaults);
+	// job_runs records every scheduled/manual run with its outcome.
+	createJobConfigTableSQL = `
+	CREATE TABLE IF NOT EXISTS job_config (
+		"job_name" TEXT NOT NULL PRIMARY KEY,
+		"interval_seconds" INTEGER NOT NULL,
+		"enabled" INTEGER NOT NULL DEFAULT 1
+	);`
+	createJobRunsTableSQL = `
+	CREATE TABLE IF NOT EXISTS job_runs (
+		"id" INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+		"job_name" TEXT NOT NULL,
+		"trigger" TEXT NOT NULL,
+		"status" TEXT NOT NULL,
+		"started_at" TEXT NOT NULL,
+		"finished_at" TEXT,
+		"duration_ms" INTEGER,
+		"message" TEXT
+	);`
 )
 
 const (
@@ -429,6 +450,8 @@ func createTables(db *sql.DB) error {
 		{"rms_item_cache", createRMSCacheTableSQL},
 		{"rms_item_cache_fts", createRMSFTSSTableSQL},
 		{"rms_triggers", createTriggersSQL},
+		{"job_config", createJobConfigTableSQL},
+		{"job_runs", createJobRunsTableSQL},
 	}
 
 	for _, t := range queries {
@@ -483,6 +506,9 @@ func createIndexes(db *sql.DB) error {
 		// 'chat' table
 		`CREATE INDEX IF NOT EXISTS idx_chat_channel_timestamp_desc ON chat (channel, timestamp DESC);`,
 		`CREATE INDEX IF NOT EXISTS idx_chat_timestamp_desc ON chat (timestamp DESC);`,
+		// 'job_runs' table
+		`CREATE INDEX IF NOT EXISTS idx_job_runs_name_started ON job_runs (job_name, started_at DESC);`,
+		`CREATE INDEX IF NOT EXISTS idx_job_runs_started ON job_runs (started_at DESC);`,
 	}
 
 	for i, query := range indexQueries {

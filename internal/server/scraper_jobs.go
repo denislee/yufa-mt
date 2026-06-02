@@ -4,39 +4,7 @@ import (
 	"context"
 	"log/slog"
 	"sync"
-	"time"
 )
-
-// Job defines a background task with its function and schedule.
-type Job struct {
-	Name     string
-	Func     func()
-	Interval time.Duration
-}
-
-// runJobOnTicker executes a job immediately and then on its scheduled interval.
-// It stops when the provided context is canceled.
-func runJobOnTicker(ctx context.Context, job Job) {
-	ticker := time.NewTicker(job.Interval)
-	defer ticker.Stop()
-
-	slog.Info("Starting initial background job run", "job", job.Name)
-	go func() {
-		// Run initial run immediately on startup in a separate goroutine so it doesn't block other tickers starting
-		job.Func()
-	}()
-
-	for {
-		select {
-		case <-ctx.Done():
-			slog.Info("Stopping background job due to shutdown", "job", job.Name)
-			return
-		case <-ticker.C:
-			slog.Info("Starting scheduled background job scrape", "job", job.Name)
-			job.Func()
-		}
-	}
-}
 
 func startBackgroundJobs(ctx context.Context, wg *sync.WaitGroup) {
 	// The in-process character-select PIN proxy runs independently of the
@@ -64,25 +32,12 @@ func startBackgroundJobs(ctx context.Context, wg *sync.WaitGroup) {
 	if chatOnly {
 		slog.Info("CHAT_CAPTURE_ONLY is set; running chat packet capture only, all scrape jobs disabled")
 	} else {
-		// Define all scheduled jobs
-		jobs := []Job{
-			{Name: "Market", Func: scrapeData, Interval: 3 * time.Minute},
-			{Name: "Player Count", Func: scrapeAndStorePlayerCount, Interval: 1 * time.Minute},
-			{Name: "Player Character", Func: scrapePlayerCharacters, Interval: 6 * time.Hour},
-			{Name: "Guild", Func: scrapeGuilds, Interval: 1 * time.Hour},
-			{Name: "Zeny", Func: scrapeZeny, Interval: 6 * time.Hour},
-			{Name: "MVP Kill", Func: scrapeMvpKills, Interval: 5 * time.Minute},
-			// {Name: "PT-Name-Populator", Func: populateMissingPortugueseNames, Interval: 6 * time.Hour},
-			{Name: "WoE-Char-Rankings", Func: scrapeWoeCharacterRankings, Interval: 12 * time.Hour},
-		}
-
-		for _, job := range jobs {
-			wg.Add(1)
-			go func(j Job) {
-				defer wg.Done()
-				runJobOnTicker(ctx, j)
-			}(job)
-		}
+		// The scheduler owns all scrape jobs: it hydrates each job's interval
+		// and enabled flag from job_config, runs them on live-adjustable
+		// tickers, and records every run (success/failure) in job_runs. The
+		// admin "Schedulers" tab drives it. See scheduler.go.
+		globalScheduler = newScheduler(jobRegistry)
+		globalScheduler.Start(ctx, wg)
 	}
 
 	wg.Add(1)

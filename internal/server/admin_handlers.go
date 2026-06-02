@@ -396,6 +396,13 @@ func getAdminDashboardData(r *http.Request) (AdminDashboardData, error) {
 		return nil
 	})
 
+	// Scheduler tab data (job config/status rows + recent run history).
+	var schedR AdminDashboardData
+	g.Go(func() error {
+		getSchedulerData(&schedR)
+		return nil
+	})
+
 	// Scrape times (each hits its own SQLite MAX() query, cached for 30s
 	// inside GetLastUpdateTime). Run them inside the errgroup too.
 	var lastMarket, lastPlayer, lastChar, lastGuild string
@@ -443,6 +450,9 @@ func getAdminDashboardData(r *http.Request) (AdminDashboardData, error) {
 	stats.ChatHasNextPage = chatR.ChatHasNextPage
 	stats.ChatNextPage = chatR.ChatNextPage
 	stats.ChatMessages = chatR.ChatMessages
+
+	stats.SchedulerJobs = schedR.SchedulerJobs
+	stats.JobRuns = schedR.JobRuns
 
 	stats.LastMarketScrape = lastMarket
 	stats.LastPlayerCountScrape = lastPlayer
@@ -587,15 +597,25 @@ func adminParseTradeHandler(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// adminTriggerScrapeHandler runs a scrape on demand. When name matches a
+// scheduled job, the run is routed through the scheduler so it is recorded in
+// job_runs (and serialized against the job's ticker); otherwise (emblems,
+// PT-name populator) the function is launched directly.
 func adminTriggerScrapeHandler(scraperFunc func(), name string) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
 			http.Redirect(w, r, "/admin", http.StatusSeeOther)
 			return
 		}
-		log.Printf("[I] [Admin] Admin triggered '%s' scrape manually.", name)
-		go scraperFunc()
-		msg := fmt.Sprintf("%s scrape started.", name)
+		label := name
+		if globalScheduler != nil && globalScheduler.job(name) != nil {
+			_ = globalScheduler.TriggerNow(name)
+			label = jobLabel(name)
+		} else {
+			go scraperFunc()
+		}
+		log.Printf("[I] [Admin] Admin triggered '%s' scrape manually.", label)
+		msg := fmt.Sprintf("%s scrape started.", label)
 		http.Redirect(w, r, adminRedirectURL(r, msg), http.StatusSeeOther)
 	}
 }

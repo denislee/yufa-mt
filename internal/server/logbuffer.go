@@ -18,8 +18,9 @@ const logBufferCapacity = 2000
 type logRing struct {
 	mu      sync.RWMutex
 	entries []string
-	next    int  // index the next write lands at
-	full    bool // whether the ring has wrapped at least once
+	next    int    // index the next write lands at
+	full    bool   // whether the ring has wrapped at least once
+	written uint64 // total lines ever written (monotonic, for Mark/LinesSince)
 }
 
 // logBuffer is the process-wide capture of recent log output.
@@ -36,8 +37,40 @@ func (r *logRing) Write(p []byte) (int, error) {
 	if r.next == 0 {
 		r.full = true
 	}
+	r.written++
 	r.mu.Unlock()
 	return len(p), nil
+}
+
+// Mark returns the current monotonic write count. Pair it with LinesSince to
+// read only the log lines emitted after the mark (used by the scheduler to
+// scan a single job run's output for errors).
+func (r *logRing) Mark() uint64 {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	return r.written
+}
+
+// LinesSince returns the log lines written after mark, in chronological order.
+// Lines older than the ring's retention window are silently dropped (the ring
+// only holds the most recent logBufferCapacity lines).
+func (r *logRing) LinesSince(mark uint64) []string {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
+	capacity := uint64(len(r.entries))
+	oldest := uint64(0)
+	if r.written > capacity {
+		oldest = r.written - capacity
+	}
+	if mark < oldest {
+		mark = oldest
+	}
+	out := make([]string, 0, r.written-mark)
+	for i := mark; i < r.written; i++ {
+		out = append(out, r.entries[i%capacity])
+	}
+	return out
 }
 
 // Lines returns the captured log lines in chronological order (oldest

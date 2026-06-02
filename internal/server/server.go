@@ -122,6 +122,10 @@ func registerAdminRoutes() *http.ServeMux {
 	adminRouter.HandleFunc("/stats", adminSystemStatsHandler)
 	adminRouter.HandleFunc("/update", adminSelfUpdateHandler)
 
+	// Scheduler tab: per-job interval/enabled config + manual run.
+	adminRouter.HandleFunc("/scheduler/config", adminSchedulerConfigHandler)
+	adminRouter.HandleFunc("/scheduler/run", adminSchedulerRunHandler)
+
 	// Admin RMS Cache Management
 	adminRouter.HandleFunc("/cache", adminCacheActionHandler)
 	adminRouter.HandleFunc("/cache/delete-entry", adminDeleteCacheEntryHandler)
@@ -134,16 +138,18 @@ func registerAdminRoutes() *http.ServeMux {
 	adminRouter.HandleFunc("/trading/clear-items", adminClearTradingPostItemsHandler)
 	adminRouter.HandleFunc("/trading/clear-posts", adminClearTradingPostsHandler)
 
-	// Admin Manual Scrape Triggers
-	adminRouter.HandleFunc("/scrape/market", adminTriggerScrapeHandler(scrapeData, "Market"))
-	adminRouter.HandleFunc("/scrape/players", adminTriggerScrapeHandler(scrapeAndStorePlayerCount, "Player-Count"))
-	adminRouter.HandleFunc("/scrape/characters", adminTriggerScrapeHandler(scrapePlayerCharacters, "Character"))
-	adminRouter.HandleFunc("/scrape/guilds", adminTriggerScrapeHandler(scrapeGuilds, "Guild"))
+	// Admin Manual Scrape Triggers. Job-key names (market, players, …) route
+	// through the scheduler so the run is recorded; emblems/pt-names are
+	// manual-only and run directly.
+	adminRouter.HandleFunc("/scrape/market", adminTriggerScrapeHandler(scrapeData, "market"))
+	adminRouter.HandleFunc("/scrape/players", adminTriggerScrapeHandler(scrapeAndStorePlayerCount, "players"))
+	adminRouter.HandleFunc("/scrape/characters", adminTriggerScrapeHandler(scrapePlayerCharacters, "characters"))
+	adminRouter.HandleFunc("/scrape/guilds", adminTriggerScrapeHandler(scrapeGuilds, "guilds"))
 	adminRouter.HandleFunc("/scrape/emblems", adminTriggerScrapeHandler(processGuildEmblems, "Emblem-Process"))
-	adminRouter.HandleFunc("/scrape/zeny", adminTriggerScrapeHandler(scrapeZeny, "Zeny"))
-	adminRouter.HandleFunc("/scrape/mvp", adminTriggerScrapeHandler(scrapeMvpKills, "MVP"))
+	adminRouter.HandleFunc("/scrape/zeny", adminTriggerScrapeHandler(scrapeZeny, "zeny"))
+	adminRouter.HandleFunc("/scrape/mvp", adminTriggerScrapeHandler(scrapeMvpKills, "mvp"))
 	adminRouter.HandleFunc("/scrape/pt-names", adminTriggerScrapeHandler(populateMissingPortugueseNames, "PT-Name-Populator"))
-	adminRouter.HandleFunc("/scrape/woe", adminTriggerScrapeHandler(scrapeWoeCharacterRankings, "WoE-Char-Rankings"))
+	adminRouter.HandleFunc("/scrape/woe", adminTriggerScrapeHandler(scrapeWoeCharacterRankings, "woe"))
 
 	// Admin Chat Management
 	adminRouter.HandleFunc("/chat/delete", adminDeleteChatHandler)

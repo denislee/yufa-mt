@@ -593,6 +593,43 @@ type AdminDashboardData struct {
 	// (SELF_UPDATE=1). See selfupdate.go.
 	SelfUpdateEnabled bool
 	UpdateStatus      UpdateStatusView
+
+	// Scheduler tab: per-job config/status rows and the recent run history.
+	SchedulerJobs []SchedulerJobView
+	JobRuns       []JobRunView
+}
+
+// SchedulerJobView is the per-job row rendered in the admin Schedulers tab:
+// its current configuration, live status, and the outcome of its last run.
+type SchedulerJobView struct {
+	Name     string
+	Label    string
+	Category string
+	Enabled  bool
+	Running  bool
+
+	// Interval split into a value + unit so the config form pre-fills with the
+	// most natural unit (e.g. 3 / "minutes" rather than 180 / "seconds").
+	IntervalValue int
+	IntervalUnit  string // "seconds" | "minutes" | "hours"
+	IntervalText  string // human-readable, e.g. "3m0s"
+	NextRunText   string // "in 2 minutes", "—" when disabled
+
+	LastStatus   string // "success" | "error" | "running" | "" (never run)
+	LastRunAgo   string
+	LastDuration string
+	LastMessage  string
+}
+
+// JobRunView is one row in the recent-runs history table.
+type JobRunView struct {
+	JobLabel   string
+	Trigger    string
+	Status     string
+	StartedAgo string
+	StartedAt  string
+	Duration   string
+	Message    string
 }
 
 type AdminEditPostPageData struct {
