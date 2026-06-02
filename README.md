@@ -72,6 +72,7 @@ Copy `configs/.env.example` to `.env` at the repo root and fill in:
 | `GEMINI_API_KEY`       | Key for the Gemini trade-message parser.                         |
 | `CHAT_CAPTURE_DEVICE`  | Network device for libpcap (e.g. `eth0`). Optional.              |
 | `CHAT_CAPTURE_PORT`    | Game server TCP port to filter on. Optional.                     |
+| `GAME_CLIENT_MATCH`    | Regex matched against process cmdlines so the admin **Machine** tab can report whether the game client is running + its CPU/RAM. Default `Projeto_Yufa\|[Rr]agexe\|[Rr]agnarok`; empty disables it. |
 
 `ADMIN_PASSWORD` left unset triggers password generation on startup; the
 value is logged once and written to `data/pwd.txt` (mode 0600).

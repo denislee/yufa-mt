@@ -146,6 +146,15 @@ type Config struct {
 	// SelfUpdateBranch is the git branch the self-update pulls (default
 	// "main"). Read from SELF_UPDATE_BRANCH.
 	SelfUpdateBranch string
+
+	// GameClientMatch is a regular expression matched (case-sensitively, as a
+	// substring) against each process's /proc/<pid>/cmdline so the admin
+	// "Machine" tab can report whether the headless game client is running and
+	// how much CPU/memory it consumes. It mirrors the listener watchdog's
+	// GAME_EXE_PATTERN (scripts/listener/yufa-listener.sh). Read from
+	// GAME_CLIENT_MATCH; the default catches the Projeto Yufa client launched
+	// under wine/Proton. An empty value disables game-client monitoring.
+	GameClientMatch string
 }
 
 // Load reads env vars, applies defaults, and validates the result. It
@@ -182,6 +191,7 @@ func Load() (*Config, error) {
 		MobScrapeDelayMs:     intEnv("MOBSCRAPE_DELAY_MS", 400),
 		SelfUpdateEnabled:    boolEnv("SELF_UPDATE"),
 		SelfUpdateBranch:     envOr("SELF_UPDATE_BRANCH", "main"),
+		GameClientMatch:      envOr("GAME_CLIENT_MATCH", `Projeto_Yufa|[Rr]agexe|[Rr]agnarok`),
 	}
 
 	if ids := os.Getenv("DISCORD_CHANNEL_IDS"); ids != "" {

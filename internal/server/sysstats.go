@@ -47,6 +47,10 @@ type SystemStats struct {
 	Goroutines    int        `json:"goroutines"`
 	AppRSS        uint64     `json:"app_rss"`
 	GoHeap        uint64     `json:"go_heap"`
+
+	// Processes is per-process liveness + CPU/memory for the moving parts on
+	// the host (main app, proxy, game client). See procstats.go.
+	Processes []ProcessStat `json:"processes"`
 }
 
 // cpuTimes holds the cumulative jiffie counters parsed from one /proc/stat
@@ -98,6 +102,7 @@ func collectSystemStats() SystemStats {
 	readDiskUsage(&s)
 	readTemperature(&s)
 	readProcessMem(&s)
+	collectProcessStats(&s)
 
 	var m runtime.MemStats
 	runtime.ReadMemStats(&m)
