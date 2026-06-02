@@ -344,7 +344,13 @@ func ppHandle(id int, client *net.TCPConn, pin string, charPort uint16, inject b
 // ---- iptables management -----------------------------------------------------
 
 func ppIptables(args ...string) error {
-	out, err := exec.Command("iptables", args...).CombinedOutput()
+	// -w makes iptables wait for the xtables lock instead of failing with
+	// "Resource temporarily unavailable". The PIN proxy and zone proxy install
+	// their REDIRECT rules from concurrent goroutines (see startBackgroundJobs),
+	// and a restart can briefly overlap an old process's rule teardown, so the
+	// lock is genuinely contended; -w (bounded) serializes rather than races.
+	full := append([]string{"-w", "5"}, args...)
+	out, err := exec.Command("iptables", full...).CombinedOutput()
 	if err != nil {
 		return fmt.Errorf("iptables %s: %w: %s", strings.Join(args, " "), err, strings.TrimSpace(string(out)))
 	}
