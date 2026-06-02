@@ -72,6 +72,28 @@ var (
 	reDropEntry = regexp.MustCompile(`<ITEML>([^<]*)</ITEML>\s*(?:\[\d+\]\s*)?([\d.]+)%`)
 )
 
+// raceAliases maps the race labels @mobinfo prints to the canonical spellings
+// the rAthena YAML baseline (internal_mob_db) uses, so the bestiary diff stops
+// flagging equivalent races as differences. The running server's @mobinfo emits
+// the engine's display names ("Beast", "Demi-Human") where the YAML mob_db uses
+// the enum names ("Brute", "Demihuman"); every other race is spelled identically
+// in both, so only these two need mapping. Keyed by a lowercased, hyphen-stripped
+// form so casing/punctuation drift on either side still resolves.
+var raceAliases = map[string]string{
+	"beast":     "Brute",
+	"demihuman": "Demihuman",
+}
+
+// normalizeRace maps a @mobinfo race label onto the YAML baseline's canonical
+// spelling, leaving any unrecognized value untouched.
+func normalizeRace(race string) string {
+	key := strings.ToLower(strings.ReplaceAll(strings.TrimSpace(race), "-", ""))
+	if canon, ok := raceAliases[key]; ok {
+		return canon
+	}
+	return race
+}
+
 // mobInfoStaleAfter is how long a partially-collected block waits with no new
 // lines before the flush ticker finalizes it (the last block of a burst has no
 // following header to trigger it).
@@ -221,7 +243,7 @@ func (b *mobBlock) apply(msg string) {
 		b.size = m[1]
 	}
 	if m := reRaca.FindStringSubmatch(msg); m != nil {
-		b.race = m[1]
+		b.race = normalizeRace(m[1])
 	}
 	if m := reElemento.FindStringSubmatch(msg); m != nil {
 		b.element = m[1]

@@ -451,8 +451,28 @@ func applyMigrations(db *sql.DB) error {
 			return fmt.Errorf("failed to backfill character_changelog.event_kind: %w", err)
 		}
 	}
+	// Normalize live-scraped race labels onto the YAML baseline's spellings so
+	// the bestiary diff stops flagging equivalent races. @mobinfo prints the
+	// engine's display names ("Beast", "Demi-Human") where internal_mob_db uses
+	// the enum names ("Brute", "Demihuman"); the parser now maps these at scrape
+	// time, this backfills rows captured before that fix. Idempotent: only the
+	// old spellings match, so re-running it on later startups is a no-op.
+	if _, err := db.Exec(backfillMobServerRaceSQL); err != nil {
+		return fmt.Errorf("failed to backfill mob_server_db.race: %w", err)
+	}
 	return nil
 }
+
+// backfillMobServerRaceSQL rewrites the two race labels that @mobinfo spells
+// differently from the rAthena YAML baseline. Kept in sync with normalizeRace
+// in internal/server/mobinfo_parser.go.
+const backfillMobServerRaceSQL = `
+UPDATE mob_server_db SET race = CASE race
+	WHEN 'Beast'      THEN 'Brute'
+	WHEN 'Demi-Human' THEN 'Demihuman'
+	ELSE race
+END
+WHERE race IN ('Beast', 'Demi-Human');`
 
 // backfillChangelogKindSQL classifies existing rows from their description.
 // The patterns mirror the formats produced by logCharacterActivity callers.
