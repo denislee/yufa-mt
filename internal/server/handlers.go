@@ -1711,15 +1711,23 @@ func storeDetailHandler(w http.ResponseWriter, r *http.Request) {
 	var items []Item
 	if err == nil {
 		// Store was found, now fetch its items
+		// Each live vend slot is a distinct is_available=1 row (the scraper flips all
+		// older same-name rows to is_available=0 before re-inserting the current set),
+		// so we must NOT collapse by item name — that would hide a store vending the
+		// same item/price across multiple slots. Show every available row, and fall
+		// back to the single most recent historical row only for fully sold-out items
+		// (kept so the page can render them greyed out).
 		query := fmt.Sprintf(`
 			WITH RankedItems AS (
-				SELECT i.*, local_db.name_pt, ROW_NUMBER() OVER(PARTITION BY i.name_of_the_item ORDER BY i.id DESC) as rn
+				SELECT i.*, local_db.name_pt,
+					MAX(i.is_available) OVER(PARTITION BY i.name_of_the_item) as any_available,
+					ROW_NUMBER() OVER(PARTITION BY i.name_of_the_item ORDER BY i.id DESC) as rn
 				FROM items i
 				LEFT JOIN internal_item_db local_db ON i.item_id = local_db.item_id
 				WHERE i.store_name = ? AND i.seller_name = ? AND i.map_name = ? AND i.map_coordinates = ?
 			)
 			SELECT id, name_of_the_item, name_pt, item_id, quantity, price, store_name, seller_name, date_and_time_retrieved, map_name, map_coordinates, is_available
-			FROM RankedItems WHERE rn = 1 %s`, orderByClause)
+			FROM RankedItems WHERE is_available = 1 OR (any_available = 0 AND rn = 1) %s`, orderByClause)
 
 		rows, queryErr := srv.db.Query(query, storeName, sellerName, mapName, mapCoords)
 		if queryErr != nil {
