@@ -64,6 +64,7 @@ var (
 		"formatAvgLevel":   formatAvgLevel,
 		"getClassImageURL": getClassImageURL,
 		"TmplHTML":         tmplHTML,
+		"jsonify":          jsonify,
 		"renderTmpl":       renderTmpl,
 		"TmplURL":          tmplURL,
 		"dict":             dict,
@@ -4019,6 +4020,17 @@ func getClassImageURL(class string) string {
 // tmplHTML marks a string as safe HTML for the template.
 func tmplHTML(s string) template.HTML {
 	return template.HTML(s)
+}
+
+// jsonify marshals a value to JSON for safe embedding inside a <script> block
+// (e.g. chart data). Returns template.JS so html/template treats it as already
+// JS-safe; on error it emits a harmless empty array/object literal.
+func jsonify(v interface{}) template.JS {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return template.JS("null")
+	}
+	return template.JS(b)
 }
 
 // renderTmpl executes a translation string that itself contains template

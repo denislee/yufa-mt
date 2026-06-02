@@ -128,6 +128,52 @@ func getDashboardPageVisitCounts(stats *AdminDashboardData) error {
 	return nil
 }
 
+// getDashboardVisitsByDay populates a 14-day traffic series (views + distinct
+// visitors per day) used to draw the overview trend chart. Days with no traffic
+// are filled in with zeros so the chart's x-axis is continuous.
+func getDashboardVisitsByDay(stats *AdminDashboardData) error {
+	const days = 14
+	rows, err := srv.db.Query(`
+		SELECT date(view_timestamp, 'localtime') AS d,
+		       COUNT(*) AS views,
+		       COUNT(DISTINCT visitor_hash) AS visitors
+		FROM page_views
+		WHERE view_timestamp >= datetime('now', 'localtime', ?)
+		GROUP BY d`, fmt.Sprintf("-%d days", days-1))
+	if err != nil {
+		return fmt.Errorf("could not query for daily visits: %w", err)
+	}
+	defer rows.Close()
+
+	type dayStat struct {
+		views    int
+		visitors int
+	}
+	byDate := make(map[string]dayStat)
+	for rows.Next() {
+		var d string
+		var ds dayStat
+		if err := rows.Scan(&d, &ds.views, &ds.visitors); err != nil {
+			log.Printf("[W] [Admin/Stats] Failed to scan daily visit row: %v", err)
+			continue
+		}
+		byDate[d] = ds
+	}
+
+	now := time.Now()
+	for i := days - 1; i >= 0; i-- {
+		day := now.AddDate(0, 0, -i)
+		key := day.Format("2006-01-02")
+		ds := byDate[key]
+		stats.VisitsByDay = append(stats.VisitsByDay, DailyVisit{
+			Date:     day.Format("Jan 02"),
+			Views:    ds.views,
+			Visitors: ds.visitors,
+		})
+	}
+	return nil
+}
+
 // getDashboardGuilds populates the guild list for the emblem editor.
 func getDashboardGuilds(stats *AdminDashboardData) error {
 	guildRows, err := srv.db.Query("SELECT name, COALESCE(emblem_url, '') FROM guilds ORDER BY name ASC")
@@ -396,6 +442,13 @@ func getAdminDashboardData(r *http.Request) (AdminDashboardData, error) {
 		return nil
 	})
 
+	g.Go(func() error {
+		if err := getDashboardVisitsByDay(&visitsR); err != nil {
+			log.Printf("[W] [Admin] Could not load daily visit trend: %v", err)
+		}
+		return nil
+	})
+
 	// Scheduler tab data (job config/status rows + recent run history).
 	var schedR AdminDashboardData
 	g.Go(func() error {
@@ -441,6 +494,7 @@ func getAdminDashboardData(r *http.Request) (AdminDashboardData, error) {
 	stats.RMSLiveSearchQuery = rmsLiveR.RMSLiveSearchQuery
 	stats.RMSLiveSearchResults = rmsLiveR.RMSLiveSearchResults
 	stats.PageVisitCounts = visitsR.PageVisitCounts
+	stats.VisitsByDay = visitsR.VisitsByDay
 	stats.ChatSearchQuery = chatR.ChatSearchQuery
 	stats.ChatTotalMessages = chatR.ChatTotalMessages
 	stats.ChatTotalPages = chatR.ChatTotalPages

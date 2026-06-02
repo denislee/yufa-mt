@@ -551,6 +551,7 @@ type AdminDashboardData struct {
 	RecentPageViews       []PageViewEntry
 
 	PageVisitCounts []PageViewSummary
+	VisitsByDay     []DailyVisit
 
 	PageViewsCurrentPage int
 	PageViewsTotalPages  int
@@ -785,6 +786,13 @@ type XPCalculatorPageData struct {
 type PageViewSummary struct {
 	Path string
 	Hits int
+}
+
+// DailyVisit is one day's traffic, used to draw the overview trend chart.
+type DailyVisit struct {
+	Date     string // "Jan 02" label for the axis
+	Views    int    // total page views that day
+	Visitors int    // distinct visitor hashes that day
 }
 
 // GlobalSearchCharacterResult holds a single character result.

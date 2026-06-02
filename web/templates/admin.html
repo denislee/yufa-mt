@@ -82,12 +82,150 @@
         /* Field group label */
         .adm-label {
             display: block;
-            font-size: .875rem;
-            font-weight: 500;
+            font-size: .8125rem;
+            font-weight: 600;
             color: #374151;
-            margin-bottom: .25rem;
+            margin-bottom: .4rem;
         }
         .dark .adm-label { color: #e5e7eb; }
+
+        /* Spacing helper for a label+control field group */
+        .adm-field { margin-bottom: 1rem; }
+        .adm-field:last-child { margin-bottom: 0; }
+
+        /* ===== Form controls — clearly bordered, well-spaced (backoffice default) =====
+           Crisp 1px borders, soft shadow, unified blue focus ring. Width/layout stay
+           with the element's own utility classes (w-full, w-20, flex children, …). ===== */
+        .adm-input,
+        .adm-textarea {
+            font-size: .875rem;
+            line-height: 1.4;
+            color: #111827;
+            background-color: #ffffff;
+            border: 1px solid #d1d5db;
+            border-radius: .5rem;
+            padding: .5rem .75rem;
+            box-shadow: 0 1px 2px 0 rgba(0, 0, 0, .04);
+            transition: border-color .12s ease, box-shadow .12s ease;
+        }
+        .adm-textarea { line-height: 1.5; }
+        .adm-input::placeholder,
+        .adm-textarea::placeholder { color: #9ca3af; }
+        .adm-input:hover:not(:focus),
+        .adm-textarea:hover:not(:focus),
+        .adm-select:hover:not(:focus) { border-color: #9ca3af; }
+        .adm-input:focus,
+        .adm-textarea:focus,
+        .adm-select:focus {
+            outline: none;
+            border-color: #2563eb;
+            box-shadow: 0 0 0 3px rgba(37, 99, 235, .2);
+        }
+        .dark .adm-input,
+        .dark .adm-textarea {
+            background-color: #111827;
+            border-color: #4b5563;
+            color: #f3f4f6;
+        }
+        .dark .adm-input::placeholder,
+        .dark .adm-textarea::placeholder { color: #6b7280; }
+
+        /* Select — same box, with a chevron and room for it */
+        .adm-select {
+            font-size: .875rem;
+            line-height: 1.4;
+            color: #111827;
+            background-color: #ffffff;
+            border: 1px solid #d1d5db;
+            border-radius: .5rem;
+            padding: .5rem 2.25rem .5rem .75rem;
+            box-shadow: 0 1px 2px 0 rgba(0, 0, 0, .04);
+            transition: border-color .12s ease, box-shadow .12s ease;
+            cursor: pointer;
+            -webkit-appearance: none;
+            -moz-appearance: none;
+            appearance: none;
+            background-repeat: no-repeat;
+            background-position: right .65rem center;
+            background-size: 1.1em 1.1em;
+            background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20' fill='none' stroke='%236b7280' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 8l4 4 4-4'/%3E%3C/svg%3E");
+        }
+        .dark .adm-select {
+            background-color: #111827;
+            border-color: #4b5563;
+            color: #f3f4f6;
+            background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20' fill='none' stroke='%239ca3af' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 8l4 4 4-4'/%3E%3C/svg%3E");
+        }
+
+        /* Checkbox — larger and clearly visible */
+        .adm-checkbox {
+            width: 1.15rem;
+            height: 1.15rem;
+            border-radius: .3rem;
+            border: 1px solid #9ca3af;
+            accent-color: #2563eb;
+            cursor: pointer;
+            flex: none;
+            vertical-align: middle;
+        }
+        .adm-checkbox:focus-visible { outline: 2px solid #2563eb; outline-offset: 1px; }
+        .dark .adm-checkbox { border-color: #6b7280; }
+
+        /* Toggle switch — for boolean on/off controls */
+        .adm-switch { display: inline-flex; align-items: center; cursor: pointer; }
+        .adm-switch input { position: absolute; width: 1px; height: 1px; opacity: 0; }
+        .adm-switch-track {
+            position: relative;
+            width: 2.5rem;
+            height: 1.4rem;
+            border-radius: 9999px;
+            background: #cbd5e1;
+            transition: background-color .15s ease;
+            flex: none;
+        }
+        .adm-switch-thumb {
+            position: absolute;
+            top: 2px;
+            left: 2px;
+            width: calc(1.4rem - 4px);
+            height: calc(1.4rem - 4px);
+            background: #ffffff;
+            border-radius: 9999px;
+            box-shadow: 0 1px 2px rgba(0, 0, 0, .35);
+            transition: transform .15s ease;
+        }
+        .adm-switch input:checked + .adm-switch-track { background: #2563eb; }
+        .adm-switch input:checked + .adm-switch-track .adm-switch-thumb { transform: translateX(1.1rem); }
+        .adm-switch input:focus-visible + .adm-switch-track { box-shadow: 0 0 0 3px rgba(37, 99, 235, .4); }
+        .dark .adm-switch-track { background: #4b5563; }
+
+        /* ===== Overview charts ===== */
+        .adm-chart-legend { display: flex; flex-wrap: wrap; gap: .35rem 1rem; font-size: .75rem; color: #6b7280; }
+        .dark .adm-chart-legend { color: #9ca3af; }
+        .adm-chart-legend .adm-leg { display: inline-flex; align-items: center; gap: .4rem; }
+        .adm-chart-legend .adm-leg-swatch { width: .8rem; height: .55rem; border-radius: 2px; flex: none; }
+
+        /* Daily traffic — grouped vertical bars */
+        .adm-bars { display: flex; align-items: stretch; gap: .5rem; height: 12rem; }
+        .adm-bars-col { flex: 1 1 0; display: flex; flex-direction: column; align-items: center; gap: .45rem; min-width: 0; }
+        .adm-bars-track { flex: 1; width: 100%; display: flex; align-items: flex-end; justify-content: center; gap: 3px; border-radius: .25rem; padding-top: .25rem; }
+        .adm-bars-col:hover .adm-bars-track { background: rgba(37, 99, 235, .06); }
+        .dark .adm-bars-col:hover .adm-bars-track { background: rgba(96, 165, 250, .12); }
+        .adm-bars-bar { width: .55rem; max-width: 40%; min-height: 2px; border-radius: .2rem .2rem 0 0; background: #2563eb; transition: opacity .12s; }
+        .adm-bars-bar.is-visitors { background: #059669; }
+        .adm-bars-xlabel { font-size: .62rem; line-height: 1.1; color: #6b7280; text-align: center; white-space: nowrap; font-variant-numeric: tabular-nums; }
+        .dark .adm-bars-xlabel { color: #9ca3af; }
+
+        /* Top pages — horizontal bars */
+        .adm-hbars { display: flex; flex-direction: column; gap: .55rem; }
+        .adm-hbar { display: grid; grid-template-columns: minmax(0, 13rem) 1fr 3rem; align-items: center; gap: .75rem; }
+        .adm-hbar-label { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: .75rem; color: #374151; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .dark .adm-hbar-label { color: #d1d5db; }
+        .adm-hbar-track { height: .8rem; background: #f3f4f6; border-radius: 9999px; overflow: hidden; }
+        .dark .adm-hbar-track { background: #374151; }
+        .adm-hbar-fill { height: 100%; border-radius: 9999px; background: #2563eb; transition: width .4s ease; min-width: 2px; }
+        .adm-hbar-val { font-size: .8rem; font-weight: 600; text-align: right; color: #111827; font-variant-numeric: tabular-nums; }
+        .dark .adm-hbar-val { color: #f3f4f6; }
 
         /* ===== Machine stats tab ===== */
         .adm-bar { width: 100%; height: .55rem; background: #e5e7eb; border-radius: 9999px; overflow: hidden; }
@@ -283,6 +421,59 @@
                     </div>
                 </div>
 
+                <div class="grid grid-cols-1 xl:grid-cols-2 gap-8 mb-8" x-data="overviewCharts()">
+                    <!-- Daily traffic chart -->
+                    <div class="adm-card">
+                        <div class="flex flex-wrap items-center justify-between gap-2 mb-1">
+                            <h2 class="adm-card-title">Traffic — Last 14 Days</h2>
+                            <div class="adm-chart-legend">
+                                <span class="adm-leg"><span class="adm-leg-swatch" style="background:#2563eb"></span>Page views</span>
+                                <span class="adm-leg"><span class="adm-leg-swatch" style="background:#059669"></span>Unique visitors</span>
+                            </div>
+                        </div>
+                        <p class="adm-desc mb-4" x-text="periodViews.toLocaleString() + ' views · ' + periodVisitors.toLocaleString() + ' unique visitors over 14 days'"></p>
+                        <template x-if="days.length">
+                            <div class="adm-bars">
+                                <template x-for="(d, i) in days" :key="i">
+                                    <div class="adm-bars-col" :title="d.Date + ': ' + d.Views + ' views, ' + d.Visitors + ' unique visitors'">
+                                        <div class="adm-bars-track">
+                                            <div class="adm-bars-bar" :style="'height:' + pct(d.Views) + '%'"></div>
+                                            <div class="adm-bars-bar is-visitors" :style="'height:' + pct(d.Visitors) + '%'"></div>
+                                        </div>
+                                        <span class="adm-bars-xlabel" x-text="d.Date"></span>
+                                    </div>
+                                </template>
+                            </div>
+                        </template>
+                        <template x-if="!days.length">
+                            <p class="adm-desc">No traffic recorded in the last 14 days.</p>
+                        </template>
+                    </div>
+
+                    <!-- Top pages chart -->
+                    <div class="adm-card">
+                        <h2 class="adm-card-title mb-1">Top Pages</h2>
+                        <p class="adm-desc mb-4">Most-visited paths, all time (top 12).</p>
+                        <template x-if="topPages.length">
+                            <div class="adm-hbars">
+                                <template x-for="(p, i) in topPages" :key="i">
+                                    <div class="adm-hbar">
+                                        <span class="adm-hbar-label" :title="p.Path" x-text="p.Path"></span>
+                                        <span class="adm-hbar-track"><span class="adm-hbar-fill" :style="'width:' + pctHits(p.Hits) + '%'"></span></span>
+                                        <span class="adm-hbar-val" x-text="p.Hits.toLocaleString()"></span>
+                                    </div>
+                                </template>
+                            </div>
+                        </template>
+                        <template x-if="!topPages.length">
+                            <p class="adm-desc">No page views recorded yet.</p>
+                        </template>
+                    </div>
+                </div>
+
+                <script type="application/json" id="overview-visits-data">{{jsonify .VisitsByDay}}</script>
+                <script type="application/json" id="overview-toppages-data">{{jsonify .PageVisitCounts}}</script>
+
                 <div class="grid grid-cols-1 xl:grid-cols-2 gap-8">
                     <div class="adm-card mb-8">
                         <h2 class="adm-card-title mb-4">Page View Summary (Top 25)</h2>
@@ -430,7 +621,7 @@
                         <form action="/admin/guild/update-emblem" method="POST" class="space-y-4">
                             <div>
                                 <label for="guild_select" class="adm-label">Guild Name</label>
-                                <select name="guild_name" id="guild_select" required class="block w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm">
+                                <select name="guild_name" id="guild_select" required class="adm-select w-full">
                                     <option value="">-- Select a Guild --</option>
                                     {{range .AllGuilds}}
                                     <option value="{{.Name}}" data-emblem="{{.EmblemURL}}">{{.Name}}</option>
@@ -439,7 +630,7 @@
                             </div>
                             <div>
                                 <label for="emblem_url" class="adm-label">New Emblem URL</label>
-                                <input type="url" name="emblem_url" id="emblem_url" required placeholder="https://..." class="block w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm">
+                                <input type="url" name="emblem_url" id="emblem_url" required placeholder="https://..." class="adm-input w-full">
                             </div>
                             <button type="submit" class="adm-btn adm-btn-primary">Update Emblem</button>
                         </form>
@@ -529,19 +720,20 @@
                                         <input type="hidden" name="job_name" value="{{.Name}}">
                                         <div>
                                             <label class="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Every</label>
-                                            <input type="number" name="interval_value" min="1" value="{{.IntervalValue}}" class="w-20 rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 shadow-sm sm:text-sm">
+                                            <input type="number" name="interval_value" min="1" value="{{.IntervalValue}}" class="adm-input w-20">
                                         </div>
                                         <div>
                                             <label class="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Unit</label>
-                                            <select name="interval_unit" class="rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 shadow-sm sm:text-sm">
+                                            <select name="interval_unit" class="adm-select">
                                                 <option value="seconds" {{if eq .IntervalUnit "seconds"}}selected{{end}}>seconds</option>
                                                 <option value="minutes" {{if eq .IntervalUnit "minutes"}}selected{{end}}>minutes</option>
                                                 <option value="hours" {{if eq .IntervalUnit "hours"}}selected{{end}}>hours</option>
                                             </select>
                                         </div>
-                                        <label class="flex items-center gap-1.5 text-sm pb-2 whitespace-nowrap">
-                                            <input type="checkbox" name="enabled" value="1" {{if .Enabled}}checked{{end}} class="rounded border-gray-300 dark:border-gray-600 text-blue-600 focus:ring-blue-500">
-                                            Enabled
+                                        <label class="adm-switch gap-2 text-sm pb-1.5 whitespace-nowrap">
+                                            <input type="checkbox" name="enabled" value="1" {{if .Enabled}}checked{{end}}>
+                                            <span class="adm-switch-track"><span class="adm-switch-thumb"></span></span>
+                                            <span class="text-gray-700 dark:text-gray-200 font-medium">Enabled</span>
                                         </label>
                                         <button type="submit" class="adm-btn adm-btn-sm adm-btn-primary">Save</button>
                                     </form>
@@ -603,8 +795,8 @@
                             <form action="/admin/parse-trade" method="POST">
                                 <input type="hidden" name="tab" value="trading">
                                 <div class="mb-4">
-                                    <label for="trade_message" class="block text-sm font-medium text-gray-700 dark:text-gray-200">Trade Message</label>
-                                    <textarea name="message" id="trade_message" rows="6" required class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm">{{.OriginalTradeMessage}}</textarea>
+                                    <label for="trade_message" class="adm-label">Trade Message</label>
+                                    <textarea name="message" id="trade_message" rows="6" required class="adm-textarea w-full">{{.OriginalTradeMessage}}</textarea>
                                 </div>
                                 <button type="submit" class="adm-btn adm-btn-primary">Parse Message</button>
                             </form>
@@ -793,9 +985,9 @@
                             <form action="/admin" method="GET" class="flex flex-col md:flex-row items-end gap-4 mb-4">
                                 <input type="hidden" name="tab" value="cache">
                                 <div class="flex-grow w-full">
-                                    <label for="rms_query" class="block text-sm font-medium text-gray-700 dark:text-gray-200">Search Item Name</label>
+                                    <label for="rms_query" class="adm-label">Search Item Name</label>
                                     <input type="search" name="rms_query" id="rms_query" value="{{.RMSCacheSearchQuery}}"
-                                           class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm">
+                                           class="adm-input w-full">
                                 </div>
                                 <button type="submit" class="adm-btn adm-btn-primary">Search</button>
                             </form>
@@ -817,7 +1009,7 @@
                                             {{range .RMSCacheSearchResults}}
                                             <tr>
                                                 <td class="py-2 px-3 text-center">
-                                                    <input type="checkbox" name="item_id[]" value="{{.ItemID}}" class="rounded border-gray-300 dark:border-gray-600 text-red-600 focus:ring-red-500">
+                                                    <input type="checkbox" name="item_id[]" value="{{.ItemID}}" class="adm-checkbox" style="accent-color:#dc2626">
                                                 </td>
                                                 <td class="py-2 px-3 font-mono">{{.ItemID}}</td>
                                                 <td class="py-2 px-3">{{.Name}}</td>
@@ -844,9 +1036,9 @@
                             <form action="/admin" method="GET" class="flex flex-col md:flex-row items-end gap-4 mb-4">
                                 <input type="hidden" name="tab" value="cache">
                                 <div class="flex-grow w-full">
-                                    <label for="rms_live_search" class="block text-sm font-medium text-gray-700 dark:text-gray-200">Search Item Name (Live)</label>
+                                    <label for="rms_live_search" class="adm-label">Search Item Name (Live)</label>
                                     <input type="search" name="rms_live_search" id="rms_live_search" value="{{.RMSLiveSearchQuery}}"
-                                           class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
+                                           class="adm-input w-full"
                                            placeholder="e.g., Jellopy, Knife [4], Poring Card">
                                 </div>
                                 <button type="submit" class="adm-btn adm-btn-primary">Search RMS</button>
@@ -932,9 +1124,9 @@
                         <input type="hidden" name="tab" value="chat">
                         
                         <div class="flex-grow w-full">
-                            <label for="chat_query" class="block text-sm font-medium text-gray-700 dark:text-gray-200">Search Message or Character</label>
+                            <label for="chat_query" class="adm-label">Search Message or Character</label>
                             <input type="text" name="chat_query" id="chat_query" value="{{.ChatSearchQuery}}" placeholder="Search..."
-                                   class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm">
+                                   class="adm-input w-full">
                         </div>
                         <button type="submit" class="adm-btn adm-btn-primary">
                             Search
@@ -1081,8 +1273,7 @@
                         <div class="flex flex-wrap items-center gap-3 text-sm">
                             <label class="flex items-center gap-1.5">
                                 <span class="text-gray-600 dark:text-gray-300">Lines</span>
-                                <select x-model.number="tail" @change="refresh()"
-                                        class="rounded border-gray-300 dark:border-gray-600 dark:bg-gray-700 py-1 px-2 text-sm">
+                                <select x-model.number="tail" @change="refresh()" class="adm-select">
                                     <option value="200">200</option>
                                     <option value="500">500</option>
                                     <option value="1000">1000</option>
@@ -1090,7 +1281,7 @@
                                 </select>
                             </label>
                             <label class="flex items-center gap-1.5 cursor-pointer">
-                                <input type="checkbox" x-model="auto" @change="toggleAuto()" class="rounded">
+                                <input type="checkbox" x-model="auto" @change="toggleAuto()" class="adm-checkbox">
                                 <span class="text-gray-600 dark:text-gray-300">Auto-refresh (3s)</span>
                             </label>
                             <button type="button" @click="refresh()"
@@ -1100,7 +1291,7 @@
                     <div class="flex items-center justify-between mb-1 text-xs text-gray-500 dark:text-gray-400">
                         <span x-text="status"></span>
                         <label class="flex items-center gap-1.5 cursor-pointer">
-                            <input type="checkbox" x-model="follow" class="rounded">
+                            <input type="checkbox" x-model="follow" class="adm-checkbox">
                             <span>Follow tail</span>
                         </label>
                     </div>
@@ -1251,19 +1442,19 @@
                     <input type="hidden" name="tab" value="chat">
                     <input type="hidden" name="id" id="edit_chat_id">
                     
-                    <div class="mb-4">
-                        <label class="block text-gray-700 dark:text-gray-200 text-sm font-bold mb-2">Character Name</label>
-                        <input type="text" name="character_name" id="edit_chat_char" class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 dark:text-gray-200 leading-tight focus:outline-none focus:shadow-outline">
-                    </div>
-                    
-                    <div class="mb-4">
-                        <label class="block text-gray-700 dark:text-gray-200 text-sm font-bold mb-2">Channel</label>
-                        <input type="text" name="channel" id="edit_chat_channel" class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 dark:text-gray-200 leading-tight focus:outline-none focus:shadow-outline">
+                    <div class="adm-field">
+                        <label class="adm-label">Character Name</label>
+                        <input type="text" name="character_name" id="edit_chat_char" class="adm-input w-full">
                     </div>
 
-                    <div class="mb-4">
-                        <label class="block text-gray-700 dark:text-gray-200 text-sm font-bold mb-2">Message</label>
-                        <textarea name="message" id="edit_chat_msg" rows="3" class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 dark:text-gray-200 leading-tight focus:outline-none focus:shadow-outline"></textarea>
+                    <div class="adm-field">
+                        <label class="adm-label">Channel</label>
+                        <input type="text" name="channel" id="edit_chat_channel" class="adm-input w-full">
+                    </div>
+
+                    <div class="adm-field">
+                        <label class="adm-label">Message</label>
+                        <textarea name="message" id="edit_chat_msg" rows="3" class="adm-textarea w-full"></textarea>
                     </div>
 
                     <div class="flex items-center justify-end gap-2">
@@ -1287,6 +1478,33 @@
             document.getElementById('edit_chat_channel').value = btn.dataset.channel;
             document.getElementById('edit_chat_msg').value = btn.dataset.msg;
             document.getElementById('chat-edit-modal').classList.remove('hidden');
+        }
+
+        // Overview charts (daily traffic bars + top-pages horizontal bars).
+        // Data is rendered server-side into <script type="application/json"> tags
+        // and parsed here so we never assign strings to the DOM.
+        function overviewCharts() {
+            const read = (id) => {
+                const el = document.getElementById(id);
+                if (!el) return [];
+                try { return JSON.parse(el.textContent) || []; } catch (e) { return []; }
+            };
+            const days = read('overview-visits-data');
+            const topPages = read('overview-toppages-data').slice(0, 12);
+            const maxViews = Math.max(1, ...days.map(d => d.Views));
+            const maxHits = Math.max(1, ...topPages.map(p => p.Hits));
+            return {
+                days,
+                topPages,
+                maxViews,
+                maxHits,
+                periodViews: days.reduce((a, d) => a + d.Views, 0),
+                periodVisitors: days.reduce((a, d) => a + d.Visitors, 0),
+                // Bar height as a percentage of the tallest day (min 3% so any
+                // non-zero day stays visible).
+                pct(v) { return v > 0 ? Math.max(3, (v / this.maxViews) * 100) : 0; },
+                pctHits(v) { return v > 0 ? Math.max(2, (v / this.maxHits) * 100) : 0; },
+            };
         }
 
         // Live server-log viewer (Server tab). Polls /admin/logs as plain text.
