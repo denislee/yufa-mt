@@ -1,0 +1,241 @@
+{{define "title"}}{{if .Data.SelectedMap}}{{.Data.SelectedMap}} - {{end}}Vendor Map - Yufa Market Tracker{{end}}
+
+{{define "head_extra"}}
+<link rel="preconnect" href="https://www.divine-pride.net" crossorigin>
+<link rel="stylesheet" href="{{asset "/static/leaflet.css"}}">
+<style>
+    /* Map canvas: dark game-board feel with a faint cell grid so empty
+       space still reads as a map even before the image render loads. */
+    #vendor-map {
+        height: 78vh;
+        min-height: 420px;
+        background-color: #1f2733;
+        background-image:
+            linear-gradient(rgba(255,255,255,.05) 1px, transparent 1px),
+            linear-gradient(90deg, rgba(255,255,255,.05) 1px, transparent 1px);
+        background-size: 24px 24px;
+        border-radius: .5rem;
+        cursor: grab;
+    }
+    #vendor-map.leaflet-grabbing { cursor: grabbing; }
+    .leaflet-container { background: transparent; font: inherit; }
+    /* In-game style vending stall marker. */
+    .vendor-stall { display: flex; flex-direction: column; align-items: center; pointer-events: none; }
+    .vendor-board {
+        display: none; /* hidden by default to avoid overlap; shown on hover / when zoomed in */
+        max-width: 160px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+        background: #fdf6e3; color: #3b2f1e; border: 1px solid #c9a86a;
+        border-radius: 5px; padding: 1px 6px; font-size: 11px; font-weight: 600;
+        line-height: 1.4; box-shadow: 0 1px 3px rgba(0,0,0,.5); pointer-events: auto;
+    }
+    /* Reveal all boards once zoomed in past the initial fit, and always
+       reveal the one under the cursor (raised above its neighbours). */
+    #vendor-map.show-boards .vendor-board { display: block; }
+    .vendor-stall:hover .vendor-board { display: block; z-index: 10000; position: relative; }
+    .vendor-cart { font-size: 22px; line-height: 1; filter: drop-shadow(0 1px 1px rgba(0,0,0,.6)); margin-top: 1px; pointer-events: auto; cursor: pointer; }
+    .leaflet-image-layer { image-rendering: pixelated; }
+    /* Index thumbnails: greyscale at rest, full colour on card hover. */
+    .vendor-thumb-img { filter: grayscale(1); transition: filter .25s ease, transform .25s ease; }
+    .group:hover .vendor-thumb-img { filter: grayscale(0); }
+    /* Red vendor dots on the index thumbnails. */
+    .vendor-dot {
+        position: absolute; width: 5px; height: 5px; border-radius: 9999px;
+        background: #ef4444; box-shadow: 0 0 0 1px rgba(0,0,0,.55);
+        transform: translate(-50%, -50%); pointer-events: none; z-index: 1;
+    }
+    .vendor-hpbar { width: 26px; height: 3px; background: #2bd44a; border-radius: 2px; margin-top: 1px; box-shadow: 0 0 0 1px rgba(0,0,0,.4); }
+    .leaflet-popup-content { margin: 8px 10px; font-size: 12px; }
+    .leaflet-popup-content-wrapper { background: #fdf6e3; color: #3b2f1e; }
+    .leaflet-popup-tip { background: #fdf6e3; }
+    .vp-pop { width: 240px; max-width: 100%; }
+    .vp-title { font-weight: 700; margin-bottom: 2px; overflow-wrap: anywhere; word-break: break-word; }
+    .vp-sub { font-size: 11px; opacity: .7; margin-bottom: 4px; overflow-wrap: anywhere; word-break: break-word; }
+    .vp-item { display: flex; align-items: center; gap: 6px; padding: 2px 0; }
+    .vp-item img { width: 20px; height: 20px; image-rendering: pixelated; flex: 0 0 auto; }
+    .vp-item a { min-width: 0; overflow-wrap: anywhere; word-break: break-word; }
+    .vp-price { margin-left: auto; font-weight: 600; color: #1d6b2f; padding-left: 10px; white-space: nowrap; flex: 0 0 auto; }
+    .map-card-fallback { color: #9ca3af; font-size: .75rem; }
+</style>
+{{end}}
+
+{{define "content"}}
+<div class="container mx-auto px-4 py-6">
+    <div class="flex flex-col sm:flex-row justify-between sm:items-center gap-2 mb-4 border-b border-gray-200 dark:border-gray-700 pb-3">
+        <div>
+            <h1 class="text-2xl font-bold text-gray-800 dark:text-gray-100">Vendor Map</h1>
+            {{if .Data.SelectedMap}}
+                <p class="text-lg text-gray-600 dark:text-gray-300"><a href="/vendors" class="text-blue-600 dark:text-blue-400 hover:underline">← All maps</a> <span class="mx-1 text-gray-400">/</span> <span class="font-mono">{{.Data.SelectedMap}}</span></p>
+            {{else}}
+                <p class="text-sm text-gray-600 dark:text-gray-300">{{.Data.StoreCount}} active vendors across {{len .Data.Maps}} maps — pick a map to browse stalls.</p>
+            {{end}}
+        </div>
+        <div id="last-updated" class="text-sm text-gray-500 dark:text-gray-400" data-timestamp="{{.Data.LastScrapeTime}}" title="Last full scrape time"></div>
+    </div>
+
+    {{if .Data.SelectedMap}}
+        <div id="vendor-map"
+             data-map="{{.Data.SelectedMap}}"
+             data-img="{{.Data.MapImageURL}}"
+             data-leaflet="{{asset "/static/leaflet.js"}}"></div>
+        <p class="text-xs text-gray-400 dark:text-gray-500 mt-2">Scroll / pinch to zoom, drag to pan. Click a cart to see its items. Map render © divine-pride.net.</p>
+    {{else}}
+        {{if .Data.Maps}}
+        <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
+            {{range .Data.Maps}}
+            <a href="/vendors?map={{.MapName | urlquery}}" class="group block bg-white dark:bg-gray-800 rounded-lg shadow hover:shadow-lg overflow-hidden border border-gray-200 dark:border-gray-700 transition-shadow">
+                <div class="aspect-square bg-[#1f2733] overflow-hidden flex items-center justify-center relative vendor-thumb" data-coords="{{.CoordsJSON}}">
+                    <img src="{{.ImageURL}}" alt="{{.MapName}}" loading="lazy" decoding="async"
+                         class="vendor-thumb-img w-full h-full object-contain group-hover:scale-105 transition-transform"
+                         style="image-rendering: pixelated;"
+                         onerror="this.style.display='none'; this.insertAdjacentText('afterend','no map image');">
+                </div>
+                <div class="p-2">
+                    <div class="font-mono text-sm font-semibold text-gray-800 dark:text-gray-100 truncate">{{.MapName}}</div>
+                    <div class="text-xs text-gray-500 dark:text-gray-400">{{.StoreCount}} store{{if ne .StoreCount 1}}s{{end}} · {{.Listings}} listing{{if ne .Listings 1}}s{{end}}</div>
+                </div>
+            </a>
+            {{end}}
+        </div>
+        {{else}}
+        <p class="text-gray-500 dark:text-gray-400">No active vendors found right now.</p>
+        {{end}}
+    {{end}}
+</div>
+
+{{if .Data.SelectedMap}}
+<script>
+(function () {
+    var el = document.getElementById('vendor-map');
+    if (!el || el.dataset.inited) return;
+    el.dataset.inited = '1';
+
+    function boot() {
+        if (!window.L) return;
+        var mapName = el.dataset.map;
+        var imgURL = el.dataset.img;
+
+        var map = L.map(el, { crs: L.CRS.Simple, minZoom: -8, maxZoom: 10, zoomSnap: 0.25, zoomDelta: 0.5, wheelPxPerZoomLevel: 80, attributionControl: false });
+
+        function esc(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) {
+            return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
+
+        function popupHTML(s) {
+            var rows = s.items.map(function (it) {
+                return '<div class="vp-item">' +
+                    '<img src="https://static.divine-pride.net/images/items/item/' + encodeURIComponent(it.itemId) + '.png" alt="" loading="lazy">' +
+                    '<a href="/item?name=' + encodeURIComponent(it.name) + '">' + esc(it.name) + (it.qty > 1 ? ' ×' + it.qty : '') + '</a>' +
+                    '<span class="vp-price">' + esc(it.price) + 'z</span>' +
+                    '</div>';
+            }).join('');
+            return '<div class="vp-pop">' +
+                '<div class="vp-title">' +
+                '<a href="/store?name=' + encodeURIComponent(s.shop) + '&seller=' + encodeURIComponent(s.seller) + '">' + esc(s.shop) + '</a></div>' +
+                '<div class="vp-sub">' + esc(s.seller) + ' @ ' + esc(mapName) + ' (' + s.x + ',' + s.y + ')</div>' +
+                rows + '</div>';
+        }
+
+        function stallIcon(s) {
+            var board = esc(s.shop || s.seller);
+            return L.divIcon({
+                className: '',
+                html: '<div class="vendor-stall"><div class="vendor-board" title="' + board + '">' + board + '</div>' +
+                      '<div class="vendor-cart">🛒</div><div class="vendor-hpbar"></div></div>',
+                iconSize: [0, 0],
+                iconAnchor: [0, 0]
+            });
+        }
+
+        function render(stalls, W, H) {
+            var bounds;
+            if (W && H) {
+                bounds = [[0, 0], [H, W]];
+                L.imageOverlay(imgURL, bounds).addTo(map);
+                map.fitBounds(bounds);
+            } else {
+                // No map render available: frame the view around the stalls.
+                if (stalls.length) {
+                    var xs = stalls.map(function (s) { return s.x; });
+                    var ys = stalls.map(function (s) { return s.y; });
+                    var pad = 20;
+                    bounds = [[Math.min.apply(null, ys) - pad, Math.min.apply(null, xs) - pad],
+                              [Math.max.apply(null, ys) + pad, Math.max.apply(null, xs) + pad]];
+                    map.fitBounds(bounds);
+                } else {
+                    map.setView([100, 100], 0);
+                }
+            }
+            // Carts only at the initial fit; reveal name boards once the
+            // user zooms in past it (hover always reveals an individual one).
+            var boardZoom = map.getZoom() + 1;
+            function syncBoards() {
+                if (map.getZoom() >= boardZoom) { el.classList.add('show-boards'); }
+                else { el.classList.remove('show-boards'); }
+            }
+            map.on('zoomend', syncBoards);
+            syncBoards();
+
+            stalls.forEach(function (s) {
+                L.marker([s.y, s.x], { icon: stallIcon(s), riseOnHover: true })
+                    .addTo(map)
+                    .bindPopup(popupHTML(s), { maxWidth: 260, minWidth: 200 });
+            });
+        }
+
+        fetch('/vendors/data?map=' + encodeURIComponent(mapName))
+            .then(function (r) { return r.json(); })
+            .then(function (stalls) {
+                stalls = stalls || [];
+                // Probe the map render for its natural pixel size (= cell grid).
+                var probe = new Image();
+                probe.onload = function () { render(stalls, probe.naturalWidth, probe.naturalHeight); };
+                probe.onerror = function () { render(stalls, 0, 0); };
+                probe.src = imgURL;
+            })
+            .catch(function () { render([], 0, 0); });
+    }
+
+    if (window.L) { boot(); }
+    else {
+        var s = document.createElement('script');
+        s.src = el.dataset.leaflet;
+        s.onload = boot;
+        document.head.appendChild(s);
+    }
+})();
+</script>
+{{else}}
+<script>
+(function () {
+    // Plot red dots over each map thumbnail at its vendors' cell positions.
+    // The map render is 1px : 1 game-cell, origin bottom-left, so we flip Y
+    // and account for object-contain letterboxing inside the square card.
+    function placeDots(box) {
+        var img = box.querySelector('.vendor-thumb-img');
+        if (!img || !img.naturalWidth) return;
+        var coords;
+        try { coords = JSON.parse(box.dataset.coords || '[]'); } catch (e) { return; }
+        box.querySelectorAll('.vendor-dot').forEach(function (d) { d.remove(); });
+        var cw = box.clientWidth, ch = box.clientHeight, iw = img.naturalWidth, ih = img.naturalHeight;
+        var scale = Math.min(cw / iw, ch / ih);
+        var dw = iw * scale, dh = ih * scale, ox = (cw - dw) / 2, oy = (ch - dh) / 2;
+        coords.forEach(function (c) {
+            var d = document.createElement('span');
+            d.className = 'vendor-dot';
+            d.style.left = (ox + (c[0] / iw) * dw) + 'px';
+            d.style.top = (oy + (1 - c[1] / ih) * dh) + 'px';
+            box.appendChild(d);
+        });
+    }
+    function placeAll() { document.querySelectorAll('.vendor-thumb').forEach(placeDots); }
+    document.querySelectorAll('.vendor-thumb').forEach(function (box) {
+        var img = box.querySelector('.vendor-thumb-img');
+        if (!img) return;
+        if (img.complete && img.naturalWidth) { placeDots(box); }
+        else { img.addEventListener('load', function () { placeDots(box); }); }
+    });
+    var t;
+    window.addEventListener('resize', function () { clearTimeout(t); t = setTimeout(placeAll, 150); });
+})();
+</script>
+{{end}}
+{{end}}

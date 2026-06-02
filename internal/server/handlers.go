@@ -486,6 +486,7 @@ func init() {
 		"drop_stats.html",
 		"market_stats.html",
 		"character_stats.html",
+		"vendors.html",
 	}
 
 	for _, tmplName := range templates {

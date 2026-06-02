@@ -50,6 +50,8 @@ func registerRoutes() *http.ServeMux {
 	mux.HandleFunc("/character", visitorTracker(characterDetailHandler))
 	mux.HandleFunc("/character-changelog", visitorTracker(characterChangelogHandler))
 	mux.HandleFunc("/store", visitorTracker(storeDetailHandler))
+	mux.HandleFunc("/vendors", visitorTracker(vendorsHandler))
+	mux.HandleFunc("/vendors/data", vendorsDataHandler)
 	mux.HandleFunc("/discord", visitorTracker(tradingPostListHandler))
 	mux.HandleFunc("/woe", visitorTracker(woeRankingsHandler))
 	mux.HandleFunc("/chat", visitorTracker(chatHandler))

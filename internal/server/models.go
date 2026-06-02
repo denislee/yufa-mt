@@ -898,6 +898,49 @@ type LevelDistPoint struct {
 	Count int    `json:"Count"`
 }
 
+// VendorMapSummary is one entry on the vendor-map index: a map that
+// currently has at least one active vending, with its store/listing counts.
+type VendorMapSummary struct {
+	MapName    string
+	StoreCount int
+	Listings   int
+	ImageURL   string
+	// CoordsJSON is a JSON array of [x,y] cell positions of the active
+	// vendors on this map, e.g. "[[157,95],[142,90]]". The index page
+	// plots these as red dots over the map thumbnail. Numbers/brackets
+	// only, so it is safe inside a double-quoted HTML attribute.
+	CoordsJSON string
+}
+
+// VendorsPageData drives vendors.html in both modes: the map index
+// (SelectedMap == "") and a single-map view (SelectedMap set).
+type VendorsPageData struct {
+	PageTitle      string
+	SelectedMap    string
+	MapImageURL    string
+	Maps           []VendorMapSummary
+	StoreCount     int
+	LastScrapeTime string
+}
+
+// VendorStoreJSON is one vending stall returned by /vendors/data, placed on
+// the Leaflet map at game-cell (X, Y).
+type VendorStoreJSON struct {
+	Seller string           `json:"seller"`
+	Shop   string           `json:"shop"`
+	X      int              `json:"x"`
+	Y      int              `json:"y"`
+	Items  []VendorItemJSON `json:"items"`
+}
+
+// VendorItemJSON is a single item line inside a vending stall popup.
+type VendorItemJSON struct {
+	ItemID int    `json:"itemId"`
+	Name   string `json:"name"`
+	Qty    int    `json:"qty"`
+	Price  string `json:"price"`
+}
+
 // CharacterStatsPageData holds all data for the character_stats.html template.
 type CharacterStatsPageData struct {
 	PageTitle               string

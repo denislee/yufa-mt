@@ -28,6 +28,7 @@
                 <a href="/full-list" data-nav-key="full-list" class="ymt-navlink ymt-navlink--top {{if eq .Data.PageTitle "Full List"}}is-active{{end}}">{{.Page.T.nav_full_list}}</a>
                 <a href="/activity" data-nav-key="activity" class="ymt-navlink ymt-navlink--top {{if eq .Data.PageTitle "Activity"}}is-active{{end}}">{{.Page.T.nav_activity}}</a>
                 <a href="/discord" data-nav-key="discord" class="ymt-navlink ymt-navlink--top {{if eq .Data.PageTitle "Discord"}}is-active{{end}}">{{.Page.T.nav_discord}}</a>
+                <a href="/vendors" data-nav-key="vendors" class="ymt-navlink ymt-navlink--top {{if eq .Data.PageTitle "Vendor Map"}}is-active{{end}}">Vendor Map</a>
                 <a href="/chat" data-nav-key="chat" class="ymt-navlink ymt-navlink--top {{if eq .Data.PageTitle "Chat"}}is-active{{end}}">{{.Page.T.nav_chat}}</a>
 
                 <div class="relative" x-data="{ open: false }" @click.outside="open=false">
@@ -94,6 +95,7 @@
         <a href="/full-list" data-nav-key="full-list" class="ymt-navlink ymt-navlink--mobile {{if eq .Data.PageTitle "Full List"}}is-active{{end}}">{{.Page.T.nav_full_list}}</a>
         <a href="/activity" data-nav-key="activity" class="ymt-navlink ymt-navlink--mobile {{if eq .Data.PageTitle "Activity"}}is-active{{end}}">{{.Page.T.nav_activity}}</a>
         <a href="/discord" data-nav-key="discord" class="ymt-navlink ymt-navlink--mobile {{if eq .Data.PageTitle "Discord"}}is-active{{end}}">{{.Page.T.nav_discord}}</a>
+        <a href="/vendors" data-nav-key="vendors" class="ymt-navlink ymt-navlink--mobile {{if eq .Data.PageTitle "Vendor Map"}}is-active{{end}}">Vendor Map</a>
         <a href="/chat" data-nav-key="chat" class="ymt-navlink ymt-navlink--mobile {{if eq .Data.PageTitle "Chat"}}is-active{{end}}">{{.Page.T.nav_chat}}</a>
 
         <details class="group" {{if $isStatsPage}}open{{end}}>
