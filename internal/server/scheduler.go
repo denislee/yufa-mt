@@ -31,6 +31,10 @@ type JobSpec struct {
 	Func            func()
 	LogTag          string
 	DefaultInterval time.Duration
+	// DefaultDisabled makes a brand-new job (no job_config row yet) start
+	// disabled instead of the usual enabled-by-default. Used for jobs that must
+	// not auto-run on first boot — e.g. the @mobinfo injection sweep.
+	DefaultDisabled bool
 }
 
 // jobRegistry is the ordered set of jobs the scheduler manages. It mirrors the
@@ -45,6 +49,7 @@ var jobRegistry = []JobSpec{
 	{Name: "zeny", Label: "Zeny", Category: "Market & Economy", Func: scrapeZeny, LogTag: "[Scraper/Zeny]", DefaultInterval: 6 * time.Hour},
 	{Name: "mvp", Label: "MVP Kill", Category: "Players & Characters", Func: scrapeMvpKills, LogTag: "[Scraper/MVP]", DefaultInterval: 5 * time.Minute},
 	{Name: "woe", Label: "WoE Char Rankings", Category: "Guilds & Events", Func: scrapeWoeCharacterRankings, LogTag: "[Scraper/WoE]", DefaultInterval: 12 * time.Hour},
+	{Name: "mobinfo", Label: "Mob Info Scrape (@mobinfo)", Category: "Reference Data", Func: runMobInfoSweep, LogTag: "[Scraper/MobInfo]", DefaultInterval: 24 * time.Hour, DefaultDisabled: true},
 }
 
 // globalScheduler is the running scheduler, set by startBackgroundJobs.
@@ -115,7 +120,7 @@ type scheduler struct {
 func newScheduler(specs []JobSpec) *scheduler {
 	s := &scheduler{jobs: make(map[string]*jobState, len(specs))}
 	for _, spec := range specs {
-		interval, enabled := loadJobConfig(spec.Name, spec.DefaultInterval)
+		interval, enabled := loadJobConfig(spec.Name, spec.DefaultInterval, !spec.DefaultDisabled)
 		s.jobs[spec.Name] = &jobState{
 			spec:     spec,
 			interval: interval,
@@ -395,11 +400,11 @@ func markInterruptedRuns() {
 
 // loadJobConfig returns the persisted interval/enabled for a job, or the code
 // default + enabled when no row exists.
-func loadJobConfig(name string, def time.Duration) (time.Duration, bool) {
+func loadJobConfig(name string, def time.Duration, defaultEnabled bool) (time.Duration, bool) {
 	var secs, enabled int
 	err := srv.db.QueryRow(`SELECT interval_seconds, enabled FROM job_config WHERE job_name = ?`, name).Scan(&secs, &enabled)
 	if err != nil {
-		return def, true
+		return def, defaultEnabled
 	}
 	d := time.Duration(secs) * time.Second
 	if d < minJobInterval {

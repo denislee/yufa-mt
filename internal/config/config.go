@@ -82,6 +82,34 @@ type Config struct {
 	// (for testing). Default true.
 	PinProxyInject bool
 
+	// In-process zone-server proxy (internal/server/zoneproxy.go). When
+	// ZoneProxyEnabled, the app installs an iptables REDIRECT of the zone/map
+	// server port to a local listener that relays the live game connection and
+	// can inject chat/atcommand packets (CZ_REQUEST_CHAT 0x00f3) — used to drive
+	// the @mobinfo reference-data scrape. Linux-only; needs CAP_NET_ADMIN (the
+	// same capability the PIN proxy uses). Independent of PinProxy (different
+	// port). Plaintext on this server, so injection is straightforward.
+	ZoneProxyEnabled bool
+	// ZoneProxyZonePort is the zone/map TCP port carrying in-game chat and
+	// atcommands (the REDIRECT match). Default 6121 (matches ChatCapturePort).
+	ZoneProxyZonePort string
+	// ZoneProxyListenPort is the local port the REDIRECT delivers to and the
+	// in-process proxy listens on. Default 6799.
+	ZoneProxyListenPort string
+	// ZoneProxyServerIP, when set, narrows the REDIRECT rule to one server IP.
+	ZoneProxyServerIP string
+	// ZoneProxyCharName is an optional fallback character name used as the
+	// "<name> : <msg>" prefix when injecting chat. Normally the proxy learns it
+	// from the client's own outgoing chat; this only seeds it before then.
+	ZoneProxyCharName string
+
+	// Mob-info scrape first-run defaults (internal/server/mobscrape.go). The
+	// live values are persisted in the mobscrape_config table and editable from
+	// the admin Schedulers tab; these env vars only seed the initial row.
+	MobScrapeFromID  int // first mob id to sweep (default 1001)
+	MobScrapeToID    int // last mob id to sweep (default 2500)
+	MobScrapeDelayMs int // delay between @mobinfo commands, ms (default 400)
+
 	// SelfUpdateEnabled gates the admin "Self-Update" action
 	// (internal/server/selfupdate.go): git pull → rebuild → restart. Off by
 	// default so a dev instance can't be shut down by an accidental click;
@@ -115,6 +143,14 @@ func Load() (*Config, error) {
 		PinProxySelectSlot:   intEnv("PIN_PROXY_SELECT_SLOT", -1),
 		PinProxyServerIP:     os.Getenv("PIN_PROXY_SERVER_IP"),
 		PinProxyInject:       boolEnvDefault("PIN_PROXY_INJECT", true),
+		ZoneProxyEnabled:     boolEnv("ZONE_PROXY"),
+		ZoneProxyZonePort:    envOr("ZONE_PROXY_PORT", "6121"),
+		ZoneProxyListenPort:  envOr("ZONE_PROXY_LISTEN_PORT", "6799"),
+		ZoneProxyServerIP:    os.Getenv("ZONE_PROXY_SERVER_IP"),
+		ZoneProxyCharName:    os.Getenv("ZONE_PROXY_CHAR_NAME"),
+		MobScrapeFromID:      intEnv("MOBSCRAPE_FROM", 1001),
+		MobScrapeToID:        intEnv("MOBSCRAPE_TO", 2500),
+		MobScrapeDelayMs:     intEnv("MOBSCRAPE_DELAY_MS", 400),
 		SelfUpdateEnabled:    boolEnv("SELF_UPDATE"),
 		SelfUpdateBranch:     envOr("SELF_UPDATE_BRANCH", "main"),
 	}

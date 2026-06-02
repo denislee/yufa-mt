@@ -128,6 +128,8 @@ func registerAdminRoutes() *http.ServeMux {
 	// Scheduler tab: per-job interval/enabled config + manual run.
 	adminRouter.HandleFunc("/scheduler/config", adminSchedulerConfigHandler)
 	adminRouter.HandleFunc("/scheduler/run", adminSchedulerRunHandler)
+	adminRouter.HandleFunc("/mobscrape/config", adminMobScrapeConfigHandler)
+	adminRouter.HandleFunc("/mobscrape/stop", adminMobScrapeStopHandler)
 
 	// Admin RMS Cache Management
 	adminRouter.HandleFunc("/cache", adminCacheActionHandler)

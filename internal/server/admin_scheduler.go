@@ -127,6 +127,23 @@ func getSchedulerData(stats *AdminDashboardData) {
 		stats.SchedulerJobs = append(stats.SchedulerJobs, view)
 	}
 
+	// Dedicated @mobinfo scrape control card.
+	from, to, delay := loadMobScrapeConfig()
+	ready, charName := zoneProxyReady()
+	snap := mobScrape.snapshot()
+	mv := MobScrapeView{
+		FromID: from, ToID: to, DelayMs: delay,
+		ZoneReady: ready, CharName: charName,
+		Running: snap.Running, Current: snap.Current, Sent: snap.Sent,
+	}
+	if appConfig != nil {
+		mv.ZoneEnabled = appConfig.ZoneProxyEnabled
+	}
+	if snap.Running && !snap.StartedAt.IsZero() {
+		mv.StartedAgo = timeAgo(snap.StartedAt.Format(time.RFC3339))
+	}
+	stats.MobScrape = mv
+
 	// Recent runs across all jobs.
 	histRows, err := srv.db.Query(`
 		SELECT job_name, trigger, status, started_at, COALESCE(duration_ms, 0), COALESCE(message, '')
@@ -227,4 +244,53 @@ func adminSchedulerRunHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	log.Printf("[I] [Admin/Scheduler] Manual run triggered for '%s'.", name)
 	http.Redirect(w, r, adminRedirectURL(r, fmt.Sprintf("%s run triggered.", jobLabel(name))), http.StatusSeeOther)
+}
+
+// minMobScrapeDelayMs floors the inter-command delay so a misconfiguration
+// can't hammer the server with back-to-back @mobinfo commands.
+const minMobScrapeDelayMs = 50
+
+// adminMobScrapeConfigHandler saves the @mobinfo sweep's id range and
+// inter-command delay (mobscrape_config).
+func adminMobScrapeConfigHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Redirect(w, r, "/admin?tab=scheduler", http.StatusSeeOther)
+		return
+	}
+	if err := r.ParseForm(); err != nil {
+		http.Redirect(w, r, adminRedirectURL(r, "Error parsing form."), http.StatusSeeOther)
+		return
+	}
+	from, errF := strconv.Atoi(r.PostFormValue("from_id"))
+	to, errT := strconv.Atoi(r.PostFormValue("to_id"))
+	delay, errD := strconv.Atoi(r.PostFormValue("delay_ms"))
+	if errF != nil || errT != nil || errD != nil || from <= 0 || to < from || delay < 0 {
+		http.Redirect(w, r, adminRedirectURL(r, "Error: need from ≤ to (both > 0) and a non-negative delay."), http.StatusSeeOther)
+		return
+	}
+	clamped := ""
+	if delay < minMobScrapeDelayMs {
+		delay = minMobScrapeDelayMs
+		clamped = fmt.Sprintf(" (delay clamped to %dms minimum)", minMobScrapeDelayMs)
+	}
+	if err := saveMobScrapeConfig(from, to, delay); err != nil {
+		http.Redirect(w, r, adminRedirectURL(r, fmt.Sprintf("Error saving: %v", err)), http.StatusSeeOther)
+		return
+	}
+	msg := fmt.Sprintf("Mob scrape config saved: ids %d–%d, %dms between commands%s", from, to, delay, clamped)
+	http.Redirect(w, r, adminRedirectURL(r, msg), http.StatusSeeOther)
+}
+
+// adminMobScrapeStopHandler cancels an in-flight @mobinfo sweep.
+func adminMobScrapeStopHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Redirect(w, r, "/admin?tab=scheduler", http.StatusSeeOther)
+		return
+	}
+	if mobScrape.stop() {
+		log.Printf("[I] [Admin/Scheduler] Mob scrape sweep stop requested.")
+		http.Redirect(w, r, adminRedirectURL(r, "Mob scrape sweep stopping…"), http.StatusSeeOther)
+		return
+	}
+	http.Redirect(w, r, adminRedirectURL(r, "No mob scrape sweep is currently running."), http.StatusSeeOther)
 }

@@ -600,6 +600,26 @@ type AdminDashboardData struct {
 	// Scheduler tab: per-job config/status rows and the recent run history.
 	SchedulerJobs []SchedulerJobView
 	JobRuns       []JobRunView
+
+	// Scheduler tab: the dedicated @mobinfo injection-scrape control card.
+	MobScrape MobScrapeView
+}
+
+// MobScrapeView drives the @mobinfo scrape control card in the Schedulers tab:
+// the editable sweep parameters plus live zone-proxy/sweep status.
+type MobScrapeView struct {
+	FromID  int
+	ToID    int
+	DelayMs int
+
+	ZoneEnabled bool   // ZONE_PROXY config flag
+	ZoneReady   bool   // a live client↔zone session exists
+	CharName    string // name used for the "<name> : @mobinfo" prefix ("" if unknown)
+
+	Running    bool
+	Current    int    // last mob id sent
+	Sent       int    // commands sent so far
+	StartedAgo string // when the running sweep began
 }
 
 // SchedulerJobView is the per-job row rendered in the admin Schedulers tab:

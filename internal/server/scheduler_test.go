@@ -54,15 +54,20 @@ func TestJobConfigRoundTrip(t *testing.T) {
 	setupSchedulerTestDB(t)
 
 	// Absent row → code default, enabled.
-	if d, en := loadJobConfig("market", 3*time.Minute); d != 3*time.Minute || !en {
+	if d, en := loadJobConfig("market", 3*time.Minute, true); d != 3*time.Minute || !en {
 		t.Fatalf("default load = (%v, %v), want (3m, true)", d, en)
+	}
+
+	// Absent row with defaultEnabled=false → code default, disabled.
+	if _, en := loadJobConfig("mobinfo", 24*time.Hour, false); en {
+		t.Fatalf("default-disabled load enabled = %v, want false", en)
 	}
 
 	// Persisted value round-trips, including the disabled flag.
 	if err := saveJobConfig("market", 90*time.Second, false); err != nil {
 		t.Fatalf("saveJobConfig: %v", err)
 	}
-	if d, en := loadJobConfig("market", 3*time.Minute); d != 90*time.Second || en {
+	if d, en := loadJobConfig("market", 3*time.Minute, true); d != 90*time.Second || en {
 		t.Fatalf("load after save = (%v, %v), want (90s, false)", d, en)
 	}
 
@@ -70,7 +75,7 @@ func TestJobConfigRoundTrip(t *testing.T) {
 	if err := saveJobConfig("market", 5*time.Second, true); err != nil {
 		t.Fatalf("saveJobConfig: %v", err)
 	}
-	if d, _ := loadJobConfig("market", 3*time.Minute); d != minJobInterval {
+	if d, _ := loadJobConfig("market", 3*time.Minute, true); d != minJobInterval {
 		t.Fatalf("load of sub-minimum = %v, want clamp to %v", d, minJobInterval)
 	}
 }

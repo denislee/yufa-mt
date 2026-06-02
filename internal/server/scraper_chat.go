@@ -229,6 +229,9 @@ func startChatPacketCapture(ctx context.Context) {
 			return
 
 		case <-flushTicker.C:
+			// 0. Finalize a dangling @mobinfo block whose burst has ended.
+			mobInfo.flushIfStale(time.Now())
+
 			// 1. Periodic DB Flush
 			if len(newMessages) > 0 {
 				log.Printf("[I] [Scraper/Chat] Flushing %d batched messages to DB.", len(newMessages))
@@ -392,6 +395,13 @@ func startChatPacketCapture(ctx context.Context) {
 
 				// --- PARSING LOGIC ---
 				if message != "" {
+					// @mobinfo replies arrive as 0x008e self-chat lines. Route
+					// them to the mob parser; consumed lines are not stored as chat.
+					if bytes.Equal(def.prefix, []byte{0x8e, 0x00}) && mobInfo.handleLine(message, time.Now()) {
+						i = msgEnd
+						continue
+					}
+
 					var channel, charName, chatMsg string
 
 					// Check for Drop Packet

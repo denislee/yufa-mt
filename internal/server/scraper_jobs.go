@@ -20,6 +20,18 @@ func startBackgroundJobs(ctx context.Context, wg *sync.WaitGroup) {
 		}()
 	}
 
+	// The zone proxy is the sibling of the PIN proxy on the zone/map port: it
+	// relays the live game connection and lets the mob-info scrape inject
+	// @mobinfo commands. Like the PIN proxy it runs independently of the scrape
+	// flags so it's up before the client connects. (No-op unless ZONE_PROXY=1.)
+	if appConfig != nil && appConfig.ZoneProxyEnabled {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			startZoneProxy(ctx)
+		}()
+	}
+
 	chatOnly := appConfig != nil && appConfig.ChatCaptureOnly
 
 	// DISABLE_SCRAPERS turns off everything, including chat capture — unless

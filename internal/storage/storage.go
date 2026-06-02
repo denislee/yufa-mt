@@ -183,6 +183,15 @@ const (
 		"drops" TEXT,
 		"mvp_drops" TEXT
 	);`
+	// mobscrape_config holds the single-row, admin-editable parameters for the
+	// @mobinfo injection sweep (id range + inter-command delay). Pinned to id=1.
+	createMobScrapeConfigTableSQL = `
+	CREATE TABLE IF NOT EXISTS mobscrape_config (
+		"id" INTEGER PRIMARY KEY CHECK (id = 1),
+		"from_id" INTEGER NOT NULL,
+		"to_id" INTEGER NOT NULL,
+		"delay_ms" INTEGER NOT NULL
+	);`
 )
 
 const (
@@ -498,6 +507,7 @@ func createTables(db *sql.DB) error {
 		{"trading_post_items", createTradingPostItemsTableSQL},
 		{"internal_item_db", createInternalItemDBTableSQL},
 		{"internal_mob_db", createInternalMobDBTableSQL},
+		{"mobscrape_config", createMobScrapeConfigTableSQL},
 		{"woe_seasons", createWoeSeasonsTableSQL},
 		{"woe_events", createWoeEventsTableSQL},
 		{"woe_event_rankings", createWoeEventRankingsTableSQL},

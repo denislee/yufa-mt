@@ -830,6 +830,64 @@
                 </div>
 
                 <div class="adm-card mt-8">
+                    <h2 class="adm-card-title mb-1">Mob Info Scrape (@mobinfo injection)</h2>
+                    <p class="adm-desc mb-4">Drives the <code>mobinfo</code> job: injects <code>@mobinfo &lt;id&gt;</code> over the live game connection across the id range below, pacing commands by the delay to avoid flooding. Replies are parsed into the internal mob DB. Requires <code>ZONE_PROXY=1</code> and a logged-in client. Use the <strong>Mob Info Scrape</strong> row above to set how often the full sweep repeats / enable it.</p>
+
+                    <div class="mb-4 text-sm flex flex-wrap items-center gap-2">
+                        {{if .MobScrape.ZoneEnabled}}
+                        <span class="px-2 py-0.5 rounded text-xs font-semibold bg-green-100 text-green-800">zone proxy on</span>
+                        {{else}}
+                        <span class="px-2 py-0.5 rounded text-xs font-semibold bg-gray-200 text-gray-700">zone proxy off (ZONE_PROXY=0)</span>
+                        {{end}}
+                        {{if .MobScrape.ZoneReady}}
+                        <span class="px-2 py-0.5 rounded text-xs font-semibold bg-green-100 text-green-800">client connected</span>
+                        {{else}}
+                        <span class="px-2 py-0.5 rounded text-xs font-semibold bg-yellow-100 text-yellow-800">no live connection</span>
+                        {{end}}
+                        {{if .MobScrape.CharName}}
+                        <span class="text-gray-500 dark:text-gray-400">as character <span class="font-mono font-semibold">{{.MobScrape.CharName}}</span></span>
+                        {{else}}
+                        <span class="text-gray-500 dark:text-gray-400">character name unknown — send any in-game chat once, or set <code>ZONE_PROXY_CHAR_NAME</code></span>
+                        {{end}}
+                    </div>
+
+                    {{if .MobScrape.Running}}
+                    <div class="mb-4 text-sm">
+                        <span class="px-2 py-0.5 rounded text-xs font-semibold bg-blue-100 text-blue-800">sweeping…</span>
+                        <span class="text-gray-600 dark:text-gray-300">at id {{.MobScrape.Current}} ({{.MobScrape.Sent}} sent), started {{.MobScrape.StartedAgo}}</span>
+                    </div>
+                    {{end}}
+
+                    <div class="flex items-end gap-3 flex-wrap">
+                        <form action="/admin/mobscrape/config" method="POST" class="flex items-end gap-2 flex-wrap">
+                            <input type="hidden" name="tab" value="scheduler">
+                            <div>
+                                <label class="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">From id</label>
+                                <input type="number" name="from_id" min="1" value="{{.MobScrape.FromID}}" class="adm-input w-24">
+                            </div>
+                            <div>
+                                <label class="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">To id</label>
+                                <input type="number" name="to_id" min="1" value="{{.MobScrape.ToID}}" class="adm-input w-24">
+                            </div>
+                            <div>
+                                <label class="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Delay (ms)</label>
+                                <input type="number" name="delay_ms" min="50" value="{{.MobScrape.DelayMs}}" class="adm-input w-24">
+                            </div>
+                            <button type="submit" class="adm-btn adm-btn-sm adm-btn-primary">Save</button>
+                        </form>
+                        <form action="/admin/scheduler/run" method="POST">
+                            <input type="hidden" name="tab" value="scheduler">
+                            <input type="hidden" name="job_name" value="mobinfo">
+                            <button type="submit" class="adm-btn adm-btn-sm adm-btn-success" {{if .MobScrape.Running}}disabled{{end}}>Start sweep now</button>
+                        </form>
+                        <form action="/admin/mobscrape/stop" method="POST">
+                            <input type="hidden" name="tab" value="scheduler">
+                            <button type="submit" class="adm-btn adm-btn-sm adm-btn-danger" {{if not .MobScrape.Running}}disabled{{end}}>Stop</button>
+                        </form>
+                    </div>
+                </div>
+
+                <div class="adm-card mt-8">
                     <h2 class="adm-card-title mb-4">Recent Runs</h2>
                     <div class="overflow-x-auto border rounded-lg">
                         <table class="min-w-full text-sm">

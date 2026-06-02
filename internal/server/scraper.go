@@ -663,7 +663,7 @@ func scrapePlayerCharacters() {
 	// scraped and continue from the first un-scraped page. A checkpoint is only
 	// reused while it's fresher than one scrape interval and still matches the
 	// current page count (see loadScrapeCheckpoint); otherwise we start clean.
-	interval, _ := loadJobConfig("characters", 6*time.Hour)
+	interval, _ := loadJobConfig("characters", 6*time.Hour, true)
 	allScrapedPlayers, startPage := loadScrapeCheckpoint("characters", lastPage, interval)
 	if startPage > 1 {
 		log.Printf("[I] [Scraper/Char] Resuming from checkpoint: %d page(s) / %d chars already scraped, continuing at page %d/%d.",
