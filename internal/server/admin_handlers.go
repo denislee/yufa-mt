@@ -578,6 +578,7 @@ func getAdminDashboardData(r *http.Request) (AdminDashboardData, error) {
 
 	stats.SchedulerJobs = schedR.SchedulerJobs
 	stats.JobRuns = schedR.JobRuns
+	stats.MobScrape = schedR.MobScrape
 
 	stats.LastMarketScrape = lastMarket
 	stats.LastPlayerCountScrape = lastPlayer
