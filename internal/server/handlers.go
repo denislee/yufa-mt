@@ -771,6 +771,32 @@ func fullListHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	pagination := httpx.NewPaginationData(r, totalItems, itemsPerPage)
 
+	// Build the filter suffix carried on pagination links. It is a template.URL so
+	// html/template keeps the "&"/"=" separators intact instead of percent-encoding
+	// them (which would fold the whole thing into a single unparseable page value).
+	filterValues := url.Values{}
+	if searchQuery != "" {
+		filterValues.Set("query", searchQuery)
+	}
+	if storeNameQuery != "" {
+		filterValues.Set("store_name", storeNameQuery)
+	}
+	if selectedType != "" {
+		filterValues.Set("type", selectedType)
+	}
+	filterValues.Set("sort_by", sortBy)
+	filterValues.Set("order", order)
+	if !showAll {
+		filterValues.Set("only_available", "true")
+	}
+	if len(selectedCols) > 0 {
+		filterValues["cols"] = selectedCols
+	}
+	var filterString string
+	if encoded := filterValues.Encode(); encoded != "" {
+		filterString = "&" + encoded
+	}
+
 	query := fmt.Sprintf(`%s %s %s LIMIT ? OFFSET ?;`, baseQuery, whereClause, orderByClause)
 	// --- End Query Building ---
 
@@ -824,6 +850,7 @@ func fullListHandler(w http.ResponseWriter, r *http.Request) {
 		SelectedType:   selectedType,
 		PageTitle:      "Full List",
 		Pagination:     pagination,
+		Filter:         template.URL(filterString),
 	}
 	renderTemplate(w, r, "full_list.html", data)
 }

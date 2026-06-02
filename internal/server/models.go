@@ -235,6 +235,7 @@ type PageData struct {
 	SelectedType   string
 	PageTitle      string
 	Pagination     httpx.PaginationData
+	Filter         template.URL
 }
 
 type ActivityPageData struct {

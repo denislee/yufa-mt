@@ -134,14 +134,7 @@
         </div>
 
         {{if gt .Data.Pagination.TotalPages 1}}
-            {{$filter := ""}}
-            {{if .Data.SearchQuery}}{{$filter = (print $filter "&query=" (.Data.SearchQuery | urlquery))}}{{end}}
-            {{if .Data.StoreNameQuery}}{{$filter = (print $filter "&store_name=" (.Data.StoreNameQuery | urlquery))}}{{end}}
-            {{if .Data.SelectedType}}{{$filter = (print $filter "&type=" (.Data.SelectedType | urlquery))}}{{end}}
-            {{if .Data.SortBy}}{{$filter = (print $filter "&sort_by=" .Data.SortBy "&order=" .Data.Order)}}{{end}}
-            {{if not .Data.ShowAll}}{{$filter = (print $filter "&only_available=true")}}{{end}}
-            {{if .Data.ColumnParams}}{{$filter = (print $filter "&" .Data.ColumnParams)}}{{end}}
-            {{template "pagination" (dict "Page" .Page "Pagination" .Data.Pagination "Filter" $filter)}}
+            {{template "pagination" (dict "Page" .Page "Pagination" .Data.Pagination "Filter" .Data.Filter)}}
         {{end}}
     </div>
 
