@@ -2,6 +2,7 @@ package server
 
 import (
 	"net/http"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -96,9 +97,14 @@ func (r *logRing) Lines(tail int) []string {
 }
 
 // adminLogsHandler serves the captured server log as plain text (oldest line
-// first). The admin log viewer polls it for a live tail. A ?tail=N query
-// limits the response to the last N lines (default 100, capped at the buffer
-// capacity).
+// first). The admin log viewer polls it for a live tail.
+//
+// Query params:
+//   - tail=N    — limit to the last N lines (default 100, capped at capacity).
+//   - source=   — which process's logs: "app" (this process, default), "proxy"
+//     (the proxy process, fetched over IPC in ModeApp), or "both" (app+proxy
+//     merged by timestamp, each line tagged). In ModeAll/Proxy the app and proxy
+//     share one process, so "proxy"/"both" return the same single stream.
 func adminLogsHandler(w http.ResponseWriter, r *http.Request) {
 	tail := 100
 	if v := r.URL.Query().Get("tail"); v != "" {
@@ -106,8 +112,32 @@ func adminLogsHandler(w http.ResponseWriter, r *http.Request) {
 			tail = n
 		}
 	}
+	source := r.URL.Query().Get("source")
 
-	lines := logBuffer.Lines(tail)
+	var lines []string
+	switch source {
+	case "proxy":
+		if !proxyLogsRemote {
+			lines = logBuffer.Lines(tail) // single process: proxy logs == app logs
+		} else if pl, err := fetchProxyLogs(tail); err != nil {
+			lines = []string{"(proxy logs unavailable: " + err.Error() + ")"}
+		} else {
+			lines = pl
+		}
+	case "both":
+		if !proxyLogsRemote {
+			lines = logBuffer.Lines(tail) // single process: one combined stream already
+		} else {
+			app := logBuffer.Lines(tail)
+			proxy, err := fetchProxyLogs(tail)
+			if err != nil {
+				proxy = []string{"(proxy logs unavailable: " + err.Error() + ")"}
+			}
+			lines = mergeLogsByTime(app, proxy, tail)
+		}
+	default: // "app" or unset
+		lines = logBuffer.Lines(tail)
+	}
 
 	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 	w.Header().Set("Cache-Control", "no-store")
@@ -116,4 +146,39 @@ func adminLogsHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	_, _ = w.Write([]byte(strings.Join(lines, "\n") + "\n"))
+}
+
+// mergeLogsByTime interleaves app and proxy log lines into one chronological
+// stream, tagging each with its source. It sorts on the slog "time=" field,
+// whose RFC3339 value sorts lexicographically into time order (the box runs a
+// single fixed UTC offset). Lines with no parseable time sort to the top.
+func mergeLogsByTime(app, proxy []string, tail int) []string {
+	type tagged struct{ key, line string }
+	all := make([]tagged, 0, len(app)+len(proxy))
+	for _, l := range app {
+		all = append(all, tagged{logLineTimeKey(l), "[app]   " + l})
+	}
+	for _, l := range proxy {
+		all = append(all, tagged{logLineTimeKey(l), "[proxy] " + l})
+	}
+	sort.SliceStable(all, func(i, j int) bool { return all[i].key < all[j].key })
+	out := make([]string, len(all))
+	for i, t := range all {
+		out[i] = t.line
+	}
+	if tail > 0 && tail < len(out) {
+		out = out[len(out)-tail:]
+	}
+	return out
+}
+
+// logLineTimeKey extracts the value of the slog "time=" field for sorting, or
+// "" if the line has none (those sort oldest-first, which is acceptable).
+func logLineTimeKey(line string) string {
+	_, rest, ok := strings.Cut(line, "time=")
+	if !ok {
+		return ""
+	}
+	key, _, _ := strings.Cut(rest, " ")
+	return key
 }

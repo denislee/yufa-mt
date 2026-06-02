@@ -41,7 +41,9 @@ func (c *proxyIPCClient) roundTrip(req ipcRequest) (ipcResponse, error) {
 	}
 
 	sc := bufio.NewScanner(conn)
-	sc.Buffer(make([]byte, 0, 4096), 1<<20)
+	// Responses are usually tiny, but a "logs" reply carries up to the full
+	// 2000-line ring as one JSON line — allow up to 8 MiB.
+	sc.Buffer(make([]byte, 0, 4096), 8<<20)
 	if !sc.Scan() {
 		if err := sc.Err(); err != nil {
 			return ipcResponse{}, fmt.Errorf("proxy IPC read: %w", err)
@@ -77,4 +79,17 @@ func (c *proxyIPCClient) ready() (bool, string) {
 		return false, ""
 	}
 	return resp.Ready, resp.CharName
+}
+
+// proxyLogs fetches the proxy process's most recent log lines (its stdout ring
+// buffer) so the app's admin panel can display proxy-side logs.
+func (c *proxyIPCClient) proxyLogs(tail int) ([]string, error) {
+	resp, err := c.roundTrip(ipcRequest{Op: "logs", Tail: tail})
+	if err != nil {
+		return nil, err
+	}
+	if !resp.OK {
+		return nil, fmt.Errorf("proxy refused logs: %s", resp.Err)
+	}
+	return resp.Lines, nil
 }

@@ -45,3 +45,7 @@ all.txt
 yufa-mt
 # Compiled server binary (built from ./cmd/server)
 /server
+
+# Local-only project instructions for Claude Code (personal, not shared). Claude
+# Code still reads it from disk — gitignoring only keeps it out of the repo.
+/CLAUDE.md

@@ -28,17 +28,19 @@ const ipcProtocolVersion = 1
 
 // ipcRequest is one app→proxy command line.
 type ipcRequest struct {
-	V   int    `json:"v"`
-	Op  string `json:"op"`            // "status" | "inject"
-	Msg string `json:"msg,omitempty"` // for "inject": the raw chat/atcommand text
+	V    int    `json:"v"`
+	Op   string `json:"op"`             // "status" | "inject" | "logs"
+	Msg  string `json:"msg,omitempty"`  // for "inject": the raw chat/atcommand text
+	Tail int    `json:"tail,omitempty"` // for "logs": max lines to return (0 = all)
 }
 
 // ipcResponse is the proxy→app reply line.
 type ipcResponse struct {
-	OK       bool   `json:"ok"`
-	Ready    bool   `json:"ready,omitempty"`    // for "status"
-	CharName string `json:"charName,omitempty"` // for "status"
-	Err      string `json:"err,omitempty"`
+	OK       bool     `json:"ok"`
+	Ready    bool     `json:"ready,omitempty"`    // for "status"
+	CharName string   `json:"charName,omitempty"` // for "status"
+	Lines    []string `json:"lines,omitempty"`    // for "logs": recent proxy log lines
+	Err      string   `json:"err,omitempty"`
 }
 
 // startProxyIPCServer listens on the unix socket and serves inject/status
@@ -128,6 +130,10 @@ func serveProxyIPCRequest(req ipcRequest) ipcResponse {
 			return ipcResponse{OK: false, Err: err.Error()}
 		}
 		return ipcResponse{OK: true}
+	case "logs":
+		// Serve this process's own in-memory log ring (the proxy's stdout
+		// capture) so the app's admin panel can show proxy-side logs.
+		return ipcResponse{OK: true, Lines: logBuffer.Lines(req.Tail)}
 	default:
 		return ipcResponse{OK: false, Err: "unknown op: " + req.Op}
 	}

@@ -1416,8 +1416,17 @@
                 <div class="adm-card mb-8"
                      x-data="serverLogs()" x-init="init()">
                     <div class="flex flex-wrap items-center justify-between gap-3 mb-3">
-                        <h2 class="adm-card-title">Server Logs (stdout)</h2>
+                        <h2 class="adm-card-title">Server Logs</h2>
                         <div class="flex flex-wrap items-center gap-3 text-sm">
+                            <label class="flex items-center gap-1.5">
+                                <span class="text-gray-600 dark:text-gray-300">View</span>
+                                <select x-model="view" @change="refresh()" class="adm-select">
+                                    <option value="combined">Combined (app + proxy)</option>
+                                    <option value="split">Split</option>
+                                    <option value="app">App only</option>
+                                    <option value="proxy">Proxy only</option>
+                                </select>
+                            </label>
                             <label class="flex items-center gap-1.5">
                                 <span class="text-gray-600 dark:text-gray-300">Lines</span>
                                 <select x-model.number="tail" @change="refresh()" class="adm-select">
@@ -1443,7 +1452,21 @@
                             <span>Follow tail</span>
                         </label>
                     </div>
-                    <pre x-ref="logbox" class="bg-gray-900 text-gray-100 text-xs font-mono leading-relaxed rounded-md p-4 h-[28rem] overflow-auto whitespace-pre-wrap" x-text="logs"></pre>
+
+                    <!-- Combined / single-source view -->
+                    <pre x-show="view !== 'split'" x-ref="logbox" class="bg-gray-900 text-gray-100 text-xs font-mono leading-relaxed rounded-md p-4 h-[28rem] overflow-auto whitespace-pre-wrap" x-text="logs"></pre>
+
+                    <!-- Split view: app and proxy side by side -->
+                    <div x-show="view === 'split'" class="grid grid-cols-1 lg:grid-cols-2 gap-3">
+                        <div>
+                            <div class="text-xs font-semibold text-gray-600 dark:text-gray-300 mb-1">App <span class="font-normal text-gray-400">(web · scrapers · chat capture · Discord)</span></div>
+                            <pre x-ref="appbox" class="bg-gray-900 text-gray-100 text-xs font-mono leading-relaxed rounded-md p-4 h-[28rem] overflow-auto whitespace-pre-wrap" x-text="appLogs"></pre>
+                        </div>
+                        <div>
+                            <div class="text-xs font-semibold text-gray-600 dark:text-gray-300 mb-1">Proxy <span class="font-normal text-gray-400">(PIN · zone relay · iptables · IPC)</span></div>
+                            <pre x-ref="proxybox" class="bg-gray-900 text-gray-100 text-xs font-mono leading-relaxed rounded-md p-4 h-[28rem] overflow-auto whitespace-pre-wrap" x-text="proxyLogs"></pre>
+                        </div>
+                    </div>
                 </div>
 
             </div>
@@ -1728,7 +1751,10 @@
         // Live server-log viewer (Server tab). Polls /admin/logs as plain text.
         function serverLogs() {
             return {
-                logs: 'Loading…',
+                view: 'combined',     // combined | split | app | proxy
+                logs: 'Loading…',     // for combined/app/proxy (single box)
+                appLogs: 'Loading…',  // for split (left box)
+                proxyLogs: 'Loading…',// for split (right box)
                 tail: 100,
                 auto: true,
                 follow: true,
@@ -1738,20 +1764,31 @@
                     this.refresh();
                     if (this.auto) this.startAuto();
                 },
+                async fetchLogs(source) {
+                    const resp = await fetch('/admin/logs?tail=' + this.tail + '&source=' + source, { headers: { 'X-Requested-With': 'fetch' } });
+                    if (!resp.ok) throw new Error('HTTP ' + resp.status);
+                    return await resp.text();
+                },
                 async refresh() {
                     try {
-                        const resp = await fetch('/admin/logs?tail=' + this.tail, { headers: { 'X-Requested-With': 'fetch' } });
-                        if (!resp.ok) throw new Error('HTTP ' + resp.status);
-                        this.logs = await resp.text();
-                        const now = new Date();
-                        this.status = 'Updated ' + now.toLocaleTimeString();
-                        this.$nextTick(() => { if (this.follow) this.scrollToBottom(); });
+                        if (this.view === 'split') {
+                            const [a, p] = await Promise.all([this.fetchLogs('app'), this.fetchLogs('proxy')]);
+                            this.appLogs = a;
+                            this.proxyLogs = p;
+                            this.$nextTick(() => { if (this.follow) { this.scrollEl('appbox'); this.scrollEl('proxybox'); } });
+                        } else {
+                            // combined -> "both"; app/proxy map straight through.
+                            const source = (this.view === 'combined') ? 'both' : this.view;
+                            this.logs = await this.fetchLogs(source);
+                            this.$nextTick(() => { if (this.follow) this.scrollEl('logbox'); });
+                        }
+                        this.status = 'Updated ' + new Date().toLocaleTimeString();
                     } catch (err) {
                         this.status = 'Error fetching logs: ' + err.message;
                     }
                 },
-                scrollToBottom() {
-                    const box = this.$refs.logbox;
+                scrollEl(ref) {
+                    const box = this.$refs[ref];
                     if (box) box.scrollTop = box.scrollHeight;
                 },
                 startAuto() {

@@ -15,12 +15,24 @@ package server
 var (
 	injectChatCommand = injectChatCommandLocal
 	zoneProxyReady    = zoneProxyReadyLocal
+
+	// fetchProxyLogs returns the proxy's recent log lines. By default (ModeAll /
+	// ModeProxy) the proxy logs live in THIS process, so it reads the local ring
+	// buffer. In ModeApp useProxyIPC repoints it at the IPC client.
+	fetchProxyLogs = func(tail int) ([]string, error) { return logBuffer.Lines(tail), nil }
+
+	// proxyLogsRemote is true only in ModeApp, where the proxy runs in a separate
+	// process. In ModeAll/Proxy the "app" and "proxy" log streams are the same
+	// single buffer, so the admin panel must not merge/duplicate them.
+	proxyLogsRemote = false
 )
 
-// useProxyIPC repoints the injection/readiness calls at the IPC client for the
-// given socket path. Called from Run when starting in ModeApp.
+// useProxyIPC repoints the injection/readiness/logs calls at the IPC client for
+// the given socket path. Called from Run when starting in ModeApp.
 func useProxyIPC(socketPath string) {
 	c := newProxyIPCClient(socketPath)
 	injectChatCommand = c.inject
 	zoneProxyReady = c.ready
+	fetchProxyLogs = c.proxyLogs
+	proxyLogsRemote = true
 }

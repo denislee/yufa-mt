@@ -5,6 +5,7 @@ import (
 	"context"
 	"net"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 )
@@ -106,6 +107,54 @@ func TestUseProxyIPCRoutesOverWire(t *testing.T) {
 	ready, name := zoneProxyReady()
 	if !ready || name != "fakehero" {
 		t.Errorf("zoneProxyReady over IPC = (%v, %q); want (true, \"fakehero\")", ready, name)
+	}
+}
+
+// TestProxyIPCLogs proves the "logs" op returns the proxy's ring-buffer lines
+// over the wire (used by the admin panel's proxy/split/combined views).
+func TestProxyIPCLogs(t *testing.T) {
+	logBuffer.Write([]byte("time=2026-06-02T12:00:00-03:00 level=INFO msg=\"proxy test line\"\n"))
+
+	sock := filepath.Join(t.TempDir(), "logs.sock")
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go startProxyIPCServer(ctx, sock)
+
+	c := newProxyIPCClient(sock)
+	waitForSocket(t, c)
+
+	lines, err := c.proxyLogs(50)
+	if err != nil {
+		t.Fatalf("proxyLogs over IPC: %v", err)
+	}
+	found := false
+	for _, l := range lines {
+		if strings.Contains(l, "proxy test line") {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("proxyLogs did not return the written line; got %d lines", len(lines))
+	}
+}
+
+// TestMergeLogsByTime checks the combined view interleaves by timestamp and tags.
+func TestMergeLogsByTime(t *testing.T) {
+	app := []string{"time=2026-06-02T12:00:01-03:00 msg=app-a", "time=2026-06-02T12:00:03-03:00 msg=app-b"}
+	proxy := []string{"time=2026-06-02T12:00:02-03:00 msg=proxy-a"}
+	out := mergeLogsByTime(app, proxy, 0)
+	if len(out) != 3 {
+		t.Fatalf("merged len=%d; want 3", len(out))
+	}
+	// Order must be app-a, proxy-a, app-b by timestamp, each tagged.
+	if !strings.Contains(out[0], "[app]") || !strings.Contains(out[0], "app-a") {
+		t.Errorf("out[0]=%q; want tagged app-a first", out[0])
+	}
+	if !strings.Contains(out[1], "[proxy]") || !strings.Contains(out[1], "proxy-a") {
+		t.Errorf("out[1]=%q; want tagged proxy-a second", out[1])
+	}
+	if !strings.Contains(out[2], "app-b") {
+		t.Errorf("out[2]=%q; want app-b last", out[2])
 	}
 }
 
