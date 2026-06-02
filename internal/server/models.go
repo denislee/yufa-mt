@@ -609,6 +609,9 @@ type AdminDashboardData struct {
 
 	// Scheduler tab: the dedicated @mobinfo injection-scrape control card.
 	MobScrape MobScrapeView
+	// Scheduler tab: the dedicated @whereis spawn-scrape control card. Reuses
+	// the same view shape; FromID/ToID/DelayMs mirror the shared mobscrape_config.
+	MobSpawnScrape MobScrapeView
 }
 
 // MobScrapeView drives the @mobinfo scrape control card in the Schedulers tab:

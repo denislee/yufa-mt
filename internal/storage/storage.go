@@ -229,6 +229,18 @@ const (
 		"to_id" INTEGER NOT NULL,
 		"delay_ms" INTEGER NOT NULL
 	);`
+	// mob_spawn_db holds the LIVE spawn locations scraped from the running server
+	// via @whereis (whereis_parser.go), kept separate from the stat/drop tables
+	// because @whereis is a distinct command/sweep. spawns is a JSON array of
+	// {"map":"prt_fild08","qty":10} entries (the map index name and spawn count
+	// exactly as the server reports them); an empty array means the mob was
+	// scraped but does not spawn in the wild. scraped_at marks the last capture.
+	createMobSpawnDBTableSQL = `
+	CREATE TABLE IF NOT EXISTS mob_spawn_db (
+		"mob_id" INTEGER NOT NULL PRIMARY KEY,
+		"spawns" TEXT,
+		"scraped_at" TEXT
+	);`
 )
 
 const (
@@ -566,6 +578,7 @@ func createTables(db *sql.DB) error {
 		{"internal_mob_db", createInternalMobDBTableSQL},
 		{"mob_server_db", createMobServerDBTableSQL},
 		{"mobscrape_config", createMobScrapeConfigTableSQL},
+		{"mob_spawn_db", createMobSpawnDBTableSQL},
 		{"woe_seasons", createWoeSeasonsTableSQL},
 		{"woe_events", createWoeEventsTableSQL},
 		{"woe_event_rankings", createWoeEventRankingsTableSQL},

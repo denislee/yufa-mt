@@ -66,6 +66,37 @@
             </div>
         </div>
 
+        <div class="bg-white dark:bg-gray-800 shadow rounded-lg overflow-hidden mb-8">
+            <div class="px-4 pt-4 pb-2 flex items-center justify-between flex-wrap gap-2">
+                <h2 class="text-sm font-semibold text-gray-700 dark:text-gray-200 uppercase tracking-wider">Spawn Locations &amp; Counts</h2>
+                {{if .Data.SpawnsScraped}}
+                <span class="text-xs text-gray-400 dark:text-gray-500">live server &middot; scraped {{.Data.SpawnsAgo}}</span>
+                {{end}}
+            </div>
+            {{if .Data.Spawns}}
+            <table class="min-w-full text-sm">
+                <thead>
+                    <tr class="border-b border-gray-200 dark:border-gray-700 text-left text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase">
+                        <th class="px-4 py-2">Map</th>
+                        <th class="px-4 py-2 text-right w-28">Spawns</th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y divide-gray-100 dark:divide-gray-700">
+                    {{range .Data.Spawns}}
+                    <tr class="hover:bg-gray-50 dark:hover:bg-gray-700">
+                        <td class="px-4 py-2 font-mono text-gray-700 dark:text-gray-200">{{.Map}}</td>
+                        <td class="px-4 py-2 text-right font-mono">{{.Qty}}</td>
+                    </tr>
+                    {{end}}
+                </tbody>
+            </table>
+            {{else if .Data.SpawnsScraped}}
+            <p class="px-4 pb-4 text-sm text-gray-500 dark:text-gray-400">This monster does not spawn in the wild on the live server (no permanent spawns). It may be summoned, an MVP, or quest/event-only — see <a href="https://www.divine-pride.net/database/monster/{{$m.ID}}" target="_blank" rel="noopener noreferrer" class="text-blue-600 dark:text-blue-400 hover:underline">Divine Pride</a>.</p>
+            {{else}}
+            <p class="px-4 pb-4 text-sm text-gray-500 dark:text-gray-400">Not yet scraped from the live server — run the <code>@whereis</code> sweep to capture where this monster spawns and how many. Meanwhile, see <a href="https://www.divine-pride.net/database/monster/{{$m.ID}}" target="_blank" rel="noopener noreferrer" class="text-blue-600 dark:text-blue-400 hover:underline">Divine Pride</a>.</p>
+            {{end}}
+        </div>
+
         {{$c := .Data.Comparison}}
         {{if $c.HasServer}}
         <div class="bg-white dark:bg-gray-800 shadow rounded-lg overflow-hidden mb-8">

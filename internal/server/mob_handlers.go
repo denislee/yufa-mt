@@ -136,10 +136,21 @@ type MobComparison struct {
 	MvpDiffCount   int           // number of MvpDropDiffs rows that differ
 }
 
+// MobSpawnView is one spawn location on the detail page: the map index name and
+// the number of that mob spawned there, as reported by the live-server @whereis
+// scrape.
+type MobSpawnView struct {
+	Map string
+	Qty int
+}
+
 type MobDetailPageData struct {
-	Mob        MobDetail
-	Comparison MobComparison
-	PageTitle  string
+	Mob           MobDetail
+	Comparison    MobComparison
+	PageTitle     string
+	Spawns        []MobSpawnView // live-server spawn locations, count-descending
+	SpawnsScraped bool           // a mob_spawn_db row exists (even if it has no spawns)
+	SpawnsAgo     string         // humanized scraped_at, when SpawnsScraped
 }
 
 // ni unwraps a nullable int to a plain int (0 when NULL).
@@ -304,12 +315,48 @@ func mobDetailHandler(w http.ResponseWriter, r *http.Request) {
 	m.MvpDrops = parseMobDrops(mvpDropsJSON, lang)
 
 	cmp := loadMobComparison(id, m, lang)
+	spawns, spawnsScraped, spawnsAgo := loadMobSpawns(id)
 
 	renderTemplate(w, r, "mob_detail.html", MobDetailPageData{
-		Mob:        m,
-		Comparison: cmp,
-		PageTitle:  "Bestiary",
+		Mob:           m,
+		Comparison:    cmp,
+		PageTitle:     "Bestiary",
+		Spawns:        spawns,
+		SpawnsScraped: spawnsScraped,
+		SpawnsAgo:     spawnsAgo,
 	})
+}
+
+// loadMobSpawns loads the live-server spawn locations (from the @whereis scrape)
+// for a mob, ordered by descending spawn count. scraped reports whether a
+// mob_spawn_db row exists at all — false means the @whereis sweep hasn't reached
+// this mob yet, which the detail page distinguishes from "scraped, no spawns".
+func loadMobSpawns(id int) (spawns []MobSpawnView, scraped bool, ago string) {
+	var (
+		spawnsJSON string
+		scrapedAt  string
+	)
+	err := srv.db.QueryRow(
+		`SELECT COALESCE(spawns,'[]'), COALESCE(scraped_at,'') FROM mob_spawn_db WHERE mob_id = ?`, id,
+	).Scan(&spawnsJSON, &scrapedAt)
+	if err != nil {
+		return nil, false, "" // no row (ErrNoRows) or scan error → not scraped
+	}
+
+	var locs []mobSpawnLoc
+	if err := json.Unmarshal([]byte(spawnsJSON), &locs); err != nil {
+		log.Printf("[W] [HTTP/Mob] bad spawns JSON for mob %d: %v", id, err)
+	}
+	for _, l := range locs {
+		spawns = append(spawns, MobSpawnView{Map: l.Map, Qty: l.Qty})
+	}
+	sort.SliceStable(spawns, func(i, j int) bool {
+		if spawns[i].Qty != spawns[j].Qty {
+			return spawns[i].Qty > spawns[j].Qty
+		}
+		return spawns[i].Map < spawns[j].Map
+	})
+	return spawns, true, timeAgo(scrapedAt)
 }
 
 // mobFieldDiffs builds the baseline-vs-server comparison rows for a mob. The

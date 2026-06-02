@@ -133,6 +133,7 @@ func registerAdminRoutes() *http.ServeMux {
 	adminRouter.HandleFunc("/scheduler/run", adminSchedulerRunHandler)
 	adminRouter.HandleFunc("/mobscrape/config", adminMobScrapeConfigHandler)
 	adminRouter.HandleFunc("/mobscrape/stop", adminMobScrapeStopHandler)
+	adminRouter.HandleFunc("/mobspawn/stop", adminWhereIsScrapeStopHandler)
 
 	// Admin RMS Cache Management
 	adminRouter.HandleFunc("/cache", adminCacheActionHandler)

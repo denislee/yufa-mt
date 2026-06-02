@@ -144,6 +144,23 @@ func getSchedulerData(stats *AdminDashboardData) {
 	}
 	stats.MobScrape = mv
 
+	// Dedicated @whereis spawn-scrape control card. Shares the @mobinfo range +
+	// delay (mobscrape_config) and zone-proxy status; only the sweep progress is
+	// its own.
+	wsnap := whereIsScrape.snapshot()
+	wmv := MobScrapeView{
+		FromID: from, ToID: to, DelayMs: delay,
+		ZoneReady: ready, CharName: charName,
+		Running: wsnap.Running, Current: wsnap.Current, Sent: wsnap.Sent,
+	}
+	if appConfig != nil {
+		wmv.ZoneEnabled = appConfig.ZoneProxyEnabled
+	}
+	if wsnap.Running && !wsnap.StartedAt.IsZero() {
+		wmv.StartedAgo = timeAgo(wsnap.StartedAt.Format(time.RFC3339))
+	}
+	stats.MobSpawnScrape = wmv
+
 	// Recent runs across all jobs.
 	histRows, err := srv.db.Query(`
 		SELECT job_name, trigger, status, started_at, COALESCE(duration_ms, 0), COALESCE(message, '')
@@ -293,4 +310,18 @@ func adminMobScrapeStopHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	http.Redirect(w, r, adminRedirectURL(r, "No mob scrape sweep is currently running."), http.StatusSeeOther)
+}
+
+// adminWhereIsScrapeStopHandler cancels an in-flight @whereis spawn sweep.
+func adminWhereIsScrapeStopHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Redirect(w, r, "/admin?tab=scheduler", http.StatusSeeOther)
+		return
+	}
+	if whereIsScrape.stop() {
+		log.Printf("[I] [Admin/Scheduler] Spawn scrape sweep stop requested.")
+		http.Redirect(w, r, adminRedirectURL(r, "Spawn scrape sweep stopping…"), http.StatusSeeOther)
+		return
+	}
+	http.Redirect(w, r, adminRedirectURL(r, "No spawn scrape sweep is currently running."), http.StatusSeeOther)
 }

@@ -888,6 +888,44 @@
                 </div>
 
                 <div class="adm-card mt-8">
+                    <h2 class="adm-card-title mb-1">Mob Spawn Scrape (@whereis injection)</h2>
+                    <p class="adm-desc mb-4">Drives the <code>mobspawn</code> job: injects <code>@whereis &lt;id&gt;</code> over the live game connection across the <strong>same id range &amp; delay</strong> as the @mobinfo sweep above, capturing each monster's spawn maps and counts into the mob spawn DB (shown on the bestiary detail page). Requires <code>ZONE_PROXY=1</code> and a logged-in client. Use the <strong>Mob Spawn Scrape</strong> row above to set how often it repeats / enable it.</p>
+
+                    <div class="mb-4 text-sm flex flex-wrap items-center gap-2">
+                        {{if .MobSpawnScrape.ZoneEnabled}}
+                        <span class="px-2 py-0.5 rounded text-xs font-semibold bg-green-100 text-green-800">zone proxy on</span>
+                        {{else}}
+                        <span class="px-2 py-0.5 rounded text-xs font-semibold bg-gray-200 text-gray-700">zone proxy off (ZONE_PROXY=0)</span>
+                        {{end}}
+                        {{if .MobSpawnScrape.ZoneReady}}
+                        <span class="px-2 py-0.5 rounded text-xs font-semibold bg-green-100 text-green-800">client connected</span>
+                        {{else}}
+                        <span class="px-2 py-0.5 rounded text-xs font-semibold bg-yellow-100 text-yellow-800">no live connection</span>
+                        {{end}}
+                        <span class="text-gray-500 dark:text-gray-400">range <span class="font-mono">{{.MobSpawnScrape.FromID}}–{{.MobSpawnScrape.ToID}}</span>, <span class="font-mono">{{.MobSpawnScrape.DelayMs}}ms</span> apart (shared with @mobinfo)</span>
+                    </div>
+
+                    {{if .MobSpawnScrape.Running}}
+                    <div class="mb-4 text-sm">
+                        <span class="px-2 py-0.5 rounded text-xs font-semibold bg-blue-100 text-blue-800">sweeping…</span>
+                        <span class="text-gray-600 dark:text-gray-300">at id {{.MobSpawnScrape.Current}} ({{.MobSpawnScrape.Sent}} sent), started {{.MobSpawnScrape.StartedAgo}}</span>
+                    </div>
+                    {{end}}
+
+                    <div class="flex items-end gap-3 flex-wrap">
+                        <form action="/admin/scheduler/run" method="POST">
+                            <input type="hidden" name="tab" value="scheduler">
+                            <input type="hidden" name="job_name" value="mobspawn">
+                            <button type="submit" class="adm-btn adm-btn-sm adm-btn-success" {{if .MobSpawnScrape.Running}}disabled{{end}}>Start sweep now</button>
+                        </form>
+                        <form action="/admin/mobspawn/stop" method="POST">
+                            <input type="hidden" name="tab" value="scheduler">
+                            <button type="submit" class="adm-btn adm-btn-sm adm-btn-danger" {{if not .MobSpawnScrape.Running}}disabled{{end}}>Stop</button>
+                        </form>
+                    </div>
+                </div>
+
+                <div class="adm-card mt-8">
                     <h2 class="adm-card-title mb-4">Recent Runs</h2>
                     <div class="overflow-x-auto border rounded-lg">
                         <table class="min-w-full text-sm">

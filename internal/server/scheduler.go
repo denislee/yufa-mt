@@ -50,6 +50,7 @@ var jobRegistry = []JobSpec{
 	{Name: "mvp", Label: "MVP Kill", Category: "Players & Characters", Func: scrapeMvpKills, LogTag: "[Scraper/MVP]", DefaultInterval: 5 * time.Minute},
 	{Name: "woe", Label: "WoE Char Rankings", Category: "Guilds & Events", Func: scrapeWoeCharacterRankings, LogTag: "[Scraper/WoE]", DefaultInterval: 12 * time.Hour},
 	{Name: "mobinfo", Label: "Mob Info Scrape (@mobinfo)", Category: "Reference Data", Func: runMobInfoSweep, LogTag: "[Scraper/MobInfo]", DefaultInterval: 24 * time.Hour, DefaultDisabled: true},
+	{Name: "mobspawn", Label: "Mob Spawn Scrape (@whereis)", Category: "Reference Data", Func: runWhereIsSweep, LogTag: "[Scraper/WhereIs]", DefaultInterval: 24 * time.Hour, DefaultDisabled: true},
 }
 
 // globalScheduler is the running scheduler, set by startBackgroundJobs.

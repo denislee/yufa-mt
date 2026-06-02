@@ -93,5 +93,10 @@ func TestMobDetailTemplateExecutes(t *testing.T) {
 			},
 			ServerDrops: []MobDropView{{ItemID: 984, Name: "Oridecon", Known: true, RatePct: 50}},
 		},
+		SpawnsScraped: true, SpawnsAgo: "5 minutes ago",
+		Spawns: []MobSpawnView{
+			{Map: "abyss_03", Qty: 8},
+			{Map: "abbey03", Qty: 2},
+		},
 	})
 }
