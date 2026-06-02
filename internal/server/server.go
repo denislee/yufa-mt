@@ -187,6 +187,7 @@ func Run(cfg *config.Config) {
 
 	// Run this synchronously on startup before starting other services
 	populateItemDBOnStartup()
+	populateMobDBOnStartup()
 
 	// Create a context that gets cancelled on OS signals (SIGINT, SIGTERM)
 	ctx, cancel := context.WithCancel(context.Background())

@@ -90,6 +90,8 @@ var (
 	idNameRegex = regexp.MustCompile(`href="[^"]*/pt-BR/item/id/(\d+)"[^>]*>\s*([^<]+)\s*</a>`)
 )
 
+var defaultClient = &http.Client{Timeout: 10 * time.Second}
+
 // Search scrapes rodatabase.com for items matching `query` (with the slot
 // suffix stripped) and the given slot count.
 func Search(query string, slots int) ([]SearchResult, error) {
@@ -107,8 +109,7 @@ func Search(query string, slots int) ([]SearchResult, error) {
 	log.Printf("[I] [RODB/Search] Performing search for: '%s' (Original: '%s', Slots: %d)", searchQuery, query, slots)
 	log.Printf("[D] [RODB/Search] URL: %s", searchURL)
 
-	client := http.Client{Timeout: 10 * time.Second}
-	res, err := client.Get(searchURL)
+	res, err := defaultClient.Get(searchURL)
 	if err != nil {
 		log.Printf("[E] [RODB/Search] Failed to get URL: %v", err)
 		return nil, fmt.Errorf("failed to get search URL: %w", err)

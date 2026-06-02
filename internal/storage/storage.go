@@ -144,6 +144,45 @@ const (
 		"equip_script" TEXT,
 		"unequip_script" TEXT
 	);`
+	createInternalMobDBTableSQL = `
+	CREATE TABLE IF NOT EXISTS internal_mob_db (
+		"mob_id" INTEGER NOT NULL PRIMARY KEY,
+		"aegis_name" TEXT,
+		"name" TEXT,
+		"name_pt" TEXT,
+		"level" INTEGER,
+		"hp" INTEGER,
+		"sp" INTEGER,
+		"base_exp" INTEGER,
+		"job_exp" INTEGER,
+		"mvp_exp" INTEGER,
+		"attack" INTEGER,
+		"attack2" INTEGER,
+		"defense" INTEGER,
+		"magic_defense" INTEGER,
+		"str" INTEGER,
+		"agi" INTEGER,
+		"vit" INTEGER,
+		"int" INTEGER,
+		"dex" INTEGER,
+		"luk" INTEGER,
+		"attack_range" INTEGER,
+		"skill_range" INTEGER,
+		"chase_range" INTEGER,
+		"size" TEXT,
+		"race" TEXT,
+		"element" TEXT,
+		"element_level" INTEGER,
+		"walk_speed" INTEGER,
+		"attack_delay" INTEGER,
+		"attack_motion" INTEGER,
+		"damage_motion" INTEGER,
+		"ai" TEXT,
+		"modes" TEXT,
+		"is_mvp" INTEGER,
+		"drops" TEXT,
+		"mvp_drops" TEXT
+	);`
 )
 
 const (
@@ -458,6 +497,7 @@ func createTables(db *sql.DB) error {
 		{"trading_posts", createTradingPostsTableSQL},
 		{"trading_post_items", createTradingPostItemsTableSQL},
 		{"internal_item_db", createInternalItemDBTableSQL},
+		{"internal_mob_db", createInternalMobDBTableSQL},
 		{"woe_seasons", createWoeSeasonsTableSQL},
 		{"woe_events", createWoeEventsTableSQL},
 		{"woe_event_rankings", createWoeEventRankingsTableSQL},
@@ -513,6 +553,11 @@ func createIndexes(db *sql.DB) error {
 		`CREATE INDEX IF NOT EXISTS idx_internal_db_slots ON internal_item_db (slots);`,
 		`CREATE INDEX IF NOT EXISTS idx_internal_db_lower_name ON internal_item_db (LOWER(name));`,
 		`CREATE INDEX IF NOT EXISTS idx_internal_db_lower_name_pt ON internal_item_db (LOWER(name_pt));`,
+		// 'internal_mob_db' table
+		`CREATE INDEX IF NOT EXISTS idx_internal_mob_db_race ON internal_mob_db (race);`,
+		`CREATE INDEX IF NOT EXISTS idx_internal_mob_db_element ON internal_mob_db (element);`,
+		`CREATE INDEX IF NOT EXISTS idx_internal_mob_db_lower_name ON internal_mob_db (LOWER(name));`,
+		`CREATE INDEX IF NOT EXISTS idx_internal_mob_db_lower_name_pt ON internal_mob_db (LOWER(name_pt));`,
 		// 'woe_events' table
 		`CREATE INDEX IF NOT EXISTS idx_woe_events_season_id ON woe_events (season_id);`,
 		`CREATE INDEX IF NOT EXISTS idx_woe_events_date_desc ON woe_events (event_date DESC);`,

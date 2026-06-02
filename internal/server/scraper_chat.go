@@ -367,8 +367,7 @@ func startChatPacketCapture(ctx context.Context) {
 				}
 
 				// Decode from Latin-1 (ISO-8859-1) to UTF-8
-				reader := transform.NewReader(bytes.NewReader(msgBytes), charmap.ISO8859_1.NewDecoder())
-				utf8Bytes, err := io.ReadAll(reader)
+				utf8Bytes, _, err := transform.Bytes(charmap.ISO8859_1.NewDecoder(), msgBytes)
 				if err != nil {
 					log.Printf("[W] [Scraper/Chat] Failed to decode message from Latin-1: %v", err)
 					// Fallback to the old method just in case

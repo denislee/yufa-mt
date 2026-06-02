@@ -43,10 +43,12 @@ var (
 )
 
 type cachedItem struct {
-	id     int64
-	name   string
-	namePT string
-	slots  int
+	id          int64
+	name        string
+	lowerName   string
+	namePT      string
+	lowerNamePT string
+	slots       int
 }
 
 // Package-level variables for templates, translations, and helper maps.
@@ -251,9 +253,12 @@ func getCombinedItemIDs(searchQuery string) ([]int, error) {
 
 	idMap := make(map[int]struct{})
 	for _, item := range itemFuzzyCache {
-		if strings.Contains(strings.ToLower(item.name), q) ||
-			(item.namePT != "" && strings.Contains(strings.ToLower(item.namePT), q)) {
+		if strings.Contains(item.lowerName, q) ||
+			(item.lowerNamePT != "" && strings.Contains(item.lowerNamePT, q)) {
 			idMap[int(item.id)] = struct{}{}
+			if len(idMap) >= 1000 {
+				break
+			}
 		}
 	}
 
@@ -2007,13 +2012,15 @@ func ensureItemCache() {
 		if err := rows.Scan(&i.id, &i.name, &i.namePT, &i.slots); err != nil {
 			continue
 		}
+		i.lowerName = strings.ToLower(i.name)
+		i.lowerNamePT = strings.ToLower(i.namePT)
 		itemFuzzyCache = append(itemFuzzyCache, i)
 		itemByIDCache[i.id] = i
 
-		keyEN := fmt.Sprintf("%s_%d", strings.ToLower(i.name), i.slots)
+		keyEN := fmt.Sprintf("%s_%d", i.lowerName, i.slots)
 		itemExactCache[keyEN] = i.id
 		if i.namePT != "" {
-			keyPT := fmt.Sprintf("%s_%d", strings.ToLower(i.namePT), i.slots)
+			keyPT := fmt.Sprintf("%s_%d", i.lowerNamePT, i.slots)
 			itemExactCache[keyPT] = i.id
 		}
 	}
@@ -2032,9 +2039,10 @@ func updateItemInCache(itemID int64, namePT string) {
 	for i, item := range itemFuzzyCache {
 		if item.id == itemID {
 			itemFuzzyCache[i].namePT = namePT
+			itemFuzzyCache[i].lowerNamePT = strings.ToLower(namePT)
 
 			// Register new PT exact key
-			keyPT := fmt.Sprintf("%s_%d", strings.ToLower(namePT), item.slots)
+			keyPT := fmt.Sprintf("%s_%d", itemFuzzyCache[i].lowerNamePT, item.slots)
 			itemExactCache[keyPT] = itemID
 			log.Printf("[D] [ItemID] Dynamically updated cache for item %d with PT name '%s'", itemID, namePT)
 			break
@@ -2080,8 +2088,8 @@ func findItemIDInCache(cleanItemName string, slots int) (sql.NullInt64, bool) {
 
 		// Check substring (equivalent to SQL LIKE %...%)
 		// We check both English and PT names
-		isMatch := strings.Contains(strings.ToLower(item.name), lowerCleanItemName) ||
-			(item.namePT != "" && strings.Contains(strings.ToLower(item.namePT), lowerCleanItemName))
+		isMatch := strings.Contains(item.lowerName, lowerCleanItemName) ||
+			(item.lowerNamePT != "" && strings.Contains(item.lowerNamePT, lowerCleanItemName))
 
 		if isMatch {
 			potentialMatches = append(potentialMatches, potentialMatch{

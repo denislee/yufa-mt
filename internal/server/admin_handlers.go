@@ -781,9 +781,12 @@ func adminCacheActionHandler(w http.ResponseWriter, r *http.Request) {
 			msg = "Internal item db table dropped successfully. Restart app to recreate."
 		}
 	case "repopulate":
-		log.Println("[I] [Admin] Admin triggered internal item DB repopulation from YAMLs.")
-		go populateItemDBOnStartup()
-		msg = "Internal item db repopulation from YAMLs started in background."
+		log.Println("[I] [Admin] Admin triggered internal item & mob DB repopulation from YAMLs.")
+		go func() {
+			populateItemDBOnStartup()
+			populateMobDBOnStartup()
+		}()
+		msg = "Internal item & mob db repopulation from YAMLs started in background."
 	default:
 		msg = "Unknown cache action."
 	}

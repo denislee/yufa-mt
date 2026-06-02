@@ -1,0 +1,140 @@
+# Minimal sample mob_db in rAthena MOB_DB format. Replace this with the full
+# server dump (db/<pre-re|re>/mob_db.yml from rAthena) — the parser in
+# internal/mobdb handles the complete schema; only Id/AegisName/Name are
+# required per entry, every other field is optional.
+Header:
+  Type: MOB_DB
+  Version: 3
+
+Body:
+  - Id: 1002
+    AegisName: PORING
+    Name: Poring
+    Level: 1
+    Hp: 50
+    Sp: 0
+    BaseExp: 2
+    JobExp: 1
+    Attack: 7
+    Attack2: 10
+    Defense: 0
+    MagicDefense: 5
+    Str: 6
+    Agi: 1
+    Vit: 1
+    Int: 0
+    Dex: 6
+    Luk: 30
+    AttackRange: 1
+    SkillRange: 10
+    ChaseRange: 12
+    Size: Small
+    Race: Plant
+    Element: Water
+    ElementLevel: 1
+    WalkSpeed: 400
+    AttackDelay: 1872
+    AttackMotion: 672
+    DamageMotion: 480
+    Ai: 02
+    Drops:
+      - Item: Jellopy
+        Rate: 7000
+      - Item: Knife_
+        Rate: 100
+      - Item: Sticky_Mucus
+        Rate: 400
+      - Item: Apple
+        Rate: 1000
+      - Item: Empty_Bottle
+        Rate: 1500
+      - Item: Apple_Juice
+        Rate: 150
+      - Item: Unripe_Apple
+        Rate: 20
+
+  - Id: 1007
+    AegisName: FABRE
+    Name: Fabre
+    Level: 2
+    Hp: 63
+    Sp: 0
+    BaseExp: 3
+    JobExp: 2
+    Attack: 8
+    Attack2: 11
+    Defense: 0
+    MagicDefense: 5
+    Str: 2
+    Agi: 1
+    Vit: 4
+    Int: 0
+    Dex: 6
+    Luk: 5
+    AttackRange: 1
+    SkillRange: 10
+    ChaseRange: 12
+    Size: Small
+    Race: Insect
+    Element: Earth
+    ElementLevel: 1
+    WalkSpeed: 400
+    AttackDelay: 1672
+    AttackMotion: 672
+    DamageMotion: 480
+    Ai: 01
+    Drops:
+      - Item: Fluff
+        Rate: 7000
+      - Item: Clover
+        Rate: 1000
+      - Item: Green_Herb
+        Rate: 800
+      - Item: Feather
+        Rate: 100
+      - Item: Ptotection_Feather
+        Rate: 20
+
+  - Id: 1112
+    AegisName: DROPS
+    Name: Drops
+    Level: 3
+    Hp: 88
+    Sp: 0
+    BaseExp: 4
+    JobExp: 3
+    Attack: 10
+    Attack2: 13
+    Defense: 3
+    MagicDefense: 5
+    Str: 3
+    Agi: 2
+    Vit: 2
+    Int: 0
+    Dex: 7
+    Luk: 10
+    AttackRange: 1
+    SkillRange: 10
+    ChaseRange: 12
+    Size: Small
+    Race: Plant
+    Element: Fire
+    ElementLevel: 1
+    WalkSpeed: 400
+    AttackDelay: 1864
+    AttackMotion: 864
+    DamageMotion: 432
+    Ai: 02
+    Drops:
+      - Item: Apple
+        Rate: 1600
+      - Item: Grape
+        Rate: 80
+      - Item: Red_Herb
+        Rate: 1000
+      - Item: Clover
+        Rate: 1200
+      - Item: Sticky_Mucus
+        Rate: 400
+      - Item: Empty_Bottle
+        Rate: 1500
