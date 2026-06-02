@@ -659,10 +659,19 @@ func scrapePlayerCharacters() {
 	const firstPageURL = "https://projetoyufa.com/rankings?page=1"
 	lastPage, firstPageBody := scraperClient.findLastPageAndBody(firstPageURL, "[Characters]")
 
-	var allScrapedPlayers []PlayerCharacter
+	// Resume a prior run interrupted by a restart: reload the pages already
+	// scraped and continue from the first un-scraped page. A checkpoint is only
+	// reused while it's fresher than one scrape interval and still matches the
+	// current page count (see loadScrapeCheckpoint); otherwise we start clean.
+	interval, _ := loadJobConfig("characters", 6*time.Hour)
+	allScrapedPlayers, startPage := loadScrapeCheckpoint("characters", lastPage, interval)
+	if startPage > 1 {
+		log.Printf("[I] [Scraper/Char] Resuming from checkpoint: %d page(s) / %d chars already scraped, continuing at page %d/%d.",
+			startPage-1, len(allScrapedPlayers), startPage, lastPage)
+	}
 
 	log.Printf("[I] [Scraper/Char] Scraping all %d pages...", lastPage)
-	for page := 1; page <= lastPage; page++ {
+	for page := startPage; page <= lastPage; page++ {
 		// Interval between requests
 		if page > 1 {
 			time.Sleep(3 * time.Second)
@@ -702,6 +711,8 @@ func scrapePlayerCharacters() {
 		// Collect players into the slice
 		if len(pagePlayers) > 0 {
 			allScrapedPlayers = append(allScrapedPlayers, pagePlayers...)
+			// Checkpoint this page so a restart resumes from the next one.
+			saveScrapeCheckpointPage("characters", page, lastPage, pagePlayers)
 			log.Printf("[D] [Scraper/Char] Scraped page %d/%d, collected %d chars.", page, lastPage, len(pagePlayers))
 		} else {
 			log.Printf("[E] [Scraper/Char] Failed to scrape page %d/%d after all retries.", page,
@@ -712,6 +723,10 @@ func scrapePlayerCharacters() {
 
 	log.Printf("[I] [Scraper/Char] Finished scraping all pages. Found %d total characters. Saving to DB...", len(allScrapedPlayers))
 	savePlayerCharacters(allScrapedPlayers)
+	// The run completed end-to-end; drop the resume checkpoint so the next run
+	// starts fresh. (If savePlayerCharacters hit its safety abort the data is
+	// unchanged, but the scrape itself did finish, so resuming buys nothing.)
+	clearScrapeCheckpoint("characters")
 }
 
 // parseCharacterPage contains all the parsing logic for a character page.

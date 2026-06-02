@@ -21,6 +21,13 @@ CapabilityBoundingSet=CAP_NET_RAW CAP_NET_ADMIN
 WorkingDirectory=/home/dns/git/yufa-mt/
 EnvironmentFile=/home/dns/git/yufa-mt/.env
 
+# The PIN proxy shells out to iptables, which serializes on a lock file. The
+# default /run/xtables.lock is root-only (a DAC check that CAP_NET_ADMIN does not
+# bypass), so point iptables at a lock under a systemd-managed RuntimeDirectory
+# owned by this unit's user. /run/yufa-mt is created on start and removed on stop.
+RuntimeDirectory=yufa-mt
+Environment=XTABLES_LOCKFILE=/run/yufa-mt/xtables.lock
+
 ExecStart=/home/dns/git/yufa-mt/yufa-mt
 
 # Backs the self-update path: the app SIGTERMs itself after swapping the binary

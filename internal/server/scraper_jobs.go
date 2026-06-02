@@ -32,6 +32,10 @@ func startBackgroundJobs(ctx context.Context, wg *sync.WaitGroup) {
 	if chatOnly {
 		slog.Info("CHAT_CAPTURE_ONLY is set; running chat packet capture only, all scrape jobs disabled")
 	} else {
+		// Any run still marked 'running' belongs to the previous process that
+		// exited mid-run; rewrite those rows before we start recording new ones.
+		markInterruptedRuns()
+
 		// The scheduler owns all scrape jobs: it hydrates each job's interval
 		// and enabled flag from job_config, runs them on live-adjustable
 		// tickers, and records every run (success/failure) in job_runs. The

@@ -65,6 +65,22 @@ const (
 		"duration_ms" INTEGER,
 		"message" TEXT
 	);`
+
+	// scrape_checkpoint persists the partial progress of a paginated scrape so
+	// it can resume after a restart instead of re-fetching from page 1. One row
+	// per scraped page holds that page's data as JSON; total_pages records the
+	// page count the run was started against (a mismatch on resume means the
+	// upstream dataset changed, so the checkpoint is discarded). Rows are
+	// cleared once the run saves successfully.
+	createScrapeCheckpointTableSQL = `
+	CREATE TABLE IF NOT EXISTS scrape_checkpoint (
+		"job_name" TEXT NOT NULL,
+		"page" INTEGER NOT NULL,
+		"total_pages" INTEGER NOT NULL,
+		"payload" TEXT NOT NULL,
+		"updated_at" TEXT NOT NULL,
+		PRIMARY KEY ("job_name", "page")
+	);`
 )
 
 const (
@@ -452,6 +468,7 @@ func createTables(db *sql.DB) error {
 		{"rms_triggers", createTriggersSQL},
 		{"job_config", createJobConfigTableSQL},
 		{"job_runs", createJobRunsTableSQL},
+		{"scrape_checkpoint", createScrapeCheckpointTableSQL},
 	}
 
 	for _, t := range queries {

@@ -156,10 +156,24 @@ func (s *scheduler) runLoop(ctx context.Context, js *jobState, wg *sync.WaitGrou
 		ticker.Stop()
 	}
 
-	// Initial run on startup, mirroring the old runJobOnTicker behavior.
+	// Initial run on startup. To avoid re-running an expensive job right after a
+	// restart, skip the immediate run when a successful run finished less than
+	// one interval ago, and align the first tick to that run's original cadence.
 	if js.isEnabled() {
-		s.runOnce(js, "startup")
-		js.setNextRun(time.Now().Add(js.getInterval()))
+		interval := js.getInterval()
+		if next, skip := lastSuccessNextRun(js.spec.Name, interval); skip {
+			delay := time.Until(next)
+			if delay < time.Second {
+				delay = time.Second
+			}
+			ticker.Reset(delay)
+			js.setNextRun(next)
+			slog.Info("Skipping startup run; recent success on record",
+				"job", js.spec.Name, "next_run", next.Format(time.RFC3339))
+		} else {
+			s.runOnce(js, "startup")
+			js.setNextRun(time.Now().Add(interval))
+		}
 	}
 
 	for {
@@ -170,8 +184,11 @@ func (s *scheduler) runLoop(ctx context.Context, js *jobState, wg *sync.WaitGrou
 		case <-ticker.C:
 			if js.isEnabled() {
 				s.runOnce(js, "scheduled")
+				// Re-arm at the full interval: the first tick after a skipped
+				// startup run was shortened to align with the prior cadence.
+				ticker.Reset(js.getInterval())
+				js.setNextRun(time.Now().Add(js.getInterval()))
 			}
-			js.setNextRun(time.Now().Add(js.getInterval()))
 		case <-js.resetCh:
 			ticker.Reset(js.getInterval())
 			if js.isEnabled() {
@@ -335,6 +352,46 @@ func (s *scheduler) Snapshots() []JobStatusSnapshot {
 }
 
 // --- DB helpers ---
+
+// lastSuccessNextRun reports when a job is next due based on its most recent
+// successful run, and whether that success is recent enough (less than one
+// interval ago) that the startup run should be skipped. This keeps a process
+// restart from immediately re-running an expensive job whose data is still
+// fresh; the returned time is the prior run's finish + interval, used to align
+// the first tick to the original cadence.
+func lastSuccessNextRun(name string, interval time.Duration) (next time.Time, skip bool) {
+	var finishedStr string
+	err := srv.db.QueryRow(
+		`SELECT finished_at FROM job_runs
+		 WHERE job_name = ? AND status = 'success' AND finished_at IS NOT NULL
+		 ORDER BY started_at DESC, id DESC LIMIT 1`,
+		name).Scan(&finishedStr)
+	if err != nil {
+		return time.Time{}, false
+	}
+	finished, perr := time.Parse(time.RFC3339, finishedStr)
+	if perr != nil {
+		return time.Time{}, false
+	}
+	if time.Since(finished) >= interval {
+		return time.Time{}, false
+	}
+	return finished.Add(interval), true
+}
+
+// markInterruptedRuns flags any run still recorded as 'running' as
+// 'interrupted'. Such rows are left behind when the process exits mid-run (the
+// finishJobRun update never fires); rewriting them on startup keeps the run
+// history honest and stops a stale 'running' row from lingering in the UI.
+func markInterruptedRuns() {
+	if srv == nil || srv.db == nil {
+		return
+	}
+	if _, err := srv.db.Exec(
+		`UPDATE job_runs SET status = 'interrupted', finished_at = started_at WHERE status = 'running'`); err != nil {
+		slog.Warn("Failed to mark interrupted job runs", "error", err)
+	}
+}
 
 // loadJobConfig returns the persisted interval/enabled for a job, or the code
 // default + enabled when no row exists.
