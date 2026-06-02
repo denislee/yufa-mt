@@ -177,12 +177,19 @@ func performSelfUpdate() {
 	}
 
 	// 3. Re-apply the network capabilities the live binary needs (chat capture
-	// + PIN proxy use CAP_NET_RAW/CAP_NET_ADMIN). Best effort: if setcap is
-	// missing or unprivileged this is non-fatal — the rebuilt binary just
-	// won't have caps and the operator can re-apply manually.
-	updateStatus.set("setcap")
-	if _, err := runUpdateStep(repoDir, "setcap", "cap_net_raw,cap_net_admin=eip", filepath.Join(repoDir, newBin)); err != nil {
-		slog.Warn("[Update] setcap failed (non-fatal); re-apply capabilities manually if needed", "error", err)
+	// + PIN proxy use CAP_NET_RAW/CAP_NET_ADMIN). File caps are wiped by every
+	// rebuild, so they must be re-set on the new binary — but only when we run
+	// as root: setcap itself requires CAP_SETFCAP. When the service runs
+	// unprivileged (User=dns), the process instead inherits the caps from
+	// systemd's AmbientCapabilities=, so file caps aren't needed and setcap
+	// would only fail; skip it. Best effort either way (non-fatal).
+	if os.Geteuid() == 0 {
+		updateStatus.set("setcap")
+		if _, err := runUpdateStep(repoDir, "setcap", "cap_net_raw,cap_net_admin=eip", filepath.Join(repoDir, newBin)); err != nil {
+			slog.Warn("[Update] setcap failed (non-fatal); re-apply capabilities manually if needed", "error", err)
+		}
+	} else {
+		slog.Info("[Update] running unprivileged; skipping setcap (capabilities come from systemd AmbientCapabilities)")
 	}
 
 	// 4. Atomically swap the new binary over the live one. The running

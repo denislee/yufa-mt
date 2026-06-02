@@ -116,18 +116,21 @@ section is just how to operate the service.
 
 ### `yufa-mt.service`
 
-A **system** systemd unit (`/etc/systemd/system/yufa-mt.service`):
+A **system** systemd unit (`/etc/systemd/system/yufa-mt.service`); the tracked
+copy lives at [`deploy/yufa-mt.service`](deploy/yufa-mt.service):
 
-- `User=root` / `Group=root`
+- `User=dns` / `Group=dns` — runs **unprivileged** as the repo owner.
 - `WorkingDirectory=/home/dns/git/yufa-mt`, `EnvironmentFile=/home/dns/git/yufa-mt/.env`
 - `Restart=always`, `RestartSec=3`
 - Logs to the **journal** (`journalctl -u yufa-mt`), not a file.
 
 The binary needs Linux capabilities **`cap_net_raw`** (libpcap chat capture) and
-**`cap_net_admin`** (the in-app PIN proxy's iptables `REDIRECT`). The service runs
-as root so it has them implicitly, but `setcap` is also applied for parity with
-anything that launches the binary non-root — **and `setcap` is wiped on every
-rebuild**, so it must be re-applied after each `go build` (see below).
+**`cap_net_admin`** (the in-app PIN proxy's iptables `REDIRECT`). Rather than file
+caps on the binary — which are wiped on every rebuild — the unit grants them to
+the process via **`AmbientCapabilities=CAP_NET_RAW CAP_NET_ADMIN`**. Ambient caps
+are inherited across `execve`, so the `iptables` child the PIN proxy shells out to
+gets `CAP_NET_ADMIN` too. Because the caps no longer come from the binary, a
+rebuild can't strip them and the self-update needs **no `setcap` step**.
 
 ### Updating / restarting the service
 
@@ -143,7 +146,6 @@ git pull                                                   # fetch latest main
 go build -tags fts5 -o yufa-mt.new ./cmd/server            # NOTE: ./cmd/server,
                                                            # NOT `.` (root has no
                                                            # Go files → build fails)
-sudo setcap cap_net_raw,cap_net_admin=eip yufa-mt.new      # caps are lost on rebuild
 sudo systemctl stop yufa-mt                                # graceful stop can take
                                                            # up to ~90s (in-flight
                                                            # scrapers; WAL is crash-safe)
@@ -151,8 +153,9 @@ mv yufa-mt.new yufa-mt                                     # atomic swap (easy r
 sudo systemctl start yufa-mt
 ```
 
-A quicker in-place variant — `go build -tags fts5 -o yufa-mt ./cmd/server`,
-re-`setcap`, then `sudo systemctl restart yufa-mt` — also works (Go's build does
+No `setcap` is needed — the unit's `AmbientCapabilities` grant the caps to the
+process at start. A quicker in-place variant — `go build -tags fts5 -o yufa-mt
+./cmd/server` then `sudo systemctl restart yufa-mt` — also works (Go's build does
 an atomic rename, so replacing the running binary is safe), but the `.new` swap
 above keeps the old binary around for instant rollback.
 

@@ -1,0 +1,32 @@
+[Unit]
+Description=yufa-mt
+After=network.target
+
+[Service]
+# Runs unprivileged as the repo owner. The two capabilities the app actually
+# needs are granted directly to the process via AmbientCapabilities (below),
+# so root is not required.
+User=dns
+Group=dns
+
+# CAP_NET_RAW  -> libpcap chat capture (AF_PACKET socket on tcp port 6121)
+# CAP_NET_ADMIN -> promiscuous mode + the PIN proxy's iptables REDIRECT
+# Ambient caps are inherited across execve, so the iptables child the PIN proxy
+# shells out to also runs with CAP_NET_ADMIN. Because the caps come from systemd
+# (not file caps on the binary), a rebuild no longer wipes them and the
+# self-update needs no setcap step.
+AmbientCapabilities=CAP_NET_RAW CAP_NET_ADMIN
+CapabilityBoundingSet=CAP_NET_RAW CAP_NET_ADMIN
+
+WorkingDirectory=/home/dns/git/yufa-mt/
+EnvironmentFile=/home/dns/git/yufa-mt/.env
+
+ExecStart=/home/dns/git/yufa-mt/yufa-mt
+
+# Backs the self-update path: the app SIGTERMs itself after swapping the binary
+# and relies on systemd to respawn onto the new build.
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target
