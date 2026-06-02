@@ -277,9 +277,10 @@ func (a *mobInfoAccumulator) finalizeLocked() {
 	log.Printf("[I] [Scraper/MobInfo] Captured @mobinfo for %s (%d): %d drops.", b.name, b.id, len(b.drops))
 }
 
-// upsertMobInfo writes a parsed block into internal_mob_db, overwriting the
-// live-authoritative columns while leaving seed-only columns (sp, jobs, etc.)
-// untouched on conflict.
+// upsertMobInfo writes a parsed block into mob_server_db — the LIVE server
+// values — leaving the immutable rAthena YAML baseline in internal_mob_db
+// untouched, so the bestiary can show the difference between them. scraped_at
+// is stamped on every capture.
 func upsertMobInfo(b *mobBlock) error {
 	if srv == nil || srv.db == nil {
 		return nil
@@ -292,15 +293,16 @@ func upsertMobInfo(b *mobBlock) error {
 	if err != nil {
 		mvpDropsJSON = []byte("[]")
 	}
+	now := time.Now().Format(time.RFC3339)
 	_, err = srv.db.Exec(`
-		INSERT INTO internal_mob_db (
+		INSERT INTO mob_server_db (
 			mob_id, aegis_name, name, level, hp, base_exp, job_exp,
 			attack, attack2, defense, magic_defense,
 			str, agi, vit, int, dex, luk,
 			attack_range, skill_range, chase_range,
 			size, race, element, element_level,
-			is_mvp, mvp_exp, drops, mvp_drops
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+			is_mvp, mvp_exp, drops, mvp_drops, scraped_at
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(mob_id) DO UPDATE SET
 			aegis_name=excluded.aegis_name, name=excluded.name,
 			level=excluded.level, hp=excluded.hp,
@@ -314,14 +316,15 @@ func upsertMobInfo(b *mobBlock) error {
 			race=excluded.race, element=excluded.element,
 			element_level=excluded.element_level,
 			is_mvp=excluded.is_mvp, mvp_exp=excluded.mvp_exp,
-			drops=excluded.drops, mvp_drops=excluded.mvp_drops
+			drops=excluded.drops, mvp_drops=excluded.mvp_drops,
+			scraped_at=excluded.scraped_at
 	`,
 		b.id, b.aegisName, b.name, b.level, b.hp, b.baseExp, b.jobExp,
 		b.atkMin, b.atkMax, b.def, b.mdef,
 		b.str, b.agi, b.vit, b.intl, b.dex, b.luk,
 		b.atkRange, b.skillRange, b.chaseRange,
 		b.size, b.race, b.element, b.elementLevel,
-		b.isMvp, b.mvpExp, string(dropsJSON), string(mvpDropsJSON),
+		b.isMvp, b.mvpExp, string(dropsJSON), string(mvpDropsJSON), now,
 	)
 	return err
 }

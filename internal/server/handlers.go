@@ -478,6 +478,8 @@ func init() {
 		"characters.html",
 		"guilds.html",
 		"mvp_kills.html",
+		"mobs.html",
+		"mob_detail.html",
 		"character_detail.html",
 		"character_changelog.html",
 		"guild_detail.html",

@@ -47,6 +47,8 @@ func registerRoutes() *http.ServeMux {
 	mux.HandleFunc("/guilds", visitorTracker(guildHandler))
 	mux.HandleFunc("/guild", visitorTracker(guildDetailHandler))
 	mux.HandleFunc("/mvp-kills", visitorTracker(mvpKillsHandler))
+	mux.HandleFunc("/mobs", visitorTracker(mobsListHandler))
+	mux.HandleFunc("/mob", visitorTracker(mobDetailHandler))
 	mux.HandleFunc("/character", visitorTracker(characterDetailHandler))
 	mux.HandleFunc("/character-changelog", visitorTracker(characterChangelogHandler))
 	mux.HandleFunc("/store", visitorTracker(storeDetailHandler))

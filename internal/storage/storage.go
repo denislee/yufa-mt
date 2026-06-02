@@ -183,6 +183,43 @@ const (
 		"drops" TEXT,
 		"mvp_drops" TEXT
 	);`
+	// mob_server_db holds the LIVE values scraped from the running server via
+	// @mobinfo (mobinfo_parser.go). It is kept separate from internal_mob_db
+	// (the immutable rAthena YAML baseline) so the bestiary can show the
+	// difference between stock and the server's modifications. Only the fields
+	// @mobinfo reports are stored. scraped_at marks the last capture.
+	createMobServerDBTableSQL = `
+	CREATE TABLE IF NOT EXISTS mob_server_db (
+		"mob_id" INTEGER NOT NULL PRIMARY KEY,
+		"aegis_name" TEXT,
+		"name" TEXT,
+		"level" INTEGER,
+		"hp" INTEGER,
+		"base_exp" INTEGER,
+		"job_exp" INTEGER,
+		"mvp_exp" INTEGER,
+		"attack" INTEGER,
+		"attack2" INTEGER,
+		"defense" INTEGER,
+		"magic_defense" INTEGER,
+		"str" INTEGER,
+		"agi" INTEGER,
+		"vit" INTEGER,
+		"int" INTEGER,
+		"dex" INTEGER,
+		"luk" INTEGER,
+		"attack_range" INTEGER,
+		"skill_range" INTEGER,
+		"chase_range" INTEGER,
+		"size" TEXT,
+		"race" TEXT,
+		"element" TEXT,
+		"element_level" INTEGER,
+		"is_mvp" INTEGER,
+		"drops" TEXT,
+		"mvp_drops" TEXT,
+		"scraped_at" TEXT
+	);`
 	// mobscrape_config holds the single-row, admin-editable parameters for the
 	// @mobinfo injection sweep (id range + inter-command delay). Pinned to id=1.
 	createMobScrapeConfigTableSQL = `
@@ -507,6 +544,7 @@ func createTables(db *sql.DB) error {
 		{"trading_post_items", createTradingPostItemsTableSQL},
 		{"internal_item_db", createInternalItemDBTableSQL},
 		{"internal_mob_db", createInternalMobDBTableSQL},
+		{"mob_server_db", createMobServerDBTableSQL},
 		{"mobscrape_config", createMobScrapeConfigTableSQL},
 		{"woe_seasons", createWoeSeasonsTableSQL},
 		{"woe_events", createWoeEventsTableSQL},

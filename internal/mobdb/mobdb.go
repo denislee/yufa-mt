@@ -145,6 +145,11 @@ func store(db *sql.DB, mobs []Entry) error {
 			mvpDropsJSON = []byte("[]")
 		}
 
+		// rAthena denotes MVPs via Modes.Mvp / MvpExp / MvpDrops rather than a
+		// top-level Mvp flag, so derive it.
+		isMvp := mob.Mvp || mob.Modes["Mvp"] || len(mob.MvpDrops) > 0 ||
+			(mob.MvpExp != nil && *mob.MvpExp > 0)
+
 		res, err := stmt.Exec(
 			mob.ID, mob.AegisName, mob.Name, namePT,
 			toNullInt64(mob.Level), toNullInt64(mob.HP), toNullInt64(mob.SP),
@@ -157,7 +162,7 @@ func store(db *sql.DB, mobs []Entry) error {
 			mob.Size, mob.Race, mob.Element, toNullInt64(mob.ElementLevel),
 			toNullInt64(mob.WalkSpeed), toNullInt64(mob.AttackDelay),
 			toNullInt64(mob.AttackMotion), toNullInt64(mob.DamageMotion),
-			mob.AI, string(modesJSON), mob.Mvp, string(dropsJSON), string(mvpDropsJSON),
+			mob.AI, string(modesJSON), isMvp, string(dropsJSON), string(mvpDropsJSON),
 		)
 		if err != nil {
 			log.Printf("[W] [MobDB] Failed to insert mob %d (%s): %v", mob.ID, mob.Name, err)

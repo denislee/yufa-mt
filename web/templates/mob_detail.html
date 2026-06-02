@@ -1,0 +1,121 @@
+{{define "title"}}{{.Data.Mob.DisplayName}} - Bestiary - Yufa Market Tracker{{end}}
+{{define "content"}}
+{{$m := .Data.Mob}}
+    <div class="container mx-auto px-4 py-6 max-w-4xl">
+        <div class="mb-4">
+            <a href="/mobs" class="text-sm text-blue-600 dark:text-blue-400 hover:underline">&larr; Bestiary</a>
+        </div>
+
+        <div class="flex items-center gap-3 mb-1 flex-wrap">
+            <h1 class="text-2xl font-bold text-gray-800 dark:text-gray-100">{{$m.DisplayName}}</h1>
+            {{if $m.IsMvp}}<span class="px-2 py-0.5 rounded text-xs font-bold bg-amber-100 text-amber-800">MVP</span>{{end}}
+            <span class="font-mono text-sm text-gray-500 dark:text-gray-400">#{{$m.ID}}</span>
+        </div>
+        <p class="text-sm text-gray-500 dark:text-gray-400 mb-5">
+            {{$m.AegisName}} &middot; Lv {{$m.Level}} &middot; {{$m.Race}} &middot; {{$m.Element}}{{if $m.ElementLvl}} (Lv{{$m.ElementLvl}}){{end}} &middot; {{$m.Size}}
+        </p>
+
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
+            <div class="bg-white dark:bg-gray-800 shadow rounded-lg p-4">
+                <h2 class="text-sm font-semibold text-gray-700 dark:text-gray-200 uppercase tracking-wider mb-3">Stats</h2>
+                <dl class="grid grid-cols-2 gap-x-6 gap-y-1 text-sm">
+                    <div class="flex justify-between"><dt class="text-gray-500 dark:text-gray-400">HP</dt><dd class="font-mono">{{$m.HP}}</dd></div>
+                    <div class="flex justify-between"><dt class="text-gray-500 dark:text-gray-400">SP</dt><dd class="font-mono">{{$m.SP}}</dd></div>
+                    <div class="flex justify-between"><dt class="text-gray-500 dark:text-gray-400">Base EXP</dt><dd class="font-mono">{{$m.BaseExp}}</dd></div>
+                    <div class="flex justify-between"><dt class="text-gray-500 dark:text-gray-400">Job EXP</dt><dd class="font-mono">{{$m.JobExp}}</dd></div>
+                    {{if $m.IsMvp}}<div class="flex justify-between col-span-2"><dt class="text-gray-500 dark:text-gray-400">MVP Bonus EXP</dt><dd class="font-mono">{{$m.MvpExp}}</dd></div>{{end}}
+                    <div class="flex justify-between"><dt class="text-gray-500 dark:text-gray-400">ATK</dt><dd class="font-mono">{{$m.AtkMin}}~{{$m.AtkMax}}</dd></div>
+                    <div class="flex justify-between"><dt class="text-gray-500 dark:text-gray-400">Range</dt><dd class="font-mono">{{$m.AtkRange}}/{{$m.SkillRange}}/{{$m.ChaseRange}}</dd></div>
+                    <div class="flex justify-between"><dt class="text-gray-500 dark:text-gray-400">DEF</dt><dd class="font-mono">{{$m.Def}}</dd></div>
+                    <div class="flex justify-between"><dt class="text-gray-500 dark:text-gray-400">MDEF</dt><dd class="font-mono">{{$m.Mdef}}</dd></div>
+                </dl>
+            </div>
+
+            <div class="bg-white dark:bg-gray-800 shadow rounded-lg p-4">
+                <h2 class="text-sm font-semibold text-gray-700 dark:text-gray-200 uppercase tracking-wider mb-3">Attributes</h2>
+                <dl class="grid grid-cols-3 gap-x-4 gap-y-1 text-sm">
+                    <div class="flex justify-between"><dt class="text-gray-500 dark:text-gray-400">STR</dt><dd class="font-mono">{{$m.Str}}</dd></div>
+                    <div class="flex justify-between"><dt class="text-gray-500 dark:text-gray-400">AGI</dt><dd class="font-mono">{{$m.Agi}}</dd></div>
+                    <div class="flex justify-between"><dt class="text-gray-500 dark:text-gray-400">VIT</dt><dd class="font-mono">{{$m.Vit}}</dd></div>
+                    <div class="flex justify-between"><dt class="text-gray-500 dark:text-gray-400">INT</dt><dd class="font-mono">{{$m.Int}}</dd></div>
+                    <div class="flex justify-between"><dt class="text-gray-500 dark:text-gray-400">DEX</dt><dd class="font-mono">{{$m.Dex}}</dd></div>
+                    <div class="flex justify-between"><dt class="text-gray-500 dark:text-gray-400">LUK</dt><dd class="font-mono">{{$m.Luk}}</dd></div>
+                </dl>
+            </div>
+        </div>
+
+        {{$c := .Data.Comparison}}
+        {{if $c.HasServer}}
+        <div class="bg-white dark:bg-gray-800 shadow rounded-lg overflow-hidden mb-8">
+            <div class="px-4 pt-4 pb-2 flex items-center justify-between flex-wrap gap-2">
+                <h2 class="text-sm font-semibold text-gray-700 dark:text-gray-200 uppercase tracking-wider">Baseline (YAML) vs Live Server</h2>
+                <span class="text-xs">
+                    {{if gt $c.DiffCount 0}}<span class="px-2 py-0.5 rounded bg-amber-100 text-amber-800 font-semibold">{{$c.DiffCount}} field(s) differ</span>{{else}}<span class="px-2 py-0.5 rounded bg-green-100 text-green-800 font-semibold">matches baseline</span>{{end}}
+                    <span class="text-gray-400 dark:text-gray-500 ml-1">scraped {{$c.ScrapedAgo}}</span>
+                </span>
+            </div>
+            <table class="min-w-full text-sm">
+                <thead>
+                    <tr class="border-b border-gray-200 dark:border-gray-700 text-left text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase">
+                        <th class="px-4 py-2">Field</th>
+                        <th class="px-4 py-2 text-right">Baseline (YAML)</th>
+                        <th class="px-4 py-2 text-right">Live Server</th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y divide-gray-100 dark:divide-gray-700">
+                    {{range $c.Fields}}
+                    <tr class="{{if .Differs}}bg-amber-50 dark:bg-amber-900/20{{end}}">
+                        <td class="px-4 py-1.5 text-gray-500 dark:text-gray-400">{{.Label}}</td>
+                        <td class="px-4 py-1.5 text-right font-mono">{{.Baseline}}</td>
+                        <td class="px-4 py-1.5 text-right font-mono {{if .Differs}}font-bold text-amber-700 dark:text-amber-300{{end}}">{{.Server}}{{if .Differs}} <span class="text-amber-500" title="differs from baseline">≠</span>{{end}}</td>
+                    </tr>
+                    {{end}}
+                </tbody>
+            </table>
+        </div>
+        {{else}}
+        <div class="mb-8 text-sm text-gray-500 dark:text-gray-400 bg-gray-50 dark:bg-gray-800/60 border border-gray-200 dark:border-gray-700 rounded-lg p-3">
+            Not yet scraped from the live server — showing baseline (YAML) values only. Run the <code>@mobinfo</code> scrape to capture this server's actual stats and reveal any differences.
+        </div>
+        {{end}}
+
+        {{template "mob_drop_table" (dict "Title" "Drops (baseline / YAML)" "Drops" $m.Drops)}}
+        {{if $c.HasServer}}
+        <div class="mt-6">{{template "mob_drop_table" (dict "Title" "Drops (live server)" "Drops" $c.ServerDrops)}}</div>
+        {{end}}
+        {{if $m.MvpDrops}}
+        <div class="mt-6">{{template "mob_drop_table" (dict "Title" "MVP Rewards (baseline)" "Drops" $m.MvpDrops)}}</div>
+        {{end}}
+        {{if and $c.HasServer $c.ServerMvpDrops}}
+        <div class="mt-6">{{template "mob_drop_table" (dict "Title" "MVP Rewards (live server)" "Drops" $c.ServerMvpDrops)}}</div>
+        {{end}}
+    </div>
+{{end}}
+
+{{define "mob_drop_table"}}
+    <div class="bg-white dark:bg-gray-800 shadow rounded-lg overflow-hidden">
+        <h2 class="text-sm font-semibold text-gray-700 dark:text-gray-200 uppercase tracking-wider px-4 pt-4 pb-2">{{.Title}}</h2>
+        {{if .Drops}}
+        <table class="min-w-full text-sm">
+            <thead>
+                <tr class="border-b border-gray-200 dark:border-gray-700 text-left text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase">
+                    <th class="px-4 py-2">Item</th>
+                    <th class="px-4 py-2 text-right w-28">Chance</th>
+                </tr>
+            </thead>
+            <tbody class="divide-y divide-gray-100 dark:divide-gray-700">
+                {{range .Drops}}
+                <tr class="hover:bg-gray-50 dark:hover:bg-gray-700">
+                    <td class="px-4 py-2">
+                        {{if .Known}}<a href="/item?name={{.Name | urlquery}}" class="text-blue-600 dark:text-blue-400 hover:underline">{{.Name}}</a>{{else}}{{.Name}}{{end}}
+                    </td>
+                    <td class="px-4 py-2 text-right font-mono">{{printf "%.2f%%" .RatePct}}</td>
+                </tr>
+                {{end}}
+            </tbody>
+        </table>
+        {{else}}
+        <p class="px-4 pb-4 text-sm text-gray-500 dark:text-gray-400">No drop data yet — run the @mobinfo scrape.</p>
+        {{end}}
+    </div>
+{{end}}
