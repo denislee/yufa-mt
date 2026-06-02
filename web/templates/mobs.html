@@ -78,18 +78,30 @@
                 <table class="min-w-full leading-normal text-sm">
                     <thead>
                         <tr class="border-b-2 border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-700 text-left text-xs font-semibold text-gray-600 dark:text-gray-300 uppercase tracking-wider">
-                            <th class="px-3 py-3 w-16">ID</th>
-                            <th class="px-3 py-3">Name</th>
-                            <th class="px-3 py-3 text-right w-16">Lv</th>
-                            <th class="px-3 py-3 text-right w-24">HP</th>
-                            <th class="px-3 py-3 w-28">Race</th>
-                            <th class="px-3 py-3 w-28">Element</th>
-                            <th class="px-3 py-3 w-20">Size</th>
+                            {{$filter := .Data.Filter}}
+                            {{$cs := .Data.SortBy}}
+                            {{$co := .Data.Order}}
+                            {{$rev := "ASC"}}{{if eq $co "ASC"}}{{$rev = "DESC"}}{{end}}
+                            <th class="px-3 py-3 w-10"></th>
+                            <th class="px-3 py-3 w-16"><a href="/mobs?sort_by=id&order={{if eq $cs "id"}}{{$rev}}{{else}}ASC{{end}}{{$filter}}" class="hover:underline">ID {{if eq $cs "id"}}{{if eq $co "ASC"}}<span class="text-gray-400">▲</span>{{else}}<span class="text-gray-400">▼</span>{{end}}{{end}}</a></th>
+                            <th class="px-3 py-3"><a href="/mobs?sort_by=name&order={{if eq $cs "name"}}{{$rev}}{{else}}ASC{{end}}{{$filter}}" class="hover:underline">Name {{if eq $cs "name"}}{{if eq $co "ASC"}}<span class="text-gray-400">▲</span>{{else}}<span class="text-gray-400">▼</span>{{end}}{{end}}</a></th>
+                            <th class="px-3 py-3 text-right w-16"><a href="/mobs?sort_by=level&order={{if eq $cs "level"}}{{$rev}}{{else}}DESC{{end}}{{$filter}}" class="hover:underline">Lv {{if eq $cs "level"}}{{if eq $co "ASC"}}<span class="text-gray-400">▲</span>{{else}}<span class="text-gray-400">▼</span>{{end}}{{end}}</a></th>
+                            <th class="px-3 py-3 text-right w-24"><a href="/mobs?sort_by=hp&order={{if eq $cs "hp"}}{{$rev}}{{else}}DESC{{end}}{{$filter}}" class="hover:underline">HP {{if eq $cs "hp"}}{{if eq $co "ASC"}}<span class="text-gray-400">▲</span>{{else}}<span class="text-gray-400">▼</span>{{end}}{{end}}</a></th>
+                            <th class="px-3 py-3 w-28"><a href="/mobs?sort_by=race&order={{if eq $cs "race"}}{{$rev}}{{else}}ASC{{end}}{{$filter}}" class="hover:underline">Race {{if eq $cs "race"}}{{if eq $co "ASC"}}<span class="text-gray-400">▲</span>{{else}}<span class="text-gray-400">▼</span>{{end}}{{end}}</a></th>
+                            <th class="px-3 py-3 w-28"><a href="/mobs?sort_by=element&order={{if eq $cs "element"}}{{$rev}}{{else}}ASC{{end}}{{$filter}}" class="hover:underline">Element {{if eq $cs "element"}}{{if eq $co "ASC"}}<span class="text-gray-400">▲</span>{{else}}<span class="text-gray-400">▼</span>{{end}}{{end}}</a></th>
+                            <th class="px-3 py-3 w-20"><a href="/mobs?sort_by=size&order={{if eq $cs "size"}}{{$rev}}{{else}}ASC{{end}}{{$filter}}" class="hover:underline">Size {{if eq $cs "size"}}{{if eq $co "ASC"}}<span class="text-gray-400">▲</span>{{else}}<span class="text-gray-400">▼</span>{{end}}{{end}}</a></th>
                         </tr>
                     </thead>
                     <tbody class="text-gray-700 dark:text-gray-300">
                         {{range .Data.Mobs}}
                         <tr class="border-b border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700">
+                            <td class="px-3 py-2">
+                                <a href="/mob?id={{.ID}}">
+                                    <img src="https://static.divine-pride.net/images/mobs/png/{{.ID}}.png" alt=""
+                                         class="w-8 h-8 object-contain" style="image-rendering: pixelated;"
+                                         loading="lazy" decoding="async" onerror="this.style.visibility='hidden'">
+                                </a>
+                            </td>
                             <td class="px-3 py-2 font-mono text-gray-500 dark:text-gray-400">{{.ID}}</td>
                             <td class="px-3 py-2 font-semibold">
                                 <a href="/mob?id={{.ID}}" class="text-blue-600 dark:text-blue-400 hover:underline">{{.DisplayName}}</a>
@@ -102,7 +114,7 @@
                             <td class="px-3 py-2">{{.Size}}</td>
                         </tr>
                         {{else}}
-                        <tr><td colspan="7" class="px-3 py-6 text-center text-gray-500 dark:text-gray-400">No monsters found.</td></tr>
+                        <tr><td colspan="8" class="px-3 py-6 text-center text-gray-500 dark:text-gray-400">No monsters found.</td></tr>
                         {{end}}
                     </tbody>
                 </table>

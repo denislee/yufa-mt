@@ -93,7 +93,9 @@ type MobsPageData struct {
 	SearchQuery string
 	TotalMobs   int
 	Pagination  httpx.PaginationData
-	Filter      string // query-string suffix preserving the search across pages
+	Filter      string // query-string suffix preserving the search + sort across pages
+	SortBy      string // active sort column key
+	Order       string // active sort direction ("ASC"/"DESC")
 	PageTitle   string
 	Tab         string         // "" (all monsters) or "diffs" (the Differences tab)
 	Diffs       []MobDiffEntry // populated only on the Differences tab
@@ -214,8 +216,22 @@ func mobsListHandler(w http.ResponseWriter, r *http.Request) {
 
 	pg := httpx.NewPaginationData(r, total, mobsPerPage)
 
+	// Every listing column is sortable; mob_id is the stable tiebreak. Text
+	// columns default ASC and numeric columns DESC via the per-column links in
+	// the template; the handler default keeps the historical mob_id ASC order.
+	allowedSorts := map[string]string{
+		"id":      "mob_id",
+		"name":    "name",
+		"level":   "level",
+		"hp":      "hp",
+		"race":    "race",
+		"element": "element",
+		"size":    "size",
+	}
+	orderByClause, sortBy, order := httpx.GetSortClause(r, allowedSorts, "id", "ASC")
+
 	query := "SELECT mob_id, name, COALESCE(name_pt,''), aegis_name, level, hp, race, element, element_level, size, is_mvp " +
-		"FROM internal_mob_db " + where + " ORDER BY mob_id LIMIT ? OFFSET ?"
+		"FROM internal_mob_db " + where + " " + orderByClause + ", mob_id LIMIT ? OFFSET ?"
 	rows, err := srv.db.Query(query, append(args, mobsPerPage, pg.Offset)...)
 	if err != nil {
 		log.Printf("[E] [HTTP/Mobs] query failed: %v", err)
@@ -243,9 +259,16 @@ func mobsListHandler(w http.ResponseWriter, r *http.Request) {
 		mobs = append(mobs, e)
 	}
 
-	filter := ""
+	// Preserve the search query and the active sort across pagination links.
+	filterValues := url.Values{}
 	if q != "" {
-		filter = "&q=" + url.QueryEscape(q)
+		filterValues.Set("q", q)
+	}
+	filterValues.Set("sort_by", sortBy)
+	filterValues.Set("order", order)
+	filter := ""
+	if enc := filterValues.Encode(); enc != "" {
+		filter = "&" + enc
 	}
 
 	renderTemplate(w, r, "mobs.html", MobsPageData{
@@ -254,6 +277,8 @@ func mobsListHandler(w http.ResponseWriter, r *http.Request) {
 		TotalMobs:   total,
 		Pagination:  pg,
 		Filter:      filter,
+		SortBy:      sortBy,
+		Order:       order,
 		PageTitle:   "Bestiary",
 	})
 }
