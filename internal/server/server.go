@@ -126,6 +126,7 @@ func registerAdminRoutes() *http.ServeMux {
 	adminRouter.HandleFunc("/stats", adminSystemStatsHandler)
 	adminRouter.HandleFunc("/visits-hourly", adminVisitsHourlyHandler)
 	adminRouter.HandleFunc("/update", adminSelfUpdateHandler)
+	adminRouter.HandleFunc("/update-proxy", adminProxyUpdateHandler)
 
 	// Scheduler tab: per-job interval/enabled config + manual run.
 	adminRouter.HandleFunc("/scheduler/config", adminSchedulerConfigHandler)

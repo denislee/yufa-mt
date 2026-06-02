@@ -19,7 +19,23 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"syscall"
+	"time"
 )
+
+// proxyShutdownSelf triggers a graceful restart of the proxy process: it
+// SIGTERMs itself after a short delay (so the IPC "restart" reply flushes
+// first), and systemd (Restart=always) respawns it onto the current on-disk
+// binary. It's a package var so tests can stub it instead of killing the test
+// process. The delay mirrors the app self-update's flush delay.
+var proxyShutdownSelf = func() {
+	go func() {
+		time.Sleep(500 * time.Millisecond)
+		if err := syscall.Kill(os.Getpid(), syscall.SIGTERM); err != nil {
+			slog.Error("proxy IPC: failed to SIGTERM self for restart", "error", err)
+		}
+	}()
+}
 
 // ipcProtocolVersion is the IPC contract version. Bumping it requires
 // restarting the proxy unit (a deliberate, rare disconnect); the app rejects a
@@ -134,6 +150,14 @@ func serveProxyIPCRequest(req ipcRequest) ipcResponse {
 		// Serve this process's own in-memory log ring (the proxy's stdout
 		// capture) so the app's admin panel can show proxy-side logs.
 		return ipcResponse{OK: true, Lines: logBuffer.Lines(req.Tail)}
+	case "restart":
+		// Graceful self-restart so systemd respawns the proxy on the new
+		// on-disk binary. This DOES drop the live game connection (the watchdog
+		// reconnects). Triggered by the admin "Update Proxy" button after it
+		// rebuilds the binary.
+		slog.Info("proxy IPC: restart requested; scheduling graceful shutdown for systemd respawn")
+		proxyShutdownSelf()
+		return ipcResponse{OK: true}
 	default:
 		return ipcResponse{OK: false, Err: "unknown op: " + req.Op}
 	}

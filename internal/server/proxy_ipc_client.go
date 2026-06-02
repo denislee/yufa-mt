@@ -93,3 +93,16 @@ func (c *proxyIPCClient) proxyLogs(tail int) ([]string, error) {
 	}
 	return resp.Lines, nil
 }
+
+// restart asks the proxy to gracefully terminate so systemd respawns it on the
+// current on-disk binary. Drops the live game connection (watchdog recovers).
+func (c *proxyIPCClient) restart() error {
+	resp, err := c.roundTrip(ipcRequest{Op: "restart"})
+	if err != nil {
+		return err
+	}
+	if !resp.OK {
+		return fmt.Errorf("proxy refused restart: %s", resp.Err)
+	}
+	return nil
+}

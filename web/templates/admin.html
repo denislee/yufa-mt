@@ -1398,13 +1398,30 @@
                     {{end}}
 
                     {{if .SelfUpdateEnabled}}
-                    <form action="/admin/update" method="POST" onsubmit="return confirm('Pull latest code, rebuild, and restart the server now? The site will be briefly unavailable during the restart.');">
-                        <input type="hidden" name="tab" value="server">
-                        <button type="submit" {{if .UpdateStatus.Running}}disabled{{end}}
-                                class="adm-btn adm-btn-danger">
-                            ⬆️ Pull, Rebuild &amp; Restart
-                        </button>
-                    </form>
+                    <div class="flex flex-wrap items-center gap-3">
+                        <form action="/admin/update" method="POST" onsubmit="return confirm('Pull latest code, rebuild, and restart the {{if .SplitDeployment}}app{{else}}server{{end}} now? The site will be briefly unavailable during the restart{{if .SplitDeployment}} — the game client stays connected{{end}}.');">
+                            <input type="hidden" name="tab" value="server">
+                            <button type="submit" {{if .UpdateStatus.Running}}disabled{{end}}
+                                    class="adm-btn adm-btn-danger">
+                                ⬆️ Pull, Rebuild &amp; Restart{{if .SplitDeployment}} App{{end}}
+                            </button>
+                        </form>
+                        {{if .SplitDeployment}}
+                        <form action="/admin/update-proxy" method="POST" onsubmit="return confirm('Rebuild and restart the PROXY now? This WILL disconnect the game client once (the watchdog reconnects it in ~2-3 min). Use this to pick up proxy/connection-layer changes.');">
+                            <input type="hidden" name="tab" value="server">
+                            <button type="submit" {{if .UpdateStatus.Running}}disabled{{end}}
+                                    class="adm-btn adm-btn-danger">
+                                🔌 Pull, Rebuild &amp; Restart Proxy
+                            </button>
+                        </form>
+                        {{end}}
+                    </div>
+                    {{if .SplitDeployment}}
+                    <p class="mt-2 text-xs text-gray-500 dark:text-gray-400">
+                        <strong>App</strong> = web, scrapers, chat capture, Discord (no game disconnect).
+                        <strong>Proxy</strong> = PIN/zone relay + connection layer (disconnects the game once). Most deploys only need the App button.
+                    </p>
+                    {{end}}
                     {{else}}
                     <div class="bg-yellow-50 dark:bg-yellow-900 border border-yellow-800 dark:border-yellow-800 text-yellow-800 dark:text-yellow-200 px-4 py-3 rounded text-sm">
                         Self-update is <strong>disabled</strong>. Set <code>SELF_UPDATE=1</code> in the environment (live box only — it requires a supervisor that respawns the process) and restart to enable this button.

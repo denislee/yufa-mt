@@ -1,5 +1,7 @@
 package server
 
+import "fmt"
+
 // proxy_inject.go wires the two cross-process calls — chat injection and
 // proxy-readiness — behind package-level function variables so the same call
 // sites (mobscrape.go, admin_scheduler.go) work in every --mode:
@@ -25,6 +27,13 @@ var (
 	// process. In ModeAll/Proxy the "app" and "proxy" log streams are the same
 	// single buffer, so the admin panel must not merge/duplicate them.
 	proxyLogsRemote = false
+
+	// requestProxyRestart asks the proxy process to restart (for the admin
+	// "Update Proxy" button). Only meaningful in ModeApp; the default errors so
+	// the single-process modes can't misfire it.
+	requestProxyRestart = func() error {
+		return fmt.Errorf("proxy restart only applies in the split deployment (app mode)")
+	}
 )
 
 // useProxyIPC repoints the injection/readiness/logs calls at the IPC client for
@@ -35,4 +44,5 @@ func useProxyIPC(socketPath string) {
 	zoneProxyReady = c.ready
 	fetchProxyLogs = c.proxyLogs
 	proxyLogsRemote = true
+	requestProxyRestart = c.restart
 }

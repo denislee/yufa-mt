@@ -138,6 +138,25 @@ func TestProxyIPCLogs(t *testing.T) {
 	}
 }
 
+// TestProxyIPCRestart proves the "restart" op invokes the self-terminate hook
+// (stubbed here so it doesn't SIGTERM the test process) and replies OK.
+func TestProxyIPCRestart(t *testing.T) {
+	called := make(chan struct{}, 1)
+	orig := proxyShutdownSelf
+	proxyShutdownSelf = func() { called <- struct{}{} }
+	t.Cleanup(func() { proxyShutdownSelf = orig })
+
+	resp := serveProxyIPCRequest(ipcRequest{V: ipcProtocolVersion, Op: "restart"})
+	if !resp.OK {
+		t.Fatalf("restart op not OK: %s", resp.Err)
+	}
+	select {
+	case <-called:
+	case <-time.After(time.Second):
+		t.Error("restart op did not invoke proxyShutdownSelf")
+	}
+}
+
 // TestMergeLogsByTime checks the combined view interleaves by timestamp and tags.
 func TestMergeLogsByTime(t *testing.T) {
 	app := []string{"time=2026-06-02T12:00:01-03:00 msg=app-a", "time=2026-06-02T12:00:03-03:00 msg=app-b"}
