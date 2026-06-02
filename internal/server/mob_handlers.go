@@ -6,6 +6,7 @@ import (
 	"log"
 	"net/http"
 	"net/url"
+	"sort"
 	"strconv"
 	"strings"
 
@@ -76,6 +77,17 @@ type MobDetail struct {
 	MvpDrops    []MobDropView
 }
 
+// MobDiffEntry is one row in the "Differences" tab: a scraped mob whose live
+// server stats diverge from the YAML baseline on more than one field.
+type MobDiffEntry struct {
+	ID          int
+	DisplayName string
+	IsMvp       bool
+	DiffCount   int
+	ScrapedAgo  string
+	DiffFields  []MobFieldDiff // only the fields that actually differ
+}
+
 type MobsPageData struct {
 	Mobs        []MobListEntry
 	SearchQuery string
@@ -83,6 +95,8 @@ type MobsPageData struct {
 	Pagination  httpx.PaginationData
 	Filter      string // query-string suffix preserving the search across pages
 	PageTitle   string
+	Tab         string         // "" (all monsters) or "diffs" (the Differences tab)
+	Diffs       []MobDiffEntry // populated only on the Differences tab
 }
 
 // MobFieldDiff is one row of the baseline-vs-server comparison table.
@@ -126,6 +140,25 @@ func mobDisplayName(name, namePT, lang string) string {
 
 func mobsListHandler(w http.ResponseWriter, r *http.Request) {
 	lang := i18n.Lang(r)
+
+	// The "Differences" tab lists scraped mobs whose live server stats diverge
+	// from the YAML baseline on more than one field.
+	if r.FormValue("tab") == "diffs" {
+		diffs, err := loadMobDiffs(lang)
+		if err != nil {
+			log.Printf("[E] [HTTP/Mobs] diff query failed: %v", err)
+			http.Error(w, "Could not query mobs", http.StatusInternalServerError)
+			return
+		}
+		renderTemplate(w, r, "mobs.html", MobsPageData{
+			Tab:       "diffs",
+			Diffs:     diffs,
+			TotalMobs: len(diffs),
+			PageTitle: "Bestiary",
+		})
+		return
+	}
+
 	q := strings.TrimSpace(r.FormValue("q"))
 
 	// Build the optional search WHERE clause. Matches name / pt name / aegis,
@@ -165,10 +198,10 @@ func mobsListHandler(w http.ResponseWriter, r *http.Request) {
 	var mobs []MobListEntry
 	for rows.Next() {
 		var (
-			e                            MobListEntry
-			name, namePT                 string
-			level, hp, elementLvl        sql.NullInt64
-			isMvp                        sql.NullInt64
+			e                     MobListEntry
+			name, namePT          string
+			level, hp, elementLvl sql.NullInt64
+			isMvp                 sql.NullInt64
 		)
 		if err := rows.Scan(&e.ID, &name, &namePT, &e.AegisName, &level, &hp,
 			&e.Race, &e.Element, &elementLvl, &e.Size, &isMvp); err != nil {
@@ -205,13 +238,13 @@ func mobDetailHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var (
-		m                                            MobDetail
-		name, namePT                                 string
-		level, hp, sp, baseExp, jobExp, mvpExp       sql.NullInt64
-		atk, atk2, def, mdef                         sql.NullInt64
-		st, ag, vi, in, dx, lk                       sql.NullInt64
-		atkR, skR, chR, elemLvl, isMvp               sql.NullInt64
-		dropsJSON, mvpDropsJSON                      string
+		m                                      MobDetail
+		name, namePT                           string
+		level, hp, sp, baseExp, jobExp, mvpExp sql.NullInt64
+		atk, atk2, def, mdef                   sql.NullInt64
+		st, ag, vi, in, dx, lk                 sql.NullInt64
+		atkR, skR, chR, elemLvl, isMvp         sql.NullInt64
+		dropsJSON, mvpDropsJSON                string
 	)
 	err = srv.db.QueryRow(`
 		SELECT mob_id, name, COALESCE(name_pt,''), aegis_name,
@@ -261,45 +294,10 @@ func mobDetailHandler(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// loadMobComparison loads the live server row (if any) for a mob and diffs it
-// against the YAML baseline. Returns HasServer=false when the mob hasn't been
-// scraped yet.
-func loadMobComparison(id int, base MobDetail, lang string) MobComparison {
-	var (
-		s                                      MobDetail
-		level, hp, baseExp, jobExp, mvpExp     sql.NullInt64
-		atk, atk2, def, mdef                   sql.NullInt64
-		st, ag, vi, in, dx, lk                 sql.NullInt64
-		atkR, skR, chR, elemLvl, isMvp         sql.NullInt64
-		dropsJSON, mvpDropsJSON, scrapedAt     string
-	)
-	err := srv.db.QueryRow(`
-		SELECT level, hp, base_exp, job_exp, mvp_exp,
-			attack, attack2, defense, magic_defense,
-			str, agi, vit, int, dex, luk,
-			attack_range, skill_range, chase_range,
-			size, race, element, element_level, is_mvp,
-			COALESCE(drops,'[]'), COALESCE(mvp_drops,'[]'), COALESCE(scraped_at,'')
-		FROM mob_server_db WHERE mob_id = ?`, id).Scan(
-		&level, &hp, &baseExp, &jobExp, &mvpExp,
-		&atk, &atk2, &def, &mdef,
-		&st, &ag, &vi, &in, &dx, &lk,
-		&atkR, &skR, &chR,
-		&s.Size, &s.Race, &s.Element, &elemLvl, &isMvp,
-		&dropsJSON, &mvpDropsJSON, &scrapedAt,
-	)
-	if err != nil {
-		return MobComparison{} // no server row (ErrNoRows) or scan error → baseline only
-	}
-
-	s.Level, s.HP = ni(level), ni(hp)
-	s.BaseExp, s.JobExp, s.MvpExp = ni(baseExp), ni(jobExp), ni(mvpExp)
-	s.AtkMin, s.AtkMax, s.Def, s.Mdef = ni(atk), ni(atk2), ni(def), ni(mdef)
-	s.Str, s.Agi, s.Vit, s.Int, s.Dex, s.Luk = ni(st), ni(ag), ni(vi), ni(in), ni(dx), ni(lk)
-	s.AtkRange, s.SkillRange, s.ChaseRange = ni(atkR), ni(skR), ni(chR)
-	s.ElementLvl = ni(elemLvl)
-	s.IsMvp = isMvp.Int64 != 0
-
+// mobFieldDiffs builds the baseline-vs-server comparison rows for a mob. The
+// MVP bonus EXP row is included only when either side is an MVP. Used both for
+// a single mob's detail page and the bulk "Differences" tab.
+func mobFieldDiffs(base, s MobDetail) []MobFieldDiff {
 	addI := func(label string, a, b int) MobFieldDiff {
 		return MobFieldDiff{Label: label, Baseline: strconv.Itoa(a), Server: strconv.Itoa(b), Differs: a != b}
 	}
@@ -332,6 +330,49 @@ func loadMobComparison(id int, base MobDetail, lang string) MobComparison {
 	if base.IsMvp || s.IsMvp {
 		fields = append(fields, addI("MVP Bonus EXP", base.MvpExp, s.MvpExp))
 	}
+	return fields
+}
+
+// loadMobComparison loads the live server row (if any) for a mob and diffs it
+// against the YAML baseline. Returns HasServer=false when the mob hasn't been
+// scraped yet.
+func loadMobComparison(id int, base MobDetail, lang string) MobComparison {
+	var (
+		s                                  MobDetail
+		level, hp, baseExp, jobExp, mvpExp sql.NullInt64
+		atk, atk2, def, mdef               sql.NullInt64
+		st, ag, vi, in, dx, lk             sql.NullInt64
+		atkR, skR, chR, elemLvl, isMvp     sql.NullInt64
+		dropsJSON, mvpDropsJSON, scrapedAt string
+	)
+	err := srv.db.QueryRow(`
+		SELECT level, hp, base_exp, job_exp, mvp_exp,
+			attack, attack2, defense, magic_defense,
+			str, agi, vit, int, dex, luk,
+			attack_range, skill_range, chase_range,
+			size, race, element, element_level, is_mvp,
+			COALESCE(drops,'[]'), COALESCE(mvp_drops,'[]'), COALESCE(scraped_at,'')
+		FROM mob_server_db WHERE mob_id = ?`, id).Scan(
+		&level, &hp, &baseExp, &jobExp, &mvpExp,
+		&atk, &atk2, &def, &mdef,
+		&st, &ag, &vi, &in, &dx, &lk,
+		&atkR, &skR, &chR,
+		&s.Size, &s.Race, &s.Element, &elemLvl, &isMvp,
+		&dropsJSON, &mvpDropsJSON, &scrapedAt,
+	)
+	if err != nil {
+		return MobComparison{} // no server row (ErrNoRows) or scan error → baseline only
+	}
+
+	s.Level, s.HP = ni(level), ni(hp)
+	s.BaseExp, s.JobExp, s.MvpExp = ni(baseExp), ni(jobExp), ni(mvpExp)
+	s.AtkMin, s.AtkMax, s.Def, s.Mdef = ni(atk), ni(atk2), ni(def), ni(mdef)
+	s.Str, s.Agi, s.Vit, s.Int, s.Dex, s.Luk = ni(st), ni(ag), ni(vi), ni(in), ni(dx), ni(lk)
+	s.AtkRange, s.SkillRange, s.ChaseRange = ni(atkR), ni(skR), ni(chR)
+	s.ElementLvl = ni(elemLvl)
+	s.IsMvp = isMvp.Int64 != 0
+
+	fields := mobFieldDiffs(base, s)
 
 	diffCount := 0
 	for _, f := range fields {
@@ -350,9 +391,100 @@ func loadMobComparison(id int, base MobDetail, lang string) MobComparison {
 	}
 }
 
+// loadMobDiffs joins the YAML baseline (internal_mob_db) against the live server
+// scrape (mob_server_db) for every scraped mob, diffs their stats, and returns
+// only those that differ on more than one field — ordered most-divergent first.
+func loadMobDiffs(lang string) ([]MobDiffEntry, error) {
+	rows, err := srv.db.Query(`
+		SELECT b.mob_id, b.name, COALESCE(b.name_pt,''),
+			b.level, b.hp, b.base_exp, b.job_exp, b.mvp_exp,
+			b.attack, b.attack2, b.defense, b.magic_defense,
+			b.str, b.agi, b.vit, b.int, b.dex, b.luk,
+			b.attack_range, b.skill_range, b.chase_range,
+			b.size, b.race, b.element, b.element_level, b.is_mvp,
+			s.level, s.hp, s.base_exp, s.job_exp, s.mvp_exp,
+			s.attack, s.attack2, s.defense, s.magic_defense,
+			s.str, s.agi, s.vit, s.int, s.dex, s.luk,
+			s.attack_range, s.skill_range, s.chase_range,
+			s.size, s.race, s.element, s.element_level, s.is_mvp,
+			COALESCE(s.scraped_at,'')
+		FROM internal_mob_db b JOIN mob_server_db s ON b.mob_id = s.mob_id
+		ORDER BY b.mob_id`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var out []MobDiffEntry
+	for rows.Next() {
+		var (
+			id                                int
+			name, namePT                      string
+			bLvl, bHP, bBExp, bJExp, bMExp    sql.NullInt64
+			bAtk, bAtk2, bDef, bMdef          sql.NullInt64
+			bSt, bAg, bVi, bIn, bDx, bLk      sql.NullInt64
+			bAtkR, bSkR, bChR, bElemLvl, bMvp sql.NullInt64
+			sLvl, sHP, sBExp, sJExp, sMExp    sql.NullInt64
+			sAtk, sAtk2, sDef, sMdef          sql.NullInt64
+			sSt, sAg, sVi, sIn, sDx, sLk      sql.NullInt64
+			sAtkR, sSkR, sChR, sElemLvl, sMvp sql.NullInt64
+			base, live                        MobDetail
+			scrapedAt                         string
+		)
+		if err := rows.Scan(&id, &name, &namePT,
+			&bLvl, &bHP, &bBExp, &bJExp, &bMExp,
+			&bAtk, &bAtk2, &bDef, &bMdef,
+			&bSt, &bAg, &bVi, &bIn, &bDx, &bLk,
+			&bAtkR, &bSkR, &bChR, &base.Size, &base.Race, &base.Element, &bElemLvl, &bMvp,
+			&sLvl, &sHP, &sBExp, &sJExp, &sMExp,
+			&sAtk, &sAtk2, &sDef, &sMdef,
+			&sSt, &sAg, &sVi, &sIn, &sDx, &sLk,
+			&sAtkR, &sSkR, &sChR, &live.Size, &live.Race, &live.Element, &sElemLvl, &sMvp,
+			&scrapedAt); err != nil {
+			log.Printf("[W] [HTTP/Mobs] diff scan failed: %v", err)
+			continue
+		}
+
+		base.Level, base.HP, base.BaseExp, base.JobExp, base.MvpExp = ni(bLvl), ni(bHP), ni(bBExp), ni(bJExp), ni(bMExp)
+		base.AtkMin, base.AtkMax, base.Def, base.Mdef = ni(bAtk), ni(bAtk2), ni(bDef), ni(bMdef)
+		base.Str, base.Agi, base.Vit, base.Int, base.Dex, base.Luk = ni(bSt), ni(bAg), ni(bVi), ni(bIn), ni(bDx), ni(bLk)
+		base.AtkRange, base.SkillRange, base.ChaseRange, base.ElementLvl = ni(bAtkR), ni(bSkR), ni(bChR), ni(bElemLvl)
+		base.IsMvp = bMvp.Int64 != 0
+
+		live.Level, live.HP, live.BaseExp, live.JobExp, live.MvpExp = ni(sLvl), ni(sHP), ni(sBExp), ni(sJExp), ni(sMExp)
+		live.AtkMin, live.AtkMax, live.Def, live.Mdef = ni(sAtk), ni(sAtk2), ni(sDef), ni(sMdef)
+		live.Str, live.Agi, live.Vit, live.Int, live.Dex, live.Luk = ni(sSt), ni(sAg), ni(sVi), ni(sIn), ni(sDx), ni(sLk)
+		live.AtkRange, live.SkillRange, live.ChaseRange, live.ElementLvl = ni(sAtkR), ni(sSkR), ni(sChR), ni(sElemLvl)
+		live.IsMvp = sMvp.Int64 != 0
+
+		var changed []MobFieldDiff
+		for _, f := range mobFieldDiffs(base, live) {
+			if f.Differs {
+				changed = append(changed, f)
+			}
+		}
+		if len(changed) <= 1 {
+			continue // "more than 1 attribute" — skip matches and single-field diffs
+		}
+		out = append(out, MobDiffEntry{
+			ID:          id,
+			DisplayName: mobDisplayName(name, namePT, lang),
+			IsMvp:       live.IsMvp || base.IsMvp,
+			DiffCount:   len(changed),
+			ScrapedAgo:  timeAgo(scrapedAt),
+			DiffFields:  changed,
+		})
+	}
+
+	// Most-divergent first; ties keep mob_id order (stable from the query).
+	sort.SliceStable(out, func(i, j int) bool { return out[i].DiffCount > out[j].DiffCount })
+	return out, nil
+}
+
 // rawDrop tolerates both drop encodings stored in the drops column:
 //   - @mobinfo: {"item_id":990,"rate_pct":0.70}
 //   - YAML seed: {"Item":"Jellopy","Rate":7000}   (Rate is 0.01% units)
+//
 // The JSON field names don't collide, so one struct unmarshals either shape.
 type rawDrop struct {
 	ItemID  int64   `json:"item_id"`

@@ -1,16 +1,74 @@
 {{define "title"}}Bestiary - Yufa Market Tracker{{end}}
 {{define "content"}}
     <div class="container mx-auto px-4 py-6">
+        {{$isDiffs := eq .Data.Tab "diffs"}}
         <div class="flex flex-col sm:flex-row justify-between sm:items-center gap-2 mb-4 border-b border-gray-200 dark:border-gray-700 pb-3">
             <h1 class="text-2xl font-bold text-gray-800 dark:text-gray-100">Bestiary</h1>
+            {{if not $isDiffs}}
             <form action="/mobs" method="GET" class="flex items-center gap-2">
                 <input type="text" name="q" value="{{.Data.SearchQuery}}" placeholder="Search by name or id…"
                        class="px-3 py-1.5 text-sm rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500 w-56">
                 <button type="submit" class="px-3 py-1.5 text-sm font-medium rounded-md bg-blue-600 text-white hover:bg-blue-700">Search</button>
                 {{if .Data.SearchQuery}}<a href="/mobs" class="text-sm text-gray-500 dark:text-gray-400 hover:underline">Clear</a>{{end}}
             </form>
+            {{end}}
         </div>
 
+        <div class="flex items-center gap-1 mb-4 border-b border-gray-200 dark:border-gray-700 -mt-1">
+            <a href="/mobs" class="px-3 py-2 text-sm font-medium border-b-2 -mb-px {{if not $isDiffs}}border-blue-600 text-blue-600 dark:text-blue-400{{else}}border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200{{end}}">All monsters</a>
+            <a href="/mobs?tab=diffs" class="px-3 py-2 text-sm font-medium border-b-2 -mb-px {{if $isDiffs}}border-blue-600 text-blue-600 dark:text-blue-400{{else}}border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200{{end}}">Differences</a>
+        </div>
+
+        {{if $isDiffs}}
+        <p class="text-sm text-gray-600 dark:text-gray-400 mb-3">
+            {{.Data.TotalMobs}} monster(s) differ from the YAML baseline on more than one attribute.
+        </p>
+
+        <div class="bg-white dark:bg-gray-800 shadow-lg rounded-lg overflow-hidden">
+            <div class="overflow-x-auto">
+                <table class="min-w-full leading-normal text-sm">
+                    <thead>
+                        <tr class="border-b-2 border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-700 text-left text-xs font-semibold text-gray-600 dark:text-gray-300 uppercase tracking-wider">
+                            <th class="px-3 py-3 w-16">ID</th>
+                            <th class="px-3 py-3">Name</th>
+                            <th class="px-3 py-3 text-right w-20"># Diffs</th>
+                            <th class="px-3 py-3">Differing attributes (baseline → server)</th>
+                            <th class="px-3 py-3 w-32">Scraped</th>
+                        </tr>
+                    </thead>
+                    <tbody class="text-gray-700 dark:text-gray-300">
+                        {{range .Data.Diffs}}
+                        <tr class="border-b border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700 align-top">
+                            <td class="px-3 py-2 font-mono text-gray-500 dark:text-gray-400">{{.ID}}</td>
+                            <td class="px-3 py-2 font-semibold">
+                                <a href="/mob?id={{.ID}}" class="text-blue-600 dark:text-blue-400 hover:underline">{{.DisplayName}}</a>
+                                {{if .IsMvp}}<span class="ml-1 px-1.5 py-0.5 rounded text-[10px] font-bold bg-amber-100 text-amber-800 align-middle">MVP</span>{{end}}
+                            </td>
+                            <td class="px-3 py-2 text-right">
+                                <span class="px-2 py-0.5 rounded bg-amber-100 text-amber-800 font-semibold">{{.DiffCount}}</span>
+                            </td>
+                            <td class="px-3 py-2">
+                                <div class="flex flex-wrap gap-1.5">
+                                    {{range .DiffFields}}
+                                    <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-amber-50 dark:bg-amber-900/20 text-xs">
+                                        <span class="font-medium text-gray-600 dark:text-gray-300">{{.Label}}</span>
+                                        <span class="font-mono text-gray-400 dark:text-gray-500">{{.Baseline}}</span>
+                                        <span class="text-amber-500">→</span>
+                                        <span class="font-mono font-bold text-amber-700 dark:text-amber-300">{{.Server}}</span>
+                                    </span>
+                                    {{end}}
+                                </div>
+                            </td>
+                            <td class="px-3 py-2 text-gray-400 dark:text-gray-500 whitespace-nowrap">{{.ScrapedAgo}}</td>
+                        </tr>
+                        {{else}}
+                        <tr><td colspan="5" class="px-3 py-6 text-center text-gray-500 dark:text-gray-400">No monsters differ from baseline on more than one attribute yet. Run the @mobinfo scrape to capture live server stats.</td></tr>
+                        {{end}}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+        {{else}}
         <p class="text-sm text-gray-600 dark:text-gray-400 mb-3">
             {{if .Data.SearchQuery}}{{.Data.TotalMobs}} match(es) for "{{.Data.SearchQuery}}"{{else}}{{.Data.TotalMobs}} monsters{{end}}
         </p>
@@ -53,6 +111,7 @@
 
         {{if gt .Data.Pagination.TotalPages 1}}
             {{template "pagination" (dict "Page" .Page "Pagination" .Data.Pagination "Filter" .Data.Filter)}}
+        {{end}}
         {{end}}
     </div>
 {{end}}

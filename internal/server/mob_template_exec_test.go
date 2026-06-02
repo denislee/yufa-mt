@@ -42,6 +42,21 @@ func TestMobsTemplateExecutes(t *testing.T) {
 	})
 }
 
+func TestMobsDiffsTabTemplateExecutes(t *testing.T) {
+	renderPageForTest(t, "mobs.html", MobsPageData{
+		Tab:       "diffs",
+		TotalMobs: 1,
+		PageTitle: "Bestiary",
+		Diffs: []MobDiffEntry{{
+			ID: 1039, DisplayName: "Baphomet", IsMvp: true, DiffCount: 2, ScrapedAgo: "5 minutes ago",
+			DiffFields: []MobFieldDiff{
+				{Label: "HP", Baseline: "668000", Server: "999999", Differs: true},
+				{Label: "DEF", Baseline: "35", Server: "50", Differs: true},
+			},
+		}},
+	})
+}
+
 func TestMobDetailTemplateExecutes(t *testing.T) {
 	renderPageForTest(t, "mob_detail.html", MobDetailPageData{
 		PageTitle: "Bestiary",
