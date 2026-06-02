@@ -596,6 +596,11 @@ type AdminDashboardData struct {
 	// (SELF_UPDATE=1). See selfupdate.go.
 	SelfUpdateEnabled bool
 	UpdateStatus      UpdateStatusView
+	// SplitDeployment is true when this is the app process of the two-process
+	// split (ModeApp): a deploy restarts only the app and the proxy keeps the
+	// game connection up, so the update card can say so. See
+	// docs/two-process-split-plan.md.
+	SplitDeployment bool
 
 	// Scheduler tab: per-job config/status rows and the recent run history.
 	SchedulerJobs []SchedulerJobView

@@ -1,0 +1,38 @@
+[Unit]
+Description=yufa-mt app (web, scrapers, chat capture, Discord)
+After=network.target yufa-mt-proxy.service
+# Wants (not Requires): the app should still come up and keep retrying if the
+# proxy is briefly down — its IPC client dials per request and degrades
+# gracefully (mob sweeps fail/retry; the game link is unaffected either way).
+Wants=yufa-mt-proxy.service
+
+[Service]
+# The frequently-redeployed half. The "Pull, Rebuild & Restart" admin action
+# rebuilds the shared binary and SIGTERMs THIS process; systemd respawns it on
+# the new build while yufa-mt-proxy.service keeps running its old inode — so a
+# deploy no longer drops the game connection. See docs/two-process-split-plan.md.
+User=dns
+Group=dns
+
+# Only CAP_NET_RAW: libpcap chat capture (AF_PACKET socket + promiscuous mode on
+# tcp port 6121). The app installs no iptables, so it does NOT need CAP_NET_ADMIN.
+AmbientCapabilities=CAP_NET_RAW
+CapabilityBoundingSet=CAP_NET_RAW
+
+WorkingDirectory=/home/dns/git/yufa-mt/
+EnvironmentFile=/home/dns/git/yufa-mt/.env
+Environment=YUFA_MODE=app
+
+# Connects to the proxy's IPC socket (owned by yufa-mt-proxy.service, which
+# creates /run/yufa-mt). Must match PROXY_IPC_SOCKET in the proxy unit.
+Environment=PROXY_IPC_SOCKET=/run/yufa-mt/proxy.sock
+
+ExecStart=/home/dns/git/yufa-mt/yufa-mt --mode=app
+
+# Backs the self-update path: the app SIGTERMs itself after swapping the binary
+# and relies on systemd to respawn onto the new build (the proxy is untouched).
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target

@@ -12,6 +12,8 @@ import (
 	"sync"
 	"syscall"
 	"time"
+
+	"github.com/denislee/yufa-mt/internal/config"
 )
 
 // selfUpdate performs an in-place upgrade of the running server:
@@ -25,6 +27,14 @@ import (
 // restart onto the freshly built binary. The feature is gated behind
 // SELF_UPDATE=1 (config.SelfUpdateEnabled) so a dev instance — which has
 // no supervisor — can't be shut down by an accidental click.
+//
+// Split deployment (docs/two-process-split-plan.md): self-update runs in the
+// APP process (ModeApp) under yufa-mt-app.service. The SIGTERM restarts only
+// that unit; yufa-mt-proxy.service keeps running its old inode and holds the
+// live game connection — so a deploy no longer disconnects the client. The
+// binary swap below replaces the single shared binary, which the proxy unit
+// picks up the next time IT is (rarely) restarted. In ModeAll (single unit) the
+// SIGTERM restarts everything, exactly as before.
 
 // updateStatus is the process-wide state of the most recent self-update,
 // surfaced on the admin dashboard. Step-by-step output also streams to the
@@ -202,7 +212,11 @@ func performSelfUpdate() {
 	}
 
 	updateStatus.succeed("Update applied. Restarting to load the new build…")
-	slog.Info("[Update] new binary in place; sending SIGTERM for graceful restart")
+	if appConfig != nil && appConfig.Mode == config.ModeApp {
+		slog.Info("[Update] new binary in place; restarting app process only — the proxy keeps the game connection up")
+	} else {
+		slog.Info("[Update] new binary in place; sending SIGTERM for graceful restart")
+	}
 
 	// 5. Trigger a graceful shutdown via the existing SIGTERM handler in Run.
 	// The supervisor (systemd Restart=always) respawns the process, which now

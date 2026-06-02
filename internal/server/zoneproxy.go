@@ -134,8 +134,11 @@ func buildChatPacket(name, msg string) ([]byte, error) {
 	return append(out, enc...), nil
 }
 
-// injectChatCommand sends one chat/atcommand line over the live zone session.
-func injectChatCommand(msg string) error {
+// injectChatCommandLocal sends one chat/atcommand line over the live zone
+// session held in THIS process. It is the implementation used in ModeAll (and
+// inside the proxy process itself); ModeApp instead routes through the IPC
+// client (see proxy_inject.go / proxy_ipc_client.go).
+func injectChatCommandLocal(msg string) error {
 	s := activeZone.Load()
 	if s == nil {
 		return fmt.Errorf("no active zone connection (client logged in? ZONE_PROXY enabled?)")
@@ -151,9 +154,10 @@ func injectChatCommand(msg string) error {
 	return s.writeServer(pkt)
 }
 
-// zoneProxyReady reports whether a session is live and which char name would be
-// used for injection — surfaced in the admin UI.
-func zoneProxyReady() (bool, string) {
+// zoneProxyReadyLocal reports whether a session is live in THIS process and
+// which char name would be used for injection. ModeAll/proxy use it directly;
+// ModeApp routes through the IPC client (see proxy_inject.go).
+func zoneProxyReadyLocal() (bool, string) {
 	return activeZone.Load() != nil, effectiveCharName()
 }
 

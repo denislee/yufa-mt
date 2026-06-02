@@ -16,8 +16,8 @@ func startZoneProxy(_ context.Context) {
 	slog.Warn("zone proxy is enabled but only supported on Linux; skipping")
 }
 
-func injectChatCommand(string) error {
+func injectChatCommandLocal(string) error {
 	return fmt.Errorf("zone proxy (chat injection) is only supported on Linux")
 }
 
-func zoneProxyReady() (bool, string) { return false, "" }
+func zoneProxyReadyLocal() (bool, string) { return false, "" }

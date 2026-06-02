@@ -1374,6 +1374,15 @@
                         Pulls the latest code, rebuilds the binary, and restarts the service.
                         The process is supervised (systemd <code>Restart=always</code>), so it comes back up automatically on the new build.
                         Watch the <strong>Server Logs</strong> panel below for live progress.
+                        {{if .SplitDeployment}}
+                        <span class="block mt-2 text-green-700 dark:text-green-300">
+                            ✅ Split deployment: this restarts the <strong>app</strong> process only. The proxy keeps the live game connection up, so the client is <strong>not</strong> disconnected.
+                        </span>
+                        {{else}}
+                        <span class="block mt-2 text-yellow-700 dark:text-yellow-300">
+                            ⚠️ Single-process mode: this restart <strong>will disconnect the game client</strong> (the watchdog auto-recovers it). Split into the proxy/app units to deploy without dropping the connection — see <code>docs/two-process-split-plan.md</code>.
+                        </span>
+                        {{end}}
                     </p>
 
                     {{if .UpdateStatus.Running}}

@@ -176,6 +176,21 @@ func Run(cfg *config.Config) {
 	appConfig = cfg
 	initLogger()
 
+	// ModeProxy is the lean connection-owner: only the proxies + IPC server, no
+	// DB / HTTP / scrapers. It has its own run path so a redeploy of the app
+	// process never touches it. See docs/two-process-split-plan.md.
+	if cfg.Mode == config.ModeProxy {
+		runProxyMode(cfg)
+		return
+	}
+
+	// ModeApp runs everything except the proxies; chat injection / readiness go
+	// to the proxy process over IPC. (ModeAll keeps the in-process defaults.)
+	if cfg.Mode == config.ModeApp {
+		slog.Info("Starting in app mode; chat injection routed to proxy over IPC", "socket", cfg.ProxyIPCSocket)
+		useProxyIPC(cfg.ProxyIPCSocket)
+	}
+
 	dbh, err := initDB(cfg.DBPath)
 	if err != nil {
 		slog.Error("Failed to initialize database", "error", err)
@@ -299,5 +314,73 @@ func Run(cfg *config.Config) {
 		slog.Info("All services shut down. Exiting.")
 	case <-time.After(15 * time.Second):
 		slog.Warn("Background services did not drain within 15s; exiting anyway")
+	}
+}
+
+// runProxyMode is the entrypoint for ModeProxy: it runs only the PIN and zone
+// proxies (which own the live game connection) plus the IPC server the app
+// process talks to. It deliberately opens no database, serves no HTTP, and runs
+// no scrapers — so the heavy, frequently-redeployed app can restart without
+// disturbing this process or the game connection it holds.
+func runProxyMode(cfg *config.Config) {
+	slog.Info("Starting in proxy mode (PIN + zone proxies, IPC server only)",
+		"ipcSocket", cfg.ProxyIPCSocket)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	sigChan := make(chan os.Signal, 1)
+	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
+	go func() {
+		<-sigChan
+		slog.Info("Shutdown signal received. Stopping proxies...")
+		cancel()
+	}()
+
+	var wg sync.WaitGroup
+
+	// PIN proxy (char port) — opt-in, like ModeAll.
+	if cfg.PinProxyEnabled {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			startPinProxy(ctx)
+		}()
+	}
+
+	// Zone proxy (zone/map port) — defaults ON. Unlike ModeAll we do NOT gate on
+	// DisableScrapers: a dedicated proxy process exists precisely to hold the
+	// connection, so it always installs its REDIRECT when enabled.
+	if cfg.ZoneProxyEnabled {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			startZoneProxy(ctx)
+		}()
+	}
+
+	// IPC server: lets the app inject @mobinfo and query readiness. Runs on its
+	// own goroutines and never blocks the relay loops (see proxy_ipc.go).
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		startProxyIPCServer(ctx, cfg.ProxyIPCSocket)
+	}()
+
+	<-ctx.Done()
+
+	// Give the proxy goroutines a moment to remove their iptables rules and
+	// close the listener/socket (their defers run on ctx cancel). Bounded so a
+	// wedged relay can't block the restart indefinitely.
+	drained := make(chan struct{})
+	go func() {
+		wg.Wait()
+		close(drained)
+	}()
+	select {
+	case <-drained:
+		slog.Info("Proxy shut down cleanly. Exiting.")
+	case <-time.After(10 * time.Second):
+		slog.Warn("Proxy did not drain within 10s; exiting anyway")
 	}
 }

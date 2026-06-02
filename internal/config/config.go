@@ -13,8 +13,33 @@ import (
 	"strings"
 )
 
+// Process modes. The same binary runs as one of three roles, selected by the
+// --mode flag (or YUFA_MODE env). See docs/two-process-split-plan.md.
+const (
+	// ModeAll is the single-process default: proxies + app in one process with
+	// in-process chat injection. Used for dev (`make run`) and any box that
+	// hasn't been split into two units.
+	ModeAll = "all"
+	// ModeApp runs everything EXCEPT the proxies (web, scrapers, chat capture,
+	// Discord, scheduler). Chat injection / readiness go to the proxy process
+	// over the IPC socket. Redeploys freely without dropping the game link.
+	ModeApp = "app"
+	// ModeProxy runs ONLY the PIN + zone proxies (which own the live game
+	// connection) and the IPC server the app talks to. Restarted rarely.
+	ModeProxy = "proxy"
+)
+
 // Config is the typed, validated configuration the server uses.
 type Config struct {
+	// Mode selects the process role: ModeAll (default), ModeApp, or ModeProxy.
+	// Set via the --mode flag (cmd/server/main.go) or YUFA_MODE env.
+	Mode string
+
+	// ProxyIPCSocket is the unix-domain socket the app (ModeApp) uses to ask the
+	// proxy (ModeProxy) to inject chat and report readiness. Unused in ModeAll
+	// (in-process). Default /run/yufa-mt/proxy.sock; env PROXY_IPC_SOCKET.
+	ProxyIPCSocket string
+
 	// HTTP server bind address (host:port).
 	HTTPAddr string
 
@@ -127,6 +152,8 @@ type Config struct {
 // returns a typed Config or an error describing every problem found.
 func Load() (*Config, error) {
 	cfg := &Config{
+		Mode:                 envOr("YUFA_MODE", ModeAll),
+		ProxyIPCSocket:       envOr("PROXY_IPC_SOCKET", "/run/yufa-mt/proxy.sock"),
 		HTTPAddr:             envOr("HTTP_ADDR", ":8080"),
 		DBPath:               envOr("DB_PATH", "./data/runtime/market_data.db"),
 		AdminUser:            envOr("ADMIN_USER", "admin"),
@@ -174,6 +201,29 @@ func Load() (*Config, error) {
 	}
 
 	var problems []string
+
+	switch cfg.Mode {
+	case ModeAll, ModeApp, ModeProxy:
+	default:
+		problems = append(problems, fmt.Sprintf("invalid YUFA_MODE/--mode %q (want %q, %q, or %q)",
+			cfg.Mode, ModeAll, ModeApp, ModeProxy))
+	}
+
+	// ModeProxy owns no DB, serves no HTTP and needs no admin password: it only
+	// runs the proxies + IPC server. Skip the app-oriented checks for it.
+	if cfg.Mode == ModeProxy {
+		if cfg.ProxyIPCSocket == "" {
+			problems = append(problems, "PROXY_IPC_SOCKET is empty (required in proxy mode)")
+		}
+		if len(problems) > 0 {
+			return nil, fmt.Errorf("invalid configuration: %s", strings.Join(problems, "; "))
+		}
+		return cfg, nil
+	}
+
+	if cfg.Mode == ModeApp && cfg.ProxyIPCSocket == "" {
+		problems = append(problems, "PROXY_IPC_SOCKET is empty (required in app mode)")
+	}
 	if cfg.RequireAdminPassword && cfg.AdminPassword == "" {
 		problems = append(problems, "REQUIRE_ADMIN_PASSWORD is set but ADMIN_PASSWORD is empty")
 	}

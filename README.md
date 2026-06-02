@@ -132,6 +132,37 @@ are inherited across `execve`, so the `iptables` child the PIN proxy shells out 
 gets `CAP_NET_ADMIN` too. Because the caps no longer come from the binary, a
 rebuild can't strip them and the self-update needs **no `setcap` step**.
 
+### Split deployment: `yufa-mt-proxy.service` + `yufa-mt-app.service` (zero-disconnect deploys)
+
+`yufa-mt.service` above runs everything in one process, so **every deploy drops the
+game connection** (the watchdog auto-recovers it after ~90–120 s). To deploy without
+disconnecting, run the same binary as **two units** selected by `--mode` (see the full
+design in [`docs/two-process-split-plan.md`](docs/two-process-split-plan.md)):
+
+- [`deploy/yufa-mt-proxy.service`](deploy/yufa-mt-proxy.service) — `--mode=proxy`. Owns
+  the live connection: the PIN + zone proxies, their iptables `REDIRECT`, and the IPC
+  socket the app talks to. Caps: **`CAP_NET_ADMIN`** only. Owns `/run/yufa-mt`
+  (`RuntimeDirectoryPreserve=yes`). **Restarted rarely.**
+- [`deploy/yufa-mt-app.service`](deploy/yufa-mt-app.service) — `--mode=app`. Everything
+  else: web, scrapers, libpcap chat capture, Discord, scheduler. Caps: **`CAP_NET_RAW`**
+  only (pcap). Chat injection (`@mobinfo`) and proxy-readiness go to the proxy over the
+  IPC socket `PROXY_IPC_SOCKET` (default `/run/yufa-mt/proxy.sock`). **This is what the
+  "Pull, Rebuild & Restart" button restarts** — the proxy keeps its inode and the game
+  stays connected.
+
+```sh
+# one-time: install both units, disable the single unit
+sudo systemctl disable --now yufa-mt
+sudo cp deploy/yufa-mt-proxy.service deploy/yufa-mt-app.service /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable --now yufa-mt-proxy.service yufa-mt-app.service
+```
+
+The single-process `yufa-mt.service` / `--mode=all` (the default) is still fully
+supported for dev and any unsplit box; rolling back is just re-enabling it. A change to
+the **proxy** code or the IPC protocol version still needs a proxy restart (one
+disconnect) — but those are rare; routine app deploys don't.
+
 ### Updating / restarting the service
 
 Always go through `systemctl` — **never `pkill`** (with `Restart=always`, systemd

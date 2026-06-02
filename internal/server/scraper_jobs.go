@@ -4,6 +4,8 @@ import (
 	"context"
 	"log/slog"
 	"sync"
+
+	"github.com/denislee/yufa-mt/internal/config"
 )
 
 // bgCtx is the application shutdown context, captured so background work that
@@ -14,31 +16,37 @@ var bgCtx context.Context
 func startBackgroundJobs(ctx context.Context, wg *sync.WaitGroup) {
 	bgCtx = ctx
 
-	// The in-process character-select PIN proxy runs independently of the
-	// scrape/capture flags: it installs an iptables REDIRECT and injects the
-	// PIN so the game client clears the keypad with no click. Start it first so
-	// it's up before the listener logs the client in. (No-op unless PIN_PROXY=1
-	// and, off Linux, a logged stub.)
-	if appConfig != nil && appConfig.PinProxyEnabled {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			startPinProxy(ctx)
-		}()
-	}
+	// The proxies own the live game connection. In the split deployment they run
+	// in their own process (ModeProxy, see runProxyMode); here — the app/all
+	// path — we only start them in ModeAll, the single-process default. In
+	// ModeApp the proxies live elsewhere and chat injection goes over IPC.
+	if appConfig != nil && appConfig.Mode == config.ModeAll {
+		// The in-process character-select PIN proxy runs independently of the
+		// scrape/capture flags: it installs an iptables REDIRECT and injects the
+		// PIN so the game client clears the keypad with no click. Start it first
+		// so it's up before the listener logs the client in. (No-op unless
+		// PIN_PROXY=1 and, off Linux, a logged stub.)
+		if appConfig.PinProxyEnabled {
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				startPinProxy(ctx)
+			}()
+		}
 
-	// The zone proxy is the sibling of the PIN proxy on the zone/map port: it
-	// relays the live game connection and lets the mob-info scrape inject
-	// @mobinfo commands. It defaults ON (unlike the opt-in PIN proxy), so we
-	// guard it with DISABLE_SCRAPERS: a dev instance (`make run`) must not
-	// install an iptables REDIRECT. In production it comes up before the client
-	// connects. Set ZONE_PROXY=0 to force it off even in production.
-	if appConfig != nil && appConfig.ZoneProxyEnabled && !appConfig.DisableScrapers {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			startZoneProxy(ctx)
-		}()
+		// The zone proxy is the sibling of the PIN proxy on the zone/map port:
+		// it relays the live game connection and lets the mob-info scrape inject
+		// @mobinfo commands. It defaults ON (unlike the opt-in PIN proxy), so we
+		// guard it with DISABLE_SCRAPERS: a dev instance (`make run`) must not
+		// install an iptables REDIRECT. In production it comes up before the
+		// client connects. Set ZONE_PROXY=0 to force it off even in production.
+		if appConfig.ZoneProxyEnabled && !appConfig.DisableScrapers {
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				startZoneProxy(ctx)
+			}()
+		}
 	}
 
 	chatOnly := appConfig != nil && appConfig.ChatCaptureOnly

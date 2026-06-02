@@ -13,6 +13,8 @@ import (
 	"time"
 
 	"golang.org/x/sync/errgroup"
+
+	"github.com/denislee/yufa-mt/internal/config"
 )
 
 // HourlyVisit is one time bucket in the selectable-window traffic distribution
@@ -587,6 +589,7 @@ func getAdminDashboardData(r *http.Request) (AdminDashboardData, error) {
 
 	if appConfig != nil {
 		stats.SelfUpdateEnabled = appConfig.SelfUpdateEnabled
+		stats.SplitDeployment = appConfig.Mode == config.ModeApp
 	}
 	stats.UpdateStatus = updateStatus.Snapshot()
 
