@@ -120,6 +120,7 @@ func registerAdminRoutes() *http.ServeMux {
 	// Server observability + maintenance
 	adminRouter.HandleFunc("/logs", adminLogsHandler)
 	adminRouter.HandleFunc("/stats", adminSystemStatsHandler)
+	adminRouter.HandleFunc("/visits-hourly", adminVisitsHourlyHandler)
 	adminRouter.HandleFunc("/update", adminSelfUpdateHandler)
 
 	// Scheduler tab: per-job interval/enabled config + manual run.

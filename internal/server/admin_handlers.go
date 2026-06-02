@@ -2,6 +2,7 @@ package server
 
 import (
 	"database/sql"
+	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
@@ -13,6 +14,72 @@ import (
 
 	"golang.org/x/sync/errgroup"
 )
+
+// HourlyVisit is one time bucket in the selectable-window traffic distribution
+// chart on the admin overview. Label is the short axis label; Full is the full
+// timestamp shown in the hover tooltip.
+type HourlyVisit struct {
+	Label    string `json:"label"`
+	Full     string `json:"full"`
+	Views    int    `json:"views"`
+	Visitors int    `json:"visitors"`
+}
+
+// adminVisitsHourlyHandler serves the page-view distribution bucketed by clock
+// hour for a selectable recent window (?hours=N, default 24, clamped 1..168).
+// Empty hours are zero-filled so the x-axis stays continuous. The admin
+// overview's "Hourly Traffic" chart fetches this whenever the interval changes.
+func adminVisitsHourlyHandler(w http.ResponseWriter, r *http.Request) {
+	hours := 24
+	if v := r.URL.Query().Get("hours"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n >= 1 && n <= 168 {
+			hours = n
+		}
+	}
+
+	rows, err := srv.db.Query(`
+		SELECT strftime('%Y-%m-%d %H', view_timestamp, 'localtime') AS hr,
+		       COUNT(*) AS views,
+		       COUNT(DISTINCT visitor_hash) AS visitors
+		FROM page_views
+		WHERE view_timestamp >= datetime('now', 'localtime', ?)
+		GROUP BY hr`, fmt.Sprintf("-%d hours", hours))
+	if err != nil {
+		log.Printf("[W] [Admin] Could not query hourly visits: %v", err)
+		http.Error(w, "could not load hourly visits", http.StatusInternalServerError)
+		return
+	}
+	defer rows.Close()
+
+	type bucket struct{ views, visitors int }
+	byHour := make(map[string]bucket)
+	for rows.Next() {
+		var key string
+		var b bucket
+		if err := rows.Scan(&key, &b.views, &b.visitors); err != nil {
+			log.Printf("[W] [Admin/Stats] Failed to scan hourly visit row: %v", err)
+			continue
+		}
+		byHour[key] = b
+	}
+
+	out := make([]HourlyVisit, 0, hours)
+	now := time.Now()
+	start := now.Add(-time.Duration(hours-1) * time.Hour)
+	for t := start; !t.After(now); t = t.Add(time.Hour) {
+		b := byHour[t.Format("2006-01-02 15")]
+		out = append(out, HourlyVisit{
+			Label:    t.Format("15:00"),
+			Full:     t.Format("Mon Jan 02, 15:00"),
+			Views:    b.views,
+			Visitors: b.visitors,
+		})
+	}
+
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	w.Header().Set("Cache-Control", "no-store")
+	_ = json.NewEncoder(w).Encode(out)
+}
 
 // adminUser, adminPass, and basicAuth moved to middleware.go.
 
@@ -105,9 +172,13 @@ func getDashboardStats(stats *AdminDashboardData) error {
 
 // getDashboardPageVisitCounts populates the page view summary.
 func getDashboardPageVisitCounts(stats *AdminDashboardData) error {
+	// Exclude internal API endpoints (e.g. /api/operations/running) — these are
+	// frontend polling calls that fall through to the catch-all handler and would
+	// otherwise dominate the "top pages" ranking.
 	rows, err := srv.db.Query(`
 		SELECT page_path, COUNT(page_path) as Cnt
 		FROM page_views
+		WHERE page_path NOT LIKE '/api/%'
 		GROUP BY page_path
 		ORDER BY Cnt DESC
 		LIMIT 25
@@ -382,7 +453,7 @@ func getAdminDashboardData(r *http.Request) (AdminDashboardData, error) {
 	}
 
 	var (
-		g                                                                  errgroup.Group
+		g                                                                     errgroup.Group
 		statsR, guildsR, pageViewsR, tpR, rmsCacheR, rmsLiveR, visitsR, chatR AdminDashboardData
 	)
 

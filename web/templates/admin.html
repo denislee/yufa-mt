@@ -215,6 +215,33 @@
         .adm-bars-bar.is-visitors { background: #059669; }
         .adm-bars-xlabel { font-size: .62rem; line-height: 1.1; color: #6b7280; text-align: center; white-space: nowrap; font-variant-numeric: tabular-nums; }
         .dark .adm-bars-xlabel { color: #9ca3af; }
+        /* Dense variant for the hourly chart (up to ~168 bars). */
+        .adm-bars-dense { gap: 1px; }
+        .adm-bars-dense .adm-bars-track { gap: 0; }
+        .adm-bars-dense .adm-bars-bar { width: 100%; max-width: none; border-radius: .1rem .1rem 0 0; }
+        .adm-bars-dense .adm-bars-xlabel { font-size: .55rem; }
+
+        /* Hourly traffic — line chart */
+        .adm-line-plot { position: relative; height: 12rem; }
+        .adm-line-svg { display: block; width: 100%; height: 100%; overflow: visible; }
+        .adm-line-area { fill: rgba(37, 99, 235, .12); stroke: none; }
+        .dark .adm-line-area { fill: rgba(96, 165, 250, .15); }
+        .adm-line-stroke { fill: none; stroke: #2563eb; stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
+        .dark .adm-line-stroke { stroke: #60a5fa; }
+        .adm-line-hover { position: absolute; inset: 0; display: flex; }
+        .adm-line-hover-col { flex: 1 1 0; min-width: 0; }
+        .adm-line-hover-col:hover { background: rgba(37, 99, 235, .06); }
+        .dark .adm-line-hover-col:hover { background: rgba(96, 165, 250, .12); }
+        .adm-line-dot { position: absolute; width: 8px; height: 8px; border-radius: 9999px; background: #2563eb; border: 2px solid #fff; transform: translate(-50%, -50%); pointer-events: none; box-shadow: 0 0 0 1px rgba(0,0,0,.05); }
+        .dark .adm-line-dot { background: #60a5fa; border-color: #1f2937; }
+        .adm-line-tip { position: absolute; z-index: 10; pointer-events: none; white-space: nowrap; background: #111827; color: #f9fafb; padding: .4rem .55rem; border-radius: .375rem; font-size: .7rem; line-height: 1.35; box-shadow: 0 4px 12px rgba(0,0,0,.25); }
+        .dark .adm-line-tip { background: #f9fafb; color: #111827; }
+        .adm-line-tip-time { font-weight: 600; }
+        .adm-line-tip-val { font-variant-numeric: tabular-nums; }
+        .adm-line-tip-sub { opacity: .7; font-size: .65rem; }
+        .adm-line-xaxis { display: flex; margin-top: .45rem; }
+        .adm-line-xlabel { flex: 1 1 0; min-width: 0; font-size: .55rem; line-height: 1.1; color: #6b7280; text-align: center; white-space: nowrap; font-variant-numeric: tabular-nums; }
+        .dark .adm-line-xlabel { color: #9ca3af; }
 
         /* Top pages — horizontal bars */
         .adm-hbars { display: flex; flex-direction: column; gap: .55rem; }
@@ -223,14 +250,14 @@
         .dark .adm-hbar-label { color: #d1d5db; }
         .adm-hbar-track { height: .8rem; background: #f3f4f6; border-radius: 9999px; overflow: hidden; }
         .dark .adm-hbar-track { background: #374151; }
-        .adm-hbar-fill { height: 100%; border-radius: 9999px; background: #2563eb; transition: width .4s ease; min-width: 2px; }
+        .adm-hbar-fill { display: block; height: 100%; border-radius: 9999px; background: #2563eb; transition: width .4s ease; min-width: 2px; }
         .adm-hbar-val { font-size: .8rem; font-weight: 600; text-align: right; color: #111827; font-variant-numeric: tabular-nums; }
         .dark .adm-hbar-val { color: #f3f4f6; }
 
         /* ===== Machine stats tab ===== */
-        .adm-bar { width: 100%; height: .55rem; background: #e5e7eb; border-radius: 9999px; overflow: hidden; }
+        .adm-bar { display: block; width: 100%; height: .55rem; background: #e5e7eb; border-radius: 9999px; overflow: hidden; }
         .dark .adm-bar { background: #374151; }
-        .adm-bar-fill { height: 100%; border-radius: 9999px; transition: width .4s ease, background-color .4s ease; }
+        .adm-bar-fill { display: block; height: 100%; border-radius: 9999px; transition: width .4s ease, background-color .4s ease; }
 
         .adm-spark { width: 100%; height: 3rem; display: block; }
         .adm-spark polyline {
@@ -275,7 +302,7 @@
 </head>
 <body class="bg-gray-100 dark:bg-gray-900 text-gray-800 dark:text-gray-200 text-sm sm:text-base">
 
-    <nav class="navbar-glass border-b border-gray-200 dark:border-gray-700 sticky top-0 z-20"
+    <nav id="admin-navbar" class="navbar-glass border-b border-gray-200 dark:border-gray-700 sticky top-0 z-20"
          x-data="{ settingsOpen: false }"
          @keydown.escape.window="settingsOpen=false">
         <div class="container mx-auto px-4">
@@ -349,7 +376,6 @@
     </nav>
 
     <div class="w-full px-4 sm:px-6 lg:px-8 py-6">
-        <h1 class="text-3xl font-bold text-gray-800 dark:text-gray-100 mb-6">Admin Dashboard</h1>
 
         {{if .Message}}
         <div class="bg-green-100 border border-green-400 text-green-700 px-4 py-3 rounded relative mb-4" role="alert">
@@ -357,7 +383,8 @@
         </div>
         {{end}}
 
-        <div class="mb-6 border-b border-gray-300 dark:border-gray-600">
+        <div class="mb-6 border-b border-gray-300 dark:border-gray-600 sticky z-10 bg-gray-100 dark:bg-gray-900 pt-3 overflow-x-auto"
+             style="top: var(--adm-nav-h, 3.25rem);">
             <nav class="-mb-px flex space-x-8" aria-label="Tabs">
                 <a href="#" class="tab-button border-blue-500 text-blue-600 whitespace-nowrap py-3 px-1 border-b-2 font-medium text-sm" data-tab="overview">
                     Overview
@@ -469,6 +496,59 @@
                             <p class="adm-desc">No page views recorded yet.</p>
                         </template>
                     </div>
+                </div>
+
+                <!-- Hourly traffic distribution (selectable interval) -->
+                <div class="adm-card mb-8" x-data="hourlyTraffic()" x-init="load()">
+                    <div class="flex flex-wrap items-center justify-between gap-2 mb-1">
+                        <h2 class="adm-card-title">Hourly Traffic</h2>
+                        <label class="flex items-center gap-1.5 text-sm">
+                            <span class="text-gray-600 dark:text-gray-300">Interval</span>
+                            <select x-model.number="hours" @change="load()" class="adm-select">
+                                <option value="24">Last 24 hours</option>
+                                <option value="48">Last 48 hours</option>
+                                <option value="72">Last 72 hours</option>
+                                <option value="168">Last 7 days</option>
+                            </select>
+                        </label>
+                    </div>
+                    <p class="adm-desc mb-4" x-text="total().toLocaleString() + ' views over the selected window · one point per hour'"></p>
+                    <template x-if="error">
+                        <p class="adm-desc text-red-600 dark:text-red-400" x-text="'Could not load hourly traffic: ' + error"></p>
+                    </template>
+                    <template x-if="!error && buckets.length">
+                        <div class="adm-line">
+                            <div class="adm-line-plot" @mouseleave="hover = null">
+                                <svg class="adm-line-svg" viewBox="0 0 100 100" preserveAspectRatio="none">
+                                    <polygon class="adm-line-area" :points="areaPoints()"></polygon>
+                                    <polyline class="adm-line-stroke" :points="linePoints()" vector-effect="non-scaling-stroke"></polyline>
+                                </svg>
+                                <template x-if="hover !== null">
+                                    <span class="adm-line-dot" :style="dotStyle(hover)"></span>
+                                </template>
+                                <div class="adm-line-hover">
+                                    <template x-for="(b, i) in buckets" :key="i">
+                                        <div class="adm-line-hover-col" @mouseenter="hover = i"></div>
+                                    </template>
+                                </div>
+                                <template x-if="hover !== null">
+                                    <div class="adm-line-tip" :style="tipStyle(hover)">
+                                        <div class="adm-line-tip-time" x-text="buckets[hover].full"></div>
+                                        <div class="adm-line-tip-val"><span x-text="buckets[hover].views.toLocaleString()"></span> hits</div>
+                                        <div class="adm-line-tip-sub"><span x-text="buckets[hover].visitors.toLocaleString()"></span> unique visitors</div>
+                                    </div>
+                                </template>
+                            </div>
+                            <div class="adm-line-xaxis">
+                                <template x-for="(b, i) in buckets" :key="i">
+                                    <span class="adm-line-xlabel" x-text="showLabel(i) ? b.label : ''"></span>
+                                </template>
+                            </div>
+                        </div>
+                    </template>
+                    <template x-if="!error && !buckets.length && !loading">
+                        <p class="adm-desc">No page views in the selected window.</p>
+                    </template>
                 </div>
 
                 <script type="application/json" id="overview-visits-data">{{jsonify .VisitsByDay}}</script>
@@ -1259,7 +1339,7 @@
                         </button>
                     </form>
                     {{else}}
-                    <div class="bg-yellow-50 dark:bg-yellow-900/40 border border-yellow-300 dark:border-yellow-700 text-yellow-800 dark:text-yellow-200 px-4 py-3 rounded text-sm">
+                    <div class="bg-yellow-50 dark:bg-yellow-900 border border-yellow-800 dark:border-yellow-800 text-yellow-800 dark:text-yellow-200 px-4 py-3 rounded text-sm">
                         Self-update is <strong>disabled</strong>. Set <code>SELF_UPDATE=1</code> in the environment (live box only — it requires a supervisor that respawns the process) and restart to enable this button.
                     </div>
                     {{end}}
@@ -1274,6 +1354,7 @@
                             <label class="flex items-center gap-1.5">
                                 <span class="text-gray-600 dark:text-gray-300">Lines</span>
                                 <select x-model.number="tail" @change="refresh()" class="adm-select">
+                                    <option value="100">100</option>
                                     <option value="200">200</option>
                                     <option value="500">500</option>
                                     <option value="1000">1000</option>
@@ -1366,11 +1447,11 @@
                     <!-- Per-core CPU trend (one line per core) -->
                     <div class="adm-card mb-6">
                         <h3 class="adm-card-title mb-3">Per-Core CPU Trend</h3>
-                        <svg class="adm-spark adm-spark-multi" viewBox="0 0 100 100" preserveAspectRatio="none">
-                            <template x-for="(c, i) in (s?.per_cpu || [])" :key="i">
-                                <polyline :points="sparkPer(i, 100)" :style="'stroke:' + coreColor(i)"></polyline>
-                            </template>
-                        </svg>
+                        <!-- Built as an SVG string and injected via x-html: Alpine's
+                             x-for cannot template <polyline> inside an <svg> (the
+                             nested <template> is parsed in the SVG namespace and has
+                             no .content fragment to clone). -->
+                        <div x-html="perCpuSvg()"></div>
                         <div class="adm-core-legend">
                             <template x-for="(c, i) in (s?.per_cpu || [])" :key="i">
                                 <span class="adm-core-leg">
@@ -1507,11 +1588,81 @@
             };
         }
 
+        // Hourly traffic distribution. Fetches page views bucketed by clock hour
+        // for a selectable recent window (/admin/visits-hourly?hours=N) and draws
+        // one vertical bar per hour.
+        function hourlyTraffic() {
+            return {
+                hours: 24,
+                buckets: [],
+                loading: true,
+                error: '',
+                max: 1,
+                hover: null,
+                async load() {
+                    this.loading = true;
+                    this.error = '';
+                    this.hover = null;
+                    try {
+                        const resp = await fetch('/admin/visits-hourly?hours=' + this.hours, { headers: { 'X-Requested-With': 'fetch' } });
+                        if (!resp.ok) throw new Error('HTTP ' + resp.status);
+                        this.buckets = (await resp.json()) || [];
+                        this.max = Math.max(1, ...this.buckets.map(b => b.views));
+                    } catch (err) {
+                        this.error = err.message;
+                        this.buckets = [];
+                    } finally {
+                        this.loading = false;
+                    }
+                },
+                // Points for a fixed 0..100 viewBox (a dynamic :viewBox can't be used
+                // here — Alpine lowercases the bound attribute to "viewbox", which SVG
+                // ignores). x is spread across 0..100; y is inverted (0 = top) and
+                // scaled against the busiest hour.
+                pointY(v) { return 100 - (this.max > 0 ? (v / this.max) * 100 : 0); },
+                linePoints() {
+                    const n = this.buckets.length;
+                    return this.buckets.map((b, i) => {
+                        const x = n > 1 ? (i / (n - 1)) * 100 : 0;
+                        return x.toFixed(2) + ',' + this.pointY(b.views).toFixed(2);
+                    }).join(' ');
+                },
+                // Close the line back down to the baseline to fill the area below.
+                areaPoints() {
+                    if (!this.buckets.length) return '';
+                    return '0,100 ' + this.linePoints() + ' 100,100';
+                },
+                // x position (% of plot width) of point i.
+                pointXPct(i) { const n = this.buckets.length; return n > 1 ? (i / (n - 1)) * 100 : 0; },
+                // Marker dot centered on the hovered point.
+                dotStyle(i) {
+                    return 'left:' + this.pointXPct(i) + '%; top:' + this.pointY(this.buckets[i].views) + '%;';
+                },
+                // Tooltip anchored to the hovered point: clamps near the edges so it
+                // stays on-screen, and flips below the point when it's near the top.
+                tipStyle(i) {
+                    const x = this.pointXPct(i);
+                    const y = this.pointY(this.buckets[i].views);
+                    let tx = '-50%';
+                    if (x < 12) tx = '0';
+                    else if (x > 88) tx = '-100%';
+                    const ty = y < 30 ? '8px' : 'calc(-100% - 8px)';
+                    return 'left:' + x + '%; top:' + y + '%; transform: translate(' + tx + ',' + ty + ');';
+                },
+                total() { return this.buckets.reduce((a, b) => a + b.views, 0); },
+                // Show at most ~8 evenly-spaced x-axis labels so they don't crowd.
+                showLabel(i) {
+                    const step = Math.max(1, Math.ceil(this.buckets.length / 8));
+                    return i % step === 0;
+                },
+            };
+        }
+
         // Live server-log viewer (Server tab). Polls /admin/logs as plain text.
         function serverLogs() {
             return {
                 logs: 'Loading…',
-                tail: 500,
+                tail: 100,
                 auto: true,
                 follow: true,
                 status: '',
@@ -1614,6 +1765,17 @@
                         return x.toFixed(1) + ',' + y.toFixed(1);
                     }).join(' ');
                 },
+                // Full per-core trend SVG as a string, injected via x-html (see the
+                // note in the markup for why x-for can't build this in-place).
+                perCpuSvg() {
+                    let lines = '';
+                    for (let i = 0; i < this.histPer.length; i++) {
+                        const pts = this.sparkPer(i, 100);
+                        if (!pts) continue;
+                        lines += '<polyline points="' + pts + '" style="stroke:' + this.coreColor(i) + '"></polyline>';
+                    }
+                    return '<svg class="adm-spark adm-spark-multi" viewBox="0 0 100 100" preserveAspectRatio="none">' + lines + '</svg>';
+                },
                 // Stable, distinct color per core (cycles if there are many cores).
                 coreColor(i) {
                     const pal = ['#2563eb', '#dc2626', '#059669', '#d97706', '#7c3aed',
@@ -1649,6 +1811,18 @@
         }
 
         document.addEventListener('DOMContentLoaded', function () {
+            // --- Sticky tab bar offset ---
+            // The tab bar sticks just below the (also sticky) top navbar. The
+            // navbar height isn't fixed (wraps on narrow screens), so measure it
+            // and expose it as a CSS var the tab bar's `top` reads.
+            const navbarEl = document.getElementById('admin-navbar');
+            function syncNavHeight() {
+                if (!navbarEl) return;
+                document.documentElement.style.setProperty('--adm-nav-h', navbarEl.offsetHeight + 'px');
+            }
+            syncNavHeight();
+            window.addEventListener('resize', syncNavHeight);
+
             // --- Guild Emblem Preview Script ---
             const guildSelect = document.getElementById('guild_select');
             const previewContainer = document.getElementById('emblem-preview-container');

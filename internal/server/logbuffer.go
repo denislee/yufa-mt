@@ -97,10 +97,10 @@ func (r *logRing) Lines(tail int) []string {
 
 // adminLogsHandler serves the captured server log as plain text (oldest line
 // first). The admin log viewer polls it for a live tail. A ?tail=N query
-// limits the response to the last N lines (default 500, capped at the buffer
+// limits the response to the last N lines (default 100, capped at the buffer
 // capacity).
 func adminLogsHandler(w http.ResponseWriter, r *http.Request) {
-	tail := 500
+	tail := 100
 	if v := r.URL.Query().Get("tail"); v != "" {
 		if n, err := strconv.Atoi(v); err == nil && n > 0 {
 			tail = n
