@@ -107,6 +107,20 @@ type MobFieldDiff struct {
 	Differs  bool
 }
 
+// MobDropDiff is one row of the baseline-vs-server drop comparison: a single
+// item, with its baseline and live-server drop chances side by side. An item
+// present on only one side has HasBaseline or HasServer cleared.
+type MobDropDiff struct {
+	ItemID      int64
+	Name        string  // resolved display name (or aegis/placeholder fallback)
+	Known       bool    // true when Name links to an item page
+	Baseline    float64 // baseline (YAML) drop chance, valid when HasBaseline
+	HasBaseline bool
+	Server      float64 // live-server drop chance, valid when HasServer
+	HasServer   bool
+	Differs     bool // rate differs, or the item is on only one side
+}
+
 // MobComparison holds the difference between the YAML baseline and the live
 // server values (from @mobinfo), shown only when the mob has been scraped.
 type MobComparison struct {
@@ -116,6 +130,10 @@ type MobComparison struct {
 	Fields         []MobFieldDiff
 	ServerDrops    []MobDropView
 	ServerMvpDrops []MobDropView
+	DropDiffs      []MobDropDiff // baseline-vs-server, regular drops
+	DropDiffCount  int           // number of DropDiffs rows that differ
+	MvpDropDiffs   []MobDropDiff // baseline-vs-server, MVP rewards
+	MvpDiffCount   int           // number of MvpDropDiffs rows that differ
 }
 
 type MobDetailPageData struct {
@@ -333,6 +351,83 @@ func mobFieldDiffs(base, s MobDetail) []MobFieldDiff {
 	return fields
 }
 
+// mobDropDiffs merges the baseline (YAML) and live-server drop lists into a
+// single side-by-side comparison, keyed by item id (falling back to the lower-
+// cased display name for items that didn't resolve to an id). Each row flags
+// whether the chances differ or the item appears on only one side. Rows are
+// ordered most-divergent first, then by descending drop chance. The returned
+// count is how many rows actually differ.
+func mobDropDiffs(baseline, server []MobDropView) ([]MobDropDiff, int) {
+	keyOf := func(d MobDropView) string {
+		if d.ItemID > 0 {
+			return "id:" + strconv.FormatInt(d.ItemID, 10)
+		}
+		return "nm:" + strings.ToLower(d.Name)
+	}
+	// rateDiffers compares two chances at display precision (2 decimals) so
+	// float noise from the two different source encodings doesn't show as a diff.
+	rateDiffers := func(a, b float64) bool {
+		d := a - b
+		if d < 0 {
+			d = -d
+		}
+		return d > 0.005
+	}
+
+	idx := make(map[string]int, len(baseline)+len(server))
+	out := make([]MobDropDiff, 0, len(baseline)+len(server))
+
+	for _, d := range baseline {
+		k := keyOf(d)
+		idx[k] = len(out)
+		out = append(out, MobDropDiff{
+			ItemID: d.ItemID, Name: d.Name, Known: d.Known,
+			Baseline: d.RatePct, HasBaseline: true,
+		})
+	}
+	for _, d := range server {
+		k := keyOf(d)
+		if i, ok := idx[k]; ok {
+			out[i].Server, out[i].HasServer = d.RatePct, true
+			// Prefer a resolvable (linkable) name/id if the server side has one.
+			if !out[i].Known && d.Known {
+				out[i].Name, out[i].Known, out[i].ItemID = d.Name, true, d.ItemID
+			}
+			continue
+		}
+		idx[k] = len(out)
+		out = append(out, MobDropDiff{
+			ItemID: d.ItemID, Name: d.Name, Known: d.Known,
+			Server: d.RatePct, HasServer: true,
+		})
+	}
+
+	diffCount := 0
+	for i := range out {
+		r := &out[i]
+		r.Differs = !r.HasBaseline || !r.HasServer || rateDiffers(r.Baseline, r.Server)
+		if r.Differs {
+			diffCount++
+		}
+	}
+
+	sort.SliceStable(out, func(i, j int) bool {
+		if out[i].Differs != out[j].Differs {
+			return out[i].Differs // differing rows first
+		}
+		mi := out[i].Server
+		if out[i].Baseline > mi {
+			mi = out[i].Baseline
+		}
+		mj := out[j].Server
+		if out[j].Baseline > mj {
+			mj = out[j].Baseline
+		}
+		return mi > mj
+	})
+	return out, diffCount
+}
+
 // loadMobComparison loads the live server row (if any) for a mob and diffs it
 // against the YAML baseline. Returns HasServer=false when the mob hasn't been
 // scraped yet.
@@ -381,13 +476,22 @@ func loadMobComparison(id int, base MobDetail, lang string) MobComparison {
 		}
 	}
 
+	serverDrops := parseMobDrops(dropsJSON, lang)
+	serverMvpDrops := parseMobDrops(mvpDropsJSON, lang)
+	dropDiffs, dropDiffCount := mobDropDiffs(base.Drops, serverDrops)
+	mvpDropDiffs, mvpDiffCount := mobDropDiffs(base.MvpDrops, serverMvpDrops)
+
 	return MobComparison{
 		HasServer:      true,
 		ScrapedAgo:     timeAgo(scrapedAt),
 		DiffCount:      diffCount,
 		Fields:         fields,
-		ServerDrops:    parseMobDrops(dropsJSON, lang),
-		ServerMvpDrops: parseMobDrops(mvpDropsJSON, lang),
+		ServerDrops:    serverDrops,
+		ServerMvpDrops: serverMvpDrops,
+		DropDiffs:      dropDiffs,
+		DropDiffCount:  dropDiffCount,
+		MvpDropDiffs:   mvpDropDiffs,
+		MvpDiffCount:   mvpDiffCount,
 	}
 }
 
