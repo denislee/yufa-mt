@@ -1,7 +1,9 @@
 package server
 
 import (
+	"bytes"
 	"io"
+	"strings"
 	"testing"
 
 	"github.com/denislee/yufa-mt/internal/httpx"
@@ -99,4 +101,35 @@ func TestMobDetailTemplateExecutes(t *testing.T) {
 			{Map: "abbey03", Qty: 2},
 		},
 	})
+}
+
+// TestMobDetailRendersSpawns guards against the spawn locations silently
+// dropping out of the page: the handler loads Spawns and passes them, but
+// text/template ignores fields the markup never references, so a plain
+// "executes without error" check (TestMobDetailTemplateExecutes) would pass
+// even with no spawn UI at all. Assert the map names actually reach the HTML.
+func TestMobDetailRendersSpawns(t *testing.T) {
+	tmpl, ok := templateCache["mob_detail.html"]
+	if !ok || tmpl == nil {
+		t.Fatal("mob_detail.html not in templateCache")
+	}
+	var buf bytes.Buffer
+	data := TemplateData{
+		Page: BasePageData{Lang: "en", T: i18n.Translations("en"), RequestURL: "/mob_detail.html"},
+		Data: MobDetailPageData{
+			PageTitle:     "Monsters",
+			Mob:           MobDetail{ID: 1039, DisplayName: "Baphomet", Name: "Baphomet", AegisName: "BAPHOMET"},
+			SpawnsScraped: true, SpawnsAgo: "5 minutes ago",
+			Spawns: []MobSpawnView{{Map: "abyss_03", Qty: 8}, {Map: "abbey03", Qty: 2}},
+		},
+	}
+	if err := tmpl.ExecuteTemplate(&buf, "layout.html", data); err != nil {
+		t.Fatalf("execute failed: %v", err)
+	}
+	out := buf.String()
+	for _, want := range []string{"abyss_03", "abbey03", "Spawn Locations"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("rendered mob_detail.html missing %q — spawn locations not rendered", want)
+		}
+	}
 }

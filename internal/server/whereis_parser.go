@@ -59,7 +59,8 @@ type spawnBlock struct {
 	id        int
 	spawns    []mobSpawnLoc
 	sawMaps   bool
-	linesSeen int // reply lines consumed while armed (maps + header/notice)
+	linesSeen int      // reply lines consumed while armed (maps + header/notice)
+	rawLines  []string // verbatim non-map lines swallowed, kept for diagnostics
 }
 
 // whereIsAccumulator is the single in-flight @whereis block parser. It is only
@@ -123,9 +124,10 @@ func (a *whereIsAccumulator) handleLine(msg string, now time.Time) bool {
 	// block open for the maps that may follow.
 	if !a.cur.sawMaps {
 		a.cur.linesSeen++
+		a.cur.rawLines = append(a.cur.rawLines, msg)
 		a.lastAt = now
 		if enableChatScraperDebugLogs {
-			log.Printf("[D] [Scraper/WhereIs] mob %d: consumed non-map reply line (header/notice): %q", a.cur.id, msg)
+			log.Printf("[D] [Scraper/WhereIs] mob %d: consumed non-map reply line (header/notice), no reSpawnLine match: %q", a.cur.id, msg)
 		}
 		return true
 	}
@@ -171,12 +173,35 @@ func (a *whereIsAccumulator) finalizeLocked() {
 		// reply arrived after the staleness window finalized the block. Flagged
 		// loudly because it means the scrape captured nothing for this mob.
 		log.Printf("[W] [Scraper/WhereIs] mob %d: armed but captured 0 reply lines — @whereis may be unsupported, not a 0x008e self-chat packet, or slower than the %v staleness window. Stored an empty spawn list.", b.id, whereIsStaleAfter)
+	case len(b.spawns) == 0 && b.linesSeen == 1:
+		// Exactly one non-map line: the localized header alone (or a lone "does
+		// not spawn normally" notice). This is the expected shape for a mob with
+		// no wild spawns.
+		log.Printf("[I] [Scraper/WhereIs] Captured @whereis for mob %d: 0 spawn maps from 1 reply line — does not spawn in the wild. Header/notice was: %q", b.id, firstOr(b.rawLines, ""))
 	case len(b.spawns) == 0:
-		// Saw the header (and/or the "does not spawn" notice) but no map lines.
-		log.Printf("[I] [Scraper/WhereIs] Captured @whereis for mob %d: 0 spawn maps from %d reply line(s) — does not spawn in the wild.", b.id, b.linesSeen)
+		// Multiple lines came back but NONE matched reSpawnLine. That is
+		// suspicious: a "does not spawn" reply is usually a single line, so
+		// several swallowed lines more likely means the server's per-map line
+		// format differs from the expected "<map> (<count>)" and reSpawnLine is
+		// failing to match real spawn rows. Dump them verbatim so the actual
+		// format can be inspected and the regex adjusted. reSpawnLine is:
+		//   ^\s*([0-9A-Za-z_@]+)\s+\((\d+)\)\s*$
+		log.Printf("[W] [Scraper/WhereIs] mob %d: %d reply line(s) but 0 matched reSpawnLine — the server's spawn-line format may differ from %q. Raw lines follow so the format can be checked:", b.id, b.linesSeen, reSpawnLine.String())
+		for i, ln := range b.rawLines {
+			log.Printf("[W] [Scraper/WhereIs] mob %d: raw reply line %d/%d: %q", b.id, i+1, len(b.rawLines), ln)
+		}
 	default:
 		log.Printf("[I] [Scraper/WhereIs] Captured @whereis for mob %d: %d spawn map(s) from %d reply line(s).", b.id, len(b.spawns), b.linesSeen)
 	}
+}
+
+// firstOr returns the first element of s, or def if s is empty. Used only for
+// diagnostic logging of a captured reply.
+func firstOr(s []string, def string) string {
+	if len(s) > 0 {
+		return s[0]
+	}
+	return def
 }
 
 // upsertMobSpawns writes a parsed block into mob_spawn_db, stamping scraped_at.

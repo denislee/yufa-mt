@@ -402,9 +402,21 @@ func startChatPacketCapture(ctx context.Context) {
 					// declines reach the (sweep-armed) @whereis parser.
 					if bytes.Equal(def.prefix, []byte{0x8e, 0x00}) {
 						now := time.Now()
-						if mobInfo.handleLine(message, now) || whereIs.handleLine(message, now) {
+						if mobInfo.handleLine(message, now) || whereIs.handleLine(message, now) || usersCount.handleLine(message, now) {
 							i = msgEnd
 							continue
+						}
+						// Neither parser claimed this 0x008e self-chat line. If a
+						// @whereis sweep is in flight, that is worth flagging: the
+						// line is a candidate spawn reply that arrived while the
+						// accumulator was NOT armed for it (e.g. the staleness
+						// window already finalized the block, or expect() for the
+						// next id moved on before this reply landed — a sign the
+						// inter-command delay is shorter than the reply latency).
+						if enableChatScraperDebugLogs {
+							if st := whereIsScrape.snapshot(); st.Running {
+								log.Printf("[D] [Scraper/WhereIs] unclaimed 0x008e line during sweep (current id=%d, sent=%d/%d): %q — parser not armed for it; check inter-command delay vs reply latency.", st.Current, st.Sent, st.To-st.From+1, message)
+							}
 						}
 					}
 

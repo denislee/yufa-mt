@@ -714,7 +714,8 @@
                             <div>
                                 <p class="adm-section-head mb-2">Players &amp; Characters</p>
                                 <div class="grid grid-cols-1 gap-2">
-                                    <form action="/admin/scrape/players" method="POST"><button type="submit" class="adm-btn adm-btn-block adm-btn-primary">Player Count</button></form>
+                                    <form action="/admin/scrape/players" method="POST"><button type="submit" class="adm-btn adm-btn-block adm-btn-primary">Player Count (Site)</button></form>
+                                    <form action="/admin/scrape/players-ingame" method="POST"><button type="submit" class="adm-btn adm-btn-block adm-btn-primary" title="Query the live server with @users instead of scraping the website (requires being logged into the game).">Player Count (In-Game)</button></form>
                                     <form action="/admin/scrape/characters" method="POST"><button type="submit" class="adm-btn adm-btn-block adm-btn-primary">Characters</button></form>
                                     <form action="/admin/scrape/mvp" method="POST"><button type="submit" class="adm-btn adm-btn-block adm-btn-primary">MVP</button></form>
                                 </div>

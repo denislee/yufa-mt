@@ -92,6 +92,35 @@
             Not yet scraped from the live server — showing baseline (YAML) values only. Run the <code>@mobinfo</code> scrape to capture this server's actual stats and reveal any differences.
         </div>
         {{end}}
+
+        <div class="bg-white dark:bg-gray-800 shadow rounded-lg overflow-hidden">
+            <div class="px-4 pt-4 pb-2 flex items-center justify-between flex-wrap gap-2">
+                <h2 class="text-sm font-semibold text-gray-700 dark:text-gray-200 uppercase tracking-wider">Spawn Locations (Live Server)</h2>
+                {{if .Data.SpawnsScraped}}<span class="text-xs text-gray-400 dark:text-gray-500">scraped {{.Data.SpawnsAgo}}</span>{{end}}
+            </div>
+            {{if .Data.Spawns}}
+            <table class="min-w-full text-sm">
+                <thead>
+                    <tr class="border-b border-gray-200 dark:border-gray-700 text-left text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase">
+                        <th class="px-4 py-2">Map</th>
+                        <th class="px-4 py-2 text-right w-28">Spawns</th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y divide-gray-100 dark:divide-gray-700">
+                    {{range .Data.Spawns}}
+                    <tr class="hover:bg-gray-50 dark:hover:bg-gray-700">
+                        <td class="px-4 py-2 font-mono">{{.Map}}</td>
+                        <td class="px-4 py-2 text-right font-mono">{{.Qty}}</td>
+                    </tr>
+                    {{end}}
+                </tbody>
+            </table>
+            {{else if .Data.SpawnsScraped}}
+            <p class="px-4 pb-4 text-sm text-gray-500 dark:text-gray-400">Does not spawn in the wild (no spawn maps reported by <code>@whereis</code>).</p>
+            {{else}}
+            <p class="px-4 pb-4 text-sm text-gray-500 dark:text-gray-400">No spawn data yet — run the <code>@whereis</code> spawn scrape from the Schedulers tab.</p>
+            {{end}}
+        </div>
         </div>
 
         <div class="flex flex-col gap-6 min-w-0">

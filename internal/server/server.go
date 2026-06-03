@@ -152,6 +152,7 @@ func registerAdminRoutes() *http.ServeMux {
 	// manual-only and run directly.
 	adminRouter.HandleFunc("/scrape/market", adminTriggerScrapeHandler(scrapeData, "market"))
 	adminRouter.HandleFunc("/scrape/players", adminTriggerScrapeHandler(scrapeAndStorePlayerCount, "players"))
+	adminRouter.HandleFunc("/scrape/players-ingame", adminTriggerScrapeHandler(scrapeAndStorePlayerCountInGame, "players-ingame"))
 	adminRouter.HandleFunc("/scrape/characters", adminTriggerScrapeHandler(scrapePlayerCharacters, "characters"))
 	adminRouter.HandleFunc("/scrape/guilds", adminTriggerScrapeHandler(scrapeGuilds, "guilds"))
 	adminRouter.HandleFunc("/scrape/emblems", adminTriggerScrapeHandler(processGuildEmblems, "Emblem-Process"))

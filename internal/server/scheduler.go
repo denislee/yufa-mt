@@ -43,7 +43,11 @@ type JobSpec struct {
 // scheduled and keep their direct admin handlers.
 var jobRegistry = []JobSpec{
 	{Name: "market", Label: "Market", Category: "Market & Economy", Func: scrapeData, LogTag: "[Scraper/Market]", DefaultInterval: 3 * time.Minute},
-	{Name: "players", Label: "Player Count", Category: "Players & Characters", Func: scrapeAndStorePlayerCount, LogTag: "[Scraper/PlayerCount]", DefaultInterval: 1 * time.Minute},
+	// Player count now comes from the live game (@users) by default; the website
+	// scraper is kept as a default-disabled fallback. Both write to
+	// player_history, so only one should be enabled at a time.
+	{Name: "players", Label: "Player Count (Site fallback)", Category: "Players & Characters", Func: scrapeAndStorePlayerCount, LogTag: "[Scraper/PlayerCount]", DefaultInterval: 1 * time.Minute, DefaultDisabled: true},
+	{Name: "players-ingame", Label: "Player Count (In-Game @users)", Category: "Players & Characters", Func: scrapeAndStorePlayerCountInGame, LogTag: "[Scraper/PlayerCount/InGame]", DefaultInterval: 1 * time.Minute},
 	{Name: "characters", Label: "Player Character", Category: "Players & Characters", Func: scrapePlayerCharacters, LogTag: "[Scraper/Char]", DefaultInterval: 6 * time.Hour},
 	{Name: "guilds", Label: "Guild", Category: "Guilds & Events", Func: scrapeGuilds, LogTag: "[Scraper/Guild]", DefaultInterval: 1 * time.Hour},
 	{Name: "zeny", Label: "Zeny", Category: "Market & Economy", Func: scrapeZeny, LogTag: "[Scraper/Zeny]", DefaultInterval: 6 * time.Hour},

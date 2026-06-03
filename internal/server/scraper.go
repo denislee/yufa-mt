@@ -373,55 +373,63 @@ func scrapeAndStorePlayerCount() {
 		return
 	}
 
+	storePlayerCount(onlineCount, "[Scraper/PlayerCount]")
+}
+
+// storePlayerCount records an online player count in player_history, pairing it
+// with the current unique-seller count and skipping the insert when neither has
+// changed since the last sample. logTag identifies the source — the website
+// scraper ([Scraper/PlayerCount]) or the in-game @users query
+// ([Scraper/PlayerCount/InGame]); both write to the same table because /players
+// graphs the combined history off it.
+func storePlayerCount(onlineCount int, logTag string) {
 	playerCountMutex.Lock()
 	defer playerCountMutex.Unlock()
 
 	var sellerCount int
-	err = srv.db.QueryRow("SELECT COUNT(DISTINCT seller_name) FROM items WHERE is_available = 1").Scan(&sellerCount)
-	if err != nil {
-		log.Printf("[W] [Scraper/PlayerCount] Could not query for unique seller count: %v", err)
+	if err := srv.db.QueryRow("SELECT COUNT(DISTINCT seller_name) FROM items WHERE is_available = 1").Scan(&sellerCount); err != nil {
+		log.Printf("[W] %s Could not query for unique seller count: %v", logTag, err)
 		sellerCount = 0
 	}
 	if enablePlayerCountDebugLogs {
-		log.Printf("[D] [Scraper/PlayerCount] Found %d unique sellers in DB.", sellerCount)
+		log.Printf("[D] %s Found %d unique sellers in DB.", logTag, sellerCount)
 	}
 
 	var lastPlayerCount int
 	var lastSellerCount sql.NullInt64
-	err = srv.db.QueryRow("SELECT count, seller_count FROM player_history ORDER BY timestamp DESC LIMIT 1").Scan(&lastPlayerCount, &lastSellerCount)
+	err := srv.db.QueryRow("SELECT count, seller_count FROM player_history ORDER BY timestamp DESC LIMIT 1").Scan(&lastPlayerCount, &lastSellerCount)
 	if err != nil && err != sql.ErrNoRows {
-		log.Printf("[W] [Scraper/PlayerCount] Could not query for last player/seller count: %v", err)
+		log.Printf("[W] %s Could not query for last player/seller count: %v", logTag, err)
 		return
 	}
 
 	if enablePlayerCountDebugLogs {
 		if err == sql.ErrNoRows {
-			log.Println("[D] [Scraper/PlayerCount] No previous player count found in DB.")
+			log.Printf("[D] %s No previous player count found in DB.", logTag)
 		} else {
-			log.Printf("[D] [Scraper/PlayerCount] Last DB values - Players: %d, Sellers: %d (Valid: %v)", lastPlayerCount, lastSellerCount.Int64, lastSellerCount.Valid)
+			log.Printf("[D] %s Last DB values - Players: %d, Sellers: %d (Valid: %v)", logTag, lastPlayerCount, lastSellerCount.Int64, lastSellerCount.Valid)
 		}
 	}
 
 	if err != sql.ErrNoRows && onlineCount == lastPlayerCount && lastSellerCount.Valid && sellerCount == int(lastSellerCount.Int64) {
 		if enablePlayerCountDebugLogs {
-			log.Printf("[D] [Scraper/PlayerCount] Player/seller count unchanged (%d players, %d sellers). No update needed.", onlineCount, sellerCount)
+			log.Printf("[D] %s Player/seller count unchanged (%d players, %d sellers). No update needed.", logTag, onlineCount, sellerCount)
 		}
 		return
 	}
 
 	if enablePlayerCountDebugLogs {
-		log.Printf("[D] [Scraper/PlayerCount] Values changed. Old: (P: %d, S: %d), New: (P: %d, S: %d). Proceeding with insert.", lastPlayerCount, lastSellerCount.Int64, onlineCount, sellerCount)
+		log.Printf("[D] %s Values changed. Old: (P: %d, S: %d), New: (P: %d, S: %d). Proceeding with insert.", logTag, lastPlayerCount, lastSellerCount.Int64, onlineCount, sellerCount)
 	}
 
 	retrievalTime := time.Now().Format(time.RFC3339)
-	_, err = srv.db.Exec("INSERT INTO player_history (timestamp, count, seller_count) VALUES (?, ?, ?)", retrievalTime, onlineCount, sellerCount)
-	if err != nil {
-		log.Printf("[E] [Scraper/PlayerCount] Failed to insert new player/seller count: %v", err)
+	if _, err := srv.db.Exec("INSERT INTO player_history (timestamp, count, seller_count) VALUES (?, ?, ?)", retrievalTime, onlineCount, sellerCount); err != nil {
+		log.Printf("[E] %s Failed to insert new player/seller count: %v", logTag, err)
 		return
 	}
 	InvalidateUpdateTimeCache("timestamp", "player_history")
 
-	log.Printf("[I] [Scraper/PlayerCount] Player/seller count updated. New values: %d players, %d sellers", onlineCount, sellerCount)
+	log.Printf("[I] %s Player/seller count updated. New values: %d players, %d sellers", logTag, onlineCount, sellerCount)
 }
 
 // checkAndLogCharacterActivity contains the logic for detecting and logging player changes.
