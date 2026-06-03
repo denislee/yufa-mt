@@ -974,6 +974,7 @@
                                     <th class="py-2 px-3 text-left font-semibold text-gray-600 dark:text-gray-300 w-36">Started</th>
                                     <th class="py-2 px-3 text-left font-semibold text-gray-600 dark:text-gray-300 w-24">Duration</th>
                                     <th class="py-2 px-3 text-left font-semibold text-gray-600 dark:text-gray-300">Message</th>
+                                    <th class="py-2 px-3 text-left font-semibold text-gray-600 dark:text-gray-300 w-20">Details</th>
                                 </tr>
                             </thead>
                             <tbody class="divide-y divide-gray-200 dark:divide-gray-700">
@@ -987,10 +988,25 @@
                                     <td class="py-2 px-3 whitespace-nowrap text-gray-500 dark:text-gray-400" title="{{.StartedAt}}">{{.StartedAgo}}</td>
                                     <td class="py-2 px-3 font-mono">{{.Duration}}</td>
                                     <td class="py-2 px-3 break-words max-w-md {{if eq .Status "error"}}text-red-600 dark:text-red-400{{end}}">{{.Message}}</td>
+                                    <td class="py-2 px-3">
+                                        {{if .Details}}
+                                        <button type="button" class="job-run-detail-toggle text-blue-600 dark:text-blue-400 hover:underline text-xs font-medium" data-target="job-run-detail-{{.RunID}}" aria-expanded="false">View</button>
+                                        {{else}}
+                                        <span class="text-gray-400 text-xs">—</span>
+                                        {{end}}
+                                    </td>
                                 </tr>
+                                {{if .Details}}
+                                <tr id="job-run-detail-{{.RunID}}" class="hidden">
+                                    <td colspan="7" class="px-3 pb-3 pt-0 bg-gray-50 dark:bg-gray-900/40">
+                                        <div class="text-xs text-gray-500 dark:text-gray-400 mb-1">Captured log for this run — request URLs, HTTP/network outcomes, and what data was processed.</div>
+                                        <pre class="text-xs whitespace-pre-wrap break-words font-mono bg-white dark:bg-gray-800 border rounded p-3 max-h-96 overflow-y-auto">{{.Details}}</pre>
+                                    </td>
+                                </tr>
+                                {{end}}
                                 {{else}}
                                 <tr>
-                                    <td colspan="6" class="py-4 text-center text-gray-500 dark:text-gray-400">No runs recorded yet.</td>
+                                    <td colspan="7" class="py-4 text-center text-gray-500 dark:text-gray-400">No runs recorded yet.</td>
                                 </tr>
                                 {{end}}
                             </tbody>
@@ -2251,6 +2267,17 @@
                         tabInput.value = activeTab;
                         form.appendChild(tabInput);
                     }
+                });
+            });
+
+            // Scheduler "Recent Runs" — expand/collapse a run's captured log detail.
+            document.querySelectorAll('.job-run-detail-toggle').forEach(btn => {
+                btn.addEventListener('click', function () {
+                    const row = document.getElementById(btn.dataset.target);
+                    if (!row) return;
+                    const open = row.classList.toggle('hidden') === false;
+                    btn.textContent = open ? 'Hide' : 'View';
+                    btn.setAttribute('aria-expanded', open ? 'true' : 'false');
                 });
             });
         });

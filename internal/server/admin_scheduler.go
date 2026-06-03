@@ -163,7 +163,7 @@ func getSchedulerData(stats *AdminDashboardData) {
 
 	// Recent runs across all jobs.
 	histRows, err := srv.db.Query(`
-		SELECT job_name, trigger, status, started_at, COALESCE(duration_ms, 0), COALESCE(message, '')
+		SELECT id, job_name, trigger, status, started_at, COALESCE(duration_ms, 0), COALESCE(message, ''), COALESCE(details, '')
 		FROM job_runs
 		ORDER BY id DESC
 		LIMIT 50`)
@@ -173,12 +173,14 @@ func getSchedulerData(stats *AdminDashboardData) {
 	}
 	defer histRows.Close()
 	for histRows.Next() {
-		var name, trigger, status, startedAt, message string
+		var id int64
+		var name, trigger, status, startedAt, message, details string
 		var durationMs int64
-		if err := histRows.Scan(&name, &trigger, &status, &startedAt, &durationMs, &message); err != nil {
+		if err := histRows.Scan(&id, &name, &trigger, &status, &startedAt, &durationMs, &message, &details); err != nil {
 			continue
 		}
 		stats.JobRuns = append(stats.JobRuns, JobRunView{
+			RunID:      id,
 			JobLabel:   jobLabel(name),
 			Trigger:    trigger,
 			Status:     status,
@@ -186,6 +188,7 @@ func getSchedulerData(stats *AdminDashboardData) {
 			StartedAt:  startedAt,
 			Duration:   humanizeRunDuration(durationMs),
 			Message:    message,
+			Details:    details,
 		})
 	}
 }

@@ -655,6 +655,7 @@ type SchedulerJobView struct {
 
 // JobRunView is one row in the recent-runs history table.
 type JobRunView struct {
+	RunID      int64
 	JobLabel   string
 	Trigger    string
 	Status     string
@@ -662,6 +663,9 @@ type JobRunView struct {
 	StartedAt  string
 	Duration   string
 	Message    string
+	// Details is the run's own captured log output (request URLs, HTTP outcomes,
+	// and the summary of data processed), shown in the expandable per-run panel.
+	Details string
 }
 
 type AdminEditPostPageData struct {

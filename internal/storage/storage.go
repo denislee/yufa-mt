@@ -54,6 +54,10 @@ const (
 		"interval_seconds" INTEGER NOT NULL,
 		"enabled" INTEGER NOT NULL DEFAULT 1
 	);`
+	// details holds the run's own captured log lines (filtered to the job's log
+	// tag): the request URLs fetched, HTTP/network outcomes, and the summary of
+	// what data was processed. Lets the admin inspect a single run after the fact,
+	// once the in-memory log ring has wrapped.
 	createJobRunsTableSQL = `
 	CREATE TABLE IF NOT EXISTS job_runs (
 		"id" INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
@@ -63,7 +67,8 @@ const (
 		"started_at" TEXT NOT NULL,
 		"finished_at" TEXT,
 		"duration_ms" INTEGER,
-		"message" TEXT
+		"message" TEXT,
+		"details" TEXT
 	);`
 
 	// scrape_checkpoint persists the partial progress of a paginated scrape so
@@ -443,6 +448,11 @@ func applyMigrations(db *sql.DB) error {
 		return err
 	}
 	if err := addColumnIfMissing(db, "guilds", "emblem_local_path", "TEXT"); err != nil {
+		return err
+	}
+	// Per-run captured log output for the scheduler's run-detail view. Existing
+	// rows predate the capture, so they stay NULL (rendered as "no detail").
+	if err := addColumnIfMissing(db, "job_runs", "details", "TEXT"); err != nil {
 		return err
 	}
 	// event_kind lets readers filter by category without scanning the

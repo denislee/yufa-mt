@@ -246,15 +246,22 @@ func (s *scheduler) runOnce(js *jobState, trigger string) {
 		spec.Func()
 	}()
 
+	// Capture this run's own log lines (filtered to its tag) for the detail
+	// view: the request URLs fetched, HTTP/network outcomes, and the summary of
+	// what data was processed. Jobs run concurrently, so filtering by tag keeps
+	// each run's detail to its own output.
+	runLines := jobRunLines(logBuffer.LinesSince(mark), spec.LogTag)
+	details := truncateDetails(strings.Join(runLines, "\n"))
+
 	if status != "error" {
-		if line := scanForError(logBuffer.LinesSince(mark), spec.LogTag); line != "" {
+		if line := scanForError(runLines, spec.LogTag); line != "" {
 			status = "error"
 			message = truncateMessage(line)
 		}
 	}
 
 	finishedAt := time.Now()
-	finishJobRun(id, status, finishedAt, finishedAt.Sub(startedAt).Milliseconds(), message)
+	finishJobRun(id, status, finishedAt, finishedAt.Sub(startedAt).Milliseconds(), message, details)
 	pruneJobRuns(spec.Name, jobRunHistoryLimit)
 }
 
@@ -276,6 +283,33 @@ func truncateMessage(s string) string {
 		return s[:max] + "…"
 	}
 	return s
+}
+
+// jobRunLines keeps only the lines belonging to this job (matching logTag),
+// so a run's captured detail isn't polluted by other jobs ticking concurrently.
+func jobRunLines(lines []string, logTag string) []string {
+	out := make([]string, 0, len(lines))
+	for _, line := range lines {
+		if strings.Contains(line, logTag) {
+			out = append(out, line)
+		}
+	}
+	return out
+}
+
+// maxRunDetails bounds the per-run detail blob stored in job_runs. A run's
+// useful signal is at the ends — the request/start at the head, the
+// "processed N" summary at the tail — so an overflow keeps both and elides
+// the middle rather than truncating the tail away.
+const maxRunDetails = 16384
+
+func truncateDetails(s string) string {
+	if len(s) <= maxRunDetails {
+		return s
+	}
+	const marker = "\n… (run detail truncated) …\n"
+	keep := (maxRunDetails - len(marker)) / 2
+	return s[:keep] + marker + s[len(s)-keep:]
 }
 
 // UpdateInterval clamps, persists, and live-applies a new interval.
@@ -445,13 +479,13 @@ func insertJobRunStart(name, trigger string, started time.Time) int64 {
 	return id
 }
 
-func finishJobRun(id int64, status string, finished time.Time, durationMs int64, message string) {
+func finishJobRun(id int64, status string, finished time.Time, durationMs int64, message, details string) {
 	if id == 0 {
 		return
 	}
 	_, err := srv.db.Exec(
-		`UPDATE job_runs SET status = ?, finished_at = ?, duration_ms = ?, message = ? WHERE id = ?`,
-		status, finished.Format(time.RFC3339), durationMs, message, id)
+		`UPDATE job_runs SET status = ?, finished_at = ?, duration_ms = ?, message = ?, details = ? WHERE id = ?`,
+		status, finished.Format(time.RFC3339), durationMs, message, details, id)
 	if err != nil {
 		slog.Error("Failed to record job run finish", "id", id, "error", err)
 	}
