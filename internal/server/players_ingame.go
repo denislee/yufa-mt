@@ -239,7 +239,15 @@ func queryInGameUserCount(label string, inject func() error) (int, bool) {
 	res := usersCount.expect()
 	if err := inject(); err != nil {
 		usersCount.disarm()
-		log.Printf("[E] %s %s inject failed: %v", ingameUsersLogTag, label, err)
+		// A per-attempt inject failure is recoverable: /who falls back to @users,
+		// and @users falls back to the site scraper. Log it at [W], NOT [E] — an
+		// [E] line carrying this job's LogTag makes the scheduler classify the
+		// whole players-ingame run as failed (see scanForError in scheduler.go),
+		// which is wrong while a later source can still satisfy the scrape. The
+		// real "nothing stored" outcome is reported once, as [W], by the caller.
+		// (A common cause of a /who failure is a proxy process still running an
+		// older binary without the injectRaw op — restart the proxy unit.)
+		log.Printf("[W] %s %s inject failed (trying the next source, if any): %v", ingameUsersLogTag, label, err)
 		return 0, false
 	}
 
