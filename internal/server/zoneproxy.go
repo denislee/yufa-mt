@@ -154,6 +154,31 @@ func injectChatCommandLocal(msg string) error {
 	return s.writeServer(pkt)
 }
 
+// buildUserCountRequest frames a CZ_REQ_USER_COUNT (0x00c1) — the packet the
+// client emits for the player-facing "/who" command. It is a bare 2-byte header
+// with no payload; the server answers with ZC_USER_COUNT (0x00c2) carrying the
+// online total (see scanUserCountPacket in players_ingame.go). Unlike @users it
+// needs no GM privilege, which is why it is the preferred in-game count source.
+func buildUserCountRequest() []byte {
+	return []byte{0xc1, 0x00}
+}
+
+// injectRawPacketLocal writes a pre-framed packet straight to the live zone
+// server connection held in THIS process — the raw-bytes sibling of
+// injectChatCommandLocal (which frames a chat string first). It exists for
+// fixed binary requests like CZ_REQ_USER_COUNT that are not chat text and so
+// carry no "<charname>" prefix. ModeApp routes through the IPC client.
+func injectRawPacketLocal(pkt []byte) error {
+	if len(pkt) == 0 {
+		return fmt.Errorf("refusing to inject empty packet")
+	}
+	s := activeZone.Load()
+	if s == nil {
+		return fmt.Errorf("no active zone connection (client logged in? ZONE_PROXY enabled?)")
+	}
+	return s.writeServer(pkt)
+}
+
 // zoneProxyReadyLocal reports whether a session is live in THIS process and
 // which char name would be used for injection. ModeAll/proxy use it directly;
 // ModeApp routes through the IPC client (see proxy_inject.go).

@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"encoding/binary"
 	"log"
 	"regexp"
 	"strconv"
@@ -11,31 +12,49 @@ import (
 
 // players_ingame.go is the in-game counterpart to the website-scraping player
 // counter (scrapeAndStorePlayerCount in scraper.go). Instead of fetching
-// projetoyufa.com/en/info, it injects the GM atcommand "@users" into the live
-// zone connection (see zoneproxy.go) and reads the count straight off the
-// server's reply.
+// projetoyufa.com/en/info, it asks the live zone connection (see zoneproxy.go)
+// for the online total and reads the count straight off the server's reply.
 //
-// rAthena's @users prints one "<map>: <n> (<pct>%)" line per populated map and a
-// final "all: <total>" line, all via clif_displaymessage — i.e. as 0x008e
-// self-chat packets, the same burst-of-self-chat shape the @mobinfo/@whereis
-// parsers already consume off startChatPacketCapture. The per-map and "all:"
-// lines are a hardcoded printf in rAthena (not run through the message-table
-// translator), so "all: <N>" is language-independent even though this server
-// speaks Portuguese — we key the total off it.
+// Two sources, tried in order:
 //
-// The result is written to the same player_history table the site scraper uses
-// (via storePlayerCount), so the /players graph and the admin "last player
-// count" stat cover both sources transparently. It is registered as the
-// default-disabled "players-ingame" scheduler job and wired to the admin
-// "Player Count (In-Game)" button.
+//  1. "/who" (PREFERRED). The client's /who command is the bare 2-byte
+//     CZ_REQ_USER_COUNT (0x00c1) packet; the server answers with ZC_USER_COUNT
+//     (0x00c2) = header + a uint32 total. We inject the raw 0x00c1 (no chat
+//     framing, no "<charname>" prefix) via injectRawPacket and read the count
+//     off the 0x00c2 reply in scanUserCountPacket. This needs NO GM privilege,
+//     carries no locale dependency, and is a single fixed-format reply.
+//  2. "@users" (FALLBACK). A GM atcommand: rAthena prints one
+//     "<map>: <n> (<pct>%)" line per populated map and a final "all: <total>"
+//     line, all via clif_displaymessage — i.e. as 0x008e self-chat packets, the
+//     same burst-of-self-chat shape the @mobinfo/@whereis parsers consume off
+//     startChatPacketCapture. The per-map and "all:" lines are a hardcoded
+//     rAthena printf (not run through the message-table translator), so
+//     "all: <N>" is language-independent even though this server speaks
+//     Portuguese — we key the total off it. Only reachable if the logged-in
+//     account's group is allowed @users.
+//
+// Both reply forms deliver to the same armed accumulator, so a scrape arms once
+// per attempt and either packet satisfies it. The result is written to the same
+// player_history table the site scraper uses (via storePlayerCount), so the
+// /players graph and the admin "last player count" stat cover all sources
+// transparently. It is registered as the default-disabled "players-ingame"
+// scheduler job and wired to the admin "Player Count (In-Game)" button.
 
 // ingameUsersLogTag MUST equal the players-ingame job's JobSpec.LogTag so the
 // scheduler can classify a run as failed when this driver logs an "[E]" line.
 const ingameUsersLogTag = "[Scraper/PlayerCount/InGame]"
 
-// ingameUsersTimeout bounds how long the scrape waits for the @users reply burst
-// before giving up and disarming the parser.
+// ingameUsersTimeout bounds how long the scrape waits for one reply form (the
+// /who 0x00c2 packet, or the @users self-chat burst) before giving up and
+// disarming the parser. Each attempt gets its own window.
 const ingameUsersTimeout = 5 * time.Second
+
+// maxPlausibleUserCount is an upper sanity bound on a ZC_USER_COUNT (0x00c2)
+// total. The 2-byte 0xc2 0x00 prefix can occur incidentally inside other binary
+// zone packets, so scanUserCountPacket only matches while a scrape is armed AND
+// the decoded uint32 is within [0, maxPlausibleUserCount]. No RO server's online
+// population approaches this, so it rejects a stray prefix that decoded to junk.
+const maxPlausibleUserCount = 1_000_000
 
 // reUsersTotal matches the final "all: <total>" line of an @users reply. The
 // prefix and format are a hardcoded rAthena printf, so this stays locale-stable.
@@ -81,6 +100,63 @@ func (a *usersAccumulator) disarm() {
 	a.res = nil
 }
 
+// isArmed reports whether a scrape is currently waiting for a reply. It lets the
+// packet-capture loop skip the 0x00c2 scan entirely when no /who is in flight,
+// so the bare 0xc2 0x00 prefix occurring inside ordinary binary zone traffic is
+// never even inspected outside the reply window.
+func (a *usersAccumulator) isArmed() bool {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return a.armed
+}
+
+// handleUserCount delivers a ZC_USER_COUNT (0x00c2) total to a waiting scrape.
+// It is the binary counterpart to handleLine: the /who request (0x00c1) yields a
+// single fixed-format reply rather than a self-chat burst. Returns true if the
+// count was claimed by an in-flight scrape (so the caller stops scanning).
+func (a *usersAccumulator) handleUserCount(n int) bool {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if !a.armed {
+		return false // not armed → not ours
+	}
+	if a.res != nil {
+		a.res <- n // buffered, non-blocking
+	}
+	a.armed = false
+	a.res = nil
+	if enableChatScraperDebugLogs {
+		log.Printf("[D] %s captured /who total: %d online (ZC_USER_COUNT)", ingameUsersLogTag, n)
+	}
+	return true
+}
+
+// scanUserCountPacket searches a raw zone payload for a ZC_USER_COUNT (0x00c2)
+// reply and, if an in-game player-count scrape is armed, delivers the total.
+// 0x00c2 is fixed-length 6 bytes — the 2-byte little-endian id 0xc2 0x00 plus a
+// uint32 count — and is not a text packet, so it is handled out-of-band from the
+// knownChatPackets text parse loop in startChatPacketCapture. It is a no-op
+// unless a /who is in flight (see isArmed / maxPlausibleUserCount). Returns true
+// if a count was delivered.
+func scanUserCountPacket(payload []byte) bool {
+	if !usersCount.isArmed() {
+		return false
+	}
+	for i := 0; i+6 <= len(payload); i++ {
+		if payload[i] != 0xc2 || payload[i+1] != 0x00 {
+			continue
+		}
+		n := int(binary.LittleEndian.Uint32(payload[i+2 : i+6]))
+		if n < 0 || n > maxPlausibleUserCount {
+			continue // implausible → a stray prefix, keep scanning
+		}
+		if usersCount.handleUserCount(n) {
+			return true
+		}
+	}
+	return false
+}
+
 // handleLine feeds one decoded 0x008e self-chat line to the accumulator while
 // armed. It returns true if the line was part of the @users reply (so the
 // capture loop does not store it as ordinary chat), false otherwise.
@@ -116,12 +192,14 @@ func (a *usersAccumulator) handleLine(msg string, _ time.Time) bool {
 	return false
 }
 
-// scrapeAndStorePlayerCountInGame injects "@users" into the live zone connection
-// and stores the resulting online count in player_history. It is the scheduler
-// job function for "players-ingame" and the handler target for the admin
-// "Player Count (In-Game)" button.
+// scrapeAndStorePlayerCountInGame queries the live zone connection for the
+// online count and stores it in player_history. It tries /who first (the
+// non-GM CZ_REQ_USER_COUNT packet) and falls back to the @users GM atcommand,
+// so it works whether or not the logged-in account has GM privileges. It is the
+// scheduler job function for "players-ingame" and the handler target for the
+// admin "Player Count (In-Game)" button.
 func scrapeAndStorePlayerCountInGame() {
-	log.Printf("[I] %s Querying online player count via @users...", ingameUsersLogTag)
+	log.Printf("[I] %s Querying online player count...", ingameUsersLogTag)
 
 	if ready, name := zoneProxyReady(); !ready || name == "" {
 		log.Printf("[E] %s zone proxy not ready (active=%v, charName=%q); log into the game first (and enable ZONE_PROXY).",
@@ -129,13 +207,40 @@ func scrapeAndStorePlayerCountInGame() {
 		return
 	}
 
-	// Arm the parser BEFORE injecting so the reply burst (which carries no
-	// correlation id) is attributed to this request.
-	res := usersCount.expect()
-	if err := injectChatCommand("@users"); err != nil {
-		usersCount.disarm()
-		log.Printf("[E] %s inject failed: %v", ingameUsersLogTag, err)
+	// 1. /who (CZ_REQ_USER_COUNT): non-GM, clean binary total. Preferred.
+	if n, ok := queryInGameUserCount("/who", func() error {
+		return injectRawPacket(buildUserCountRequest())
+	}); ok {
+		log.Printf("[I] %s /who reported %d players online.", ingameUsersLogTag, n)
+		storePlayerCount(n, ingameUsersLogTag)
 		return
+	}
+	log.Printf("[I] %s no /who (0x00c2) reply within %v — server may run an older packetver or have it disabled; trying @users.", ingameUsersLogTag, ingameUsersTimeout)
+
+	// 2. @users (GM atcommand): fallback if /who is unsupported.
+	if n, ok := queryInGameUserCount("@users", func() error {
+		return injectChatCommand("@users")
+	}); ok {
+		log.Printf("[I] %s @users reported %d players online.", ingameUsersLogTag, n)
+		storePlayerCount(n, ingameUsersLogTag)
+		return
+	}
+
+	log.Printf("[W] %s no count captured via /who or @users (each waited %v) — /who may be unsupported and @users restricted for this account, or their replies are not the expected packets. Nothing stored.", ingameUsersLogTag, ingameUsersTimeout)
+}
+
+// queryInGameUserCount arms the accumulator, runs inject, and waits up to
+// ingameUsersTimeout for the count — delivered by either reply form (the /who
+// 0x00c2 packet via scanUserCountPacket, or an @users "all:" line via
+// handleLine). The accumulator is armed BEFORE inject so a reply that carries
+// no correlation id is still attributed to this request. Returns (count, true)
+// on success or (0, false) on inject error / timeout.
+func queryInGameUserCount(label string, inject func() error) (int, bool) {
+	res := usersCount.expect()
+	if err := inject(); err != nil {
+		usersCount.disarm()
+		log.Printf("[E] %s %s inject failed: %v", ingameUsersLogTag, label, err)
+		return 0, false
 	}
 
 	// Derive the wait from the app shutdown context so a SIGTERM doesn't leave
@@ -149,10 +254,9 @@ func scrapeAndStorePlayerCountInGame() {
 
 	select {
 	case n := <-res:
-		log.Printf("[I] %s @users reported %d players online.", ingameUsersLogTag, n)
-		storePlayerCount(n, ingameUsersLogTag)
+		return n, true
 	case <-ctx.Done():
 		usersCount.disarm()
-		log.Printf("[W] %s no 'all: <N>' line captured within %v — @users may be unsupported, restricted for this account, or its reply is not a 0x008e self-chat packet. Nothing stored.", ingameUsersLogTag, ingameUsersTimeout)
+		return 0, false
 	}
 }

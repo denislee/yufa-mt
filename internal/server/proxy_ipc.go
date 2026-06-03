@@ -14,6 +14,7 @@ package server
 import (
 	"bufio"
 	"context"
+	"encoding/hex"
 	"encoding/json"
 	"log/slog"
 	"net"
@@ -45,8 +46,9 @@ const ipcProtocolVersion = 1
 // ipcRequest is one app→proxy command line.
 type ipcRequest struct {
 	V    int    `json:"v"`
-	Op   string `json:"op"`             // "status" | "inject" | "logs"
+	Op   string `json:"op"`             // "status" | "inject" | "injectRaw" | "logs"
 	Msg  string `json:"msg,omitempty"`  // for "inject": the raw chat/atcommand text
+	Raw  string `json:"raw,omitempty"`  // for "injectRaw": hex-encoded pre-framed packet bytes
 	Tail int    `json:"tail,omitempty"` // for "logs": max lines to return (0 = all)
 }
 
@@ -143,6 +145,15 @@ func serveProxyIPCRequest(req ipcRequest) ipcResponse {
 		return ipcResponse{OK: true, Ready: ready, CharName: name}
 	case "inject":
 		if err := injectChatCommandLocal(req.Msg); err != nil {
+			return ipcResponse{OK: false, Err: err.Error()}
+		}
+		return ipcResponse{OK: true}
+	case "injectRaw":
+		pkt, err := hex.DecodeString(req.Raw)
+		if err != nil {
+			return ipcResponse{OK: false, Err: "bad raw hex: " + err.Error()}
+		}
+		if err := injectRawPacketLocal(pkt); err != nil {
 			return ipcResponse{OK: false, Err: err.Error()}
 		}
 		return ipcResponse{OK: true}

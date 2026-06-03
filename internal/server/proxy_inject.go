@@ -16,6 +16,7 @@ import "fmt"
 // starts), so no synchronization is needed on the variables themselves.
 var (
 	injectChatCommand = injectChatCommandLocal
+	injectRawPacket   = injectRawPacketLocal
 	zoneProxyReady    = zoneProxyReadyLocal
 
 	// fetchProxyLogs returns the proxy's recent log lines. By default (ModeAll /
@@ -41,6 +42,7 @@ var (
 func useProxyIPC(socketPath string) {
 	c := newProxyIPCClient(socketPath)
 	injectChatCommand = c.inject
+	injectRawPacket = c.injectRaw
 	zoneProxyReady = c.ready
 	fetchProxyLogs = c.proxyLogs
 	proxyLogsRemote = true

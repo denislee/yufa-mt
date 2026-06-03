@@ -56,6 +56,75 @@ func TestUsersAccumulatorNotArmed(t *testing.T) {
 	if a.handleLine("prontera: 5 (100%)", time.Now()) {
 		t.Error("unarmed accumulator claimed a per-map line")
 	}
+	if a.handleUserCount(5) {
+		t.Error("unarmed accumulator claimed a /who count")
+	}
+}
+
+// TestUsersHandleUserCount feeds a ZC_USER_COUNT (0x00c2) total to an armed
+// accumulator and asserts it is delivered, then that the accumulator disarms so
+// a late count is not double-claimed.
+func TestUsersHandleUserCount(t *testing.T) {
+	var a usersAccumulator
+	res := a.expect()
+
+	if !a.handleUserCount(137) {
+		t.Fatal("armed accumulator did not claim a /who count")
+	}
+	select {
+	case n := <-res:
+		if n != 137 {
+			t.Errorf("got count %d, want 137", n)
+		}
+	default:
+		t.Fatal("/who count was not delivered on the channel")
+	}
+
+	if a.handleUserCount(999) {
+		t.Error("accumulator claimed a count after it should have disarmed")
+	}
+}
+
+// TestScanUserCountPacket exercises the binary scan against the global usersCount
+// accumulator: it must only deliver while armed, must decode the little-endian
+// uint32 after the 0xc2 0x00 id, and must reject an implausible value (a stray
+// prefix in unrelated binary data) without delivering.
+func TestScanUserCountPacket(t *testing.T) {
+	t.Cleanup(usersCount.disarm) // never leave the global armed for other tests
+
+	// Not armed: a real-looking ZC_USER_COUNT must be ignored.
+	pkt := []byte{0xc2, 0x00, 42, 0, 0, 0}
+	if scanUserCountPacket(pkt) {
+		t.Error("scan delivered a count while not armed")
+	}
+
+	// Armed: the count is decoded and delivered.
+	res := usersCount.expect()
+	// Embed the 6-byte packet inside a larger buffer to prove offset scanning.
+	buf := append([]byte{0x01, 0x02, 0x03}, pkt...)
+	buf = append(buf, 0x99)
+	if !scanUserCountPacket(buf) {
+		t.Fatal("scan did not deliver an embedded ZC_USER_COUNT while armed")
+	}
+	select {
+	case n := <-res:
+		if n != 42 {
+			t.Errorf("decoded count %d, want 42", n)
+		}
+	default:
+		t.Fatal("count was not delivered on the channel")
+	}
+
+	// Implausible value: a stray 0xc2 0x00 prefix decoding past the sanity bound
+	// must not be claimed (and must not disarm a waiting scrape).
+	res = usersCount.expect()
+	junk := []byte{0xc2, 0x00, 0xff, 0xff, 0xff, 0xff} // 4294967295
+	if scanUserCountPacket(junk) {
+		t.Error("scan claimed an implausible count")
+	}
+	if !usersCount.isArmed() {
+		t.Error("an implausible count wrongly disarmed the accumulator")
+	}
 }
 
 // TestUsersTotalLocaleStable documents that the total is keyed off the hardcoded

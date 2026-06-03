@@ -278,6 +278,14 @@ func startChatPacketCapture(ctx context.Context) {
 			}
 			tcp, _ := tcpLayer.(*layers.TCP)
 			payload := tcp.Payload // This is the raw byte payload
+
+				// A /who (CZ_REQ_USER_COUNT) reply is a fixed binary ZC_USER_COUNT
+				// (0x00c2) packet, not self-chat text, so it is handled out-of-band
+				// from the knownChatPackets text parse loop below. No-op unless an
+				// in-game player-count scrape is currently armed.
+				if len(payload) > 0 {
+					scanUserCountPacket(payload)
+				}
 			if len(payload) == 0 {
 				continue
 			}

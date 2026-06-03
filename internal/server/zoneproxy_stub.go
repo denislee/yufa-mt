@@ -20,4 +20,10 @@ func injectChatCommandLocal(string) error {
 	return fmt.Errorf("zone proxy (chat injection) is only supported on Linux")
 }
 
+func injectRawPacketLocal([]byte) error {
+	return fmt.Errorf("zone proxy (packet injection) is only supported on Linux")
+}
+
+func buildUserCountRequest() []byte { return []byte{0xc1, 0x00} }
+
 func zoneProxyReadyLocal() (bool, string) { return false, "" }

@@ -7,6 +7,7 @@ package server
 
 import (
 	"bufio"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"net"
@@ -66,6 +67,20 @@ func (c *proxyIPCClient) inject(msg string) error {
 	}
 	if !resp.OK {
 		return fmt.Errorf("proxy refused inject: %s", resp.Err)
+	}
+	return nil
+}
+
+// injectRaw forwards a pre-framed packet to the proxy for raw injection (e.g.
+// CZ_REQ_USER_COUNT). Matches the injectRawPacket signature (see
+// proxy_inject.go); the bytes are hex-encoded for the JSON transport.
+func (c *proxyIPCClient) injectRaw(pkt []byte) error {
+	resp, err := c.roundTrip(ipcRequest{Op: "injectRaw", Raw: hex.EncodeToString(pkt)})
+	if err != nil {
+		return err
+	}
+	if !resp.OK {
+		return fmt.Errorf("proxy refused raw inject: %s", resp.Err)
 	}
 	return nil
 }
