@@ -511,19 +511,68 @@ auto_login_ydotool() {
   report_connection
 }
 
+# --- Real-display (Sway) window focus ----------------------------------------
+# In real mode the client is an XWayland window under Sway, and ydotool injects
+# at the kernel uinput layer — so it types into whatever the compositor has
+# FOCUSED, not a window we can target. Two facts make a blind settle unsafe:
+#   * launch readiness lies — game_pid() matches the umu/lutris launcher (the
+#     .exe path is in its argv) seconds before the actual login window renders,
+#   * a tiling WM does NOT auto-focus a late-mapping window, so the client can
+#     sit unfocused behind a terminal — which is exactly where the blind
+#     password ended up (typed into Alacritty as "<pass>\n" → command-not-found).
+# These helpers wait for the real window and focus it first. Matched by title
+# (WINDOW_NAME), which Sway criteria treat as a regex.
+sway_ready() {
+  command -v swaymsg >/dev/null 2>&1 || return 1
+  [ -n "${SWAYSOCK:-}" ] || SWAYSOCK="$(ls /run/user/"$(id -u)"/sway-ipc.*.sock 2>/dev/null | head -1)"
+  [ -n "${SWAYSOCK:-}" ] && export SWAYSOCK && swaymsg -t get_version >/dev/null 2>&1
+}
+
+# Non-empty if a window whose title matches WINDOW_NAME is in the tree.
+client_window_present() { swaymsg -t get_tree 2>/dev/null | grep -iF "$WINDOW_NAME"; }
+
+# Bring the client login window to focus so ydotool input lands in it. Polls up
+# to LOGIN_READY_TRIES×2s for the window to appear (Proton cold-start), then
+# focuses it. Returns 0 once focused, 1 if Sway is unreachable or it never showed.
+focus_client_window() {
+  sway_ready || { log "AUTO_LOGIN: WARN swaymsg/Sway socket unavailable — cannot verify focus."; return 1; }
+  local tries="${LOGIN_READY_TRIES:-40}" i
+  for i in $(seq 1 "$tries"); do
+    if [ -n "$(client_window_present)" ]; then
+      swaymsg "[title=\"$WINDOW_NAME\"] focus" >/dev/null 2>&1
+      log "AUTO_LOGIN: client window ('$WINDOW_NAME') present and focused (after $((i * 2))s)."
+      return 0
+    fi
+    sleep 2
+  done
+  log "AUTO_LOGIN: WARN client window ('$WINDOW_NAME') not seen within $((tries * 2))s."
+  return 1
+}
+
 # Real-mode unattended login via ydotool. The MITM proxy enters the PIN and
 # selects the character, so here we only clear the startup dialogs and type the
 # password. ydotool injects at the kernel uinput layer, so the client must be the
-# focused window on the seat (it grabs focus on launch). Timings are speed-
-# dependent — calibrate with `shot` / the AUTO_LOGIN_* knobs if it stalls.
+# focused window on the seat — we focus it explicitly (see focus_client_window)
+# rather than assuming it grabbed focus on launch. Timings are speed-dependent —
+# calibrate with `shot` / the AUTO_LOGIN_* knobs if it stalls.
 auto_login_real() {
   need ydotool
   [ -n "${YUFA_PASS:-}" ] || die "YUFA_PASS not set (put it in $CONFIG_DIR/credentials.env)"
   ydotoold_ready || die "ydotoold socket '$YDOTOOL_SOCKET' not found. Start it as root (uinput is root-only):
     sudo ydotoold -p \"$YDOTOOL_SOCKET\" -o $(id -u):$(id -g)"
 
-  log "AUTO_LOGIN: settling ${SETTLE_AFTER_WINDOW}s for the client to reach the login screen"
-  sleep "$SETTLE_AFTER_WINDOW"
+  # Wait for the real login window and focus it before typing. game_pid() only
+  # proves the launcher is up, not that the window has rendered, so the old blind
+  # SETTLE_AFTER_WINDOW sleep raced Proton's cold start and the keystrokes landed
+  # in whatever held focus (a terminal). Gate on the window; keep a short settle
+  # for Gepard to finish drawing the form. Fall back to the blind settle only if
+  # Sway is unreachable, so a non-Sway seat still behaves as before.
+  if focus_client_window; then
+    sleep "$SETTLE_AFTER_WINDOW"
+  else
+    log "AUTO_LOGIN: falling back to a blind ${SETTLE_AFTER_WINDOW}s settle"
+    sleep "$SETTLE_AFTER_WINDOW"
+  fi
 
   local i
   for i in $(seq 1 "$AUTO_LOGIN_PRE_ENTERS"); do
@@ -532,6 +581,9 @@ auto_login_real() {
   done
 
   log "AUTO_LOGIN: typing password (Salvar Login pre-fills the ID; the password field auto-focuses)"
+  # Re-assert focus right before typing — clearing dialogs can shift it, and a
+  # mis-focused password is the failure this whole path guards against.
+  sway_ready && swaymsg "[title=\"$WINDOW_NAME\"] focus" >/dev/null 2>&1
   ydo type --key-delay "$KEY_DELAY_MS" "$YUFA_PASS"; ydo_enter
   sleep "$WAIT_AFTER_LOGIN"
 
