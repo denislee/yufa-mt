@@ -6,7 +6,6 @@ import (
 	"encoding/binary"
 	"encoding/hex"
 	"fmt"
-	"io"
 	"log"
 	"net"
 	"net/http"
@@ -295,8 +294,7 @@ func startChatPacketCapture(ctx context.Context) {
 				// Log the full payload in hex and as a sanitized string
 
 				// Decode payload from Latin-1 for logging
-				reader := transform.NewReader(bytes.NewReader(payload), charmap.ISO8859_1.NewDecoder())
-				utf8Bytes, _ := io.ReadAll(reader) // Ignore error for logging
+				utf8Bytes, _, _ := transform.Bytes(charmap.ISO8859_1.NewDecoder(), payload) // Ignore error for logging
 
 				sanitizedPayload := strings.Map(func(r rune) rune {
 					if unicode.IsPrint(r) {

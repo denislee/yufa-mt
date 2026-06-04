@@ -195,7 +195,7 @@ func adminReparseTradingPostHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 // adminShowEditTradingPostPage handles the GET request to show the edit form.
-func adminShowEditTradingPostPage(w http.ResponseWriter, r *http.Request, postID int) {
+func adminShowEditTradingPostPage(w http.ResponseWriter, _ *http.Request, postID int) {
 	var post TradingPost
 	var createdAtStr string
 	err := srv.db.QueryRow(`

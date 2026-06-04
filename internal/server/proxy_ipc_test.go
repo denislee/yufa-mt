@@ -95,6 +95,7 @@ func TestUseProxyIPCRoutesOverWire(t *testing.T) {
 					// Reply success for inject, ready+name for status.
 					_, _ = conn.Write([]byte(`{"ok":true,"ready":true,"charName":"fakehero"}` + "\n"))
 				}
+				_ = sc.Err()
 			}()
 		}
 	}()

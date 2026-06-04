@@ -3,6 +3,7 @@ package server
 import (
 	"bufio"
 	"encoding/json"
+	"log"
 	"net/http"
 	"os"
 	"runtime"
@@ -231,6 +232,9 @@ func readProcStat() (cpuTimes, []cpuTimes) {
 			per = append(per, ct)
 		}
 	}
+	if err := sc.Err(); err != nil {
+		log.Printf("[W] [SysStats] Error scanning /proc/stat: %v", err)
+	}
 	return all, per
 }
 
@@ -254,6 +258,9 @@ func readMemInfo(s *SystemStats) {
 			continue
 		}
 		vals[key] = v * 1024 // kB -> bytes
+	}
+	if err := sc.Err(); err != nil {
+		log.Printf("[W] [SysStats] Error scanning /proc/meminfo: %v", err)
 	}
 
 	s.MemTotal = vals["MemTotal"]
@@ -340,6 +347,9 @@ func readProcessMem(s *SystemStats) {
 			}
 			return
 		}
+	}
+	if err := sc.Err(); err != nil {
+		log.Printf("[W] [SysStats] Error scanning /proc/self/status: %v", err)
 	}
 }
 
