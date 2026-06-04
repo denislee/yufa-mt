@@ -144,66 +144,115 @@ func zoneHealthHandler(w http.ResponseWriter, _ *http.Request) {
 	fmt.Fprintf(w, "last=%d\nage=%d\n", last, age)
 }
 
-// startChatPacketCapture is the new long-running service to replace processChatLogFile
+// startChatPacketCapture is the long-running chat sniffer. It resolves the
+// capture device/port once, then runs the capture in an outer reconnect loop so
+// a transient libpcap failure (interface down/flap, suspend/resume, the handle
+// being torn down) doesn't permanently kill chat until someone restarts the
+// app — see runChatCaptureSession for the failure mode it recovers from.
 func startChatPacketCapture(ctx context.Context) {
 	log.Println("[I] [Scraper/Chat] Initializing live packet capture...")
 
-	// --- 1. Find Network Device ---
-	device := appConfig.ChatCaptureDevice
-	if device == "" {
-		// Use Go's standard 'net' package to find a suitable device.
-		ifaces, err := net.Interfaces()
-		if err != nil {
-			log.Printf("[E] [Scraper/Chat] net.Interfaces() failed: %v. Chat capture disabled.", err)
+	device, port, ok := resolveChatCaptureDeviceAndPort()
+	if !ok {
+		return // unrecoverable config problem already logged; capture disabled
+	}
+	filter := fmt.Sprintf("tcp port %s", port)
+
+	for {
+		if ctx.Err() != nil {
 			return
 		}
 
+		handle, err := pcap.OpenLive(device, 65536, true, pcap.BlockForever)
+		if err != nil {
+			log.Printf("[E] [Scraper/Chat] Failed to open pcap handle on %s: %v. (libpcap installed and root/CAP_NET_RAW?) Retrying in 5s.", device, err)
+			if !sleepOrDone(ctx, 5*time.Second) {
+				return
+			}
+			continue
+		}
+
+		if err := handle.SetBPFFilter(filter); err != nil {
+			log.Printf("[E] [Scraper/Chat] Failed to set BPF filter (%s): %v. Retrying in 5s.", filter, err)
+			handle.Close()
+			if !sleepOrDone(ctx, 5*time.Second) {
+				return
+			}
+			continue
+		}
+		log.Printf("[I] [Scraper/Chat] Started packet capture on %s, filtering for %s.", device, filter)
+
+		reconnect := runChatCaptureSession(ctx, handle)
+		handle.Close()
+		if !reconnect {
+			return // ctx cancelled: clean shutdown
+		}
+		log.Printf("[W] [Scraper/Chat] Packet capture stream closed unexpectedly (interface flap / suspend?). Reopening in 2s.")
+		if !sleepOrDone(ctx, 2*time.Second) {
+			return
+		}
+	}
+}
+
+// sleepOrDone waits for d or for ctx cancellation, returning true if the sleep
+// elapsed and false if ctx was cancelled (so callers bail out promptly).
+func sleepOrDone(ctx context.Context, d time.Duration) bool {
+	select {
+	case <-ctx.Done():
+		return false
+	case <-time.After(d):
+		return true
+	}
+}
+
+// resolveChatCaptureDeviceAndPort picks the capture interface and port from
+// config, auto-selecting the first up, non-loopback, addressed interface when
+// CHAT_CAPTURE_DEVICE is unset. ok is false (reason logged) when no usable
+// device exists, in which case capture is disabled.
+func resolveChatCaptureDeviceAndPort() (device, port string, ok bool) {
+	device = appConfig.ChatCaptureDevice
+	if device == "" {
+		ifaces, err := net.Interfaces()
+		if err != nil {
+			log.Printf("[E] [Scraper/Chat] net.Interfaces() failed: %v. Chat capture disabled.", err)
+			return "", "", false
+		}
 		for _, i := range ifaces {
-			// Check if interface is up and not a loopback
 			isUp := (i.Flags & net.FlagUp) != 0
 			isLoopback := (i.Flags & net.FlagLoopback) != 0
-
 			if isUp && !isLoopback {
-				// Check if it has a usable address
-				addrs, err := i.Addrs()
-				if err == nil && len(addrs) > 0 {
+				if addrs, err := i.Addrs(); err == nil && len(addrs) > 0 {
 					device = i.Name
 					log.Printf("[I] [Scraper/Chat] No CHAT_CAPTURE_DEVICE set. Auto-selected device: %s", device)
 					break
 				}
 			}
 		}
-
 		if device == "" {
 			log.Printf("[E] [Scraper/Chat] Could not find a suitable non-loopback network device. Please set CHAT_CAPTURE_DEVICE. Chat capture disabled.")
-			return
+			return "", "", false
 		}
 	}
 
-	// --- 2. Get Port ---
-	port := appConfig.ChatCapturePort
+	port = appConfig.ChatCapturePort
 	if port == "" {
 		port = "6121" // Default Ragnarok Online Char Server port
 		log.Printf("[W] [Scraper/Chat] CHAT_CAPTURE_PORT not set. Defaulting to %s. This may not be correct.", port)
 	}
+	return device, port, true
+}
 
-	// --- 3. Open pcap Handle ---
-	handle, err := pcap.OpenLive(device, 65536, true, pcap.BlockForever)
-	if err != nil {
-		log.Printf("[E] [Scraper/Chat] Failed to open pcap handle on %s: %v. (Do you have libpcap/Npcap installed and root/admin privileges?)", device, err)
-		return
-	}
-	defer handle.Close()
-
-	// --- 4. Set BPF Filter ---
-	filter := fmt.Sprintf("tcp port %s", port)
-	if err := handle.SetBPFFilter(filter); err != nil {
-		log.Printf("[E] [Scraper/Chat] Failed to set BPF filter (%s): %v", filter, err)
-		return
-	}
-	log.Printf("[I] [Scraper/Chat] Started packet capture on %s, filtering for %s.", device, filter)
-
-	// --- 5. Start Packet Processing Loop ---
+// runChatCaptureSession runs the capture/parse loop against an already-open
+// pcap handle. It returns true when the underlying packet stream closed and the
+// caller should re-open the handle (gopacket closes the Packets() channel on an
+// unrecoverable libpcap error), and false when ctx was cancelled (shutdown).
+//
+// The closed-channel check is the important part: a receive from a closed
+// channel succeeds immediately with a zero (nil) packet, so without the ok
+// guard this loop would either panic dereferencing the nil packet or spin
+// forever — and on every spin it would stamp lastChatPacketTime, masking the
+// dead capture from the /health/zone watchdog so nothing ever relaunched.
+func runChatCaptureSession(ctx context.Context, handle *pcap.Handle) (reconnect bool) {
 	packetSource := gopacket.NewPacketSource(handle, handle.LinkType())
 	var newMessages []ChatMessage
 	flushTicker := time.NewTicker(5 * time.Second) // Flush messages to DB every 5s
@@ -225,7 +274,7 @@ func startChatPacketCapture(ctx context.Context) {
 					log.Printf("[E] [Scraper/Chat] Error flushing final message batch to DB: %v", err)
 				}
 			}
-			return
+			return false
 
 		case <-flushTicker.C:
 			// 0. Finalize a dangling @mobinfo / @whereis block whose burst has ended.
@@ -252,7 +301,17 @@ func startChatPacketCapture(ctx context.Context) {
 				}
 			}
 
-		case packet := <-packetSource.Packets():
+		case packet, ok := <-packetSource.Packets():
+			if !ok {
+				// gopacket closed the stream on an unrecoverable libpcap error.
+				// Flush what we have and tell the caller to re-open the handle.
+				if len(newMessages) > 0 {
+					if err := saveChatMessagesToDB(newMessages); err != nil {
+						log.Printf("[E] [Scraper/Chat] Error flushing batch before reconnect: %v", err)
+					}
+				}
+				return true
+			}
 
 			// 1. Update the "last seen" time (for navbar and watchdog)
 			lastChatPacketTime.Store(time.Now().Unix())
