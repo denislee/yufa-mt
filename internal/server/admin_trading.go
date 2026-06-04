@@ -486,8 +486,11 @@ func backfillDropLogsToChangelog() (int64, error) {
 	deletedCount, _ := delRes.RowsAffected()
 	log.Printf("[I] [Backfill] Deleted %d old drop log entries.", deletedCount)
 
-	// 3. Query all drop messages from the chat table
-	rows, err := tx.Query("SELECT message, timestamp FROM chat WHERE channel = 'Drop' AND character_name = 'System'")
+	// 3. Query all drop messages from the chat table.
+	// Historically, non-0.01% drops were misclassified into the 'Announcement'
+	// channel, so we scan both channels and rely on the regex + chance marker
+	// below to filter out genuine (non-drop) announcements.
+	rows, err := tx.Query("SELECT message, timestamp FROM chat WHERE channel IN ('Drop', 'Announcement') AND character_name = 'System' AND message LIKE '%(chance:%'")
 	if err != nil {
 		return 0, fmt.Errorf("failed to query chat table for drops: %w", err)
 	}
