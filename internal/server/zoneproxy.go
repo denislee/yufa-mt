@@ -40,6 +40,7 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
+	"time"
 
 	"golang.org/x/text/encoding/charmap"
 	"golang.org/x/text/transform"
@@ -63,6 +64,16 @@ func (s *zoneSession) writeServer(b []byte) error {
 var (
 	// activeZone is the most recent live zone session; injection targets it.
 	activeZone atomic.Pointer[zoneSession]
+
+	// Zone proxy diagnostics — surfaced by zoneProxyDiag() so a "zone proxy not
+	// ready" failure names its concrete cause instead of a bare active=false.
+	// These distinguish "relay never started" (ZONE_PROXY=0 / iptables install
+	// failed) from "relay up, but no client connection was ever redirected into
+	// it" (wrong ZONE_PROXY_PORT / ZONE_PROXY_SERVER_IP, or the client is off-box).
+	zoneProxyListening     atomic.Bool            // REDIRECT installed + listener accepting
+	zoneProxyEverConnected atomic.Bool            // any client session relayed since startup
+	zoneProxyLastTarget    atomic.Pointer[string] // upstream addr ("ip:port") of the most recent session
+	lastZoneDiagLog        atomic.Int64           // unix-nanos throttle for logZoneProxyDiag
 
 	zoneNameMu   sync.RWMutex
 	zoneCharName string // learned from the client's own outgoing chat
@@ -181,9 +192,73 @@ func injectRawPacketLocal(pkt []byte) error {
 
 // zoneProxyReadyLocal reports whether a session is live in THIS process and
 // which char name would be used for injection. ModeAll/proxy use it directly;
-// ModeApp routes through the IPC client (see proxy_inject.go).
+// ModeApp routes through the IPC client (see proxy_inject.go). When not ready it
+// logs a throttled diagnostic naming the concrete cause, so a failed
+// players-ingame / @mobinfo run leaves a breadcrumb in the proxy logs.
 func zoneProxyReadyLocal() (bool, string) {
-	return activeZone.Load() != nil, effectiveCharName()
+	ready := activeZone.Load() != nil
+	name := effectiveCharName()
+	if !ready {
+		logZoneProxyDiag()
+	}
+	return ready, name
+}
+
+// logZoneProxyDiag emits a one-line summary of the relay's state at WARN, gated
+// to once per minute. Readiness is polled roughly that often (the players-ingame
+// job + the admin status page), so without the throttle a persistently-down
+// relay would flood the log with an identical line every poll.
+func logZoneProxyDiag() {
+	now := time.Now().UnixNano()
+	last := lastZoneDiagLog.Load()
+	if last != 0 && now-last < int64(time.Minute) {
+		return
+	}
+	if !lastZoneDiagLog.CompareAndSwap(last, now) {
+		return // another goroutine just logged it
+	}
+	slog.Warn("zone proxy not ready", "diag", zoneProxyDiag())
+}
+
+// zoneProxyDiag renders the relay's diagnostic state as a single line, ending in
+// a "CAUSE:"/"LIKELY CAUSE:" hint so the operator does not have to interpret the
+// raw flags. It reads only atomics + config, so it is cheap and lock-free.
+func zoneProxyDiag() string {
+	cfg := appConfig
+	var enabled bool
+	var zonePort, serverIP, chatPort string
+	if cfg != nil {
+		enabled = cfg.ZoneProxyEnabled
+		zonePort = cfg.ZoneProxyZonePort
+		serverIP = orAny(cfg.ZoneProxyServerIP)
+		chatPort = cfg.ChatCapturePort
+	}
+	last := "(none yet)"
+	if p := zoneProxyLastTarget.Load(); p != nil {
+		last = *p
+	}
+	return fmt.Sprintf("enabled=%v listening=%v active=%v everConnected=%v lastTarget=%s zonePort=%s serverIP=%s chatCapturePort=%s charName=%q%s",
+		enabled, zoneProxyListening.Load(), activeZone.Load() != nil,
+		zoneProxyEverConnected.Load(), last, zonePort, serverIP, chatPort,
+		effectiveCharName(), zoneProxyCauseHint(enabled, chatPort, zonePort))
+}
+
+// zoneProxyCauseHint maps the diagnostic state to the single most likely reason
+// the relay has no live session, in the order the failures cascade.
+func zoneProxyCauseHint(enabled bool, chatPort, zonePort string) string {
+	switch {
+	case !enabled:
+		return " — CAUSE: relay disabled (ZONE_PROXY=0); set ZONE_PROXY=1 on the proxy process and re-log the client"
+	case !zoneProxyListening.Load():
+		return " — CAUSE: relay not listening; look earlier for an iptables REDIRECT install failure (needs CAP_NET_ADMIN)"
+	case !zoneProxyEverConnected.Load():
+		if chatPort != "" && zonePort != "" && chatPort != zonePort {
+			return fmt.Sprintf(" — LIKELY CAUSE: no connection ever redirected AND ZONE_PROXY_PORT (%s) != CHAT_CAPTURE_PORT (%s); the REDIRECT is probably matching the wrong port", zonePort, chatPort)
+		}
+		return " — CAUSE: relay up but no client connection has been redirected into it; re-log the game client and verify ZONE_PROXY_PORT / ZONE_PROXY_SERVER_IP match the live map server"
+	default:
+		return " — CAUSE: a session was relayed earlier but is closed now (client disconnected / changed maps); re-log or wait for the watchdog to reconnect"
+	}
 }
 
 func (s *zoneSession) clientToServer() {
@@ -241,6 +316,9 @@ func zpHandle(id int, client *net.TCPConn) {
 
 	s := &zoneSession{id: id, client: client, server: server}
 	activeZone.Store(s)
+	zoneProxyEverConnected.Store(true)
+	targetCopy := target // record what the client actually connected to (for diag)
+	zoneProxyLastTarget.Store(&targetCopy)
 	go s.clientToServer()
 	s.serverToClient() // blocks until the connection ends
 
@@ -253,6 +331,7 @@ func zpHandle(id int, client *net.TCPConn) {
 func startZoneProxy(ctx context.Context) {
 	cfg := appConfig
 	if cfg == nil || !cfg.ZoneProxyEnabled {
+		slog.Warn("zone proxy disabled (ZONE_PROXY=0): in-game player count (/who, @users) and @mobinfo/@whereis injection are unavailable until enabled; passive chat capture is unaffected")
 		return
 	}
 
@@ -279,7 +358,17 @@ func startZoneProxy(ctx context.Context) {
 		slog.Error("zone proxy: listen failed", "addr", listenAddr, "error", err)
 		return
 	}
-	slog.Info("zone proxy listening", "addr", listenAddr, "zonePort", zonePort, "serverIP", orAny(serverIP))
+	slog.Info("zone proxy listening", "addr", listenAddr, "zonePort", zonePort,
+		"serverIP", orAny(serverIP), "listenPort", listenPort, "chatCapturePort", cfg.ChatCapturePort)
+	// A relay that REDIRECTs a different port than the passive chat sniffer
+	// watches is the classic "chat works but player count says not ready" trap:
+	// the sniffer still sees chat while the relay never catches the connection.
+	if cfg.ChatCapturePort != "" && cfg.ChatCapturePort != zonePort {
+		slog.Warn("zone proxy: ZONE_PROXY_PORT differs from CHAT_CAPTURE_PORT — passive chat may capture while the relay's REDIRECT misses the connection, so in-game player count / injection will report 'not ready'",
+			"zonePort", zonePort, "chatCapturePort", cfg.ChatCapturePort)
+	}
+	zoneProxyListening.Store(true)
+	defer zoneProxyListening.Store(false)
 
 	go func() {
 		<-ctx.Done()

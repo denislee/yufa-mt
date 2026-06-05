@@ -27,3 +27,5 @@ func injectRawPacketLocal([]byte) error {
 func buildUserCountRequest() []byte { return []byte{0xc1, 0x00} }
 
 func zoneProxyReadyLocal() (bool, string) { return false, "" }
+
+func zoneProxyDiag() string { return "zone proxy not supported on this platform" }
