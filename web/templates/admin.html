@@ -1749,6 +1749,19 @@
                     </div>
                 </div>
 
+                <!-- Actions: operator controls for the moving parts. -->
+                <div class="adm-card mt-6">
+                    <h3 class="adm-card-title mb-1">Actions</h3>
+                    <p class="adm-desc mb-3">Stop the headless game client; the listener watchdog (<code>yufa-listener.service</code>) relaunches it within ~10s and auto-logs back in via the PIN proxy. Use this when the client is stuck at char-select or the chat capture has gone silent.</p>
+                    <form action="/admin/game/restart" method="POST"
+                          onsubmit="return confirm('Kill the game client and let the watchdog relaunch + auto-login it?');">
+                        <input type="hidden" name="tab" value="machine">
+                        <button type="submit" class="adm-btn adm-btn-warning">
+                            🔄 Restart Game Client
+                        </button>
+                    </form>
+                </div>
+
             </div>
 
         </div>
