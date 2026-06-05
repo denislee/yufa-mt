@@ -129,6 +129,15 @@ type Config struct {
 	// "<name> : <msg>" prefix when injecting chat. Normally the proxy learns it
 	// from the client's own outgoing chat; this only seeds it before then.
 	ZoneProxyCharName string
+	// ZoneProxyWhoInjection gates the raw CZ_REQ_USER_COUNT (0x00c1, the
+	// client's /who command) injection used as the preferred in-game
+	// player-count source (players_ingame.go). Defaults OFF: unlike the
+	// chat-framed 0x00f3 atcommands (@mobinfo, @users), a bare 0x00c1 is a
+	// distinct packet id, and on a server whose packetver does not register it
+	// rAthena's clif_parse set_eof's the session — disconnecting the live game
+	// client every time the players-ingame job fires. Leave off unless this
+	// server is confirmed to accept /who; the @users fallback still runs.
+	ZoneProxyWhoInjection bool
 
 	// Mob-info scrape first-run defaults (internal/server/mobscrape.go). The
 	// live values are persisted in the mobscrape_config table and editable from
@@ -161,37 +170,38 @@ type Config struct {
 // returns a typed Config or an error describing every problem found.
 func Load() (*Config, error) {
 	cfg := &Config{
-		Mode:                 envOr("YUFA_MODE", ModeAll),
-		ProxyIPCSocket:       envOr("PROXY_IPC_SOCKET", "/run/yufa-mt/proxy.sock"),
-		HTTPAddr:             envOr("HTTP_ADDR", ":8080"),
-		DBPath:               envOr("DB_PATH", "./data/runtime/market_data.db"),
-		AdminUser:            envOr("ADMIN_USER", "admin"),
-		AdminPassword:        os.Getenv("ADMIN_PASSWORD"),
-		GeminiAPIKey:         os.Getenv("GEMINI_API_KEY"),
-		DiscordBotToken:      os.Getenv("DISCORD_BOT_TOKEN"),
-		ChatCaptureDevice:    os.Getenv("CHAT_CAPTURE_DEVICE"),
-		ChatCapturePort:      os.Getenv("CHAT_CAPTURE_PORT"),
-		RequireAdminPassword: boolEnv("REQUIRE_ADMIN_PASSWORD"),
-		DisableScrapers:      boolEnv("DISABLE_SCRAPERS"),
-		ChatCaptureOnly:      boolEnv("CHAT_CAPTURE_ONLY"),
-		PinProxyEnabled:      boolEnv("PIN_PROXY"),
-		PinProxyPIN:          envOr("YUFA_PIN", os.Getenv("PIN")),
-		PinProxyCharPort:     envOr("PIN_PROXY_CHAR_PORT", "7121"),
-		PinProxyListenPort:   envOr("PIN_PROXY_LISTEN_PORT", "7799"),
-		PinProxySelectSlot:   intEnv("PIN_PROXY_SELECT_SLOT", -1),
-		PinProxyServerIP:     os.Getenv("PIN_PROXY_SERVER_IP"),
-		PinProxyInject:       boolEnvDefault("PIN_PROXY_INJECT", true),
-		ZoneProxyEnabled:     boolEnvDefault("ZONE_PROXY", true),
-		ZoneProxyZonePort:    envOr("ZONE_PROXY_PORT", "6121"),
-		ZoneProxyListenPort:  envOr("ZONE_PROXY_LISTEN_PORT", "6799"),
-		ZoneProxyServerIP:    os.Getenv("ZONE_PROXY_SERVER_IP"),
-		ZoneProxyCharName:    os.Getenv("ZONE_PROXY_CHAR_NAME"),
-		MobScrapeFromID:      intEnv("MOBSCRAPE_FROM", 1001),
-		MobScrapeToID:        intEnv("MOBSCRAPE_TO", 2500),
-		MobScrapeDelayMs:     intEnv("MOBSCRAPE_DELAY_MS", 400),
-		SelfUpdateEnabled:    boolEnv("SELF_UPDATE"),
-		SelfUpdateBranch:     envOr("SELF_UPDATE_BRANCH", "main"),
-		GameClientMatch:      envOr("GAME_CLIENT_MATCH", `Projeto_Yufa|[Rr]agexe|[Rr]agnarok`),
+		Mode:                  envOr("YUFA_MODE", ModeAll),
+		ProxyIPCSocket:        envOr("PROXY_IPC_SOCKET", "/run/yufa-mt/proxy.sock"),
+		HTTPAddr:              envOr("HTTP_ADDR", ":8080"),
+		DBPath:                envOr("DB_PATH", "./data/runtime/market_data.db"),
+		AdminUser:             envOr("ADMIN_USER", "admin"),
+		AdminPassword:         os.Getenv("ADMIN_PASSWORD"),
+		GeminiAPIKey:          os.Getenv("GEMINI_API_KEY"),
+		DiscordBotToken:       os.Getenv("DISCORD_BOT_TOKEN"),
+		ChatCaptureDevice:     os.Getenv("CHAT_CAPTURE_DEVICE"),
+		ChatCapturePort:       os.Getenv("CHAT_CAPTURE_PORT"),
+		RequireAdminPassword:  boolEnv("REQUIRE_ADMIN_PASSWORD"),
+		DisableScrapers:       boolEnv("DISABLE_SCRAPERS"),
+		ChatCaptureOnly:       boolEnv("CHAT_CAPTURE_ONLY"),
+		PinProxyEnabled:       boolEnv("PIN_PROXY"),
+		PinProxyPIN:           envOr("YUFA_PIN", os.Getenv("PIN")),
+		PinProxyCharPort:      envOr("PIN_PROXY_CHAR_PORT", "7121"),
+		PinProxyListenPort:    envOr("PIN_PROXY_LISTEN_PORT", "7799"),
+		PinProxySelectSlot:    intEnv("PIN_PROXY_SELECT_SLOT", -1),
+		PinProxyServerIP:      os.Getenv("PIN_PROXY_SERVER_IP"),
+		PinProxyInject:        boolEnvDefault("PIN_PROXY_INJECT", true),
+		ZoneProxyEnabled:      boolEnvDefault("ZONE_PROXY", true),
+		ZoneProxyZonePort:     envOr("ZONE_PROXY_PORT", "6121"),
+		ZoneProxyListenPort:   envOr("ZONE_PROXY_LISTEN_PORT", "6799"),
+		ZoneProxyServerIP:     os.Getenv("ZONE_PROXY_SERVER_IP"),
+		ZoneProxyCharName:     os.Getenv("ZONE_PROXY_CHAR_NAME"),
+		ZoneProxyWhoInjection: boolEnv("ZONE_PROXY_WHO"),
+		MobScrapeFromID:       intEnv("MOBSCRAPE_FROM", 1001),
+		MobScrapeToID:         intEnv("MOBSCRAPE_TO", 2500),
+		MobScrapeDelayMs:      intEnv("MOBSCRAPE_DELAY_MS", 400),
+		SelfUpdateEnabled:     boolEnv("SELF_UPDATE"),
+		SelfUpdateBranch:      envOr("SELF_UPDATE_BRANCH", "main"),
+		GameClientMatch:       envOr("GAME_CLIENT_MATCH", `Projeto_Yufa|[Rr]agexe|[Rr]agnarok`),
 	}
 
 	if ids := os.Getenv("DISCORD_CHANNEL_IDS"); ids != "" {

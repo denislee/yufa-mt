@@ -207,15 +207,23 @@ func scrapeAndStorePlayerCountInGame() {
 		return
 	}
 
-	// 1. /who (CZ_REQ_USER_COUNT): non-GM, clean binary total. Preferred.
-	if n, ok := queryInGameUserCount("/who", func() error {
-		return injectRawPacket(buildUserCountRequest())
-	}); ok {
-		log.Printf("[I] %s /who reported %d players online.", ingameUsersLogTag, n)
-		storePlayerCount(n, ingameUsersLogTag)
-		return
+	// 1. /who (CZ_REQ_USER_COUNT): non-GM, clean binary total. Preferred WHERE
+	// SUPPORTED, but gated OFF by default (ZONE_PROXY_WHO): a bare 0x00c1 is a
+	// distinct packet id rather than the universally-accepted chat-framed 0x00f3
+	// shape used by @users/@mobinfo, and on a server whose packetver does not
+	// register it rAthena's clif_parse set_eof's the session — i.e. it kicks the
+	// live client (and with it the chat capture) every minute the job fires.
+	// Only inject it when the operator has confirmed this server accepts /who.
+	if appConfig != nil && appConfig.ZoneProxyWhoInjection {
+		if n, ok := queryInGameUserCount("/who", func() error {
+			return injectRawPacket(buildUserCountRequest())
+		}); ok {
+			log.Printf("[I] %s /who reported %d players online.", ingameUsersLogTag, n)
+			storePlayerCount(n, ingameUsersLogTag)
+			return
+		}
+		log.Printf("[I] %s no /who (0x00c2) reply within %v — server may run an older packetver or have it disabled; trying @users.", ingameUsersLogTag, ingameUsersTimeout)
 	}
-	log.Printf("[I] %s no /who (0x00c2) reply within %v — server may run an older packetver or have it disabled; trying @users.", ingameUsersLogTag, ingameUsersTimeout)
 
 	// 2. @users (GM atcommand): fallback if /who is unsupported.
 	if n, ok := queryInGameUserCount("@users", func() error {
