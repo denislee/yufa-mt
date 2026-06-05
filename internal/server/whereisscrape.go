@@ -81,7 +81,7 @@ func runWhereIsSweep() {
 	}
 	ready, charName := zoneProxyReady()
 	if !ready || charName == "" {
-		log.Printf("[E] %s zone proxy not ready (active=%v, charName=%q); log into the game first (and enable ZONE_PROXY).",
+		log.Printf("[E] %s zone proxy not ready (active=%v, charName=%q); log into the game first (and enable ZONE_PROXY). See the proxy logs for the 'zone proxy not ready' diag line naming the concrete cause.",
 			whereIsScrapeLogTag, ready, charName)
 		return
 	}

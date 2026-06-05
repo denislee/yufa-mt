@@ -78,7 +78,7 @@ func runMobInfoSweep() {
 		return
 	}
 	if ready, name := zoneProxyReady(); !ready || name == "" {
-		log.Printf("[E] %s zone proxy not ready (active=%v, charName=%q); log into the game first (and enable ZONE_PROXY).",
+		log.Printf("[E] %s zone proxy not ready (active=%v, charName=%q); log into the game first (and enable ZONE_PROXY). See the proxy logs for the 'zone proxy not ready' diag line naming the concrete cause.",
 			mobScrapeLogTag, ready, name)
 		return
 	}
